@@ -1,0 +1,1816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RV Repair Order Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-main: #0d0f12;
+            --bg-surface: #1a1d24;
+            --bg-elevated: #252930;
+            --border-color: #2d3139;
+            --text-primary: #e8eaed;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-urgent: #ff3b30;
+            --accent-high: #ff9500;
+            --accent-medium: #ffcc00;
+            --accent-low: #34c759;
+            --accent-info: #0a84ff;
+            --status-progress: #0a84ff;
+            --status-parts: #ff9500;
+            --status-check: #5e5ce6;
+            --status-ready: #34c759;
+            --status-approval: #ffcc00;
+            --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Barlow Condensed', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .noise-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.03;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            z-index: 1000;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 40px 30px;
+        }
+
+        header {
+            margin-bottom: 50px;
+            animation: slideDown 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-urgent);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            animation: slideDown 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s backwards;
+        }
+
+        .filter-section {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .filter-label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .upload-area {
+            flex: 1;
+            min-width: 300px;
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            background: var(--bg-surface);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent-info);
+            background: var(--bg-elevated);
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(10, 132, 255, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .upload-area:hover::before {
+            left: 100%;
+        }
+
+        .upload-content {
+            text-align: center;
+        }
+
+        .upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .upload-subtext {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 12px 24px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .filter-btn:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent-info);
+        }
+
+        .filter-btn.active {
+            background: var(--accent-info);
+            border-color: var(--accent-info);
+            color: white;
+        }
+
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+            animation: slideDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s backwards;
+        }
+
+        .stat-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent-info);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1;
+        }
+
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 20px;
+            animation: fadeIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.3s backwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .ro-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: pointer;
+            animation: cardAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+        }
+
+        .ro-card:nth-child(1) { animation-delay: 0.1s; }
+        .ro-card:nth-child(2) { animation-delay: 0.15s; }
+        .ro-card:nth-child(3) { animation-delay: 0.2s; }
+        .ro-card:nth-child(4) { animation-delay: 0.25s; }
+        .ro-card:nth-child(5) { animation-delay: 0.3s; }
+        .ro-card:nth-child(6) { animation-delay: 0.35s; }
+
+        @keyframes cardAppear {
+            from {
+                opacity: 0;
+                transform: translateY(30px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .ro-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--accent-info);
+        }
+
+        .priority-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 8px 16px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-family: 'JetBrains Mono', monospace;
+            border-bottom-left-radius: 12px;
+        }
+
+        .priority-urgent {
+            background: var(--accent-urgent);
+            color: white;
+        }
+
+        .priority-high {
+            background: var(--accent-high);
+            color: white;
+        }
+
+        .priority-medium {
+            background: var(--accent-medium);
+            color: var(--bg-main);
+        }
+
+        .priority-low {
+            background: var(--accent-low);
+            color: white;
+        }
+
+        .rv-photo {
+            width: 100%;
+            height: 180px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+        }
+
+        .rv-photo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .card-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .days-on-lot {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .dollar-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--accent-low);
+            background: rgba(52, 199, 89, 0.1);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--accent-low);
+        }
+
+        .days-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .customer-name {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+        }
+
+        .rv-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .info-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.95rem;
+        }
+
+        .info-label {
+            color: var(--text-muted);
+            min-width: 80px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+        }
+
+        .info-value {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .contact-link {
+            color: var(--accent-info);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid transparent;
+        }
+
+        .contact-link:hover {
+            color: var(--text-primary);
+            border-bottom-color: var(--accent-info);
+        }
+
+        .repair-type-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(10, 132, 255, 0.15);
+            border: 1px solid var(--accent-info);
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: var(--accent-info);
+            font-weight: 700;
+        }
+
+        .repair-desc {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .progress-section {
+            margin-bottom: 16px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .progress-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .progress-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--bg-elevated);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-info), var(--accent-low));
+            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .notes-section {
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .note-item {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .note-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .note-icon {
+            font-size: 0.9rem;
+        }
+
+        .note-title {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+        }
+
+        .note-content {
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .status-progress {
+            background: rgba(10, 132, 255, 0.2);
+            color: var(--status-progress);
+            border: 1px solid var(--status-progress);
+        }
+
+        .status-parts {
+            background: rgba(255, 149, 0, 0.2);
+            color: var(--status-parts);
+            border: 1px solid var(--status-parts);
+        }
+
+        .status-check {
+            background: rgba(94, 92, 230, 0.2);
+            color: var(--status-check);
+            border: 1px solid var(--status-check);
+        }
+
+        .status-ready {
+            background: rgba(52, 199, 89, 0.2);
+            color: var(--status-ready);
+            border: 1px solid var(--status-ready);
+        }
+
+        .status-approval {
+            background: rgba(255, 204, 0, 0.2);
+            color: var(--status-approval);
+            border: 1px solid var(--status-approval);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 100px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .empty-text {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            .board-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
+
+        .new-ro-btn {
+            padding: 14px 28px;
+            background: var(--accent-info);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
+        }
+
+        .new-ro-btn:hover {
+            background: var(--accent-low);
+            box-shadow: 0 6px 20px rgba(10, 132, 255, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 40px;
+            box-shadow: var(--shadow-lg);
+            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .modal-title {
+            font-size: 2rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            transition: color 0.2s ease;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-field.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .form-input, .form-select, .form-textarea {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--text-primary);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-info);
+            background: var(--bg-surface);
+        }
+
+        .form-textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent-info);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-low);
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-surface);
+        }
+
+        .google-auth-section {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .auth-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+        }
+
+        .auth-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-urgent);
+        }
+
+        .auth-indicator.connected {
+            background: var(--accent-low);
+        }
+
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="noise-overlay"></div>
+    
+    <div class="container">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <h1>Repair Order Dashboard</h1>
+                <button class="new-ro-btn" id="newROBtn">+ New RO</button>
+            </div>
+            <div class="header-meta">
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    <span>Live</span>
+                </div>
+                <span id="currentTime">—</span>
+                <span id="totalRVs">0 RVs on Lot</span>
+            </div>
+        </header>
+
+        <div class="controls">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="csvUpload" accept=".csv">
+                <div class="upload-content">
+                    <div class="upload-icon">📊</div>
+                    <div class="upload-text">Upload CSV from Google Sheets</div>
+                    <div class="upload-subtext">Click to browse or drag & drop</div>
+                </div>
+            </div>
+
+            <div class="upload-area" id="photoUploadArea" style="min-width: 250px;">
+                <div class="upload-content">
+                    <div class="upload-icon">📸</div>
+                    <div class="upload-text">RV Photo Upload Info</div>
+                    <div class="upload-subtext" style="font-size: 0.8rem; line-height: 1.4;">Add image URLs to "RV Photo URL" column in your spreadsheet. Photos will display on cards.</div>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <label class="filter-label">Filter by Status:</label>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="all" data-type="status">All</button>
+                    <button class="filter-btn" data-filter="In progress" data-type="status">In Progress</button>
+                    <button class="filter-btn" data-filter="Awaiting parts" data-type="status">Parts</button>
+                    <button class="filter-btn" data-filter="Quality check" data-type="status">QC</button>
+                    <button class="filter-btn" data-filter="Ready for pickup" data-type="status">Ready</button>
+                    <button class="filter-btn" data-filter="Awaiting Approval" data-type="status">Approval</button>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <label class="filter-label">Filter by Repair Type:</label>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="all" data-type="repair">All</button>
+                    <button class="filter-btn" data-filter="Roof" data-type="repair">Roof</button>
+                    <button class="filter-btn" data-filter="Solar" data-type="repair">Solar</button>
+                    <button class="filter-btn" data-filter="Vroom" data-type="repair">Vroom</button>
+                    <button class="filter-btn" data-filter="Paint and Body" data-type="repair">Paint & Body</button>
+                    <button class="filter-btn" data-filter="Repairs" data-type="repair">Repairs</button>
+                    <button class="filter-btn" data-filter="Multi" data-type="repair">Multi</button>
+                    <button class="filter-btn" data-filter="TrueTopper" data-type="repair">TrueTopper</button>
+                    <button class="filter-btn" data-filter="Detailing" data-type="repair">Detailing</button>
+                    <button class="filter-btn" data-filter="Chassis" data-type="repair">Chassis</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-bar" id="statsBar">
+            <div class="stat-card">
+                <div class="stat-label">Total RVs</div>
+                <div class="stat-value" id="statTotal">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Value</div>
+                <div class="stat-value" id="statTotalValue" style="font-size: 2rem;">$0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">In Progress</div>
+                <div class="stat-value" id="statProgress">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Awaiting Parts</div>
+                <div class="stat-value" id="statParts">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Days on Lot</div>
+                <div class="stat-value" id="statAvgDays">0</div>
+            </div>
+        </div>
+
+        <div class="board-grid" id="boardGrid">
+            <div class="empty-state">
+                <div class="empty-icon">🚐</div>
+                <div class="empty-text">Load sample data or upload CSV to get started</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample data structure
+        const sampleData = [
+            {
+                customerName: "John Martinez",
+                customerPhone: "555-0123",
+                customerEmail: "john.martinez@email.com",
+                customerAddress: "1234 Oak Street, Flower Mound, TX 75022",
+                rv: "2019 Winnebago Vista",
+                rvPhotoUrl: "",
+                repairType: "Multi",
+                repairDescription: "HVAC system replacement, roof leak repair",
+                technicianAssigned: "Mike Chen",
+                dateReceived: "2026-02-15",
+                percentComplete: 45,
+                dollarValue: 4850,
+                status: "Awaiting parts",
+                urgency: "High",
+                customerType: "Regular",
+                promisedDate: "2026-03-10",
+                roStatusNotes: "HVAC unit ordered, expected delivery 3/8. Roof patch materials in stock.",
+                customerCommunicationNotes: "Called customer 3/1 - OK with timeline. Will call again when parts arrive."
+            },
+            {
+                customerName: "Sarah Thompson",
+                customerPhone: "555-0198",
+                customerEmail: "s.thompson@email.com",
+                customerAddress: "5678 Elm Avenue, Lewisville, TX 75067",
+                rv: "2021 Airstream Classic",
+                rvPhotoUrl: "",
+                repairType: "Repairs",
+                repairDescription: "Electrical system diagnostic and wiring repair",
+                technicianAssigned: "Dave Rodriguez",
+                dateReceived: "2026-02-27",
+                percentComplete: 65,
+                dollarValue: 1250,
+                status: "In progress",
+                urgency: "Low",
+                customerType: "VIP",
+                promisedDate: "2026-03-05",
+                roStatusNotes: "Main harness replaced. Testing all circuits before final inspection.",
+                customerCommunicationNotes: "VIP - text updates preferred. Sent progress photo 2/29."
+            },
+            {
+                customerName: "Robert Chen",
+                customerPhone: "555-0245",
+                customerEmail: "rchen@email.com",
+                customerAddress: "9012 Pine Road, Highland Village, TX 75077",
+                rv: "2018 Thor Challenger",
+                rvPhotoUrl: "",
+                repairType: "Vroom",
+                repairDescription: "Engine overhaul, transmission service",
+                technicianAssigned: "Mike Chen",
+                dateReceived: "2026-02-08",
+                percentComplete: 30,
+                dollarValue: 12500,
+                status: "In progress",
+                urgency: "Critical",
+                customerType: "Regular",
+                promisedDate: "2026-03-08",
+                roStatusNotes: "Engine rebuild 30% complete. Found additional wear on cam bearings - added to scope.",
+                customerCommunicationNotes: "Approved additional $800 for cam bearings via phone 2/28. Anxious about timeline."
+            },
+            {
+                customerName: "Lisa Anderson",
+                customerPhone: "555-0367",
+                customerEmail: "lisa.anderson@email.com",
+                customerAddress: "3456 Maple Drive, Denton, TX 76205",
+                rv: "2020 Jayco Greyhawk",
+                rvPhotoUrl: "",
+                repairType: "Roof",
+                repairDescription: "Slide-out mechanism repair, interior water damage",
+                technicianAssigned: "Sarah Kim",
+                dateReceived: "2026-02-21",
+                percentComplete: 85,
+                dollarValue: 3200,
+                status: "Quality check",
+                urgency: "Medium",
+                customerType: "Regular",
+                promisedDate: "2026-03-06",
+                roStatusNotes: "Slide-out mechanism fully repaired. Interior drying complete. Final QC in progress.",
+                customerCommunicationNotes: "Emailed photos of completed work 3/1. Customer very pleased with updates."
+            },
+            {
+                customerName: "Michael O'Brien",
+                customerPhone: "555-0489",
+                customerEmail: "mobrien@email.com",
+                customerAddress: "7890 Cedar Lane, Argyle, TX 76226",
+                rv: "2022 Tiffin Allegro",
+                rvPhotoUrl: "",
+                repairType: "Chassis",
+                repairDescription: "Annual maintenance, generator service",
+                technicianAssigned: "Dave Rodriguez",
+                dateReceived: "2026-02-28",
+                percentComplete: 90,
+                dollarValue: 850,
+                status: "Awaiting Approval",
+                urgency: "Low",
+                customerType: "VIP",
+                promisedDate: "2026-03-04",
+                roStatusNotes: "All maintenance complete. Generator serviced. Found minor oil leak - needs customer approval to fix.",
+                customerCommunicationNotes: "Left VM 3/1 about oil leak ($250 repair). Awaiting callback."
+            },
+            {
+                customerName: "Patricia Williams",
+                customerPhone: "555-0592",
+                customerEmail: "pwilliams@email.com",
+                customerAddress: "2345 Birch Court, The Colony, TX 75056",
+                rv: "2017 Coachmen Mirada",
+                rvPhotoUrl: "",
+                repairType: "Paint and Body",
+                repairDescription: "Brake system replacement, suspension work",
+                technicianAssigned: "Sarah Kim",
+                dateReceived: "2026-02-17",
+                percentComplete: 20,
+                dollarValue: 2900,
+                status: "Awaiting parts",
+                urgency: "High",
+                customerType: "Regular",
+                promisedDate: "2026-03-12",
+                roStatusNotes: "Brake rotors on backorder - ETA 3/10. Suspension parts arrived, ready to install.",
+                customerCommunicationNotes: "Customer frustrated with delay. Offered discount on next service."
+            },
+            {
+                customerName: "James Taylor",
+                customerPhone: "555-0634",
+                customerEmail: "jtaylor@email.com",
+                customerAddress: "6789 Willow Way, Frisco, TX 75034",
+                rv: "2023 Forest River Sunseeker",
+                rvPhotoUrl: "",
+                repairType: "Solar",
+                repairDescription: "Solar panel installation and electrical integration",
+                technicianAssigned: "Mike Chen",
+                dateReceived: "2026-02-29",
+                percentComplete: 100,
+                dollarValue: 6500,
+                status: "Ready for pickup",
+                urgency: "Low",
+                customerType: "Regular",
+                promisedDate: "2026-03-02",
+                roStatusNotes: "Installation complete. All systems tested and operational. Invoice ready.",
+                customerCommunicationNotes: "Texted customer 3/1 - picking up tomorrow morning at 9am."
+            },
+            {
+                customerName: "David Kim",
+                customerPhone: "555-0721",
+                customerEmail: "dkim@email.com",
+                customerAddress: "4321 Oakwood Blvd, McKinney, TX 75070",
+                rv: "2021 Newmar Dutch Star",
+                rvPhotoUrl: "",
+                repairType: "Detailing",
+                repairDescription: "Full interior and exterior detailing package",
+                technicianAssigned: "Sarah Kim",
+                dateReceived: "2026-02-24",
+                percentComplete: 55,
+                dollarValue: 1800,
+                status: "In progress",
+                urgency: "Low",
+                customerType: "VIP",
+                promisedDate: "2026-03-07",
+                roStatusNotes: "Exterior detailing complete. Interior carpets cleaned. Leather conditioning underway.",
+                customerCommunicationNotes: "VIP - sends daily text asking for updates. Last contact 3/1 10am."
+            },
+            {
+                customerName: "Amanda Rodriguez",
+                customerPhone: "555-0856",
+                customerEmail: "arodriguez@email.com",
+                customerAddress: "8765 Westridge Drive, Prosper, TX 75078",
+                rv: "2020 Keystone Montana",
+                rvPhotoUrl: "",
+                repairType: "TrueTopper",
+                repairDescription: "Truck bed topper installation and fitting",
+                technicianAssigned: "Dave Rodriguez",
+                dateReceived: "2026-02-25",
+                percentComplete: 75,
+                dollarValue: 2200,
+                status: "Quality check",
+                urgency: "Medium",
+                customerType: "Regular",
+                promisedDate: "2026-03-06",
+                roStatusNotes: "Topper installed and sealed. Checking all mounting points and weatherproofing.",
+                customerCommunicationNotes: "Sent installation photos via email 2/29. Customer very responsive."
+            }
+        ];
+
+        let currentData = [];
+        let currentStatusFilter = 'all';
+        let currentRepairFilter = 'all';
+
+        // Initialize
+        function init() {
+            loadSampleData();
+            setupEventListeners();
+            setupModalListeners();
+            updateClock();
+            setInterval(updateClock, 1000);
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const options = { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            document.getElementById('currentTime').textContent = now.toLocaleDateString('en-US', options);
+        }
+
+        function loadSampleData() {
+            currentData = sampleData;
+            renderBoard();
+        }
+
+        function setupEventListeners() {
+            // Upload area
+            const uploadArea = document.getElementById('uploadArea');
+            const csvUpload = document.getElementById('csvUpload');
+
+            uploadArea.addEventListener('click', () => csvUpload.click());
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.style.borderColor = 'var(--accent-info)';
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.style.borderColor = 'var(--border-color)';
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.style.borderColor = 'var(--border-color)';
+                const file = e.dataTransfer.files[0];
+                if (file && file.type === 'text/csv') {
+                    parseCSV(file);
+                }
+            });
+
+            csvUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    parseCSV(file);
+                }
+            });
+
+            // Filter buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const filterType = btn.dataset.type;
+                    
+                    // Remove active from buttons of same type
+                    document.querySelectorAll(`.filter-btn[data-type="${filterType}"]`).forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    // Update appropriate filter
+                    if (filterType === 'status') {
+                        currentStatusFilter = btn.dataset.filter;
+                    } else if (filterType === 'repair') {
+                        currentRepairFilter = btn.dataset.filter;
+                    }
+                    
+                    renderBoard();
+                });
+            });
+        }
+
+        function parseCSV(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                const lines = text.split('\n').filter(line => line.trim());
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                
+                const data = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        const key = toCamelCase(header);
+                        row[key] = values[index] || '';
+                    });
+                    
+                    data.push(row);
+                }
+                
+                currentData = data;
+                renderBoard();
+            };
+            reader.readAsText(file);
+        }
+
+        function toCamelCase(str) {
+            return str.replace(/(?:^\w|[A-Z]|\b\w)/g, (word, index) => {
+                return index === 0 ? word.toLowerCase() : word.toUpperCase();
+            }).replace(/\s+/g, '');
+        }
+
+        function calculateDaysOnLot(dateReceived) {
+            if (!dateReceived) return 0;
+            const received = new Date(dateReceived);
+            const today = new Date();
+            const diffTime = Math.abs(today - received);
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays;
+        }
+
+        function calculatePriority(ro) {
+            let score = 0;
+            
+            // Days waiting (primary factor) - 10 points per day
+            const daysOnLot = calculateDaysOnLot(ro.dateReceived);
+            score += daysOnLot * 10;
+            
+            // Urgency (secondary factor)
+            const urgencyMap = {
+                'Critical': 100,
+                'High': 70,
+                'Medium': 40,
+                'Low': 10
+            };
+            score += urgencyMap[ro.urgency] || 0;
+            
+            // Promised date (tertiary factor) - days until promise
+            if (ro.promisedDate) {
+                const promised = new Date(ro.promisedDate);
+                const now = new Date();
+                const daysUntil = Math.floor((promised - now) / (1000 * 60 * 60 * 24));
+                if (daysUntil < 0) score += 200; // Overdue
+                else if (daysUntil < 3) score += 50; // Very soon
+                else if (daysUntil < 7) score += 20; // Coming up
+            }
+            
+            // Customer type (quaternary factor)
+            if (ro.customerType === 'VIP') score += 15;
+            
+            return score;
+        }
+
+        function getPriorityLevel(score) {
+            if (score >= 250) return 'urgent';
+            if (score >= 150) return 'high';
+            if (score >= 80) return 'medium';
+            return 'low';
+        }
+
+        function renderBoard() {
+            const grid = document.getElementById('boardGrid');
+            
+            // Sort by priority
+            const sorted = [...currentData].map(ro => ({
+                ...ro,
+                priorityScore: calculatePriority(ro)
+            })).sort((a, b) => b.priorityScore - a.priorityScore);
+
+            // Apply both filters
+            let filtered = sorted;
+            
+            if (currentStatusFilter !== 'all') {
+                filtered = filtered.filter(ro => ro.status === currentStatusFilter);
+            }
+            
+            if (currentRepairFilter !== 'all') {
+                filtered = filtered.filter(ro => ro.repairType === currentRepairFilter);
+            }
+
+            // Update stats
+            updateStats(sorted);
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🔍</div>
+                        <div class="empty-text">No RVs match the current filters</div>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = filtered.map(ro => {
+                const priorityLevel = getPriorityLevel(ro.priorityScore);
+                const statusClass = ro.status.toLowerCase().replace(/\s+/g, '-');
+                
+                return `
+                    <div class="ro-card">
+                        <div class="priority-badge priority-${priorityLevel}">
+                            ${priorityLevel.toUpperCase()}
+                        </div>
+                        
+                        ${ro.rvPhotoUrl ? `
+                        <div class="rv-photo">
+                            <img src="${ro.rvPhotoUrl}" alt="RV Photo" />
+                        </div>
+                        ` : ''}
+                        
+                        <div class="card-header-row">
+                            <div class="days-on-lot">
+                                ${calculateDaysOnLot(ro.dateReceived)} <span class="days-label">Days</span>
+                            </div>
+                            ${ro.dollarValue !== undefined && ro.dollarValue !== null ? `
+                            <div class="dollar-value">
+                                $${ro.dollarValue.toLocaleString()}
+                            </div>
+                            ` : ''}
+                        </div>
+                        
+                        <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
+                        
+                        <div class="rv-info">
+                            <div class="info-row">
+                                <span class="info-label">Type:</span>
+                                <span class="info-value repair-type-tag">${ro.repairType || 'General'}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">RV:</span>
+                                <span class="info-value">${ro.rv || 'Not specified'}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Tech:</span>
+                                <span class="info-value">${ro.technicianAssigned || 'Unassigned'}</span>
+                            </div>
+                            ${ro.customerPhone ? `
+                            <div class="info-row">
+                                <span class="info-label">Phone:</span>
+                                <span class="info-value"><a href="tel:${ro.customerPhone}" class="contact-link">${ro.customerPhone}</a></span>
+                            </div>
+                            ` : ''}
+                            ${ro.customerEmail ? `
+                            <div class="info-row">
+                                <span class="info-label">Email:</span>
+                                <span class="info-value"><a href="mailto:${ro.customerEmail}" class="contact-link">${ro.customerEmail}</a></span>
+                            </div>
+                            ` : ''}
+                            ${ro.customerAddress ? `
+                            <div class="info-row">
+                                <span class="info-label">Address:</span>
+                                <span class="info-value">${ro.customerAddress}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        
+                        <div class="repair-desc">${ro.repairDescription || 'No description'}</div>
+                        
+                        ${ro.percentComplete !== undefined && ro.percentComplete !== null ? `
+                        <div class="progress-section">
+                            <div class="progress-header">
+                                <span class="progress-label">Progress</span>
+                                <span class="progress-value">${ro.percentComplete}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${ro.percentComplete}%"></div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        ${ro.roStatusNotes || ro.customerCommunicationNotes ? `
+                        <div class="notes-section">
+                            ${ro.roStatusNotes ? `
+                            <div class="note-item">
+                                <div class="note-header">
+                                    <span class="note-icon">🔧</span>
+                                    <span class="note-title">RO Status</span>
+                                </div>
+                                <div class="note-content">${ro.roStatusNotes}</div>
+                            </div>
+                            ` : ''}
+                            ${ro.customerCommunicationNotes ? `
+                            <div class="note-item">
+                                <div class="note-header">
+                                    <span class="note-icon">💬</span>
+                                    <span class="note-title">Customer Comm</span>
+                                </div>
+                                <div class="note-content">${ro.customerCommunicationNotes}</div>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
+                        
+                        <div class="status-badge status-${statusClass}">
+                            <span class="status-dot" style="background: var(--status-${statusClass})"></span>
+                            ${ro.status || 'Unknown'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateStats(data) {
+            const total = data.length;
+            const inProgress = data.filter(ro => ro.status === 'In progress').length;
+            const awaitingParts = data.filter(ro => ro.status === 'Awaiting parts').length;
+            const avgDays = total > 0 
+                ? Math.round(data.reduce((sum, ro) => sum + calculateDaysOnLot(ro.dateReceived), 0) / total)
+                : 0;
+            const totalValue = data.reduce((sum, ro) => sum + (ro.dollarValue || 0), 0);
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statTotalValue').textContent = '$' + totalValue.toLocaleString();
+            document.getElementById('statProgress').textContent = inProgress;
+            document.getElementById('statParts').textContent = awaitingParts;
+            document.getElementById('statAvgDays').textContent = avgDays;
+            document.getElementById('totalRVs').textContent = `${total} RVs on Lot`;
+        }
+
+        // Google Sheets Integration
+        const GOOGLE_CONFIG = {
+            CLIENT_ID: 'http://971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com',
+            API_KEY: 'AIzaSyB6kg5hZiXJxUoGtKSXIxKj7JfOGNN6jbc',
+            SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y',
+            DISCOVERY_DOCS: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+            SCOPES: 'https://www.googleapis.com/auth/spreadsheets'
+        };
+
+        let gapiInited = false;
+        let gisInited = false;
+        let tokenClient;
+        let accessToken = null;
+
+        function gapiLoaded() {
+            gapi.load('client', initializeGapiClient);
+        }
+
+        async function initializeGapiClient() {
+            await gapi.client.init({
+                apiKey: GOOGLE_CONFIG.API_KEY,
+                discoveryDocs: GOOGLE_CONFIG.DISCOVERY_DOCS,
+            });
+            gapiInited = true;
+        }
+
+        function gisLoaded() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CONFIG.CLIENT_ID,
+                scope: GOOGLE_CONFIG.SCOPES,
+                callback: '',
+            });
+            gisInited = true;
+        }
+
+        function handleAuthClick() {
+            tokenClient.callback = async (resp) => {
+                if (resp.error !== undefined) {
+                    throw (resp);
+                }
+                accessToken = resp.access_token;
+                updateAuthStatus(true);
+                await loadDataFromSheets();
+            };
+
+            if (accessToken === null) {
+                tokenClient.requestAccessToken({prompt: 'consent'});
+            } else {
+                tokenClient.requestAccessToken({prompt: ''});
+            }
+        }
+
+        function updateAuthStatus(connected) {
+            const indicator = document.getElementById('authIndicator');
+            const status = document.getElementById('authStatus');
+            const authButton = document.getElementById('authButton');
+            
+            if (connected) {
+                indicator.classList.add('connected');
+                status.textContent = 'Connected to Google Sheets';
+                authButton.textContent = 'Reconnect';
+            } else {
+                indicator.classList.remove('connected');
+                status.textContent = 'Not connected to Google Sheets';
+                authButton.textContent = 'Connect to Google Sheets';
+            }
+        }
+
+        async function loadDataFromSheets() {
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: 'Sheet1!A:R',
+                });
+
+                const rows = response.result.values;
+                if (!rows || rows.length === 0) {
+                    console.log('No data found.');
+                    return;
+                }
+
+                // Convert rows to data objects (skip header row)
+                const headers = rows[0];
+                const data = [];
+                
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const obj = {};
+                    headers.forEach((header, index) => {
+                        const key = toCamelCase(header);
+                        obj[key] = row[index] || '';
+                    });
+                    
+                    // Convert numeric fields
+                    if (obj.dollarValue) obj.dollarValue = parseFloat(obj.dollarValue);
+                    if (obj.percentComplete) obj.percentComplete = parseInt(obj.percentComplete);
+                    
+                    data.push(obj);
+                }
+
+                currentData = data;
+                renderBoard();
+            } catch (err) {
+                console.error('Error loading from Sheets:', err);
+                alert('Error loading data from Google Sheets. Check console for details.');
+            }
+        }
+
+        async function appendToSheets(formData) {
+            try {
+                // Use today's date as the received date for new entries
+                const today = new Date().toISOString().split('T')[0];
+                
+                const values = [[
+                    formData.customerName,
+                    formData.customerPhone || '',
+                    formData.customerEmail || '',
+                    formData.customerAddress || '',
+                    formData.rv,
+                    formData.rvPhotoUrl || '',
+                    formData.repairType,
+                    formData.repairDescription,
+                    formData.technicianAssigned || '',
+                    today, // Date Received (today's date)
+                    formData.percentComplete || 0,
+                    formData.dollarValue || 0,
+                    formData.status,
+                    formData.urgency,
+                    formData.customerType,
+                    formData.promisedDate || '',
+                    formData.roStatusNotes || '',
+                    formData.customerCommunicationNotes || ''
+                ]];
+
+                const response = await gapi.client.sheets.spreadsheets.values.append({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: 'Sheet1!A:R',
+                    valueInputOption: 'RAW',
+                    resource: { values }
+                });
+
+                console.log('Row added:', response);
+                
+                // Reload data from sheets
+                await loadDataFromSheets();
+                
+                return true;
+            } catch (err) {
+                console.error('Error appending to Sheets:', err);
+                alert('Error saving to Google Sheets. Check console for details.');
+                return false;
+            }
+        }
+
+        // Modal Controls
+        function setupModalListeners() {
+            const newROBtn = document.getElementById('newROBtn');
+            const modalOverlay = document.getElementById('modalOverlay');
+            const modalClose = document.getElementById('modalClose');
+            const cancelBtn = document.getElementById('cancelBtn');
+            const newROForm = document.getElementById('newROForm');
+            const authButton = document.getElementById('authButton');
+
+            newROBtn.addEventListener('click', () => {
+                modalOverlay.classList.add('active');
+            });
+
+            const closeModal = () => {
+                modalOverlay.classList.remove('active');
+                newROForm.reset();
+            };
+
+            modalClose.addEventListener('click', closeModal);
+            cancelBtn.addEventListener('click', closeModal);
+            
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    closeModal();
+                }
+            });
+
+            authButton.addEventListener('click', () => {
+                if (!gapiInited || !gisInited) {
+                    alert('Google APIs are still loading. Please wait a moment and try again.');
+                    return;
+                }
+                handleAuthClick();
+            });
+
+            newROForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                if (!accessToken) {
+                    alert('Please connect to Google Sheets first!');
+                    return;
+                }
+
+                const formData = new FormData(newROForm);
+                const data = Object.fromEntries(formData.entries());
+
+                const success = await appendToSheets(data);
+                
+                if (success) {
+                    closeModal();
+                    alert('Repair Order saved successfully!');
+                }
+            });
+        }
+
+        // Load Google APIs
+        window.addEventListener('load', () => {
+            gapiLoaded();
+            gisLoaded();
+        });
+
+        // Start the app
+        init();
+    </script>
+
+    <!-- New RO Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">New Repair Order</h2>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+
+            <div class="google-auth-section">
+                <div class="auth-status">
+                    <span class="auth-indicator" id="authIndicator"></span>
+                    <span id="authStatus">Not connected to Google Sheets</span>
+                </div>
+                <button class="btn btn-primary" id="authButton">Connect to Google Sheets</button>
+            </div>
+
+            <form id="newROForm">
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label class="form-label">Customer Name *</label>
+                        <input type="text" class="form-input" name="customerName" required>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Customer Phone</label>
+                        <input type="tel" class="form-input" name="customerPhone">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Customer Email</label>
+                        <input type="email" class="form-input" name="customerEmail">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">RV *</label>
+                        <input type="text" class="form-input" name="rv" placeholder="2019 Winnebago Vista" required>
+                    </div>
+                    <div class="form-field full-width">
+                        <label class="form-label">Customer Address</label>
+                        <input type="text" class="form-input" name="customerAddress">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">RV Photo URL</label>
+                        <input type="url" class="form-input" name="rvPhotoUrl">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Repair Type *</label>
+                        <select class="form-select" name="repairType" required>
+                            <option value="">Select Type</option>
+                            <option value="Roof">Roof</option>
+                            <option value="Solar">Solar</option>
+                            <option value="Vroom">Vroom</option>
+                            <option value="Paint and Body">Paint and Body</option>
+                            <option value="Repairs">Repairs</option>
+                            <option value="Multi">Multi</option>
+                            <option value="TrueTopper">TrueTopper</option>
+                            <option value="Detailing">Detailing</option>
+                            <option value="Chassis">Chassis</option>
+                        </select>
+                    </div>
+                    <div class="form-field full-width">
+                        <label class="form-label">Repair Description *</label>
+                        <textarea class="form-textarea" name="repairDescription" required></textarea>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Technician Assigned</label>
+                        <input type="text" class="form-input" name="technicianAssigned">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Dollar Value</label>
+                        <input type="number" class="form-input" name="dollarValue" min="0" step="0.01">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Status *</label>
+                        <select class="form-select" name="status" required>
+                            <option value="">Select Status</option>
+                            <option value="In progress">In progress</option>
+                            <option value="Awaiting parts">Awaiting parts</option>
+                            <option value="Quality check">Quality check</option>
+                            <option value="Ready for pickup">Ready for pickup</option>
+                            <option value="Awaiting Approval">Awaiting Approval</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Urgency *</label>
+                        <select class="form-select" name="urgency" required>
+                            <option value="">Select Urgency</option>
+                            <option value="Critical">Critical</option>
+                            <option value="High">High</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Low">Low</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Customer Type *</label>
+                        <select class="form-select" name="customerType" required>
+                            <option value="">Select Type</option>
+                            <option value="VIP">VIP</option>
+                            <option value="Regular">Regular</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Promised Date</label>
+                        <input type="date" class="form-input" name="promisedDate">
+                    </div>
+                    <div class="form-field full-width">
+                        <label class="form-label">RO Status Notes</label>
+                        <textarea class="form-textarea" name="roStatusNotes"></textarea>
+                    </div>
+                    <div class="form-field full-width">
+                        <label class="form-label">Customer Communication Notes</label>
+                        <textarea class="form-textarea" name="customerCommunicationNotes"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Repair Order</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+</body>
+</html>
