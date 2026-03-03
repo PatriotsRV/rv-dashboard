@@ -1749,24 +1749,41 @@
         }
 
         function gapiLoaded() {
+            if (typeof gapi === 'undefined') {
+                console.error('gapi not loaded yet, retrying...');
+                setTimeout(gapiLoaded, 500);
+                return;
+            }
             gapi.load('client', initializeGapiClient);
         }
 
         async function initializeGapiClient() {
-            await gapi.client.init({
-                apiKey: GOOGLE_CONFIG.API_KEY,
-                discoveryDocs: GOOGLE_CONFIG.DISCOVERY_DOCS,
-            });
-            gapiInited = true;
+            try {
+                await gapi.client.init({
+                    apiKey: GOOGLE_CONFIG.API_KEY,
+                    discoveryDocs: GOOGLE_CONFIG.DISCOVERY_DOCS,
+                });
+                gapiInited = true;
+                console.log('gapi initialized successfully');
+            } catch (error) {
+                console.error('Error initializing gapi:', error);
+                setTimeout(initializeGapiClient, 1000);
+            }
         }
 
         function gisLoaded() {
+            if (typeof google === 'undefined' || !google.accounts) {
+                console.error('google identity services not loaded yet, retrying...');
+                setTimeout(gisLoaded, 500);
+                return;
+            }
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
                 scope: GOOGLE_CONFIG.SCOPES,
                 callback: '',
             });
             gisInited = true;
+            console.log('gis initialized successfully');
         }
 
         function handleAuthClick() {
@@ -1965,8 +1982,11 @@
 
         // Load Google APIs
         window.addEventListener('load', () => {
-            gapiLoaded();
-            gisLoaded();
+            // Wait a bit for external scripts to be available
+            setTimeout(() => {
+                gapiLoaded();
+                gisLoaded();
+            }, 1000);
         });
 
         // Start the app when DOM is ready
