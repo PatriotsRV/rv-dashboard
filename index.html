@@ -1326,20 +1326,24 @@
             const result = await response.json();
             
             // Make file publicly accessible
-            await fetch(`https://www.googleapis.com/drive/v3/files/${result.id}/permissions`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    role: 'reader',
-                    type: 'anyone'
-                })
-            });
+            try {
+                await fetch(`https://www.googleapis.com/drive/v3/files/${result.id}/permissions`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        role: 'reader',
+                        type: 'anyone'
+                    })
+                });
+            } catch (permError) {
+                console.error('Error setting permissions:', permError);
+            }
 
-            // Return the direct link to display the image
-            return `https://drive.google.com/uc?export=view&id=${result.id}`;
+            // Return the direct thumbnail link - this works better for displaying images
+            return `https://drive.google.com/thumbnail?id=${result.id}&sz=w400`;
         }
 
         async function updatePhotoInSheet(ro, index) {
