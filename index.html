@@ -361,6 +361,43 @@
             color: white;
         }
 
+        .photo-upload-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent-info);
+            border: 1px solid var(--accent-info);
+            border-radius: 8px;
+            color: white;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .photo-upload-btn:hover {
+            background: var(--accent-low);
+            border-color: var(--accent-low);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
+        }
+
+        .photo-upload-btn:active {
+            transform: translateY(0);
+        }
+
+        .photo-upload-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .rv-photo {
             width: 100%;
             height: 180px;
@@ -1209,6 +1246,124 @@
         let currentStatusFilter = 'all';
         let currentRepairFilter = 'all';
 
+        // Photo Upload Function
+        async function uploadPhoto(index) {
+            if (!accessToken) {
+                alert('Please connect to Google Sheets first!');
+                return;
+            }
+
+            // Create file input
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.capture = 'environment'; // Prefer camera on mobile
+            
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                if (!file.type.startsWith('image/')) {
+                    alert('Please select an image file');
+                    return;
+                }
+
+                // Show loading state
+                const card = document.querySelector(`[data-ro-index="${index}"]`);
+                const uploadBtn = card.querySelector('.photo-upload-btn');
+                const originalText = uploadBtn.textContent;
+                uploadBtn.textContent = '⏳';
+                uploadBtn.disabled = true;
+
+                try {
+                    // Upload to Google Drive
+                    const photoUrl = await uploadToGoogleDrive(file);
+                    
+                    // Update the RO in currentData
+                    const ro = currentData[index];
+                    ro.rvPhotoUrl = photoUrl;
+                    
+                    // Update Google Sheets
+                    await updatePhotoInSheet(ro, index);
+                    
+                    // Refresh the board to show new photo
+                    renderBoard();
+                    
+                    alert('Photo uploaded successfully!');
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    alert('Error uploading photo. Please try again.');
+                    uploadBtn.textContent = originalText;
+                    uploadBtn.disabled = false;
+                }
+            };
+            
+            input.click();
+        }
+
+        async function uploadToGoogleDrive(file) {
+            const metadata = {
+                name: `RV_Photo_${Date.now()}_${file.name}`,
+                parents: [GOOGLE_CONFIG.DRIVE_FOLDER_ID]
+            };
+
+            const formData = new FormData();
+            formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            formData.append('file', file);
+
+            const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to upload to Drive');
+            }
+
+            const result = await response.json();
+            
+            // Make file publicly accessible
+            await fetch(`https://www.googleapis.com/drive/v3/files/${result.id}/permissions`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    role: 'reader',
+                    type: 'anyone'
+                })
+            });
+
+            // Return the direct link to display the image
+            return `https://drive.google.com/uc?export=view&id=${result.id}`;
+        }
+
+        async function updatePhotoInSheet(ro, index) {
+            try {
+                // Find the row in the sheet (index + 2 because of header row and 0-based index)
+                const rowNumber = index + 2;
+                
+                // Column F is the RV Photo URL column (6th column)
+                const range = `Sheet1!F${rowNumber}`;
+                
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: range,
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values: [[ro.rvPhotoUrl]]
+                    }
+                });
+            } catch (error) {
+                console.error('Error updating sheet:', error);
+                throw error;
+            }
+        }
+
         // Initialize
         function init() {
             loadSampleData();
@@ -1417,7 +1572,7 @@
                 const statusClass = ro.status.toLowerCase().replace(/\s+/g, '-');
                 
                 return `
-                    <div class="ro-card">
+                    <div class="ro-card" data-ro-index="${sorted.indexOf(ro)}">
                         <div class="priority-badge priority-${priorityLevel}">
                             ${priorityLevel.toUpperCase()}
                         </div>
@@ -1440,6 +1595,10 @@
                         </div>
                         
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
+                        
+                        <button class="photo-upload-btn" onclick="uploadPhoto(${sorted.indexOf(ro)})" title="Add/Update Photo">
+                            📷 ${ro.rvPhotoUrl ? 'Update Photo' : 'Add Photo'}
+                        </button>
                         
                         <div class="rv-info">
                             <div class="info-row">
@@ -1546,8 +1705,12 @@
             CLIENT_ID: '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com',
             API_KEY: 'AIzaSyB6kg5hZiXJxUoGtKSXIxKj7JfOGNN6jbc',
             SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y',
-            DISCOVERY_DOCS: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-            SCOPES: 'https://www.googleapis.com/auth/spreadsheets'
+            DRIVE_FOLDER_ID: '1SdOc3FDMN20btqR4iR6rhWXiSG6gXFgv',
+            DISCOVERY_DOCS: [
+                'https://sheets.googleapis.com/$discovery/rest?version=v4',
+                'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
+            ],
+            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file'
         };
 
         let gapiInited = false;
