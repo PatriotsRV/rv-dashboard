@@ -1735,6 +1735,9 @@
             const cancelBtn = document.getElementById('cancelBtn');
             const newROForm = document.getElementById('newROForm');
 
+            // Initialize auth button status
+            updateAuthStatus(false);
+
             newROBtn.addEventListener('click', () => {
                 modalOverlay.classList.add('active');
             });
