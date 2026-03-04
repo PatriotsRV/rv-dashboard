@@ -737,6 +737,39 @@
             transform: translateY(-2px);
         }
 
+        .connect-sheets-btn {
+            padding: 14px 28px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 2px solid var(--accent-info);
+            border-radius: 8px;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .connect-sheets-btn:hover {
+            background: var(--accent-info);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(10, 132, 255, 0.5);
+        }
+
+        .connect-sheets-btn.connected {
+            background: var(--accent-low);
+            border-color: var(--accent-low);
+            color: white;
+        }
+
+        .connect-sheets-btn.connected:hover {
+            background: var(--accent-urgent);
+            border-color: var(--accent-urgent);
+        }
+
         .modal-overlay {
             display: none;
             position: fixed;
@@ -965,7 +998,12 @@
         <header>
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
                 <h1>Repair Order Dashboard</h1>
-                <button class="new-ro-btn" id="newROBtn">+ New RO</button>
+                <div style="display: flex; gap: 12px;">
+                    <button class="connect-sheets-btn" id="connectSheetsBtn">
+                        <span id="connectionStatus">🔗 Connect to Google Sheets</span>
+                    </button>
+                    <button class="new-ro-btn" id="newROBtn">+ New RO</button>
+                </div>
             </div>
             <div class="header-meta">
                 <div class="live-indicator">
@@ -1902,8 +1940,11 @@
             const indicator = document.getElementById('authIndicator');
             const status = document.getElementById('authStatus');
             const authButton = document.getElementById('authButton');
+            const connectSheetsBtn = document.getElementById('connectSheetsBtn');
+            const connectionStatus = document.getElementById('connectionStatus');
             
             if (connected) {
+                // Modal button
                 indicator.classList.add('connected');
                 status.textContent = 'Connected to Google Sheets';
                 authButton.textContent = 'Disconnect';
@@ -1913,7 +1954,12 @@
                     currentData = sampleData;
                     renderBoard();
                 };
+                
+                // Header button
+                connectSheetsBtn.classList.add('connected');
+                connectionStatus.textContent = '✓ Connected';
             } else {
+                // Modal button
                 indicator.classList.remove('connected');
                 status.textContent = 'Not connected to Google Sheets';
                 authButton.textContent = 'Connect to Google Sheets';
@@ -1924,6 +1970,10 @@
                     }
                     handleAuthClick();
                 };
+                
+                // Header button
+                connectSheetsBtn.classList.remove('connected');
+                connectionStatus.textContent = '🔗 Connect to Google Sheets';
             }
         }
 
@@ -2053,9 +2103,29 @@
             const modalClose = document.getElementById('modalClose');
             const cancelBtn = document.getElementById('cancelBtn');
             const newROForm = document.getElementById('newROForm');
+            const connectSheetsBtn = document.getElementById('connectSheetsBtn');
 
             // Initialize auth button status
             updateAuthStatus(false);
+
+            // Connect to Google Sheets button in header
+            connectSheetsBtn.addEventListener('click', () => {
+                if (!gapiInited || !gisInited) {
+                    alert('Google APIs are still loading. Please wait a moment and try again.');
+                    return;
+                }
+                if (accessToken) {
+                    // Already connected, offer to disconnect
+                    if (confirm('You are already connected. Do you want to disconnect?')) {
+                        clearToken();
+                        updateAuthStatus(false);
+                        currentData = sampleData;
+                        renderBoard();
+                    }
+                } else {
+                    handleAuthClick();
+                }
+            });
 
             newROBtn.addEventListener('click', () => {
                 modalOverlay.classList.add('active');
