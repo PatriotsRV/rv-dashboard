@@ -1253,6 +1253,8 @@
                 return;
             }
 
+            console.log('Starting photo upload for index:', index);
+
             // Create file input
             const input = document.createElement('input');
             input.type = 'file';
@@ -1261,30 +1263,73 @@
             
             input.onchange = async (e) => {
                 const file = e.target.files[0];
-                if (!file) return;
+                if (!file) {
+                    console.log('No file selected');
+                    return;
+                }
                 
                 if (!file.type.startsWith('image/')) {
                     alert('Please select an image file');
                     return;
                 }
 
+                console.log('File selected:', file.name, file.type, file.size);
+
                 // Show loading state
-                const card = document.querySelector(`[data-ro-index="${index}"]`);
+                const cards = document.querySelectorAll('.ro-card');
+                const card = cards[index];
+                if (!card) {
+                    console.error('Could not find card at index:', index);
+                    alert('Error: Could not find the card. Please refresh and try again.');
+                    return;
+                }
+                
                 const uploadBtn = card.querySelector('.photo-upload-btn');
                 const originalText = uploadBtn.textContent;
-                uploadBtn.textContent = '⏳';
+                uploadBtn.textContent = '⏳ Uploading...';
                 uploadBtn.disabled = true;
 
                 try {
+                    console.log('Uploading to Google Drive...');
                     // Upload to Google Drive
                     const photoUrl = await uploadToGoogleDrive(file);
+                    console.log('Drive upload successful, URL:', photoUrl);
                     
-                    // Update the RO in currentData
-                    const ro = currentData[index];
+                    // Get the current RO data
+                    const sorted = [...currentData].map(ro => ({
+                        ...ro,
+                        priorityScore: calculatePriority(ro)
+                    })).sort((a, b) => b.priorityScore - a.priorityScore);
+                    
+                    const ro = sorted[index];
+                    if (!ro) {
+                        console.error('Could not find RO at sorted index:', index);
+                        alert('Error: Could not find the repair order. Please refresh and try again.');
+                        uploadBtn.textContent = originalText;
+                        uploadBtn.disabled = false;
+                        return;
+                    }
+                    
+                    console.log('Updating RO:', ro.customerName);
+                    
+                    // Update the RO photo URL
                     ro.rvPhotoUrl = photoUrl;
                     
+                    // Find this RO in the original unsorted data and update it
+                    const originalIndex = currentData.findIndex(item => 
+                        item.customerName === ro.customerName && 
+                        item.dateReceived === ro.dateReceived
+                    );
+                    
+                    if (originalIndex !== -1) {
+                        currentData[originalIndex].rvPhotoUrl = photoUrl;
+                        console.log('Updated currentData at index:', originalIndex);
+                    }
+                    
+                    console.log('Updating Google Sheet...');
                     // Update Google Sheets
-                    await updatePhotoInSheet(ro, index);
+                    await updatePhotoInSheet(photoUrl, originalIndex);
+                    console.log('Sheet update successful');
                     
                     // Refresh the board to show new photo
                     renderBoard();
@@ -1292,7 +1337,7 @@
                     alert('Photo uploaded successfully!');
                 } catch (error) {
                     console.error('Upload error:', error);
-                    alert('Error uploading photo. Please try again.');
+                    alert('Error uploading photo: ' + error.message + '. Please try again.');
                     uploadBtn.textContent = originalText;
                     uploadBtn.disabled = false;
                 }
@@ -1302,6 +1347,7 @@
         }
 
         async function uploadToGoogleDrive(file) {
+            console.log('Creating Drive metadata...');
             const metadata = {
                 name: `RV_Photo_${Date.now()}_${file.name}`,
                 parents: [GOOGLE_CONFIG.DRIVE_FOLDER_ID]
@@ -1311,6 +1357,7 @@
             formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
             formData.append('file', file);
 
+            console.log('Uploading to Drive...');
             const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink', {
                 method: 'POST',
                 headers: {
@@ -1319,15 +1366,27 @@
                 body: formData
             });
 
+            // If unauthorized, token might be expired
+            if (response.status === 401) {
+                console.error('Token expired or invalid');
+                clearToken();
+                updateAuthStatus(false);
+                throw new Error('Authentication expired. Please reconnect to Google Sheets and try again.');
+            }
+
             if (!response.ok) {
-                throw new Error('Failed to upload to Drive');
+                const errorText = await response.text();
+                console.error('Drive upload failed:', response.status, errorText);
+                throw new Error(`Failed to upload to Drive: ${response.status}`);
             }
 
             const result = await response.json();
+            console.log('Drive file created:', result.id);
             
             // Make file publicly accessible
             try {
-                await fetch(`https://www.googleapis.com/drive/v3/files/${result.id}/permissions`, {
+                console.log('Setting file permissions...');
+                const permResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${result.id}/permissions`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`,
@@ -1338,30 +1397,41 @@
                         type: 'anyone'
                     })
                 });
+                
+                if (!permResponse.ok) {
+                    console.warn('Could not set public permissions:', await permResponse.text());
+                }
             } catch (permError) {
                 console.error('Error setting permissions:', permError);
             }
 
             // Return the direct thumbnail link - this works better for displaying images
-            return `https://drive.google.com/thumbnail?id=${result.id}&sz=w400`;
+            const imageUrl = `https://drive.google.com/thumbnail?id=${result.id}&sz=w400`;
+            console.log('Final image URL:', imageUrl);
+            return imageUrl;
         }
 
-        async function updatePhotoInSheet(ro, index) {
+        async function updatePhotoInSheet(photoUrl, originalIndex) {
             try {
-                // Find the row in the sheet (index + 2 because of header row and 0-based index)
-                const rowNumber = index + 2;
+                console.log('Updating sheet at original index:', originalIndex);
+                // Find the row in the sheet (originalIndex + 2 because of header row and 0-based index)
+                const rowNumber = originalIndex + 2;
+                
+                console.log('Updating row:', rowNumber, 'with URL:', photoUrl);
                 
                 // Column F is the RV Photo URL column (6th column)
                 const range = `Sheet1!F${rowNumber}`;
                 
-                await gapi.client.sheets.spreadsheets.values.update({
+                const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                     range: range,
                     valueInputOption: 'RAW',
                     resource: {
-                        values: [[ro.rvPhotoUrl]]
+                        values: [[photoUrl]]
                     }
                 });
+                
+                console.log('Sheet update response:', response);
             } catch (error) {
                 console.error('Error updating sheet:', error);
                 throw error;
@@ -1729,11 +1799,18 @@
             
             if (savedToken && tokenExpiry) {
                 const now = Date.now();
-                if (now < parseInt(tokenExpiry)) {
+                const expiryTime = parseInt(tokenExpiry);
+                
+                // Check if token is still valid (with 5 minute buffer)
+                if (now < (expiryTime - 300000)) {
                     accessToken = savedToken;
                     updateAuthStatus(true);
                     loadDataFromSheets();
+                    console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
                     return true;
+                } else {
+                    console.log('Saved token expired, clearing...');
+                    clearToken();
                 }
             }
             return false;
