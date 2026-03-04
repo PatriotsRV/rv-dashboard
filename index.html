@@ -1868,23 +1868,32 @@
         }
 
         function handleAuthClick() {
+            console.log('=== handleAuthClick called ===');
             tokenClient.callback = async (resp) => {
+                console.log('Auth callback received:', resp);
                 if (resp.error !== undefined) {
+                    console.error('Auth error:', resp.error);
                     throw (resp);
                 }
                 accessToken = resp.access_token;
+                console.log('Access token received');
                 
                 // Save token with expiration (6 days = 518400 seconds)
                 const expiresIn = resp.expires_in || 518400;
                 saveToken(accessToken, expiresIn);
+                console.log('Token saved, expires in', expiresIn, 'seconds');
                 
                 updateAuthStatus(true);
+                console.log('Calling loadDataFromSheets...');
                 await loadDataFromSheets();
+                console.log('loadDataFromSheets completed');
             };
 
             if (accessToken === null) {
+                console.log('Requesting new token...');
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
+                console.log('Refreshing existing token...');
                 tokenClient.requestAccessToken({prompt: ''});
             }
         }
@@ -1919,12 +1928,15 @@
         }
 
         async function loadDataFromSheets() {
+            console.log('=== loadDataFromSheets called ===');
             try {
+                console.log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                     range: 'Sheet1!A:R',
                 });
 
+                console.log('Response received:', response);
                 const rows = response.result.values;
                 if (!rows || rows.length === 0) {
                     console.log('No data found.');
@@ -1933,6 +1945,7 @@
 
                 // Convert rows to data objects (skip header row)
                 const headers = rows[0];
+                console.log('Sheet headers:', headers);
                 const data = [];
                 
                 for (let i = 1; i < rows.length; i++) {
@@ -1947,10 +1960,16 @@
                     if (obj.dollarValue) obj.dollarValue = parseFloat(obj.dollarValue);
                     if (obj.percentComplete) obj.percentComplete = parseInt(obj.percentComplete);
                     
+                    // Log photo URLs to debug
+                    if (obj.rvPhotoUrl) {
+                        console.log('Loaded photo URL for', obj.customerName, ':', obj.rvPhotoUrl);
+                    }
+                    
                     data.push(obj);
                 }
 
                 currentData = data;
+                console.log('Loaded', data.length, 'records from sheet');
                 renderBoard();
             } catch (err) {
                 console.error('Error loading from Sheets:', err);
