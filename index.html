@@ -1551,6 +1551,8 @@
         }
 
         function toCamelCase(str) {
+            // Trim spaces from the header first
+            str = str.trim();
             return str.replace(/(?:^\w|[A-Z]|\b\w)/g, (word, index) => {
                 return index === 0 ? word.toLowerCase() : word.toUpperCase();
             }).replace(/\s+/g, '');
@@ -1960,9 +1962,12 @@
                     if (obj.dollarValue) obj.dollarValue = parseFloat(obj.dollarValue);
                     if (obj.percentComplete) obj.percentComplete = parseInt(obj.percentComplete);
                     
+                    // Log the entire object to see what we got
+                    console.log('Row', i, 'Customer:', obj.customerName, 'Photo URL:', obj.rvPhotoUrl);
+                    
                     // Log photo URLs to debug
                     if (obj.rvPhotoUrl) {
-                        console.log('Loaded photo URL for', obj.customerName, ':', obj.rvPhotoUrl);
+                        console.log('✓ Loaded photo URL for', obj.customerName, ':', obj.rvPhotoUrl);
                     }
                     
                     data.push(obj);
