@@ -1068,6 +1068,10 @@
                 <div class="stat-label">Total Value</div>
                 <div class="stat-value" id="statTotalValue" style="font-size: 2rem;">$0</div>
             </div>
+            <div class="stat-card" style="border: 2px solid var(--accent-info);">
+                <div class="stat-label">Filtered Value</div>
+                <div class="stat-value" id="statFilteredValue" style="font-size: 2rem; color: var(--accent-info);">$0</div>
+            </div>
             <div class="stat-card">
                 <div class="stat-label">In Progress</div>
                 <div class="stat-value" id="statProgress">0</div>
@@ -1669,8 +1673,8 @@
                 });
             }
 
-            // Update stats
-            updateStats(sorted);
+            // Update stats with both sorted (all data) and filtered data
+            updateStats(sorted, filtered);
 
             if (filtered.length === 0) {
                 grid.innerHTML = `
@@ -1798,7 +1802,7 @@
             }).join('');
         }
 
-        function updateStats(data) {
+        function updateStats(data, filteredData) {
             const total = data.length;
             const inProgress = data.filter(ro => ro.status === 'In progress').length;
             const awaitingParts = data.filter(ro => ro.status === 'Awaiting parts').length;
@@ -1806,9 +1810,15 @@
                 ? Math.round(data.reduce((sum, ro) => sum + calculateDaysOnLot(ro.dateReceived), 0) / total)
                 : 0;
             const totalValue = data.reduce((sum, ro) => sum + (ro.dollarValue || 0), 0);
+            
+            // Calculate filtered value
+            const filteredValue = filteredData 
+                ? filteredData.reduce((sum, ro) => sum + (ro.dollarValue || 0), 0)
+                : totalValue;
 
             document.getElementById('statTotal').textContent = total;
             document.getElementById('statTotalValue').textContent = '$' + totalValue.toLocaleString();
+            document.getElementById('statFilteredValue').textContent = '$' + filteredValue.toLocaleString();
             document.getElementById('statProgress').textContent = inProgress;
             document.getElementById('statParts').textContent = awaitingParts;
             document.getElementById('statAvgDays').textContent = avgDays;
