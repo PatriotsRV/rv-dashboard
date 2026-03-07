@@ -1395,7 +1395,7 @@
         ];
 
         let currentData = [];
-        let currentStatusFilter = 'all';
+        let currentStatusFilters = []; // Changed to array for multi-select
         let currentRepairFilter = 'all';
 
         // Update RO Status
@@ -1834,16 +1834,40 @@
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const filterType = btn.dataset.type;
+                    const filterValue = btn.dataset.filter;
                     
-                    // Remove active from buttons of same type
-                    document.querySelectorAll(`.filter-btn[data-type="${filterType}"]`).forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    
-                    // Update appropriate filter
                     if (filterType === 'status') {
-                        currentStatusFilter = btn.dataset.filter;
+                        // Multi-select for status filters
+                        if (filterValue === 'all') {
+                            // Clear all status filters
+                            currentStatusFilters = [];
+                            document.querySelectorAll('.filter-btn[data-type="status"]').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                        } else {
+                            // Toggle this status filter
+                            const allBtn = document.querySelector('.filter-btn[data-type="status"][data-filter="all"]');
+                            allBtn.classList.remove('active');
+                            
+                            if (currentStatusFilters.includes(filterValue)) {
+                                // Remove from filters
+                                currentStatusFilters = currentStatusFilters.filter(f => f !== filterValue);
+                                btn.classList.remove('active');
+                                
+                                // If no filters selected, activate "All"
+                                if (currentStatusFilters.length === 0) {
+                                    allBtn.classList.add('active');
+                                }
+                            } else {
+                                // Add to filters
+                                currentStatusFilters.push(filterValue);
+                                btn.classList.add('active');
+                            }
+                        }
                     } else if (filterType === 'repair') {
-                        currentRepairFilter = btn.dataset.filter;
+                        // Single select for repair type (existing behavior)
+                        document.querySelectorAll(`.filter-btn[data-type="${filterType}"]`).forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        currentRepairFilter = filterValue;
                     }
                     
                     renderBoard();
@@ -1950,10 +1974,12 @@
             // Apply both filters
             let filtered = sorted;
             
-            if (currentStatusFilter !== 'all') {
-                filtered = filtered.filter(ro => ro.status === currentStatusFilter);
+            // Multi-select status filter
+            if (currentStatusFilters.length > 0) {
+                filtered = filtered.filter(ro => currentStatusFilters.includes(ro.status));
             }
             
+            // Single-select repair filter
             if (currentRepairFilter !== 'all') {
                 filtered = filtered.filter(ro => {
                     // Handle multiple repair types (comma-separated)
