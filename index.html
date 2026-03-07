@@ -524,6 +524,29 @@
             line-height: 1.5;
         }
 
+        .editable-field {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-radius: 6px;
+            padding: 4px;
+            margin: -4px;
+        }
+
+        .editable-field:hover {
+            background: var(--bg-elevated);
+            transform: translateX(2px);
+        }
+
+        .placeholder-text {
+            color: var(--accent-info);
+            font-style: italic;
+            font-weight: 600;
+        }
+
+        .placeholder-text:hover {
+            text-decoration: underline;
+        }
+
         .progress-section {
             margin-bottom: 16px;
         }
@@ -651,6 +674,8 @@
             font-size: 0.85rem;
             color: var(--text-primary);
             line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
 
         .status-badge {
@@ -1411,6 +1436,106 @@
             'Completed': 100
         };
 
+        // Edit field inline
+        async function editField(index, fieldName, currentValue) {
+            if (!accessToken) {
+                alert('Please connect to Google Sheets first!');
+                return;
+            }
+
+            // Map field names to column letters and friendly names
+            const fieldMapping = {
+                'repairDescription': { column: 'H', name: 'Repair Description', row: 8 },
+                'roStatusNotes': { column: 'Q', name: 'RO Status Notes', row: 17 },
+                'customerCommunicationNotes': { column: 'R', name: 'Customer Communication Notes', row: 18 }
+            };
+
+            const field = fieldMapping[fieldName];
+            if (!field) return;
+
+            // Decode HTML entities and newlines
+            const decodedValue = currentValue.replace(/&quot;/g, '"').replace(/\\n/g, '\n');
+            
+            // Prompt for new update
+            const newUpdate = prompt(`Add update to ${field.name}:`, '');
+            
+            if (newUpdate === null || newUpdate.trim() === '') {
+                return; // User cancelled or entered nothing
+            }
+
+            try {
+                // Get the sorted data to find the correct RO
+                const sorted = [...currentData].map(ro => ({
+                    ...ro,
+                    priorityScore: calculatePriority(ro)
+                })).sort((a, b) => b.priorityScore - a.priorityScore);
+                
+                const ro = sorted[index];
+                if (!ro) {
+                    alert('Error: Could not find the repair order.');
+                    return;
+                }
+
+                // Find original index in currentData
+                const originalIndex = currentData.findIndex(item => 
+                    item.customerName === ro.customerName && 
+                    item.dateReceived === ro.dateReceived
+                );
+
+                if (originalIndex === -1) {
+                    alert('Error: Could not find the repair order in data.');
+                    return;
+                }
+
+                // Build new value
+                let updatedValue;
+                const timestamp = new Date().toLocaleString('en-US', { 
+                    month: '2-digit', 
+                    day: '2-digit', 
+                    year: '2-digit',
+                    hour: '2-digit', 
+                    minute: '2-digit'
+                });
+
+                if (!decodedValue || decodedValue === '') {
+                    // First entry - just the update
+                    updatedValue = newUpdate.trim();
+                } else {
+                    // Append with separator and timestamp
+                    updatedValue = decodedValue + '\n---\n[' + timestamp + '] ' + newUpdate.trim();
+                }
+
+                // Update in currentData
+                currentData[originalIndex][fieldName] = updatedValue;
+                console.log('Updated', fieldName, 'for:', ro.customerName);
+
+                // Update Google Sheets
+                const rowNumber = originalIndex + 2; // +2 for header and 0-based index
+                const range = `Sheet1!${field.column}${rowNumber}`;
+
+                console.log('Updating sheet range:', range);
+
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: range,
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values: [[updatedValue]]
+                    }
+                });
+
+                console.log('✓ Field updated successfully in sheet');
+
+                // Refresh the board
+                renderBoard();
+
+            } catch (error) {
+                console.error('Error updating field:', error);
+                alert('Error updating field: ' + error.message);
+                await loadDataFromSheets();
+            }
+        }
+
         // Update RO Progress manually
         async function updateROProgress(index, newProgress) {
             if (!accessToken) {
@@ -2086,7 +2211,9 @@
                             ` : ''}
                         </div>
                         
-                        <div class="repair-desc">${ro.repairDescription || 'No description'}</div>
+                        <div class="repair-desc editable-field" onclick="editField(${sorted.indexOf(ro)}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">
+                            ${ro.repairDescription || '<span class="placeholder-text">Click Here To Update</span>'}
+                        </div>
                         
                         ${ro.percentComplete !== undefined && ro.percentComplete !== null ? `
                         <div class="progress-section">
@@ -2108,28 +2235,22 @@
                         </div>
                         ` : ''}
                         
-                        ${ro.roStatusNotes || ro.customerCommunicationNotes ? `
                         <div class="notes-section">
-                            ${ro.roStatusNotes ? `
-                            <div class="note-item">
+                            <div class="note-item editable-field" onclick="editField(${sorted.indexOf(ro)}, 'roStatusNotes', '${ro.roStatusNotes ? ro.roStatusNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
                                 <div class="note-header">
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">RO Status</span>
                                 </div>
-                                <div class="note-content">${ro.roStatusNotes}</div>
+                                <div class="note-content">${ro.roStatusNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
-                            ` : ''}
-                            ${ro.customerCommunicationNotes ? `
-                            <div class="note-item">
+                            <div class="note-item editable-field" onclick="editField(${sorted.indexOf(ro)}, 'customerCommunicationNotes', '${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
                                 <div class="note-header">
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">Customer Comm</span>
                                 </div>
-                                <div class="note-content">${ro.customerCommunicationNotes}</div>
+                                <div class="note-content">${ro.customerCommunicationNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
-                            ` : ''}
                         </div>
-                        ` : ''}
                     </div>
                 `;
             }).join('');
