@@ -341,6 +341,59 @@
             border-bottom-left-radius: 12px;
         }
 
+        .urgency-selector-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 10;
+        }
+
+        .urgency-dropdown {
+            padding: 8px 16px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-family: 'JetBrains Mono', monospace;
+            border: none;
+            border-bottom-left-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+
+        .urgency-dropdown:hover {
+            opacity: 0.9;
+            transform: scale(1.05);
+        }
+
+        .urgency-dropdown:focus {
+            outline: 2px solid white;
+            outline-offset: 2px;
+        }
+
+        .urgency-dropdown.urgency-critical {
+            background: var(--accent-urgent);
+            color: white;
+        }
+
+        .urgency-dropdown.urgency-high {
+            background: var(--accent-high);
+            color: white;
+        }
+
+        .urgency-dropdown.urgency-medium {
+            background: var(--accent-medium);
+            color: white;
+        }
+
+        .urgency-dropdown.urgency-low {
+            background: var(--accent-low);
+            color: white;
+        }
+
         .priority-urgent {
             background: var(--accent-urgent);
             color: white;
@@ -1451,6 +1504,89 @@
             'Delivered/Cashed Out': 100
         };
 
+        // Update RO Urgency
+        async function updateROUrgency(index, newUrgency) {
+            if (!accessToken) {
+                alert('Please connect to Google Sheets first!');
+                return;
+            }
+
+            console.log('Updating urgency for index:', index, 'to:', newUrgency);
+
+            // Show loading indicator
+            const dropdown = event.target;
+            dropdown.style.opacity = '0.6';
+            dropdown.disabled = true;
+
+            try {
+                // Get the sorted data to find the correct RO
+                const sorted = [...currentData].map(ro => ({
+                    ...ro,
+                    priorityScore: calculatePriority(ro)
+                })).sort((a, b) => b.priorityScore - a.priorityScore);
+                
+                const ro = sorted[index];
+                if (!ro) {
+                    console.error('Could not find RO at index:', index);
+                    alert('Error: Could not find the repair order.');
+                    dropdown.style.opacity = '1';
+                    dropdown.disabled = false;
+                    return;
+                }
+
+                console.log('Updating urgency for:', ro.customerName, 'from', ro.urgency, 'to', newUrgency);
+
+                // Update in currentData
+                const originalIndex = currentData.findIndex(item => 
+                    item.customerName === ro.customerName && 
+                    item.dateReceived === ro.dateReceived
+                );
+
+                if (originalIndex !== -1) {
+                    currentData[originalIndex].urgency = newUrgency;
+                    console.log('Updated currentData at index:', originalIndex);
+                }
+
+                // Update Google Sheets - Urgency is column N (14th column)
+                const rowNumber = originalIndex + 2; // +2 for header and 0-based index
+                const range = `Sheet1!N${rowNumber}`;
+
+                console.log('Updating sheet row:', rowNumber, 'with urgency:', newUrgency);
+
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: range,
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values: [[newUrgency]]
+                    }
+                });
+
+                console.log('✓ Urgency updated successfully in sheet');
+
+                // Show success feedback
+                dropdown.style.opacity = '1';
+                dropdown.disabled = false;
+                
+                // Brief flash to show success
+                dropdown.style.boxShadow = '0 0 0 3px rgba(255, 255, 255, 0.5)';
+                setTimeout(() => {
+                    dropdown.style.boxShadow = '';
+                }, 500);
+
+                // Refresh the board (this will re-sort by new priority)
+                renderBoard();
+
+            } catch (error) {
+                console.error('Error updating urgency:', error);
+                alert('Error updating urgency: ' + error.message + '\n\nCheck the console for details.');
+                dropdown.style.opacity = '1';
+                dropdown.disabled = false;
+                // Reload from sheets to revert
+                await loadDataFromSheets();
+            }
+        }
+
         // Edit field inline
         async function editField(index, fieldName, currentValue) {
             if (!accessToken) {
@@ -2147,8 +2283,15 @@
                 
                 return `
                     <div class="ro-card" data-ro-index="${sorted.indexOf(ro)}">
-                        <div class="priority-badge priority-${priorityLevel}">
-                            ${priorityLevel.toUpperCase()}
+                        <div class="urgency-selector-badge">
+                            <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}" 
+                                    onchange="updateROUrgency(${sorted.indexOf(ro)}, this.value)"
+                                    title="Change urgency level">
+                                <option value="Critical" ${ro.urgency === 'Critical' ? 'selected' : ''}>CRITICAL</option>
+                                <option value="High" ${ro.urgency === 'High' ? 'selected' : ''}>HIGH</option>
+                                <option value="Medium" ${ro.urgency === 'Medium' ? 'selected' : ''}>MEDIUM</option>
+                                <option value="Low" ${ro.urgency === 'Low' ? 'selected' : ''}>LOW</option>
+                            </select>
                         </div>
                         
                         ${ro.rvPhotoUrl ? `
