@@ -768,6 +768,12 @@
             border-color: #2ecc71;
         }
 
+        .status-dropdown.status-delivered-cashed-out {
+            background: rgba(255, 215, 0, 0.3);
+            color: #FFD700;
+            border-color: #FFD700;
+        }
+
         .status-dot {
             width: 6px;
             height: 6px;
@@ -820,6 +826,13 @@
             background: rgba(52, 199, 89, 0.3);
             color: #2ecc71;
             border: 1px solid #2ecc71;
+            font-weight: 700;
+        }
+
+        .status-delivered-cashed-out {
+            background: rgba(255, 215, 0, 0.3);
+            color: #FFD700;
+            border: 1px solid #FFD700;
             font-weight: 700;
         }
 
@@ -1179,6 +1192,7 @@
                     <button class="filter-btn" data-filter="Ready for pickup" data-type="status">Ready</button>
                     <button class="filter-btn" data-filter="Awaiting Approval" data-type="status">Awaiting Approval</button>
                     <button class="filter-btn" data-filter="Completed" data-type="status">Completed</button>
+                    <button class="filter-btn" data-filter="Delivered/Cashed Out" data-type="status">Delivered/Cashed Out</button>
                 </div>
             </div>
 
@@ -1433,7 +1447,8 @@
             'Awaiting parts': 40,
             'Quality check': 75,
             'Ready for pickup': 95,
-            'Completed': 100
+            'Completed': 100,
+            'Delivered/Cashed Out': 100
         };
 
         // Edit field inline
@@ -2171,6 +2186,7 @@
                                 <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>Ready for Pickup</option>
                                 <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
                                 <option value="Completed" ${ro.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                                <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
                             </select>
                         </div>
                         
@@ -2756,6 +2772,7 @@
                             <option value="Ready for pickup">Ready for pickup</option>
                             <option value="Awaiting Approval">Awaiting Approval</option>
                             <option value="Completed">Completed</option>
+                            <option value="Delivered/Cashed Out">Delivered/Cashed Out</option>
                         </select>
                     </div>
                     <div class="form-field">
