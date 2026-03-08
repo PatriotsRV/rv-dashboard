@@ -142,6 +142,62 @@
             margin-bottom: 10px;
         }
 
+        .search-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: var(--bg-surface);
+            border-radius: 12px;
+            border: 2px solid var(--border-color);
+        }
+
+        .search-label {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-elevated);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: 'Barlow Condensed', sans-serif;
+            transition: all 0.2s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-info);
+            background: var(--bg-surface);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .clear-search-btn {
+            padding: 10px 16px;
+            background: var(--accent-urgent);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .clear-search-btn:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
         .upload-area {
             flex: 1;
             min-width: 300px;
@@ -1305,13 +1361,14 @@
         </header>
 
         <div class="controls">
-            <div class="upload-area" id="uploadArea">
-                <input type="file" id="csvUpload" accept=".csv">
-                <div class="upload-content">
-                    <div class="upload-icon">📊</div>
-                    <div class="upload-text">Upload CSV from Google Sheets</div>
-                    <div class="upload-subtext">Click to browse or drag & drop</div>
-                </div>
+            <div class="search-section">
+                <label class="search-label">🔍 Search by Customer Name:</label>
+                <input type="text" 
+                       id="customerSearch" 
+                       class="search-input" 
+                       placeholder="Type customer name to filter..."
+                       autocomplete="off">
+                <button id="clearSearch" class="clear-search-btn" style="display: none;">✕ Clear</button>
             </div>
 
             <div class="filter-section">
@@ -1570,6 +1627,7 @@
         let currentData = [];
         let currentStatusFilters = []; // Changed to array for multi-select
         let currentRepairFilter = 'all';
+        let currentSearchFilter = ''; // Customer name search
 
         // Update RO Status
         // Status to Progress mapping
@@ -2161,35 +2219,28 @@
         }
 
         function setupEventListeners() {
-            // Upload area
-            const uploadArea = document.getElementById('uploadArea');
-            const csvUpload = document.getElementById('csvUpload');
+            // Customer name search
+            const searchInput = document.getElementById('customerSearch');
+            const clearSearchBtn = document.getElementById('clearSearch');
 
-            uploadArea.addEventListener('click', () => csvUpload.click());
-            
-            uploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = 'var(--accent-info)';
-            });
-
-            uploadArea.addEventListener('dragleave', () => {
-                uploadArea.style.borderColor = 'var(--border-color)';
-            });
-
-            uploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                uploadArea.style.borderColor = 'var(--border-color)';
-                const file = e.dataTransfer.files[0];
-                if (file && file.type === 'text/csv') {
-                    parseCSV(file);
+            searchInput.addEventListener('input', (e) => {
+                currentSearchFilter = e.target.value.trim();
+                
+                // Show/hide clear button
+                if (currentSearchFilter) {
+                    clearSearchBtn.style.display = 'block';
+                } else {
+                    clearSearchBtn.style.display = 'none';
                 }
+                
+                renderBoard();
             });
 
-            csvUpload.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    parseCSV(file);
-                }
+            clearSearchBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                currentSearchFilter = '';
+                clearSearchBtn.style.display = 'none';
+                renderBoard();
             });
 
             // Filter buttons
@@ -2333,8 +2384,16 @@
                 priorityScore: calculatePriority(ro)
             })).sort((a, b) => b.priorityScore - a.priorityScore);
 
-            // Apply both filters
+            // Apply all filters
             let filtered = sorted;
+            
+            // Customer name search filter
+            if (currentSearchFilter) {
+                filtered = filtered.filter(ro => {
+                    const customerName = (ro.customerName || '').toLowerCase();
+                    return customerName.includes(currentSearchFilter.toLowerCase());
+                });
+            }
             
             // Multi-select status filter
             if (currentStatusFilters.length > 0) {

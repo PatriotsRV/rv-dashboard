@@ -319,15 +319,22 @@
         }
 
         function loadRODetailsFromURL() {
+            console.log('loadRODetailsFromURL called');
+            console.log('roId:', roId);
+            console.log('customerName:', customerName);
+            
             // Extract customer name from RO ID (format: RO-Customer-Name-Date)
             let extractedCustomer = 'Unknown Customer';
             if (roId && roId.startsWith('RO-')) {
                 const parts = roId.split('-');
+                console.log('RO ID parts:', parts);
                 if (parts.length >= 2) {
-                    // Reconstruct customer name from parts (everything except RO and date)
+                    // Reconstruct customer name from parts (everything except RO and last part which is date)
                     extractedCustomer = parts.slice(1, -1).join(' ');
                 }
             }
+            
+            console.log('Extracted customer:', extractedCustomer);
             
             // Set RO data from URL
             roData = {
@@ -337,10 +344,16 @@
                 repairType: 'Various'
             };
             
-            console.log('RO Data loaded:', roData);
+            console.log('RO Data set to:', roData);
             
-            // Initialize Google Auth for tech sign-in
-            initGoogleAuth();
+            // Check if we have Google API loaded
+            if (typeof google === 'undefined') {
+                console.log('Google API not loaded yet, showing sign-in prompt');
+                requestSignIn();
+            } else {
+                console.log('Google API loaded, initializing auth');
+                initGoogleAuth();
+            }
         }
 
         async function loadRODetails() {
