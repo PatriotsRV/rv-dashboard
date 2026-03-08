@@ -2544,22 +2544,28 @@
             // Create unique RO ID from customer name + date
             const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived || 'NODATE'}`;
             
-            // QR code URL - points to check-in page
-            const checkInURL = `https://prvshepard.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}&customer=${encodeURIComponent(ro.customerName)}`;
+            // Shorter URL format for better scannability
+            const checkInURL = `https://prvshepard.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
             
-            console.log('Generating QR for:', checkInURL);
+            console.log('=== QR Code Debug ===');
+            console.log('RO ID:', roId);
+            console.log('Full URL:', checkInURL);
+            console.log('URL Length:', checkInURL.length);
             
             try {
                 // Create QR code using qrcode-generator library
-                // Use error correction level M (medium) - good balance without logo
-                const qr = qrcode(0, 'M'); // Type 0 (auto), Error correction level M
+                const qr = qrcode(0, 'L'); // Type 0 (auto), Error correction level L (lowest - creates simplest code)
                 qr.addData(checkInURL);
                 qr.make();
                 
                 // Get module count (size of QR matrix)
                 const moduleCount = qr.getModuleCount();
+                console.log('QR Module Count:', moduleCount);
+                
                 const cellSize = Math.floor(canvas.width / moduleCount);
                 const offset = Math.floor((canvas.width - (cellSize * moduleCount)) / 2);
+                
+                console.log('Cell Size:', cellSize, 'Offset:', offset);
                 
                 // Clear canvas
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -2585,8 +2591,10 @@
                 
                 // No logo - mark canvas as ready immediately
                 canvas.dataset.ready = 'true';
+                canvas.dataset.url = checkInURL; // Store URL for testing
                 
-                console.log('✓ QR code generated successfully (no logo)');
+                console.log('✓ QR code generated successfully');
+                console.log('===================');
             } catch (error) {
                 console.error('Error generating QR code:', error);
                 // Fallback to placeholder
