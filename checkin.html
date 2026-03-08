@@ -265,6 +265,18 @@
                 scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
                 callback: handleAuthCallback,
             });
+            
+            console.log('✅ Token client initialized');
+        }
+        
+        function handleSignInClick() {
+            if (!tokenClient) {
+                alert('Google Sign-In is still loading. Please wait a moment and try again.');
+                return;
+            }
+            
+            console.log('Requesting access token...');
+            tokenClient.requestAccessToken();
         }
 
         function handleAuthCallback(response) {
@@ -368,14 +380,27 @@
             app.innerHTML += `<div style="padding: 10px; background: #ffcccc; margin-top: 10px;">About to call renderInterface()...</div>`;
             renderInterface();
             
-            // Check if we have Google API loaded
-            if (typeof google === 'undefined') {
-                console.log('Google API not loaded yet, showing sign-in prompt');
-                app.innerHTML += `<div style="padding: 10px; background: #ffccff; margin-top: 10px;">Google API not loaded yet</div>`;
-            } else {
+            // Wait for Google API to load, then initialize auth
+            waitForGoogleAPI();
+        }
+        
+        function waitForGoogleAPI() {
+            const app = document.getElementById('app');
+            
+            if (typeof google !== 'undefined' && google.accounts) {
                 console.log('Google API loaded, initializing auth');
-                app.innerHTML += `<div style="padding: 10px; background: #ccffff; margin-top: 10px;">Google API loaded, calling initGoogleAuth()</div>`;
+                app.innerHTML += `<div style="padding: 10px; background: #ccffff; margin-top: 10px;">✅ Google API loaded, calling initGoogleAuth()</div>`;
                 initGoogleAuth();
+                
+                // Re-render to show sign-in button
+                setTimeout(() => {
+                    renderInterface();
+                }, 100);
+            } else {
+                console.log('Google API not loaded yet, retrying in 500ms...');
+                app.innerHTML += `<div style="padding: 10px; background: #ffccff; margin-top: 10px;">⏳ Waiting for Google API... (retrying)</div>`;
+                
+                setTimeout(waitForGoogleAPI, 500);
             }
         }
 
@@ -440,7 +465,9 @@
                     ${!currentUser ? `
                         <div class="auth-prompt">
                             <p>Please sign in to check in/out</p>
-                            <div id="googleSignInDiv"></div>
+                            <button class="btn btn-start" onclick="handleSignInClick()" id="signInBtn">
+                                Sign In with Google
+                            </button>
                         </div>
                     ` : (isCheckedIn ? `
                         <button class="btn btn-end" onclick="checkOut()">
