@@ -243,8 +243,8 @@
             // Check for saved session
             loadLocalSession();
             
-            // Initialize Google Sign-In
-            initGoogleAuth();
+            // Load RO details from URL params (we'll expand this later to fetch from sheets)
+            loadRODetailsFromURL();
         }
 
         function initGoogleAuth() {
@@ -318,16 +318,34 @@
             }
         }
 
-        async function loadRODetails() {
-            // For now, use URL params
-            // In production, this would fetch from Google Sheets
+        function loadRODetailsFromURL() {
+            // Extract customer name from RO ID (format: RO-Customer-Name-Date)
+            let extractedCustomer = 'Unknown Customer';
+            if (roId && roId.startsWith('RO-')) {
+                const parts = roId.split('-');
+                if (parts.length >= 2) {
+                    // Reconstruct customer name from parts (everything except RO and date)
+                    extractedCustomer = parts.slice(1, -1).join(' ');
+                }
+            }
+            
+            // Set RO data from URL
             roData = {
                 id: roId,
-                customer: customerName,
+                customer: customerName || extractedCustomer,
                 status: 'In Progress',
-                repairType: 'Unknown'
+                repairType: 'Various'
             };
             
+            console.log('RO Data loaded:', roData);
+            
+            // Initialize Google Auth for tech sign-in
+            initGoogleAuth();
+        }
+
+        async function loadRODetails() {
+            // This function is now called AFTER auth
+            // roData is already set from loadRODetailsFromURL
             renderInterface();
         }
 
