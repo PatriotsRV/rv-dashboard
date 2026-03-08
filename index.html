@@ -2551,7 +2551,8 @@
             
             try {
                 // Create QR code using qrcode-generator library
-                const qr = qrcode(0, 'H'); // Type 0 (auto), Error correction level H (30% recovery - needed for logo)
+                // Use higher type number for better scannability with logo
+                const qr = qrcode(10, 'H'); // Type 10 (larger), Error correction level H (30% recovery)
                 qr.addData(checkInURL);
                 qr.make();
                 
@@ -2567,7 +2568,7 @@
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
-                // Draw QR code modules
+                // Draw QR code modules (larger cells for better scanning)
                 ctx.fillStyle = '#000000';
                 for (let row = 0; row < moduleCount; row++) {
                     for (let col = 0; col < moduleCount; col++) {
@@ -2582,29 +2583,32 @@
                     }
                 }
                 
-                // Add logo in center
-                const logoSize = Math.floor(canvas.width * 0.25); // 25% of QR size
+                // Add smaller logo in center (15% instead of 25% - much smaller)
+                const logoSize = Math.floor(canvas.width * 0.15); // Reduced to 15% of QR size
                 const logoX = (canvas.width - logoSize) / 2;
                 const logoY = (canvas.height - logoSize) / 2;
                 
-                // White background for logo
+                // White background for logo area with padding
                 ctx.fillStyle = '#ffffff';
-                ctx.fillRect(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8);
+                const padding = 3;
+                ctx.fillRect(logoX - padding, logoY - padding, logoSize + (padding * 2), logoSize + (padding * 2));
                 
-                // Draw logo (load from GitHub)
+                // Load and draw logo
                 const logo = new Image();
                 logo.onload = function() {
+                    // Draw logo on top of QR code
                     ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-                    console.log('✓ Logo loaded successfully from GitHub');
+                    console.log('✓ Logo loaded and drawn successfully');
+                    
+                    // Mark canvas as ready
+                    canvas.dataset.ready = 'true';
                 };
                 logo.onerror = function(err) {
-                    console.warn('Logo failed to load, using text instead. Error:', err);
-                    // Fallback: draw "PRVS" text
-                    ctx.fillStyle = '#1e3a8a';
-                    ctx.font = 'bold 12px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('PRVS', canvas.width / 2, canvas.height / 2);
+                    console.warn('Logo failed to load, QR code without logo');
+                    // Don't draw fallback text - just leave white space for better scanning
+                    
+                    // Mark canvas as ready even without logo
+                    canvas.dataset.ready = 'true';
                 };
                 // Load from GitHub (same domain, no CORS issues)
                 logo.src = 'https://prvshepard.github.io/rv-dashboard/logo.png';
@@ -2689,10 +2693,32 @@
             // Draw QR code on modal canvas
             setTimeout(() => {
                 const modalCanvas = document.getElementById('qrModalCanvas');
-                if (modalCanvas) {
-                    const smallCanvas = document.getElementById(`qr-${index}`);
-                    const ctx = modalCanvas.getContext('2d');
-                    ctx.drawImage(smallCanvas, 0, 0, 300, 300);
+                const smallCanvas = document.getElementById(`qr-${index}`);
+                
+                if (modalCanvas && smallCanvas) {
+                    // Wait for logo to load if not ready yet
+                    const copyCanvas = () => {
+                        const ctx = modalCanvas.getContext('2d');
+                        ctx.drawImage(smallCanvas, 0, 0, 300, 300);
+                    };
+                    
+                    if (smallCanvas.dataset.ready === 'true') {
+                        copyCanvas();
+                    } else {
+                        // Wait for logo to load
+                        const checkReady = setInterval(() => {
+                            if (smallCanvas.dataset.ready === 'true') {
+                                clearInterval(checkReady);
+                                copyCanvas();
+                            }
+                        }, 100);
+                        
+                        // Timeout after 2 seconds
+                        setTimeout(() => {
+                            clearInterval(checkReady);
+                            copyCanvas(); // Copy anyway
+                        }, 2000);
+                    }
                 }
             }, 100);
         }
@@ -2769,16 +2795,37 @@
                 </html>
             `);
             
-            // Copy QR code to print window
+            // Copy QR code to print window (wait for logo to load)
             const printCanvas = printWindow.document.getElementById('printQR');
             const printCtx = printCanvas.getContext('2d');
-            printCtx.drawImage(canvas, 0, 0, 300, 300);
             
-            printWindow.document.close();
-            printWindow.focus();
-            setTimeout(() => {
-                printWindow.print();
-            }, 500);
+            const copyAndPrint = () => {
+                printCtx.drawImage(canvas, 0, 0, 300, 300);
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(() => {
+                    printWindow.print();
+                }, 500);
+            };
+            
+            // Check if canvas is ready
+            if (canvas.dataset.ready === 'true') {
+                copyAndPrint();
+            } else {
+                // Wait for logo to load
+                const checkReady = setInterval(() => {
+                    if (canvas.dataset.ready === 'true') {
+                        clearInterval(checkReady);
+                        copyAndPrint();
+                    }
+                }, 100);
+                
+                // Timeout after 2 seconds
+                setTimeout(() => {
+                    clearInterval(checkReady);
+                    copyAndPrint(); // Print anyway
+                }, 2000);
+            }
         }
 
         function updateStats(data, filteredData) {
