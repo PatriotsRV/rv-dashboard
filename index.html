@@ -3032,7 +3032,7 @@
                         ` : ''}
                         
                         ${shouldShow('timeLogs') ? (() => {
-                            const roId = `RO-${ro.customerName}-${ro.dateReceived}`;
+                            const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived}`;
                             const timeStats = calculateTotalHours(roId);
                             if (timeStats.sessionCount > 0) {
                                 return `
@@ -3911,7 +3911,7 @@
 
         async function openTimeLogsModal(index) {
             const ro = getROFromFilteredView(index);
-            const roId = `RO-${ro.customerName}-${ro.dateReceived}`;
+            const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived}`;
             
             // Refresh time logs from Google Sheets first
             if (accessToken) {
