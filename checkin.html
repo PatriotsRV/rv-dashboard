@@ -345,6 +345,9 @@
                     <button class="btn" onclick="location.reload()" style="background: #6b7280; margin-top: 10px;">
                         🔄 Refresh
                     </button>
+                    <button class="btn" onclick="clearAllData()" style="background: #dc2626; margin-top: 10px;">
+                        🗑️ Clear All Data
+                    </button>
                 </div>
             `;
             
@@ -358,6 +361,26 @@
         function resumeAndEndWork() {
             // Just call the normal checkout function
             checkOut();
+        }
+        
+        function clearAllData() {
+            if (!confirm('⚠️ This will clear ALL data:\n\n• Current session\n• Sync queue\n• All saved data\n\nAre you sure?')) {
+                return;
+            }
+            
+            console.log('🗑️ Clearing all localStorage data...');
+            
+            // Clear everything
+            localStorage.clear();
+            
+            // Reset variables
+            currentSession = null;
+            syncQueue = [];
+            
+            alert('✅ All data cleared!\n\nPage will reload.');
+            
+            // Reload page
+            location.reload();
         }
 
         function initGoogleAuth() {
@@ -773,6 +796,11 @@
                             ▶️ Start Work
                         </button>
                     `)}
+                    ${currentUser ? `
+                        <button class="btn" onclick="clearAllData()" style="background: #dc2626; margin-top: 15px;">
+                            🗑️ Clear All Data
+                        </button>
+                    ` : ''}
                 </div>
             `;
 
