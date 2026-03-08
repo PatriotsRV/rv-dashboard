@@ -214,7 +214,8 @@
         // Configuration
         const GOOGLE_CONFIG = {
             CLIENT_ID: '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com',
-            SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y'
+            SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y',
+            TIME_LOGS_RANGE: 'Time Logs!A:H'
         };
 
         let tokenClient;
@@ -223,6 +224,11 @@
         let roData = null;
         let currentSession = null;
         let timerInterval = null;
+        
+        // Offline sync queue
+        let syncQueue = [];
+        let isSyncing = false;
+        let isOnline = navigator.onLine;
 
         // Parse URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -239,20 +245,66 @@
                 showError('No RO specified. Please scan a valid QR code.');
                 return;
             }
+            
+            // Load offline sync queue
+            loadSyncQueue();
+            
+            // Setup online/offline event listeners
+            window.addEventListener('online', handleOnline);
+            window.addEventListener('offline', handleOffline);
 
-            // Check for saved session FIRST
+            // Check localStorage first (for offline support)
             loadLocalSession();
             
-            // Check if there's an active session (checked in but not checked out)
+            // Check if there's a local active session (checked in but not checked out)
             if (currentSession && !currentSession.checkOut) {
-                console.log('⚠️ Active session found!', currentSession);
+                console.log('⚠️ Active session found in localStorage!', currentSession);
                 // Show active session screen immediately
                 showActiveSessionScreen();
-                return; // Don't continue with normal flow
+                return;
             }
             
-            // No active session - continue normal flow
+            // No local active session - continue normal flow and check Sheets
             loadRODetailsFromURL();
+        }
+        
+        function handleOnline() {
+            console.log('🌐 Connection restored');
+            isOnline = true;
+            updateSyncStatus();
+            
+            // Try to sync pending items
+            if (syncQueue.length > 0) {
+                processSyncQueue();
+            }
+        }
+        
+        function handleOffline() {
+            console.log('📡 Connection lost');
+            isOnline = false;
+            updateSyncStatus();
+        }
+        
+        function updateSyncStatus() {
+            const statusEl = document.getElementById('syncStatus');
+            if (!statusEl) return;
+            
+            if (!isOnline) {
+                statusEl.innerHTML = `
+                    <div style="background: #fef3c7; border: 2px solid #f59e0b; padding: 12px; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+                        📡 <strong>Offline</strong> - Changes will sync when online
+                        ${syncQueue.length > 0 ? `<br><span style="color: #92400e;">(${syncQueue.length} pending)</span>` : ''}
+                    </div>
+                `;
+            } else if (syncQueue.length > 0) {
+                statusEl.innerHTML = `
+                    <div style="background: #dbeafe; border: 2px solid #3b82f6; padding: 12px; border-radius: 8px; margin-bottom: 15px; text-align: center;">
+                        🔄 <strong>Syncing...</strong> ${syncQueue.length} item(s)
+                    </div>
+                `;
+            } else {
+                statusEl.innerHTML = '';
+            }
         }
         
         function showActiveSessionScreen() {
@@ -265,6 +317,7 @@
             const formattedTime = formatDuration(elapsedSeconds);
             
             app.innerHTML = `
+                <div id="syncStatus"></div>
                 <div class="ro-info" style="background: #fef3c7; border: 2px solid #f59e0b; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
                     <h2 style="color: #92400e; margin-bottom: 15px;">⚠️ Already Checked In</h2>
                     <p style="color: #78350f; font-size: 1.1rem; margin-bottom: 20px;">
@@ -294,6 +347,9 @@
                     </button>
                 </div>
             `;
+            
+            // Update sync status
+            updateSyncStatus();
             
             // Start the timer
             startTimer();
@@ -349,6 +405,17 @@
                     };
                     
                     console.log('Logged in as:', currentUser.name);
+                    
+                    // Check Google Sheets for active session
+                    await checkSheetsForActiveSession();
+                    
+                    // Process any pending sync queue items
+                    if (syncQueue.length > 0) {
+                        console.log(`📤 Processing ${syncQueue.length} pending sync items...`);
+                        processSyncQueue();
+                    }
+                    
+                    // Then load RO details and render
                     loadRODetails();
                 } else {
                     requestSignIn();
@@ -356,6 +423,74 @@
             } catch (error) {
                 console.error('Error getting user:', error);
                 requestSignIn();
+            }
+        }
+        
+        async function checkSheetsForActiveSession() {
+            if (!accessToken) {
+                console.log('No access token, skipping Sheets check');
+                return;
+            }
+            
+            try {
+                console.log('Checking Time Logs sheet for active session...');
+                
+                const response = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${GOOGLE_CONFIG.TIME_LOGS_RANGE}`,
+                    {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    }
+                );
+                
+                if (!response.ok) {
+                    console.error('Failed to fetch Time Logs:', response.status);
+                    return;
+                }
+                
+                const data = await response.json();
+                const rows = data.values || [];
+                
+                if (rows.length <= 1) {
+                    console.log('No time logs found');
+                    return;
+                }
+                
+                // Skip header row, check for active session for this RO and current user
+                for (let i = rows.length - 1; i >= 1; i--) {
+                    const row = rows[i];
+                    const logRoId = row[1]; // Column B: RO ID
+                    const techEmail = row[2]; // Column C: Tech Email
+                    const checkIn = row[4]; // Column E: Check In
+                    const checkOut = row[5]; // Column F: Check Out
+                    
+                    // Found an active session (same RO, same user, no checkOut)
+                    if (logRoId === roId && techEmail === currentUser.email && checkIn && !checkOut) {
+                        console.log('✅ Found active session in Sheets!', row);
+                        
+                        // Create session object
+                        currentSession = {
+                            logId: row[0], // Column A: Log ID
+                            roId: logRoId,
+                            tech: row[3], // Column D: Tech Name
+                            techEmail: techEmail,
+                            checkIn: checkIn,
+                            checkOut: null,
+                            rowIndex: i + 1 // Row number in sheet (1-indexed, +1 for header)
+                        };
+                        
+                        // Save to localStorage for offline access
+                        saveLocalSession();
+                        
+                        // Show active session screen
+                        showActiveSessionScreen();
+                        return;
+                    }
+                }
+                
+                console.log('No active session found in Sheets for this RO and user');
+                
+            } catch (error) {
+                console.error('Error checking Sheets for active session:', error);
             }
         }
 
@@ -385,6 +520,132 @@
             } else {
                 localStorage.removeItem(`session_${roId}`);
             }
+        }
+        
+        // Offline sync queue management
+        function loadSyncQueue() {
+            const stored = localStorage.getItem('syncQueue');
+            if (stored) {
+                syncQueue = JSON.parse(stored);
+                console.log(`📋 Loaded ${syncQueue.length} items from sync queue`);
+            }
+        }
+        
+        function saveSyncQueue() {
+            localStorage.setItem('syncQueue', JSON.stringify(syncQueue));
+        }
+        
+        function addToSyncQueue(operation) {
+            syncQueue.push({
+                ...operation,
+                timestamp: new Date().toISOString(),
+                id: `SYNC-${Date.now()}`
+            });
+            saveSyncQueue();
+            console.log('➕ Added to sync queue:', operation);
+            updateSyncStatus();
+        }
+
+        async function processSyncQueue() {
+            if (isSyncing || syncQueue.length === 0 || !accessToken) {
+                return;
+            }
+            
+            isSyncing = true;
+            console.log(`🔄 Processing sync queue (${syncQueue.length} items)...`);
+            updateSyncStatus();
+            
+            const itemsToProcess = [...syncQueue];
+            
+            for (let i = 0; i < itemsToProcess.length; i++) {
+                const item = itemsToProcess[i];
+                
+                try {
+                    if (item.type === 'checkIn') {
+                        await syncCheckInToSheets(item);
+                        console.log('✅ Synced check-in:', item.logId);
+                    } else if (item.type === 'checkOut') {
+                        await syncCheckOutToSheets(item);
+                        console.log('✅ Synced check-out:', item.logId);
+                    }
+                    
+                    // Remove from queue after successful sync
+                    syncQueue = syncQueue.filter(q => q.id !== item.id);
+                    saveSyncQueue();
+                    
+                } catch (error) {
+                    console.error('❌ Failed to sync item:', item, error);
+                    // Keep in queue for next attempt
+                }
+            }
+            
+            isSyncing = false;
+            updateSyncStatus();
+            
+            if (syncQueue.length === 0) {
+                console.log('✅ All items synced successfully!');
+            } else {
+                console.log(`⚠️ ${syncQueue.length} items remaining in queue`);
+            }
+        }
+        
+        async function syncCheckInToSheets(item) {
+            const values = [[
+                item.logId,
+                item.roId,
+                item.techEmail,
+                item.tech,
+                item.checkIn,
+                '',
+                '',
+                item.date
+            ]];
+            
+            const response = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${GOOGLE_CONFIG.TIME_LOGS_RANGE}:append?valueInputOption=USER_ENTERED`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ values })
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            return await response.json();
+        }
+        
+        async function syncCheckOutToSheets(item) {
+            if (!item.rowIndex) {
+                console.warn('No rowIndex for checkout, skipping');
+                return;
+            }
+            
+            const range = `Time Logs!F${item.rowIndex}:G${item.rowIndex}`;
+            const values = [[item.checkOut, item.duration]];
+            
+            const response = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
+                {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ values })
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            return await response.json();
         }
 
         function loadRODetailsFromURL() {
@@ -451,6 +712,7 @@
             const isCheckedIn = currentSession && !currentSession.checkOut;
             
             let html = `
+                <div id="syncStatus"></div>
                 <div class="ro-info">
                     <h2>🚐 ${roData ? roData.customer || 'Unknown Customer' : 'Loading...'}</h2>
                     <div class="info-row">
@@ -515,31 +777,117 @@
             `;
 
             document.getElementById('app').innerHTML = html;
+            
+            // Update sync status indicator
+            updateSyncStatus();
 
             if (isCheckedIn) {
                 startTimer();
             }
         }
 
-        function checkIn() {
+        async function checkIn() {
+            if (!currentUser) {
+                alert('Please sign in first');
+                return;
+            }
+            
+            const now = new Date().toISOString();
+            const today = new Date().toISOString().split('T')[0];
+            const logId = `LOG-${Date.now()}`;
+            
             currentSession = {
+                logId: logId,
                 roId: roId,
                 tech: currentUser.name,
                 techEmail: currentUser.email,
-                checkIn: new Date().toISOString(),
+                checkIn: now,
                 checkOut: null
             };
             
+            // Save locally first
             saveLocalSession();
-            syncToSheets();
-            renderInterface();
+            
+            // Add to sync queue
+            const queueItem = {
+                type: 'checkIn',
+                logId: logId,
+                roId: roId,
+                techEmail: currentUser.email,
+                tech: currentUser.name,
+                checkIn: now,
+                date: today
+            };
+            
+            if (!isOnline || !accessToken) {
+                // Offline - add to queue
+                addToSyncQueue(queueItem);
+                alert('⚠️ Offline - Check-in saved locally. Will sync when online.');
+                renderInterface();
+                return;
+            }
+            
+            console.log('Writing check-in to Google Sheets...');
+            
+            try {
+                const values = [[
+                    logId,
+                    roId,
+                    currentUser.email,
+                    currentUser.name,
+                    now,
+                    '',
+                    '',
+                    today
+                ]];
+                
+                const response = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${GOOGLE_CONFIG.TIME_LOGS_RANGE}:append?valueInputOption=USER_ENTERED`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ values })
+                    }
+                );
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('✅ Check-in saved to Sheets:', result);
+                    
+                    const updatedRange = result.updates.updatedRange;
+                    const rowMatch = updatedRange.match(/!A(\d+)/);
+                    if (rowMatch) {
+                        currentSession.rowIndex = parseInt(rowMatch[1]);
+                        saveLocalSession();
+                    }
+                    
+                    renderInterface();
+                } else {
+                    // Failed - add to queue
+                    console.error('Failed to save to Sheets:', response.status);
+                    addToSyncQueue(queueItem);
+                    alert('⚠️ Failed to save online. Saved locally - will retry automatically.');
+                    renderInterface();
+                }
+                
+            } catch (error) {
+                console.error('Error saving to Sheets:', error);
+                addToSyncQueue(queueItem);
+                alert('⚠️ Connection error. Saved locally - will retry automatically.');
+                renderInterface();
+            }
         }
 
-        function checkOut() {
+        async function checkOut() {
             if (!currentSession) return;
             
-            currentSession.checkOut = new Date().toISOString();
-            const duration = calculateDuration(currentSession.checkIn, currentSession.checkOut);
+            const now = new Date().toISOString();
+            const duration = calculateDuration(currentSession.checkIn, now);
+            
+            currentSession.checkOut = now;
             currentSession.duration = duration;
             
             // Stop timer and remove visibility listener
@@ -549,11 +897,60 @@
             }
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             
+            // Save locally
             saveLocalSession();
-            syncToSheets();
             
-            // Show completion message
-            alert(`Work session complete!\nDuration: ${formatDuration(duration)}`);
+            // Add to sync queue
+            const queueItem = {
+                type: 'checkOut',
+                logId: currentSession.logId,
+                rowIndex: currentSession.rowIndex,
+                checkOut: now,
+                duration: duration
+            };
+            
+            if (!isOnline || !accessToken || !currentSession.rowIndex) {
+                // Offline or no rowIndex - add to queue
+                addToSyncQueue(queueItem);
+                alert(`Work session complete!\nDuration: ${formatDuration(duration)}\n\n⚠️ Will sync to Google Sheets when online.`);
+                currentSession = null;
+                saveLocalSession();
+                renderInterface();
+                return;
+            }
+            
+            console.log('Updating check-out in Google Sheets...');
+            
+            try {
+                const range = `Time Logs!F${currentSession.rowIndex}:G${currentSession.rowIndex}`;
+                const values = [[now, duration]];
+                
+                const response = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ values })
+                    }
+                );
+                
+                if (response.ok) {
+                    console.log('✅ Check-out saved to Sheets');
+                    alert(`Work session complete!\nDuration: ${formatDuration(duration)}`);
+                } else {
+                    console.error('Failed to update Sheets:', response.status);
+                    addToSyncQueue(queueItem);
+                    alert(`Work session complete!\nDuration: ${formatDuration(duration)}\n\n⚠️ Failed to sync - will retry automatically.`);
+                }
+                
+            } catch (error) {
+                console.error('Error updating Sheets:', error);
+                addToSyncQueue(queueItem);
+                alert(`Work session complete!\nDuration: ${formatDuration(duration)}\n\n⚠️ Connection error - will retry automatically.`);
+            }
             
             currentSession = null;
             saveLocalSession();
@@ -660,14 +1057,6 @@
             } else {
                 return `${secs}s`;
             }
-        }
-
-        async function syncToSheets() {
-            // TODO: Write to Time Logs sheet
-            console.log('Syncing to sheets:', currentSession);
-            
-            // For now, just save locally
-            // Will implement Google Sheets API call next
         }
 
         function showError(message) {
