@@ -3909,9 +3909,15 @@
         // Modal Controls
         let editingROIndex = null; // Track which RO is being edited
 
-        function openTimeLogsModal(index) {
+        async function openTimeLogsModal(index) {
             const ro = getROFromFilteredView(index);
             const roId = `RO-${ro.customerName}-${ro.dateReceived}`;
+            
+            // Refresh time logs from Google Sheets first
+            if (accessToken) {
+                await loadTimeLogsFromSheets();
+            }
+            
             const logs = getTimeLogsForRO(roId);
             const timeStats = calculateTotalHours(roId);
             
@@ -3966,7 +3972,14 @@
                         <div style="margin-bottom: 24px;">
                             ${logsHtml}
                         </div>
-                        <button onclick="closeTimeLogsModal()" style="width: 100%; padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">Close</button>
+                        <div style="display: flex; gap: 12px;">
+                            <button onclick="refreshAndReopenTimeLogsModal(${index})" style="flex: 1; padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">
+                                🔄 Refresh
+                            </button>
+                            <button onclick="closeTimeLogsModal()" style="flex: 1; padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">
+                                Close
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -3974,6 +3987,11 @@
             const modalDiv = document.createElement('div');
             modalDiv.innerHTML = modalHTML;
             document.body.appendChild(modalDiv);
+        }
+        
+        async function refreshAndReopenTimeLogsModal(index) {
+            closeTimeLogsModal();
+            await openTimeLogsModal(index);
         }
         
         function closeTimeLogsModal(event) {
