@@ -204,7 +204,7 @@
             <p>Patriots RV Services</p>
         </div>
 
-        <div id="content" class="loading">
+        <div id="app" class="loading">
             Loading RO details...
         </div>
     </div>
@@ -303,7 +303,7 @@
         }
 
         function requestSignIn() {
-            document.getElementById('content').innerHTML = `
+            document.getElementById('app').innerHTML = `
                 <div>
                     <h2 style="margin-bottom: 20px; color: #1e3a8a;">Sign In Required</h2>
                     <p style="margin-bottom: 20px; color: #64748b;">Please sign in with your Google account to continue.</p>
@@ -454,7 +454,7 @@
                 </div>
             `;
 
-            document.getElementById('content').innerHTML = html;
+            document.getElementById('app').innerHTML = html;
 
             if (isCheckedIn) {
                 startTimer();
@@ -535,7 +535,7 @@
         }
 
         function showError(message) {
-            document.getElementById('content').innerHTML = `
+            document.getElementById('app').innerHTML = `
                 <div class="error">
                     <strong>Error:</strong> ${message}
                 </div>
