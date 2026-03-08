@@ -142,6 +142,49 @@
             margin-bottom: 10px;
         }
 
+        .view-mode-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 16px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+        }
+        
+        .view-mode-label {
+            font-size: 1rem;
+            font-weight: 700;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .view-mode-dropdown {
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: #1f2937;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'Barlow Condensed', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 160px;
+        }
+        
+        .view-mode-dropdown:hover {
+            background: white;
+            transform: translateY(-1px);
+        }
+        
+        .view-mode-dropdown:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+        }
+        
         .search-section {
             display: flex;
             align-items: center;
@@ -1347,6 +1390,72 @@
             background: var(--text-secondary);
             transform: translateY(-1px);
         }
+        
+        .custom-view-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 16px;
+            background: var(--bg-elevated);
+            border-radius: 8px;
+        }
+        
+        .custom-view-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .custom-view-checkbox:hover {
+            background: var(--bg-elevated);
+            border-color: #667eea;
+        }
+        
+        .custom-view-checkbox input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .custom-view-checkbox span {
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+        
+        .custom-view-actions {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .custom-view-btn {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .custom-view-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+            transform: translateY(-1px);
+        }
 
         .form-label {
             font-size: 0.85rem;
@@ -1510,6 +1619,16 @@
         </header>
 
         <div class="controls">
+            <div class="view-mode-section">
+                <label class="view-mode-label">👁️ Tile View:</label>
+                <select id="viewModeSelector" class="view-mode-dropdown" onchange="setViewMode(this.value)">
+                    <option value="condensed">Condensed</option>
+                    <option value="regular" selected>Regular</option>
+                    <option value="expanded">Expanded</option>
+                    <option value="custom">Custom...</option>
+                </select>
+            </div>
+            
             <div class="search-section">
                 <label class="search-label">🔍 Search by Customer Name:</label>
                 <input type="text" 
@@ -1780,9 +1899,146 @@
         let currentSearchFilter = ''; // Customer name search
         let timeLogsData = []; // Store time logs from Google Sheets
         
+        // Tile view customization
+        let currentViewMode = 'regular'; // condensed, regular, expanded, custom
+        let tileVisibility = {
+            rvPhoto: true,
+            customerName: true,
+            rvDetails: true,
+            dollarValue: true,
+            daysOnLot: true,
+            qrCode: true,
+            printLabel: true,
+            photoUpload: true,
+            urgencySelector: true,
+            statusDropdown: true,
+            repairTypeTags: true,
+            technicianAssigned: true,
+            contactInfo: true,
+            repairDescription: true,
+            progressBar: true,
+            roStatusNotes: true,
+            customerCommNotes: true,
+            timeLogs: true,
+            editButton: true
+        };
+        
+        // Preset configurations
+        const viewPresets = {
+            condensed: {
+                rvPhoto: true,
+                customerName: true,
+                rvDetails: true,
+                dollarValue: true,
+                daysOnLot: true,
+                qrCode: false,
+                printLabel: false,
+                photoUpload: false,
+                urgencySelector: false,
+                statusDropdown: false,
+                repairTypeTags: false,
+                technicianAssigned: false,
+                contactInfo: false,
+                repairDescription: false,
+                progressBar: false,
+                roStatusNotes: false,
+                customerCommNotes: false,
+                timeLogs: false,
+                editButton: false
+            },
+            regular: {
+                rvPhoto: true,
+                customerName: true,
+                rvDetails: true,
+                dollarValue: true,
+                daysOnLot: true,
+                qrCode: true,
+                printLabel: true,
+                photoUpload: true,
+                urgencySelector: true,
+                statusDropdown: true,
+                repairTypeTags: true,
+                technicianAssigned: true,
+                contactInfo: true,
+                repairDescription: true,
+                progressBar: true,
+                roStatusNotes: true,
+                customerCommNotes: true,
+                timeLogs: false,
+                editButton: true
+            },
+            expanded: {
+                rvPhoto: true,
+                customerName: true,
+                rvDetails: true,
+                dollarValue: true,
+                daysOnLot: true,
+                qrCode: true,
+                printLabel: true,
+                photoUpload: true,
+                urgencySelector: true,
+                statusDropdown: true,
+                repairTypeTags: true,
+                technicianAssigned: true,
+                contactInfo: true,
+                repairDescription: true,
+                progressBar: true,
+                roStatusNotes: true,
+                customerCommNotes: true,
+                timeLogs: true,
+                editButton: true
+            }
+        };
+        
         // Helper function to get RO from filtered view
         function getROFromFilteredView(index) {
             return currentFilteredData[index];
+        }
+        
+        // Load view preferences from localStorage
+        function loadViewPreferences() {
+            const saved = localStorage.getItem('tileViewMode');
+            if (saved) {
+                currentViewMode = saved;
+            }
+            
+            const savedVisibility = localStorage.getItem('tileVisibility');
+            if (savedVisibility) {
+                tileVisibility = JSON.parse(savedVisibility);
+            } else {
+                // Apply default preset
+                applyViewPreset('regular');
+            }
+            
+            // Update dropdown to show current mode
+            setTimeout(() => {
+                const selector = document.getElementById('viewModeSelector');
+                if (selector) {
+                    selector.value = currentViewMode;
+                }
+            }, 100);
+        }
+        
+        function saveViewPreferences() {
+            localStorage.setItem('tileViewMode', currentViewMode);
+            localStorage.setItem('tileVisibility', JSON.stringify(tileVisibility));
+        }
+        
+        function applyViewPreset(preset) {
+            if (viewPresets[preset]) {
+                tileVisibility = { ...viewPresets[preset] };
+                currentViewMode = preset;
+                saveViewPreferences();
+                renderBoard();
+            }
+        }
+        
+        function setViewMode(mode) {
+            if (mode === 'custom') {
+                openCustomViewModal();
+            } else {
+                applyViewPreset(mode);
+            }
         }
 
         // Update RO Status
@@ -2315,6 +2571,7 @@
         // Initialize
         function init() {
             loadSampleData();
+            loadViewPreferences(); // Load tile view settings
             setupEventListeners();
             setupModalListeners();
             updateClock();
@@ -2464,6 +2721,10 @@
             return diffDays;
         }
 
+        function shouldShow(element) {
+            return tileVisibility[element] === true;
+        }
+        
         function calculatePriority(ro) {
             let score = 0;
             
@@ -2559,6 +2820,7 @@
                 
                 return `
                     <div class="ro-card" data-ro-index="${index}">
+                        ${shouldShow('urgencySelector') ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}" 
                                     onchange="updateROUrgency(${index}, this.value)"
@@ -2569,41 +2831,59 @@
                                 <option value="Low" ${ro.urgency === 'Low' ? 'selected' : ''}>LOW</option>
                             </select>
                         </div>
+                        ` : ''}
                         
-                        ${ro.rvPhotoUrl ? `
+                        ${shouldShow('rvPhoto') && ro.rvPhotoUrl ? `
                         <div class="rv-photo">
                             <img src="${ro.rvPhotoUrl}" alt="RV Photo" />
                         </div>
                         ` : ''}
                         
+                        ${shouldShow('daysOnLot') || shouldShow('dollarValue') ? `
                         <div class="card-header-row">
+                            ${shouldShow('daysOnLot') ? `
                             <div class="days-on-lot">
                                 ${calculateDaysOnLot(ro.dateReceived)} <span class="days-label">Days</span>
                             </div>
-                            ${ro.dollarValue !== undefined && ro.dollarValue !== null ? `
+                            ` : ''}
+                            ${shouldShow('dollarValue') && ro.dollarValue !== undefined && ro.dollarValue !== null ? `
                             <div class="dollar-value">
                                 $${ro.dollarValue.toLocaleString()}
                             </div>
                             ` : ''}
                         </div>
+                        ` : ''}
                         
+                        ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
+                        ` : ''}
                         
+                        ${shouldShow('qrCode') || shouldShow('printLabel') ? `
                         <div class="qr-code-section">
+                            ${shouldShow('qrCode') ? `
                             <div class="qr-code-container" onclick="openQRModal(${index})">
                                 <canvas id="qr-${index}" class="qr-canvas"></canvas>
                             </div>
                             <div class="qr-label">${ro.customerName || 'Unknown'}</div>
+                            ${shouldShow('rvDetails') ? `
                             <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${ro.rv || 'RV Not Specified'}</div>
+                            ` : ''}
+                            ` : ''}
+                            ${shouldShow('printLabel') ? `
                             <button class="print-qr-btn" onclick="printQRLabel(${index})" title="Print QR Label">
                                 🖨️ Print Label
                             </button>
+                            ` : ''}
                         </div>
+                        ` : ''}
                         
+                        ${shouldShow('photoUpload') ? `
                         <button class="photo-upload-btn" onclick="uploadPhoto(${index})" title="Add/Update Photo">
                             📷 ${ro.rvPhotoUrl ? 'Update Photo' : 'Add Photo'}
                         </button>
+                        ` : ''}
                         
+                        ${shouldShow('statusDropdown') ? `
                         <div class="status-selector-container">
                             <select class="status-dropdown status-${statusClass}" 
                                     onchange="updateROStatus(${index}, this.value)"
@@ -2619,8 +2899,11 @@
                                 <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
                             </select>
                         </div>
+                        ` : ''}
                         
+                        ${shouldShow('repairTypeTags') || shouldShow('rvDetails') || shouldShow('technicianAssigned') || shouldShow('contactInfo') ? `
                         <div class="rv-info">
+                            ${shouldShow('repairTypeTags') ? `
                             <div class="info-row">
                                 <span class="info-label">Type:</span>
                                 <span class="info-value repair-types-container">
@@ -2629,39 +2912,47 @@
                                     ).join('')}
                                 </span>
                             </div>
+                            ` : ''}
+                            ${shouldShow('rvDetails') ? `
                             <div class="info-row">
                                 <span class="info-label">RV:</span>
                                 <span class="info-value">${ro.rv || 'Not specified'}</span>
                             </div>
+                            ` : ''}
+                            ${shouldShow('technicianAssigned') ? `
                             <div class="info-row">
                                 <span class="info-label">Tech:</span>
                                 <span class="info-value">${ro.technicianAssigned || 'Unassigned'}</span>
                             </div>
-                            ${ro.customerPhone ? `
+                            ` : ''}
+                            ${shouldShow('contactInfo') && ro.customerPhone ? `
                             <div class="info-row">
                                 <span class="info-label">Phone:</span>
                                 <span class="info-value"><a href="tel:${ro.customerPhone}" class="contact-link">${ro.customerPhone}</a></span>
                             </div>
                             ` : ''}
-                            ${ro.customerEmail ? `
+                            ${shouldShow('contactInfo') && ro.customerEmail ? `
                             <div class="info-row">
                                 <span class="info-label">Email:</span>
                                 <span class="info-value"><a href="mailto:${ro.customerEmail}" class="contact-link">${ro.customerEmail}</a></span>
                             </div>
                             ` : ''}
-                            ${ro.customerAddress ? `
+                            ${shouldShow('contactInfo') && ro.customerAddress ? `
                             <div class="info-row">
                                 <span class="info-label">Address:</span>
                                 <span class="info-value">${ro.customerAddress}</span>
                             </div>
                             ` : ''}
                         </div>
+                        ` : ''}
                         
+                        ${shouldShow('repairDescription') ? `
                         <div class="repair-desc editable-field" onclick="editField(${index}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">
                             ${ro.repairDescription || '<span class="placeholder-text">Click Here To Update</span>'}
                         </div>
+                        ` : ''}
                         
-                        ${ro.percentComplete !== undefined && ro.percentComplete !== null ? `
+                        ${shouldShow('progressBar') && ro.percentComplete !== undefined && ro.percentComplete !== null ? `
                         <div class="progress-section">
                             <div class="progress-header">
                                 <span class="progress-label">Progress</span>
@@ -2681,7 +2972,9 @@
                         </div>
                         ` : ''}
                         
+                        ${shouldShow('roStatusNotes') || shouldShow('customerCommNotes') ? `
                         <div class="notes-section">
+                            ${shouldShow('roStatusNotes') ? `
                             <div class="note-item editable-field" onclick="editField(${index}, 'roStatusNotes', '${ro.roStatusNotes ? ro.roStatusNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
                                 <div class="note-header">
                                     <span class="note-icon">🔧</span>
@@ -2689,6 +2982,8 @@
                                 </div>
                                 <div class="note-content">${ro.roStatusNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
+                            ` : ''}
+                            ${shouldShow('customerCommNotes') ? `
                             <div class="note-item editable-field" onclick="editField(${index}, 'customerCommunicationNotes', '${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
                                 <div class="note-header">
                                     <span class="note-icon">💬</span>
@@ -2696,9 +2991,11 @@
                                 </div>
                                 <div class="note-content">${ro.customerCommunicationNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
+                            ` : ''}
                         </div>
+                        ` : ''}
                         
-                        ${(() => {
+                        ${shouldShow('timeLogs') ? (() => {
                             const roId = `RO-${ro.customerName}-${ro.dateReceived}`;
                             const timeStats = calculateTotalHours(roId);
                             if (timeStats.sessionCount > 0) {
@@ -2716,17 +3013,21 @@
                                 `;
                             }
                             return '';
-                        })()}
+                        })() : ''}
                         
+                        ${shouldShow('editButton') ? `
                         <button class="edit-ro-btn" onclick="openEditRO(${index})">
                             ✏️ Edit RO
                         </button>
+                        ` : ''}
                     </div>
                 `;
             }).join('');
             
             // Generate QR codes after DOM is updated
-            setTimeout(() => generateAllQRCodes(filtered), 100);
+            if (shouldShow('qrCode')) {
+                setTimeout(() => generateAllQRCodes(filtered), 100);
+            }
         }
 
         // Generate QR codes for all ROs
@@ -3581,6 +3882,87 @@
             `;
             
             modal.style.display = 'flex';
+        }
+        
+        function openCustomViewModal() {
+            const modal = document.getElementById('modal');
+            const modalContent = document.getElementById('modalContent');
+            
+            const elementLabels = {
+                rvPhoto: 'RV Photo',
+                customerName: 'Customer Name',
+                rvDetails: 'RV Details (Year/Make/Model)',
+                dollarValue: 'Dollar Value',
+                daysOnLot: 'Days on Lot',
+                qrCode: 'QR Code',
+                printLabel: 'Print Label Button',
+                photoUpload: 'Photo Upload Button',
+                urgencySelector: 'Urgency Selector',
+                statusDropdown: 'Status Dropdown',
+                repairTypeTags: 'Repair Type Tags',
+                technicianAssigned: 'Technician Assigned',
+                contactInfo: 'Contact Info (Phone/Email/Address)',
+                repairDescription: 'Repair Description',
+                progressBar: 'Progress Bar',
+                roStatusNotes: 'RO Status Notes',
+                customerCommNotes: 'Customer Communication Notes',
+                timeLogs: 'Time Logs Section',
+                editButton: 'Edit RO Button'
+            };
+            
+            const checkboxesHtml = Object.keys(elementLabels).map(key => `
+                <label class="custom-view-checkbox">
+                    <input type="checkbox" 
+                           id="toggle-${key}" 
+                           ${tileVisibility[key] ? 'checked' : ''}
+                           onchange="toggleTileElement('${key}', this.checked)">
+                    <span>${elementLabels[key]}</span>
+                </label>
+            `).join('');
+            
+            modalContent.innerHTML = `
+                <h2>🎨 Customize Tile View</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">
+                    Select which elements to display on RO tiles. Changes are saved automatically.
+                </p>
+                <div class="custom-view-grid">
+                    ${checkboxesHtml}
+                </div>
+                <div class="custom-view-actions">
+                    <button class="custom-view-btn preset-btn" onclick="applyViewPreset('condensed'); updateCustomViewChecks(); ">
+                        Condensed Preset
+                    </button>
+                    <button class="custom-view-btn preset-btn" onclick="applyViewPreset('regular'); updateCustomViewChecks();">
+                        Regular Preset
+                    </button>
+                    <button class="custom-view-btn preset-btn" onclick="applyViewPreset('expanded'); updateCustomViewChecks();">
+                        Expanded Preset
+                    </button>
+                </div>
+                <button class="modal-close-btn" onclick="closeModal()">Done</button>
+            `;
+            
+            modal.style.display = 'flex';
+        }
+        
+        function toggleTileElement(element, visible) {
+            tileVisibility[element] = visible;
+            currentViewMode = 'custom';
+            saveViewPreferences();
+            renderBoard();
+            
+            // Update dropdown
+            document.getElementById('viewModeSelector').value = 'custom';
+        }
+        
+        function updateCustomViewChecks() {
+            // Update checkboxes to match current visibility settings
+            Object.keys(tileVisibility).forEach(key => {
+                const checkbox = document.getElementById(`toggle-${key}`);
+                if (checkbox) {
+                    checkbox.checked = tileVisibility[key];
+                }
+            });
         }
         
         function openEditRO(index) {
