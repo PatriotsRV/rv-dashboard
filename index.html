@@ -1625,6 +1625,7 @@
         ];
 
         let currentData = [];
+        let currentFilteredData = []; // Track current filtered view
         let currentStatusFilters = []; // Changed to array for multi-select
         let currentRepairFilter = 'all';
         let currentSearchFilter = ''; // Customer name search
@@ -1659,12 +1660,12 @@
 
             try {
                 // Get the sorted data to find the correct RO
-                const sorted = [...currentData].map(ro => ({
+                const ro = currentFilteredData[index];
                     ...ro,
-                    priorityScore: calculatePriority(ro)
-                })).sort((a, b) => b.priorityScore - a.priorityScore);
+                    
                 
-                const ro = sorted[index];
+                
+                
                 if (!ro) {
                     console.error('Could not find RO at index:', index);
                     alert('Error: Could not find the repair order.');
@@ -1755,13 +1756,7 @@
             }
 
             try {
-                // Get the sorted data to find the correct RO
-                const sorted = [...currentData].map(ro => ({
-                    ...ro,
-                    priorityScore: calculatePriority(ro)
-                })).sort((a, b) => b.priorityScore - a.priorityScore);
-                
-                const ro = sorted[index];
+                const ro = currentFilteredData[index];
                 if (!ro) {
                     alert('Error: Could not find the repair order.');
                     return;
@@ -1843,13 +1838,7 @@
             console.log('Manually updating progress for index:', index, 'to:', newProgress + '%');
 
             try {
-                // Get the sorted data to find the correct RO
-                const sorted = [...currentData].map(ro => ({
-                    ...ro,
-                    priorityScore: calculatePriority(ro)
-                })).sort((a, b) => b.priorityScore - a.priorityScore);
-                
-                const ro = sorted[index];
+                const ro = currentFilteredData[index];
                 if (!ro) {
                     console.error('Could not find RO at index:', index);
                     alert('Error: Could not find the repair order.');
@@ -1912,13 +1901,7 @@
             dropdown.disabled = true;
 
             try {
-                // Get the sorted data to find the correct RO
-                const sorted = [...currentData].map(ro => ({
-                    ...ro,
-                    priorityScore: calculatePriority(ro)
-                })).sort((a, b) => b.priorityScore - a.priorityScore);
-                
-                const ro = sorted[index];
+                const ro = currentFilteredData[index];
                 if (!ro) {
                     console.error('Could not find RO at index:', index);
                     alert('Error: Could not find the repair order.');
@@ -2409,6 +2392,9 @@
                 });
             }
 
+            // Store filtered data globally for functions to access
+            currentFilteredData = filtered;
+            
             // Update stats with both sorted (all data) and filtered data
             updateStats(sorted, filtered);
 
@@ -2422,15 +2408,15 @@
                 return;
             }
 
-            grid.innerHTML = filtered.map(ro => {
+            grid.innerHTML = filtered.map((ro, index) => {
                 const priorityLevel = getPriorityLevel(ro.priorityScore);
                 const statusClass = ro.status.toLowerCase().replace(/\s+/g, '-');
                 
                 return `
-                    <div class="ro-card" data-ro-index="${sorted.indexOf(ro)}">
+                    <div class="ro-card" data-ro-index="${index}">
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}" 
-                                    onchange="updateROUrgency(${sorted.indexOf(ro)}, this.value)"
+                                    onchange="updateROUrgency(${index}, this.value)"
                                     title="Change urgency level">
                                 <option value="Critical" ${ro.urgency === 'Critical' ? 'selected' : ''}>CRITICAL</option>
                                 <option value="High" ${ro.urgency === 'High' ? 'selected' : ''}>HIGH</option>
@@ -2459,23 +2445,23 @@
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
                         
                         <div class="qr-code-section">
-                            <div class="qr-code-container" onclick="openQRModal(${sorted.indexOf(ro)})">
-                                <canvas id="qr-${sorted.indexOf(ro)}" class="qr-canvas"></canvas>
+                            <div class="qr-code-container" onclick="openQRModal(${index})">
+                                <canvas id="qr-${index}" class="qr-canvas"></canvas>
                             </div>
                             <div class="qr-label">${ro.customerName || 'Unknown'}</div>
                             <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${ro.rv || 'RV Not Specified'}</div>
-                            <button class="print-qr-btn" onclick="printQRLabel(${sorted.indexOf(ro)})" title="Print QR Label">
+                            <button class="print-qr-btn" onclick="printQRLabel(${index})" title="Print QR Label">
                                 🖨️ Print Label
                             </button>
                         </div>
                         
-                        <button class="photo-upload-btn" onclick="uploadPhoto(${sorted.indexOf(ro)})" title="Add/Update Photo">
+                        <button class="photo-upload-btn" onclick="uploadPhoto(${index})" title="Add/Update Photo">
                             📷 ${ro.rvPhotoUrl ? 'Update Photo' : 'Add Photo'}
                         </button>
                         
                         <div class="status-selector-container">
                             <select class="status-dropdown status-${statusClass}" 
-                                    onchange="updateROStatus(${sorted.indexOf(ro)}, this.value)"
+                                    onchange="updateROStatus(${index}, this.value)"
                                     data-original-status="${ro.status}">
                                 <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>Not On Lot</option>
                                 <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
@@ -2526,7 +2512,7 @@
                             ` : ''}
                         </div>
                         
-                        <div class="repair-desc editable-field" onclick="editField(${sorted.indexOf(ro)}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">
+                        <div class="repair-desc editable-field" onclick="editField(${index}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">
                             ${ro.repairDescription || '<span class="placeholder-text">Click Here To Update</span>'}
                         </div>
                         
@@ -2540,7 +2526,7 @@
                                        min="0" 
                                        max="100" 
                                        step="5"
-                                       onchange="updateROProgress(${sorted.indexOf(ro)}, parseInt(this.value))"
+                                       onchange="updateROProgress(${index}, parseInt(this.value))"
                                        title="Manual adjustment">
                                 <span class="progress-value">${ro.percentComplete}%</span>
                             </div>
@@ -2551,14 +2537,14 @@
                         ` : ''}
                         
                         <div class="notes-section">
-                            <div class="note-item editable-field" onclick="editField(${sorted.indexOf(ro)}, 'roStatusNotes', '${ro.roStatusNotes ? ro.roStatusNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
+                            <div class="note-item editable-field" onclick="editField(${index}, 'roStatusNotes', '${ro.roStatusNotes ? ro.roStatusNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
                                 <div class="note-header">
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">RO Status</span>
                                 </div>
                                 <div class="note-content">${ro.roStatusNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
-                            <div class="note-item editable-field" onclick="editField(${sorted.indexOf(ro)}, 'customerCommunicationNotes', '${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
+                            <div class="note-item editable-field" onclick="editField(${index}, 'customerCommunicationNotes', '${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
                                 <div class="note-header">
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">Customer Comm</span>
@@ -2567,7 +2553,7 @@
                             </div>
                         </div>
                         
-                        <button class="edit-ro-btn" onclick="openEditRO(${sorted.indexOf(ro)})">
+                        <button class="edit-ro-btn" onclick="openEditRO(${index})">
                             ✏️ Edit RO
                         </button>
                     </div>
@@ -2690,12 +2676,7 @@
 
         // Open QR modal for printing
         function openQRModal(index) {
-            const sorted = [...currentData].map(ro => ({
-                ...ro,
-                priorityScore: calculatePriority(ro)
-            })).sort((a, b) => b.priorityScore - a.priorityScore);
-            
-            const ro = sorted[index];
+            const ro = currentFilteredData[index];
             if (!ro) return;
             
             const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived || 'NODATE'}`;
@@ -2775,12 +2756,7 @@
 
         // Print QR label
         function printQRLabel(index) {
-            const sorted = [...currentData].map(ro => ({
-                ...ro,
-                priorityScore: calculatePriority(ro)
-            })).sort((a, b) => b.priorityScore - a.priorityScore);
-            
-            const ro = sorted[index];
+            const ro = currentFilteredData[index];
             if (!ro) return;
             
             // Create printable label

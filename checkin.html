@@ -346,10 +346,13 @@
             
             console.log('RO Data set to:', roData);
             
+            // Render interface immediately with RO data (before auth)
+            renderInterface();
+            
             // Check if we have Google API loaded
             if (typeof google === 'undefined') {
                 console.log('Google API not loaded yet, showing sign-in prompt');
-                requestSignIn();
+                // requestSignIn already called by renderInterface
             } else {
                 console.log('Google API loaded, initializing auth');
                 initGoogleAuth();
@@ -363,23 +366,29 @@
         }
 
         function renderInterface() {
+            console.log('renderInterface called');
+            console.log('roData:', roData);
+            console.log('currentUser:', currentUser);
+            
             const isCheckedIn = currentSession && !currentSession.checkOut;
             
             let html = `
                 <div class="ro-info">
-                    <h2>🚐 ${roData.customer || 'Unknown Customer'}</h2>
+                    <h2>🚐 ${roData ? roData.customer || 'Unknown Customer' : 'Loading...'}</h2>
                     <div class="info-row">
                         <span class="info-label">RO ID:</span>
-                        <span class="info-value">${roData.id}</span>
+                        <span class="info-value">${roData ? roData.id : 'N/A'}</span>
                     </div>
                     <div class="info-row">
                         <span class="info-label">Status:</span>
-                        <span class="info-value">${roData.status}</span>
+                        <span class="info-value">${roData ? roData.status : 'N/A'}</span>
                     </div>
+                    ${currentUser ? `
                     <div class="info-row">
                         <span class="info-label">Tech:</span>
                         <span class="info-value">${currentUser.name}</span>
                     </div>
+                    ` : ''}
                     <div class="info-row">
                         <span class="info-label">Work Status:</span>
                         <span class="status-badge ${isCheckedIn ? 'checked-in' : 'checked-out'}">
@@ -408,7 +417,12 @@
 
             html += `
                 <div class="action-buttons">
-                    ${!isCheckedIn ? `
+                    ${!currentUser ? `
+                        <div class="auth-prompt">
+                            <p>Please sign in to check in/out</p>
+                            <div id="googleSignInDiv"></div>
+                        </div>
+                    ` : (!isCheckedIn ? `
                         <button class="btn btn-start" onclick="checkIn()">
                             ▶️ Start Work
                         </button>
