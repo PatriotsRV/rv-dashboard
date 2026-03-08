@@ -3804,7 +3804,7 @@
                     formData.repairType,
                     formData.repairDescription,
                     formData.technicianAssigned || '',
-                    formData.dateReceived, // Keep original date received
+                    currentData[roIndex].dateReceived, // Keep original date received
                     formData.percentComplete || 0,
                     formData.dollarValue || 0,
                     formData.status,
@@ -3838,7 +3838,7 @@
                     repairType: formData.repairType,
                     repairDescription: formData.repairDescription,
                     technicianAssigned: formData.technicianAssigned || '',
-                    dateReceived: formData.dateReceived,
+                    dateReceived: currentData[roIndex].dateReceived, // Keep original
                     percentComplete: parseInt(formData.percentComplete) || 0,
                     dollarValue: parseFloat(formData.dollarValue) || 0,
                     status: formData.status,
@@ -3850,6 +3850,7 @@
                 };
                 
                 console.log('✓ RO updated by', userName);
+                console.log('Updated RO data:', currentData[roIndex]);
                 renderBoard();
                 return true;
             } catch (err) {
