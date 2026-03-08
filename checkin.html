@@ -644,12 +644,44 @@
         }
         
         async function syncCheckOutToSheets(item) {
-            if (!item.rowIndex) {
-                console.warn('No rowIndex for checkout, skipping');
+            let rowIndex = item.rowIndex;
+            
+            // If no rowIndex, search for the row by logId
+            if (!rowIndex) {
+                console.log('No rowIndex, searching for row by logId:', item.logId);
+                
+                try {
+                    const response = await fetch(
+                        `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${GOOGLE_CONFIG.TIME_LOGS_RANGE}`,
+                        {
+                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                        }
+                    );
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const rows = data.values || [];
+                        
+                        // Find the row with matching logId
+                        for (let i = 1; i < rows.length; i++) {
+                            if (rows[i][0] === item.logId) { // Column A: Log ID
+                                rowIndex = i + 1; // Sheet rows are 1-indexed
+                                console.log('✅ Found row:', rowIndex, 'for logId:', item.logId);
+                                break;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error searching for row:', error);
+                }
+            }
+            
+            if (!rowIndex) {
+                console.warn('Could not find row for check-out, skipping:', item.logId);
                 return;
             }
             
-            const range = `Time Logs!F${item.rowIndex}:G${item.rowIndex}`;
+            const range = `Time Logs!F${rowIndex}:G${rowIndex}`;
             const values = [[item.checkOut, item.duration]];
             
             const response = await fetch(
