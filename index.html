@@ -3517,6 +3517,7 @@
             const savedToken = localStorage.getItem('google_access_token');
             const tokenExpiry = localStorage.getItem('google_token_expiry');
             const savedUser = localStorage.getItem('currentUser');
+            const lastAuthTime = localStorage.getItem('last_auth_time');
             
             if (savedToken && tokenExpiry) {
                 const now = Date.now();
@@ -3542,7 +3543,31 @@
                     updateAuthStatus(true);
                     loadDataFromSheets();
                     console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
+                    
+                    // Setup auto-refresh
+                    setupTokenRefresh();
+                    
                     return true;
+                } else if (lastAuthTime) {
+                    // Token expired but user had recent session - try silent refresh
+                    const lastAuth = parseInt(lastAuthTime);
+                    const hoursSinceAuth = (now - lastAuth) / (1000 * 60 * 60);
+                    
+                    if (hoursSinceAuth < 24) {
+                        console.log('Token expired but recent session detected, attempting silent refresh...');
+                        // Load user info first
+                        if (savedUser) {
+                            try {
+                                currentUser = JSON.parse(savedUser);
+                            } catch (e) {}
+                        }
+                        // Try silent token refresh
+                        tokenClient.requestAccessToken({prompt: ''});
+                        return true;
+                    } else {
+                        console.log('Session too old, clearing...');
+                        clearToken();
+                    }
                 } else {
                     console.log('Saved token expired, clearing...');
                     clearToken();
@@ -3556,14 +3581,40 @@
             // expiresIn is in seconds, convert to milliseconds and add to current time
             const expiry = Date.now() + (expiresIn * 1000);
             localStorage.setItem('google_token_expiry', expiry.toString());
+            
+            // Save last successful auth time for session tracking
+            localStorage.setItem('last_auth_time', Date.now().toString());
         }
 
         function clearToken() {
             localStorage.removeItem('google_access_token');
             localStorage.removeItem('google_token_expiry');
             localStorage.removeItem('currentUser');
+            localStorage.removeItem('last_auth_time');
             accessToken = null;
             currentUser = null;
+        }
+        
+        // Silent token refresh before expiry
+        function setupTokenRefresh() {
+            const tokenExpiry = localStorage.getItem('google_token_expiry');
+            if (!tokenExpiry) return;
+            
+            const expiryTime = parseInt(tokenExpiry);
+            const now = Date.now();
+            const timeUntilExpiry = expiryTime - now;
+            
+            // Refresh 5 minutes before expiry
+            const refreshTime = timeUntilExpiry - 300000;
+            
+            if (refreshTime > 0) {
+                console.log('Token refresh scheduled in', Math.round(refreshTime / 60000), 'minutes');
+                setTimeout(() => {
+                    console.log('Auto-refreshing token...');
+                    // Request new token silently
+                    tokenClient.requestAccessToken({prompt: ''});
+                }, refreshTime);
+            }
         }
 
         function gapiLoaded() {
@@ -3615,10 +3666,13 @@
                 accessToken = resp.access_token;
                 console.log('Access token received');
                 
-                // Save token with expiration (6 days = 518400 seconds)
-                const expiresIn = resp.expires_in || 518400;
+                // Save token with expiration (default 3600 seconds = 1 hour)
+                const expiresIn = resp.expires_in || 3600;
                 saveToken(accessToken, expiresIn);
                 console.log('Token saved, expires in', expiresIn, 'seconds');
+                
+                // Setup auto-refresh before expiry
+                setupTokenRefresh();
                 
                 // Get user info
                 await getUserInfo();
