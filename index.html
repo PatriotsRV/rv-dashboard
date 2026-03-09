@@ -1160,6 +1160,28 @@
             .controls {
                 flex-direction: column;
             }
+            
+            /* Increase font sizes for better mobile readability */
+            .filter-label {
+                font-size: 1.1rem;
+            }
+            
+            .filter-btn {
+                font-size: 1.1rem;
+                padding: 14px 20px;
+            }
+            
+            .view-mode-label {
+                font-size: 1.1rem;
+            }
+            
+            .view-mode-dropdown {
+                font-size: 1.1rem;
+            }
+            
+            .search-input {
+                font-size: 1.1rem;
+            }
         }
 
         .new-ro-btn {
@@ -1944,25 +1966,25 @@
         // Preset configurations
         const viewPresets = {
             condensed: {
-                rvPhoto: true,
+                rvPhoto: false,
                 customerName: true,
                 rvDetails: true,
                 dollarValue: true,
                 daysOnLot: true,
                 qrCode: false,
                 printLabel: false,
-                photoUpload: true,
+                photoUpload: false,
                 urgencySelector: true,
-                statusDropdown: false,
+                statusDropdown: true,
                 repairTypeTags: true,
                 technicianAssigned: false,
                 contactInfo: true,
                 repairDescription: true,
                 progressBar: true,
-                roStatusNotes: false,
+                roStatusNotes: true,
                 customerCommNotes: false,
                 timeLogs: false,
-                editButton: false
+                editButton: true
             },
             regular: {
                 rvPhoto: true,
