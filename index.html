@@ -3926,7 +3926,8 @@
                 return;
             }
             
-            const logsHtml = logs.map(log => {
+            // Reverse to show newest first
+            const logsHtml = logs.reverse().map(log => {
                 const checkInDate = new Date(log.checkIn);
                 const checkOutDate = log.checkOut ? new Date(log.checkOut) : null;
                 const duration = formatHours(log.duration);
