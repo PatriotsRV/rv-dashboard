@@ -1915,6 +1915,7 @@
         let currentRepairFilter = 'all';
         let currentSearchFilter = ''; // Customer name search
         let timeLogsData = []; // Store time logs from Google Sheets
+        let timeLogsRefreshInterval = null; // Auto-refresh timer
         
         // Tile view customization
         let currentViewMode = 'regular'; // condensed, regular, expanded, custom
@@ -3045,6 +3046,11 @@
                                     <button class="view-time-logs-btn" onclick="openTimeLogsModal(${index})" title="View detailed time logs">
                                         View Time Logs
                                     </button>
+                                    ${isAdmin() ? `
+                                    <button class="view-time-logs-btn" onclick="manualRefreshTimeLogs()" title="Admin: Force refresh time logs from Google Sheets" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-top: 8px;">
+                                        🔄 Refresh Time Logs
+                                    </button>
+                                    ` : ''}
                                 </div>
                                 `;
                             }
@@ -3597,6 +3603,9 @@
                 console.log('Calling loadTimeLogsFromSheets...');
                 await loadTimeLogsFromSheets();
                 console.log('loadTimeLogsFromSheets completed');
+                
+                // Start auto-refresh for time logs
+                startTimeLogsAutoRefresh();
             };
 
             if (accessToken === null) {
@@ -3762,6 +3771,58 @@
             } catch (err) {
                 console.error('Error loading time logs:', err);
                 timeLogsData = [];
+            }
+        }
+        
+        // Start auto-refresh for time logs (30 seconds)
+        function startTimeLogsAutoRefresh() {
+            // Clear any existing interval
+            if (timeLogsRefreshInterval) {
+                clearInterval(timeLogsRefreshInterval);
+            }
+            
+            // Only refresh when tab is visible
+            timeLogsRefreshInterval = setInterval(async () => {
+                if (!document.hidden && accessToken) {
+                    console.log('🔄 Auto-refreshing time logs...');
+                    await loadTimeLogsFromSheets();
+                }
+            }, 30000); // 30 seconds
+            
+            console.log('✅ Time logs auto-refresh started (30s interval)');
+        }
+        
+        // Stop auto-refresh (useful for cleanup)
+        function stopTimeLogsAutoRefresh() {
+            if (timeLogsRefreshInterval) {
+                clearInterval(timeLogsRefreshInterval);
+                timeLogsRefreshInterval = null;
+                console.log('⏹️ Time logs auto-refresh stopped');
+            }
+        }
+        
+        // Manual refresh function for admin button
+        async function manualRefreshTimeLogs() {
+            console.log('🔄 Manual refresh triggered by admin');
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Refreshing...';
+            btn.disabled = true;
+            
+            try {
+                await loadTimeLogsFromSheets();
+                btn.textContent = '✅ Refreshed!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            } catch (error) {
+                console.error('Error refreshing:', error);
+                btn.textContent = '❌ Error';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }, 2000);
             }
         }
         
