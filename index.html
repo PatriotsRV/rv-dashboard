@@ -3519,6 +3519,9 @@
             const savedUser = localStorage.getItem('currentUser');
             const lastAuthTime = localStorage.getItem('last_auth_time');
             
+            // Detect Safari
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            
             if (savedToken && tokenExpiry) {
                 const now = Date.now();
                 const expiryTime = parseInt(tokenExpiry);
@@ -3544,12 +3547,15 @@
                     loadDataFromSheets();
                     console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
                     
-                    // Setup auto-refresh
-                    setupTokenRefresh();
+                    // Setup auto-refresh (but not on Safari - it doesn't support silent refresh)
+                    if (!isSafari) {
+                        setupTokenRefresh();
+                    }
                     
                     return true;
-                } else if (lastAuthTime) {
+                } else if (lastAuthTime && !isSafari) {
                     // Token expired but user had recent session - try silent refresh
+                    // SKIP on Safari - silent refresh not supported
                     const lastAuth = parseInt(lastAuthTime);
                     const hoursSinceAuth = (now - lastAuth) / (1000 * 60 * 60);
                     
