@@ -249,6 +249,19 @@
         function init() {
             console.log('Check-in page loaded for RO:', roId);
             
+            // Check if we're returning from Google OAuth redirect
+            if (urlParams.has('access_token')) {
+                console.log('✅ Returned from OAuth redirect with token');
+                handleAuthCallback({
+                    access_token: urlParams.get('access_token'),
+                    token_type: urlParams.get('token_type') || 'Bearer',
+                    expires_in: parseInt(urlParams.get('expires_in') || '3600')
+                });
+                // Clean up URL
+                window.history.replaceState({}, document.title, window.location.pathname + '?ro=' + roId);
+                return;
+            }
+            
             if (!roId) {
                 showError('No RO specified. Please scan a valid QR code.');
                 return;
@@ -421,14 +434,23 @@
             console.log('==================');
         }
 
+        // Detect if mobile device
+        function isMobileDevice() {
+            return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        }
+
         function initGoogleAuth() {
+            const useMobile = isMobileDevice();
+            
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
                 scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
                 callback: handleAuthCallback,
+                ux_mode: useMobile ? 'redirect' : 'popup', // Use redirect on mobile, popup on desktop
+                redirect_uri: window.location.origin + window.location.pathname // Current page URL
             });
             
-            console.log('✅ Token client initialized');
+            console.log('✅ Token client initialized (' + (useMobile ? 'redirect mode for mobile' : 'popup mode') + ')');
         }
         
         function handleSignInClick() {
