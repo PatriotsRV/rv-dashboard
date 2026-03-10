@@ -1718,7 +1718,6 @@
                 <select id="viewModeSelector" class="view-mode-dropdown" onchange="setViewMode(this.value)">
                     <option value="condensed">Condensed</option>
                     <option value="regular" selected>Regular</option>
-                    <option value="expanded">Expanded</option>
                 </select>
                 <button id="adminSettingsBtn" onclick="openAdminSettingsModal()" style="display: none; padding: 10px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; cursor: pointer; font-weight: 600; margin-left: 12px;">
                     ⚙️ Admin Settings
@@ -1774,11 +1773,11 @@
                 <div class="stat-label">Total RVs</div>
                 <div class="stat-value" id="statTotal">0</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card admin-only-stat" id="statTotalValueCard" style="display: none;">
                 <div class="stat-label">Total Value</div>
                 <div class="stat-value" id="statTotalValue" style="font-size: 2rem;">$0</div>
             </div>
-            <div class="stat-card" style="border: 2px solid var(--accent-info);">
+            <div class="stat-card admin-only-stat" id="statFilteredValueCard" style="display: none; border: 2px solid var(--accent-info);">
                 <div class="stat-label">Filtered Value</div>
                 <div class="stat-value" id="statFilteredValue" style="font-size: 2rem; color: var(--accent-info);">$0</div>
             </div>
@@ -2153,8 +2152,26 @@
                     return;
                 }
                 openCustomViewModal();
+            } else if (mode === 'expanded') {
+                if (!isAdmin()) {
+                    alert('🔒 Expanded view is only available to administrators.');
+                    // Reset dropdown to current mode
+                    document.getElementById('viewModeSelector').value = currentViewMode;
+                    return;
+                }
+                applyViewPreset(mode);
+                // Show financial stats in Expanded view
+                const totalValueCard = document.getElementById('statTotalValueCard');
+                const filteredValueCard = document.getElementById('statFilteredValueCard');
+                if (totalValueCard) totalValueCard.style.display = 'block';
+                if (filteredValueCard) filteredValueCard.style.display = 'block';
             } else {
                 applyViewPreset(mode);
+                // Hide financial stats in non-Expanded views
+                const totalValueCard = document.getElementById('statTotalValueCard');
+                const filteredValueCard = document.getElementById('statFilteredValueCard');
+                if (totalValueCard) totalValueCard.style.display = 'none';
+                if (filteredValueCard) filteredValueCard.style.display = 'none';
             }
         }
 
@@ -3472,6 +3489,7 @@
 
         function updateStats(data, filteredData) {
             const total = data.length;
+            const filtered = filteredData ? filteredData.length : total;
             const inProgress = data.filter(ro => ro.status === 'In progress').length;
             const awaitingParts = data.filter(ro => ro.status === 'Awaiting parts').length;
             const avgDays = total > 0 
@@ -3484,13 +3502,13 @@
                 ? filteredData.reduce((sum, ro) => sum + (ro.dollarValue || 0), 0)
                 : totalValue;
 
-            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statTotal').textContent = filtered;
             document.getElementById('statTotalValue').textContent = '$' + totalValue.toLocaleString();
             document.getElementById('statFilteredValue').textContent = '$' + filteredValue.toLocaleString();
             document.getElementById('statProgress').textContent = inProgress;
             document.getElementById('statParts').textContent = awaitingParts;
             document.getElementById('statAvgDays').textContent = avgDays;
-            document.getElementById('totalRVs').textContent = `${total} RVs on Lot`;
+            document.getElementById('totalRVs').textContent = `${filtered} RVs on Lot`;
         }
 
         // Google Sheets Integration
@@ -3530,25 +3548,59 @@
                 adminBtn.style.display = isAdmin() ? 'inline-block' : 'none';
             }
             
-            // Check if Custom option already exists
+            // Check if admin-only options exist
+            const hasExpanded = Array.from(selector.options).some(opt => opt.value === 'expanded');
             const hasCustom = Array.from(selector.options).some(opt => opt.value === 'custom');
             
-            if (isAdmin() && !hasCustom) {
-                // Add Custom option for admin
-                const customOption = document.createElement('option');
-                customOption.value = 'custom';
-                customOption.textContent = 'Custom... (Admin)';
-                selector.appendChild(customOption);
-            } else if (!isAdmin() && hasCustom) {
-                // Remove Custom option for non-admin
+            if (isAdmin()) {
+                // Add Expanded option for admin (after Regular)
+                if (!hasExpanded) {
+                    const expandedOption = document.createElement('option');
+                    expandedOption.value = 'expanded';
+                    expandedOption.textContent = 'Expanded (Admin)';
+                    // Insert after Regular option
+                    const regularOption = Array.from(selector.options).find(opt => opt.value === 'regular');
+                    if (regularOption) {
+                        regularOption.insertAdjacentElement('afterend', expandedOption);
+                    }
+                }
+                
+                // Add Custom option for admin (at end)
+                if (!hasCustom) {
+                    const customOption = document.createElement('option');
+                    customOption.value = 'custom';
+                    customOption.textContent = 'Custom... (Admin)';
+                    selector.appendChild(customOption);
+                }
+                
+                // Show/hide financial stats based on Expanded view
+                const totalValueCard = document.getElementById('statTotalValueCard');
+                const filteredValueCard = document.getElementById('statFilteredValueCard');
+                if (totalValueCard && filteredValueCard) {
+                    if (currentViewMode === 'expanded') {
+                        totalValueCard.style.display = 'block';
+                        filteredValueCard.style.display = 'block';
+                    } else {
+                        totalValueCard.style.display = 'none';
+                        filteredValueCard.style.display = 'none';
+                    }
+                }
+            } else {
+                // Remove admin-only options for non-admin
                 Array.from(selector.options).forEach(opt => {
-                    if (opt.value === 'custom') {
+                    if (opt.value === 'expanded' || opt.value === 'custom') {
                         selector.removeChild(opt);
                     }
                 });
                 
-                // If they were in custom mode, switch to regular
-                if (currentViewMode === 'custom') {
+                // Hide financial stats for non-admin
+                const totalValueCard = document.getElementById('statTotalValueCard');
+                const filteredValueCard = document.getElementById('statFilteredValueCard');
+                if (totalValueCard) totalValueCard.style.display = 'none';
+                if (filteredValueCard) filteredValueCard.style.display = 'none';
+                
+                // If they were in admin-only mode, switch to regular
+                if (currentViewMode === 'custom' || currentViewMode === 'expanded') {
                     applyViewPreset('regular');
                     selector.value = 'regular';
                 }
