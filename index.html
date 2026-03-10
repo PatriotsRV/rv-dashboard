@@ -3123,6 +3123,11 @@
             // Generate QR codes after DOM is updated
             if (shouldShow('qrCode')) {
                 setTimeout(() => generateAllQRCodes(filtered), 100);
+            } else {
+                // Even if QR codes are hidden, load Drive images for RV photos
+                if (accessToken) {
+                    setTimeout(() => loadAllDriveImages(), 100);
+                }
             }
         }
 
