@@ -1628,6 +1628,24 @@
             .form-grid {
                 grid-template-columns: 1fr;
             }
+            
+            /* Stack labels above inputs on mobile */
+            .view-mode-section,
+            .search-section {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 8px !important;
+            }
+            
+            .view-mode-label,
+            .search-label {
+                margin-bottom: 4px;
+            }
+            
+            .view-mode-dropdown,
+            .search-input {
+                width: 100% !important;
+            }
         }
     </style>
 </head>
@@ -1948,7 +1966,7 @@
         let timeLogsRefreshInterval = null; // Auto-refresh timer
         
         // Tile view customization
-        let currentViewMode = 'regular'; // condensed, regular, expanded, custom
+        let currentViewMode = 'condensed'; // condensed, regular, expanded, custom
         let tileVisibility = {
             rvPhoto: true,
             customerName: true,
@@ -1974,10 +1992,10 @@
         // Preset configurations
         const viewPresets = {
             condensed: {
-                rvPhoto: false,
+                rvPhoto: true,
                 customerName: true,
                 rvDetails: true,
-                dollarValue: true,
+                dollarValue: false,
                 daysOnLot: true,
                 qrCode: false,
                 printLabel: false,
@@ -2055,7 +2073,7 @@
                 tileVisibility = JSON.parse(savedVisibility);
             } else {
                 // Apply default preset
-                applyViewPreset('regular');
+                applyViewPreset('condensed');
             }
             
             // Update dropdown to show current mode
