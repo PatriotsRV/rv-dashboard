@@ -591,6 +591,39 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        
+        .checkin-btn {
+            width: 100%;
+            padding: 12px;
+            background: #39FF14;
+            border: 2px solid #39FF14;
+            border-radius: 8px;
+            color: #000;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5);
+        }
+        
+        .checkin-btn:hover {
+            background: #2EE010;
+            border-color: #2EE010;
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.8);
+        }
+        
+        .checkin-btn:active {
+            transform: translateY(0);
+        }
 
         .rv-photo {
             width: 100%;
@@ -2466,6 +2499,22 @@
             }
         }
 
+        // Open Check-In Page
+        function openCheckIn(index) {
+            const ro = currentFilteredData[index];
+            if (!ro) {
+                alert('Error: Could not find the repair order.');
+                return;
+            }
+            
+            // Create RO ID
+            const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived || 'NODATE'}`;
+            
+            // Open checkin.html with RO ID in new tab
+            const checkInURL = `https://prvshepard.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
+            window.open(checkInURL, '_blank');
+        }
+
         // Photo Upload Function
         async function uploadPhoto(index) {
             if (!accessToken) {
@@ -2967,6 +3016,10 @@
                             ` : ''}
                         </div>
                         ` : ''}
+                        
+                        <button class="checkin-btn" onclick="openCheckIn(${index})" title="Check in to this RO">
+                            🚪 Check In
+                        </button>
                         
                         ${shouldShow('photoUpload') ? `
                         <button class="photo-upload-btn" onclick="uploadPhoto(${index})" title="Add/Update Photo">
