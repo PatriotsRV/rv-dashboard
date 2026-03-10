@@ -3647,8 +3647,15 @@
                     console.log('Calling updateAuthStatus(true)...');
                     updateAuthStatus(true);
                     console.log('Calling loadDataFromSheets()...');
-                    loadDataFromSheets();
+                    await loadDataFromSheets();
+                    console.log('loadDataFromSheets completed');
+                    console.log('Calling loadTimeLogsFromSheets()...');
+                    await loadTimeLogsFromSheets();
+                    console.log('loadTimeLogsFromSheets completed');
                     console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
+                    
+                    // Start auto-refresh for time logs
+                    startTimeLogsAutoRefresh();
                     
                     // Setup auto-refresh (but not on Safari - it doesn't support silent refresh)
                     if (!isSafari) {
