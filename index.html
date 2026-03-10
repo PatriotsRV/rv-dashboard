@@ -1781,17 +1781,24 @@
                 <div class="stat-label">Filtered Value</div>
                 <div class="stat-value" id="statFilteredValue" style="font-size: 2rem; color: var(--accent-info);">$0</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" id="statDynamicStatusCard" style="display: none;">
+                <div id="statDynamicStatusContent"></div>
+            </div>
+            <div class="stat-card" id="statProgressCard">
                 <div class="stat-label">In Progress</div>
                 <div class="stat-value" id="statProgress">0</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" id="statPartsCard">
                 <div class="stat-label">Awaiting Parts</div>
                 <div class="stat-value" id="statParts">0</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label">Avg Days on Lot</div>
                 <div class="stat-value" id="statAvgDays">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Longest Wait</div>
+                <div class="stat-value" id="statLongestWait">0</div>
             </div>
         </div>
 
@@ -3495,6 +3502,12 @@
             const avgDays = total > 0 
                 ? Math.round(data.reduce((sum, ro) => sum + calculateDaysOnLot(ro.dateReceived), 0) / total)
                 : 0;
+            
+            // Calculate longest wait (max days on lot)
+            const longestWait = total > 0
+                ? Math.max(...data.map(ro => calculateDaysOnLot(ro.dateReceived)))
+                : 0;
+            
             const totalValue = data.reduce((sum, ro) => sum + (ro.dollarValue || 0), 0);
             
             // Calculate filtered value
@@ -3508,7 +3521,45 @@
             document.getElementById('statProgress').textContent = inProgress;
             document.getElementById('statParts').textContent = awaitingParts;
             document.getElementById('statAvgDays').textContent = avgDays;
+            document.getElementById('statLongestWait').textContent = longestWait;
             document.getElementById('totalRVs').textContent = `${filtered} RVs on Lot`;
+            
+            // Dynamic stats based on view mode
+            const isCondensedOrRegular = (currentViewMode === 'condensed' || currentViewMode === 'regular');
+            const progressCard = document.getElementById('statProgressCard');
+            const partsCard = document.getElementById('statPartsCard');
+            const dynamicCard = document.getElementById('statDynamicStatusCard');
+            const dynamicContent = document.getElementById('statDynamicStatusContent');
+            
+            if (isCondensedOrRegular) {
+                // Hide default status cards
+                if (progressCard) progressCard.style.display = 'none';
+                if (partsCard) partsCard.style.display = 'none';
+                
+                // Show dynamic status card if filters are active
+                if (currentStatusFilters.length > 0 && filteredData) {
+                    // Calculate counts for each selected status
+                    const statusCounts = currentStatusFilters.map(status => {
+                        const count = filteredData.filter(ro => ro.status === status).length;
+                        return { status, count };
+                    });
+                    
+                    // Build combined status display
+                    const statusHTML = statusCounts.map(({ status, count }) => {
+                        return `<div style="margin-bottom: 6px;"><span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">${status}</span><div style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">${count}</div></div>`;
+                    }).join('');
+                    
+                    dynamicContent.innerHTML = statusHTML;
+                    dynamicCard.style.display = 'block';
+                } else {
+                    dynamicCard.style.display = 'none';
+                }
+            } else {
+                // Expanded view - show all default cards
+                if (progressCard) progressCard.style.display = 'block';
+                if (partsCard) partsCard.style.display = 'block';
+                if (dynamicCard) dynamicCard.style.display = 'none';
+            }
         }
 
         // Google Sheets Integration
