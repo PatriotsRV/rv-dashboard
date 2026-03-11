@@ -3194,8 +3194,12 @@
                         ` : ''}
                         
                         ${shouldShow('repairDescription') ? `
-                        <div class="repair-desc editable-field" onclick="editField(${index}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')">
-                            ${ro.repairDescription || '<span class="placeholder-text">Click Here To Update</span>'}
+                        <div class="note-item editable-field" onclick="editField(${index}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')"> 
+                            <div class="note-header">
+                                <span class="note-icon">🔩</span>
+                                <span class="note-title">Repair Description</span>
+                            </div>
+                            <div class="note-content repair-desc">${ro.repairDescription || '<span class="placeholder-text">Click Here To Update</span>'}</div>
                         </div>
                         ` : ''}
                         
