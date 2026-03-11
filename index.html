@@ -4585,7 +4585,7 @@
                 <div id="timeLogsModalOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="closeTimeLogsModal(event)">
                     <div style="background: white; border-radius: 16px; padding: 40px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
                         <h2 style="margin-bottom: 20px; color: #1e293b; font-family: 'Barlow Condensed', sans-serif;">⏱️ Time Logs - ${ro.customerName}</h2>
-                        <div style="display: flex; gap: 20px; margin-bottom: 24px; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+                        <div style="display: flex; gap: 20px; margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
                             <div style="flex: 1; text-align: center;">
                                 <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.9; margin-bottom: 4px;">Total Time</div>
                                 <div style="font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">${formatHours(timeStats.totalSeconds)}</div>
@@ -4599,16 +4599,16 @@
                                 <div style="font-size: 1.5rem; font-weight: 700; font-family: 'JetBrains Mono', monospace;">${timeStats.hours}h</div>
                             </div>
                         </div>
-                        <div style="margin-bottom: 24px;">
-                            ${logsHtml}
-                        </div>
-                        <div style="display: flex; gap: 12px;">
+                        <div style="display: flex; gap: 12px; margin-bottom: 24px;">
                             <button onclick="refreshAndReopenTimeLogsModal(${index})" style="flex: 1; padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">
                                 🔄 Refresh
                             </button>
                             <button onclick="closeTimeLogsModal()" style="flex: 1; padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">
                                 Close
                             </button>
+                        </div>
+                        <div style="margin-bottom: 24px;">
+                            ${logsHtml}
                         </div>
                     </div>
                 </div>
