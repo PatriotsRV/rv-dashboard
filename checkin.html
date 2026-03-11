@@ -1042,21 +1042,26 @@
                     const rows = data.values || [];
                     
                     // Find the RO by matching the RO ID pattern
+                    // RO IDs have spaces replaced with hyphens, so normalize for comparison
                     for (let i = 1; i < rows.length; i++) {
                         const row = rows[i];
                         const customerName = row[0]; // Column A: Customer Name
                         const dateReceived = row[9]; // Column J: Date Received
-                        const constructedRoId = `RO-${customerName}-${dateReceived}`;
+                        // Normalize: replace spaces with hyphens to match URL-encoded RO ID
+                        const normalizedName = (customerName || '').replace(/\s+/g, '-');
+                        const constructedRoId = `RO-${normalizedName}-${dateReceived}`;
+                        
+                        console.log(`Row ${i}: constructed="${constructedRoId}" vs url="${roId}"`);
                         
                         if (constructedRoId === roId) {
                             // Found matching RO!
-                            console.log('✅ Found RO in Sheets:', customerName);
+                            console.log('✅ Found RO in Sheets:', customerName, '| repairType:', row[6]);
                             roData = {
                                 id: roId,
                                 customer: customerName,
                                 rv: row[4] || 'Unknown RV',
                                 status: row[12] || 'In Progress',
-                                repairType: row[6] || 'Various'
+                                repairType: row[6] || ''
                             };
                             renderInterface();
                             return;
