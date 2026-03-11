@@ -991,7 +991,7 @@
                 id: roId,
                 customer: extractedCustomer,
                 status: 'In Progress',
-                repairType: 'Various'
+                repairType: ''  // Will be filled in by loadRODetails after auth
             };
             
             console.log('RO Data set to:', roData);
@@ -1111,6 +1111,10 @@
                         <span class="info-label">Status:</span>
                         <span class="info-value">${roData ? roData.status : 'N/A'}</span>
                     </div>
+                    <div class="info-row">
+                        <span class="info-label">Service Types:</span>
+                        <span class="info-value" style="color: #3b82f6;">${roData && roData.repairType ? roData.repairType : '(loading...)'}</span>
+                    </div>
                     ${currentUser ? `
                     <div class="info-row">
                         <span class="info-label">Tech:</span>
@@ -1135,9 +1139,11 @@
                     
                     <div class="notes-section" style="margin: 20px 0; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                         ${(() => {
-                            const types = (roData && roData.repairType && roData.repairType !== 'Various')
+                            const types = (roData && roData.repairType && roData.repairType !== 'Various' && roData.repairType !== '')
                                 ? roData.repairType.split(',').map(t => t.trim()).filter(Boolean)
                                 : [];
+                            // Debug: log what we have
+                            console.log('Service types for checkboxes:', types, '| repairType raw:', roData && roData.repairType);
                             if (types.length === 0) return '';
                             return `
                             <div style="margin-bottom: 16px;">
