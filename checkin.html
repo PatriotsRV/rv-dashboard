@@ -1132,39 +1132,42 @@
                 </div>
             `;
 
-            if (isCheckedIn) {
-                html += `
-                    <div class="timer">
-                        <h3>Time on Job</h3>
-                        <div class="timer-display" id="timerDisplay">00:00:00</div>
-                    </div>
-                    
-                    <div class="notes-section" style="margin: 20px 0; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                        ${(() => {
-                            const types = (roData && roData.repairType && roData.repairType !== 'Various' && roData.repairType !== '')
-                                ? roData.repairType.split(',').map(t => t.trim()).filter(Boolean)
-                                : [];
+            // Service type checkboxes - always shown when user is signed in and RO has types
+            const serviceTypes = (roData && roData.repairType && roData.repairType !== 'Various' && roData.repairType !== '')
+                ? roData.repairType.split(',').map(t => t.trim()).filter(Boolean)
+                : [];
 
-                            if (types.length === 0) return '';
-                            return `
-                            <div class="service-type-section" style="margin-bottom: 16px;">
-                                <div style="font-weight: 700; color: #1e293b; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">🔧 Service Type <span style="color: #ef4444;">*</span></div>
-                                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                                    ${types.map(t => `
-                                        <label style="display: flex; align-items: center; gap: 8px; background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.15s ease;">
-                                            <input type="checkbox" name="serviceType" value="${t}" style="width: 18px; height: 18px; cursor: pointer; accent-color: #3b82f6;">
-                                            ${t}
-                                        </label>
-                                    `).join('')}
-                                </div>
-                            </div>`;
-                        })()}
+            if (currentUser && serviceTypes.length > 0) {
+                html += `
+                    <div class="notes-section" style="margin: 20px 0; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div class="service-type-section" style="margin-bottom: 16px;">
+                            <div style="font-weight: 700; color: #1e293b; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">🔧 Service Type <span style="color: #ef4444;">*</span></div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                                ${serviceTypes.map(t => `
+                                    <label style="display: flex; align-items: center; gap: 8px; background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.15s ease;">
+                                        <input type="checkbox" name="serviceType" value="${t}" style="width: 18px; height: 18px; cursor: pointer; accent-color: #3b82f6;">
+                                        ${t}
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ${isCheckedIn ? `
                         <div style="font-weight: 600; color: #1e293b; margin-bottom: 8px;">📝 Work Notes</div>
                         <button onclick="startVoiceDictation()" style="width: 100%; margin-bottom: 10px; padding: 10px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
                             🎤 Dictate Notes
                         </button>
                         <textarea id="workNotes" placeholder="Add notes about work performed..." style="width: 100%; min-height: 100px; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical;"></textarea>
                         <div id="voiceStatus" style="margin-top: 8px; font-size: 12px; color: #64748b;"></div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            if (isCheckedIn) {
+                html += `
+                    <div class="timer">
+                        <h3>Time on Job</h3>
+                        <div class="timer-display" id="timerDisplay">00:00:00</div>
                     </div>
                 `;
             }
