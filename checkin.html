@@ -224,7 +224,7 @@
         const GOOGLE_CONFIG = {
             CLIENT_ID: '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com',
             SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y',
-            TIME_LOGS_RANGE: 'Time Logs!A:H',
+            TIME_LOGS_RANGE: 'Time Logs!A:J',
             ADMIN_COMMANDS_RANGE: 'Admin Commands!A:E'
         };
         
@@ -801,8 +801,8 @@
                 return;
             }
             
-            const range = `Time Logs!F${rowIndex}:G${rowIndex}`;
-            const values = [[item.checkOut, item.duration]];
+            const range = `Time Logs!F${rowIndex}:J${rowIndex}`;
+            const values = [[item.checkOut, item.duration, '', item.serviceType || '', item.workNotes || '']];
             
             const response = await fetch(
                 `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,
@@ -1031,7 +1031,7 @@
                 // Fetch RO details from Google Sheets to get accurate customer name
                 console.log('Fetching RO details from Sheets...');
                 const response = await fetch(
-                    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/Sheet1!A:J`,
+                    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/Sheet1!A:S`,
                     {
                         headers: { 'Authorization': `Bearer ${accessToken}` }
                     }
@@ -1134,12 +1134,28 @@
                     </div>
                     
                     <div class="notes-section" style="margin: 20px 0; padding: 20px; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                        <label style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-weight: 600; color: #1e293b;">
-                            📝 Work Notes
-                            <button onclick="startVoiceDictation()" style="margin-left: auto; padding: 8px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px;">
-                                🎤 Dictate
-                            </button>
-                        </label>
+                        ${(() => {
+                            const types = (roData && roData.repairType && roData.repairType !== 'Various')
+                                ? roData.repairType.split(',').map(t => t.trim()).filter(Boolean)
+                                : [];
+                            if (types.length === 0) return '';
+                            return `
+                            <div style="margin-bottom: 16px;">
+                                <div style="font-weight: 700; color: #1e293b; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">🔧 Service Type</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                                    ${types.map(t => `
+                                        <label style="display: flex; align-items: center; gap: 8px; background: #f1f5f9; border: 2px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.15s ease;">
+                                            <input type="checkbox" name="serviceType" value="${t}" style="width: 18px; height: 18px; cursor: pointer; accent-color: #3b82f6;">
+                                            ${t}
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>`;
+                        })()}
+                        <div style="font-weight: 600; color: #1e293b; margin-bottom: 8px;">📝 Work Notes</div>
+                        <button onclick="startVoiceDictation()" style="width: 100%; margin-bottom: 10px; padding: 10px 16px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            🎤 Dictate Notes
+                        </button>
                         <textarea id="workNotes" placeholder="Add notes about work performed..." style="width: 100%; min-height: 100px; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical;"></textarea>
                         <div id="voiceStatus" style="margin-top: 8px; font-size: 12px; color: #64748b;"></div>
                     </div>
@@ -1299,8 +1315,16 @@
             const now = new Date().toISOString();
             const duration = calculateDuration(currentSession.checkIn, now);
             
+            // Capture work notes and selected service types
+            const workNotesEl = document.getElementById('workNotes');
+            const workNotes = workNotesEl ? workNotesEl.value.trim() : '';
+            const checkedServices = Array.from(document.querySelectorAll('input[name="serviceType"]:checked')).map(cb => cb.value);
+            const serviceTypeStr = checkedServices.join(', ');
+            
             currentSession.checkOut = now;
             currentSession.duration = duration;
+            currentSession.workNotes = workNotes;
+            currentSession.serviceType = serviceTypeStr;
             
             // Stop timer and remove visibility listener
             if (timerInterval) {
@@ -1318,7 +1342,9 @@
                 logId: currentSession.logId,
                 rowIndex: currentSession.rowIndex,
                 checkOut: now,
-                duration: duration
+                duration: duration,
+                workNotes: workNotes,
+                serviceType: serviceTypeStr
             };
             
             if (!isOnline || !accessToken || !currentSession.rowIndex) {
@@ -1334,8 +1360,8 @@
             console.log('Updating check-out in Google Sheets...');
             
             try {
-                const range = `Time Logs!F${currentSession.rowIndex}:G${currentSession.rowIndex}`;
-                const values = [[now, duration]];
+                const range = `Time Logs!F${currentSession.rowIndex}:J${currentSession.rowIndex}`;
+                const values = [[now, duration, '', serviceTypeStr, workNotes]];
                 
                 const response = await fetch(
                     `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`,

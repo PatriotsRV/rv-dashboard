@@ -3649,7 +3649,7 @@
             API_KEY: 'AIzaSyB6kg5hZiXJxUoGtKSXIxKj7JfOGNN6jbc',
             SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y',
             DRIVE_FOLDER_ID: '1SdOc3FDMN20btqR4iR6rhWXiSG6gXFgv',
-            TIME_LOGS_RANGE: 'Time Logs!A:H',
+            TIME_LOGS_RANGE: 'Time Logs!A:J',
             DISCOVERY_DOCS: [
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -4156,7 +4156,9 @@
                         checkIn: row[4],        // E: Check In
                         checkOut: row[5],       // F: Check Out
                         duration: row[6] ? parseInt(row[6]) : 0,  // G: Duration (sec)
-                        date: row[7]            // H: Date
+                        date: row[7],           // H: Date
+                        workNotes: row[8] || '', // I: Work Notes
+                        serviceTypes: row[9] || '' // J: Service Types
                     });
                 }
 
@@ -4564,6 +4566,16 @@
                                 ⏹️ Check Out: ${checkOutDate.toLocaleString()}
                             </div>
                             ` : '<div style="font-size: 0.85rem; color: #f59e0b; font-weight: 600;">⚠️ Active Session</div>'}
+                            ${log.serviceTypes ? `
+                            <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                                ${log.serviceTypes.split(',').map(s => `<span style="padding: 3px 8px; background: #dbeafe; color: #1d4ed8; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">${s.trim()}</span>`).join('')}
+                            </div>
+                            ` : ''}
+                            ${log.workNotes ? `
+                            <div style="margin-top: 6px; padding: 8px 10px; background: #f8fafc; border-left: 3px solid #667eea; border-radius: 4px; font-size: 0.85rem; color: #334155; font-style: italic;">
+                                💬 ${log.workNotes}
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
                 `;
