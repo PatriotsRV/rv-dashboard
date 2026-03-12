@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
+            color-scheme: dark;
             --bg-main: #0d0f12;
             --bg-surface: #1a1d24;
             --bg-elevated: #252930;
@@ -1562,6 +1563,10 @@
             filter: invert(1) brightness(2);
             cursor: pointer;
             opacity: 0.8;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(2);
+            cursor: pointer;
         }
 
         .form-input:focus, .form-select:focus, .form-textarea:focus {
