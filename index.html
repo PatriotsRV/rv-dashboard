@@ -4520,15 +4520,15 @@
             });
             const rows = response.result.values || [];
 
+            // First pass: try to match by RO ID (most reliable)
+            if (targetRoId) {
+                for (let i = 1; i < rows.length; i++) {
+                    if (rows[i][20] === targetRoId) return i + 1;
+                }
+            }
+            // Second pass: fallback to customerName + dateReceived
             for (let i = 1; i < rows.length; i++) {
-                // Prefer matching by roId (column U, index 20) if available
-                if (targetRoId && rows[i][20] === targetRoId) {
-                    return i + 1;
-                }
-                // Fallback: match by customerName + dateReceived
-                if (!targetRoId && rows[i][0] === targetName && rows[i][9] === targetDate) {
-                    return i + 1;
-                }
+                if (rows[i][0] === targetName && rows[i][9] === targetDate) return i + 1;
             }
             console.error('getSheetRowNumber: could not find row for', targetName, targetDate, targetRoId);
             return null;
@@ -4536,32 +4536,12 @@
 
         async function updateROInSheets(roIndex, formData) {
             try {
-                // Look up the actual sheet row by fetching current sheet data and matching
-                // customerName + dateReceived — never assume roIndex+2 matches sheet row
-                const lookupResponse = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A:J',
-                });
-
-                const rows = lookupResponse.result.values || [];
-                const targetName = currentData[roIndex].customerName;
-                const targetDate = currentData[roIndex].dateReceived;
-
-                let rowNumber = -1;
-                for (let i = 1; i < rows.length; i++) {
-                    if (rows[i][0] === targetName && rows[i][9] === targetDate) {
-                        rowNumber = i + 1; // +1 because sheets are 1-indexed
-                        break;
-                    }
-                }
-
-                if (rowNumber === -1) {
-                    console.error('Could not find row in sheet for:', targetName, targetDate);
+                const rowNumber = await getSheetRowNumber(roIndex);
+                if (!rowNumber) {
                     alert('Error: Could not locate this RO in the spreadsheet. Please refresh and try again.');
                     return false;
                 }
-
-                console.log(`Matched "${targetName}" (${targetDate}) to sheet row ${rowNumber}`);
+                console.log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
                 
                 const values = [[
                     formData.customerName,
