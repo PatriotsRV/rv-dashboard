@@ -2593,49 +2593,53 @@
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*';
+            input.multiple = true;
             // No capture attribute — lets mobile show native picker (Camera OR Photo Library)
             
             input.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                if (!file.type.startsWith('image/')) { alert('Please select an image file'); return; }
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
 
                 const cards = document.querySelectorAll('.ro-card');
                 const card = cards[index];
                 const uploadBtn = card ? card.querySelector('.photo-upload-btn') : null;
                 const originalText = uploadBtn ? uploadBtn.textContent : '';
-                if (uploadBtn) { uploadBtn.textContent = '⏳ Uploading...'; uploadBtn.disabled = true; }
+                if (uploadBtn) { uploadBtn.textContent = `⏳ Uploading 0/${files.length}...`; uploadBtn.disabled = true; }
 
                 try {
-                    const photoUrl = await uploadToGoogleDrive(file);
-                    
                     const originalIndex = currentData.findIndex(item =>
                         item.customerName === ro.customerName && item.dateReceived === ro.dateReceived
                     );
-
                     if (originalIndex === -1) throw new Error('RO not found in data');
 
                     // Parse existing photo library
                     let library = [];
                     try { library = JSON.parse(currentData[originalIndex].photoLibrary || '[]'); } catch(e) { library = []; }
 
-                    // Add new photo to library
-                    library.push(photoUrl);
-                    const libraryJson = JSON.stringify(library);
-
+                    let uploaded = 0;
+                    let firstPhotoUrl = null;
                     const isFirstPhoto = !currentData[originalIndex].rvPhotoUrl;
 
-                    if (isFirstPhoto) {
-                        // First photo becomes main
-                        currentData[originalIndex].rvPhotoUrl = photoUrl;
+                    for (const file of files) {
+                        if (!file.type.startsWith('image/')) continue;
+                        const photoUrl = await uploadToGoogleDrive(file);
+                        library.push(photoUrl);
+                        uploaded++;
+                        if (isFirstPhoto && !firstPhotoUrl) firstPhotoUrl = photoUrl;
+                        if (uploadBtn) uploadBtn.textContent = `⏳ Uploading ${uploaded}/${files.length}...`;
+                    }
+
+                    const libraryJson = JSON.stringify(library);
+
+                    if (isFirstPhoto && firstPhotoUrl) {
+                        currentData[originalIndex].rvPhotoUrl = firstPhotoUrl;
                         currentData[originalIndex].photoLibrary = libraryJson;
-                        await updatePhotoInSheet(photoUrl, originalIndex, libraryJson);
-                        alert('✅ Photo uploaded and set as main RV image!');
+                        await updatePhotoInSheet(firstPhotoUrl, originalIndex, libraryJson);
+                        alert(`✅ ${uploaded} photo(s) uploaded! First photo set as main RV image.`);
                     } else {
-                        // Additional photo goes to library only
                         currentData[originalIndex].photoLibrary = libraryJson;
                         await updatePhotoLibraryInSheet(libraryJson, originalIndex);
-                        alert('✅ Photo added to library! Use Manage Photos to set as main.');
+                        alert(`✅ ${uploaded} photo(s) added to library! Use Manage Photos to set as main.`);
                     }
 
                     renderBoard();
