@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.11
-    Released: 2026-03-11
-    New in v1.11: Photo library with Manage Photos, Service type checkboxes in Tech Check-In, Days on Lot logic with Date Arrived field, Dynamic per-status stat cards on repair filter, Repair Description title added to RO tile, Label visibility improvements (white text), Mobile header button stacking, Refresh/Close buttons moved to top of Time Log modal, Dictate button repositioned above notes textarea
+    PRVS Dashboard v1.12
+    Released: 2026-03-12
+    New in v1.12: Hash-based RO ID (PRVS-XXXX-XXXX) generated from CustomerName+RV+DateReceived, stored in Sheet1 Column U, backfilled for existing ROs on load, displayed on each card. getSheetRowNumber now matches by RO ID for reliable sheet writes.
 -->
 <html lang="en">
 <head>
@@ -1732,7 +1732,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.11</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.12</span>
             </div>
         </header>
 
@@ -2809,7 +2809,7 @@
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.11 - Released 2026-03-11');
+            console.log('📦 PRVS Dashboard v1.12 - Released 2026-03-12');
             loadSampleData();
             loadViewPreferences(); // Load tile view settings
             setupEventListeners();
@@ -3121,6 +3121,7 @@
                         
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
+                        ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
                         ` : ''}
                         
                         ${shouldShow('qrCode') || shouldShow('printLabel') ? `
@@ -4133,7 +4134,7 @@
                 console.log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A1:T1000',  // Explicitly specify all columns A through T
+                    range: 'Sheet1!A1:U1000',  // Now includes column U (RO ID)
                 });
 
                 console.log('Response received:', response);
@@ -4179,6 +4180,11 @@
                     // Convert numeric fields
                     if (obj.dollarValue) obj.dollarValue = parseFloat(obj.dollarValue);
                     if (obj.percentComplete) obj.percentComplete = parseInt(obj.percentComplete);
+
+                    // Assign roId — use stored value from column U, or generate if missing
+                    if (!obj.roId && obj.customerName && obj.dateReceived) {
+                        obj.roId = generateROId(obj.customerName, obj.rv || '', obj.dateReceived);
+                    }
                     
                     // Log the entire object to see what we got
                     console.log('Row', i, 'Customer:', obj.customerName, 'Photo URL:', obj.rvPhotoUrl);
@@ -4194,6 +4200,9 @@
                 currentData = data;
                 console.log('Loaded', data.length, 'records from sheet');
                 renderBoard();
+
+                // Backfill any ROs that don't yet have a roId in column U
+                backfillROIds().catch(e => console.warn('backfillROIds error:', e));
             } catch (err) {
                 console.error('Error loading from Sheets:', err);
                 alert('Error loading data from Google Sheets. Check console for details.');
@@ -4441,20 +4450,80 @@
 
         // Helper: find the actual 1-indexed sheet row for a given currentData index
         // Matches on customerName + dateReceived to avoid row-offset bugs
-        async function getSheetRowNumber(dataIndex) {
-            const targetName = currentData[dataIndex].customerName;
-            const targetDate = currentData[dataIndex].dateReceived;
+        // Generate a deterministic PRVS-XXXX-XXXX ID from customerName + rv + dateReceived
+        function generateROId(customerName, rv, dateReceived) {
+            const raw = `${customerName}|${rv}|${dateReceived}`.toLowerCase().trim();
+            let hash = 0;
+            for (let i = 0; i < raw.length; i++) {
+                hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+                hash |= 0; // Convert to 32-bit int
+            }
+            const hex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+            return `PRVS-${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+        }
+
+        // Backfill roId for any RO that doesn't have one, writing to column U in the sheet
+        async function backfillROIds() {
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:J',
+                range: 'Sheet1!A:U',
             });
             const rows = response.result.values || [];
+            const updates = [];
+
             for (let i = 1; i < rows.length; i++) {
-                if (rows[i][0] === targetName && rows[i][9] === targetDate) {
-                    return i + 1; // 1-indexed sheet row
+                const row = rows[i];
+                const customerName = row[0] || '';
+                const rv = row[4] || '';
+                const dateReceived = row[9] || '';
+                const existingId = row[20] || ''; // Column U (index 20)
+
+                if (!existingId && customerName && dateReceived) {
+                    const roId = generateROId(customerName, rv, dateReceived);
+                    updates.push({ range: `Sheet1!U${i + 1}`, values: [[roId]] });
+                    // Also update in-memory
+                    const dataIdx = currentData.findIndex(d =>
+                        d.customerName === customerName && d.dateReceived === dateReceived
+                    );
+                    if (dataIdx !== -1) currentData[dataIdx].roId = roId;
                 }
             }
-            console.error('getSheetRowNumber: could not find row for', targetName, targetDate);
+
+            if (updates.length > 0) {
+                await gapi.client.sheets.spreadsheets.values.batchUpdate({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    resource: { valueInputOption: 'RAW', data: updates }
+                });
+                console.log(`✅ Backfilled ${updates.length} RO IDs`);
+            } else {
+                console.log('✅ All ROs already have IDs');
+            }
+        }
+
+        // Find the actual 1-indexed sheet row — uses roId in column U if available,
+        // falls back to customerName + dateReceived match
+        async function getSheetRowNumber(dataIndex) {
+            const targetRoId = currentData[dataIndex].roId || '';
+            const targetName = currentData[dataIndex].customerName;
+            const targetDate = currentData[dataIndex].dateReceived;
+
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                range: 'Sheet1!A:U',
+            });
+            const rows = response.result.values || [];
+
+            for (let i = 1; i < rows.length; i++) {
+                // Prefer matching by roId (column U, index 20) if available
+                if (targetRoId && rows[i][20] === targetRoId) {
+                    return i + 1;
+                }
+                // Fallback: match by customerName + dateReceived
+                if (!targetRoId && rows[i][0] === targetName && rows[i][9] === targetDate) {
+                    return i + 1;
+                }
+            }
+            console.error('getSheetRowNumber: could not find row for', targetName, targetDate, targetRoId);
             return null;
         }
 
@@ -4507,10 +4576,11 @@
                     formData.roStatusNotes || '',
                     formData.customerCommunicationNotes || '',
                     formData.dateArrived || currentData[roIndex].dateArrived || '',
-                    currentData[roIndex].photoLibrary || ''
+                    currentData[roIndex].photoLibrary || '',
+                    currentData[roIndex].roId || generateROId(currentData[roIndex].customerName, currentData[roIndex].rv || '', currentData[roIndex].dateReceived) // Keep/restore RO ID
                 ]];
 
-                const range = `Sheet1!A${rowNumber}:T${rowNumber}`;
+                const range = `Sheet1!A${rowNumber}:U${rowNumber}`;
                 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -4543,7 +4613,8 @@
                     roStatusNotes: formData.roStatusNotes || '',
                     customerCommunicationNotes: formData.customerCommunicationNotes || '',
                     dateArrived: formData.dateArrived || currentData[roIndex].dateArrived || '',
-                    photoLibrary: currentData[roIndex].photoLibrary || ''
+                    photoLibrary: currentData[roIndex].photoLibrary || '',
+                    roId: currentData[roIndex].roId || generateROId(currentData[roIndex].customerName, currentData[roIndex].rv || '', currentData[roIndex].dateReceived)
                 };
                 
                 console.log('✓ RO updated by', userName);
@@ -4561,6 +4632,7 @@
             try {
                 // Use today's date as the received date for new entries
                 const today = new Date().toISOString().split('T')[0];
+                const newRoId = generateROId(formData.customerName, formData.rv || '', today);
                 
                 const values = [[
                     formData.customerName,
@@ -4582,12 +4654,13 @@
                     formData.roStatusNotes || '',
                     formData.customerCommunicationNotes || '',
                     formData.dateArrived || '',
-                    ''  // photoLibrary starts empty
+                    '',        // photoLibrary starts empty
+                    newRoId    // Column U — RO ID
                 ]];
 
                 const response = await gapi.client.sheets.spreadsheets.values.append({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A:T',
+                    range: 'Sheet1!A:U',
                     valueInputOption: 'RAW',
                     resource: { values }
                 });
