@@ -3921,16 +3921,17 @@
                         }
                     }
                     
-                    console.log('Calling updateAuthStatus(true)...');
                     updateAuthStatus(true);
-                    console.log('Calling loadDataFromSheets()...');
                     await loadDataFromSheets();
-                    console.log('loadDataFromSheets completed');
-                    console.log('Calling loadTimeLogsFromSheets()...');
                     await loadTimeLogsFromSheets();
-                    console.log('loadTimeLogsFromSheets completed');
                     console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
-                    
+
+                    initialLoadDone = true;
+                    const needsBackfill = currentData.some(d => !d.roId);
+                    if (needsBackfill) {
+                        backfillROIds().catch(e => console.warn('backfillROIds error:', e));
+                    }
+
                     // Start auto-refresh for time logs
                     startTimeLogsAutoRefresh();
                     
@@ -4054,7 +4055,40 @@
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
                 scope: GOOGLE_CONFIG.SCOPES,
-                callback: '',
+                callback: async (resp) => {
+                    console.log('Auth callback received:', resp);
+                    if (resp.error !== undefined) {
+                        console.error('Auth error:', resp.error);
+                        return;
+                    }
+                    accessToken = resp.access_token;
+
+                    // CRITICAL: always set token in gapi client — covers both fresh login and silent refresh
+                    gapi.client.setToken({access_token: accessToken});
+                    console.log('✅ Token set in gapi client');
+
+                    const expiresIn = resp.expires_in || 3600;
+                    saveToken(accessToken, expiresIn);
+                    setupTokenRefresh();
+
+                    // Only do full load if this is a fresh login (no data yet)
+                    // Silent refreshes just update the token — no reload needed
+                    if (!initialLoadDone) {
+                        await getUserInfo();
+                        updateAuthStatus(true);
+                        await loadDataFromSheets();
+                        await loadTimeLogsFromSheets();
+
+                        initialLoadDone = true;
+                        const needsBackfill = currentData.some(d => !d.roId);
+                        if (needsBackfill) {
+                            backfillROIds().catch(e => console.warn('backfillROIds error:', e));
+                        }
+                        startTimeLogsAutoRefresh();
+                    } else {
+                        console.log('✅ Token silently refreshed — session continues');
+                    }
+                },
             });
             gisInited = true;
             console.log('gis initialized successfully');
@@ -4062,50 +4096,6 @@
 
         function handleAuthClick() {
             console.log('=== handleAuthClick called ===');
-            tokenClient.callback = async (resp) => {
-                console.log('Auth callback received:', resp);
-                if (resp.error !== undefined) {
-                    console.error('Auth error:', resp.error);
-                    throw (resp);
-                }
-                accessToken = resp.access_token;
-                console.log('Access token received');
-                
-                // CRITICAL: Set token in gapi client so API calls work
-                gapi.client.setToken({access_token: accessToken});
-                console.log('✅ Token set in gapi client');
-                
-                // Save token with expiration (default 3600 seconds = 1 hour)
-                const expiresIn = resp.expires_in || 3600;
-                saveToken(accessToken, expiresIn);
-                console.log('Token saved, expires in', expiresIn, 'seconds');
-                
-                // Setup auto-refresh before expiry
-                setupTokenRefresh();
-                
-                // Get user info
-                await getUserInfo();
-                
-                updateAuthStatus(true);
-                console.log('Calling loadDataFromSheets...');
-                await loadDataFromSheets();
-                console.log('loadDataFromSheets completed');
-                console.log('Calling loadTimeLogsFromSheets...');
-                await loadTimeLogsFromSheets();
-                console.log('loadTimeLogsFromSheets completed');
-
-                // Backfill RO IDs once after initial auth — only if needed, never during saves
-                if (!initialLoadDone) {
-                    initialLoadDone = true;
-                    const needsBackfill = currentData.some(d => !d.roId);
-                    if (needsBackfill) {
-                        backfillROIds().catch(e => console.warn('backfillROIds error:', e));
-                    }
-                }
-                
-                // Start auto-refresh for time logs
-                startTimeLogsAutoRefresh();
-            };
 
             if (accessToken === null) {
                 console.log('Requesting new token...');
