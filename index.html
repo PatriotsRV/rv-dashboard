@@ -3737,6 +3737,7 @@
             SPREADSHEET_ID: '1Nkf_BoqDhanJRCyeqIerF-Te_Z_R0h3mZelcgTjS62Y',
             DRIVE_FOLDER_ID: '1SdOc3FDMN20btqR4iR6rhWXiSG6gXFgv',
             TIME_LOGS_RANGE: 'Time Logs!A:J',
+            AUDIT_LOG_RANGE: 'Audit Log!A:G',
             DISCOVERY_DOCS: [
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -4562,28 +4563,29 @@
                 }
                 console.log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
                 
+                const existing = currentData[roIndex];
                 const values = [[
-                    formData.customerName,
-                    formData.customerPhone || '',
-                    formData.customerEmail || '',
-                    formData.customerAddress || '',
-                    formData.rv,
-                    currentData[roIndex].rvPhotoUrl || '', // Keep existing photo URL
-                    formData.repairType,
-                    formData.repairDescription,
-                    formData.technicianAssigned || '',
-                    currentData[roIndex].dateReceived, // Keep original date received
-                    formData.percentComplete || 0,
-                    formData.dollarValue || 0,
-                    formData.status,
-                    formData.urgency,
-                    formData.customerType,
-                    formData.promisedDate || '',
-                    formData.roStatusNotes || '',
-                    formData.customerCommunicationNotes || '',
-                    formData.dateArrived || currentData[roIndex].dateArrived || '',
-                    currentData[roIndex].photoLibrary || '',
-                    currentData[roIndex].roId || generateROId(currentData[roIndex].customerName, currentData[roIndex].rv || '', currentData[roIndex].dateReceived) // Keep/restore RO ID
+                    formData.customerName,                    // A - editable
+                    formData.customerPhone || '',             // B - editable
+                    formData.customerEmail || '',             // C - editable
+                    formData.customerAddress || '',           // D - editable
+                    formData.rv,                              // E - editable
+                    existing.rvPhotoUrl || '',                // F - preserved
+                    formData.repairType,                      // G - editable
+                    existing.repairDescription || '',         // H - preserved
+                    formData.technicianAssigned || '',        // I - editable
+                    existing.dateReceived,                    // J - preserved
+                    existing.percentComplete || 0,            // K - preserved
+                    formData.dollarValue || 0,                // L - editable
+                    existing.status || '',                    // M - preserved
+                    existing.urgency || '',                   // N - preserved
+                    existing.customerType || '',              // O - preserved
+                    formData.promisedDate || existing.promisedDate || '', // P - editable via Edit RO
+                    existing.roStatusNotes || '',             // Q - preserved
+                    existing.customerCommunicationNotes || '',// R - preserved
+                    formData.dateArrived || existing.dateArrived || '', // S - editable via Edit RO
+                    existing.photoLibrary || '',              // T - preserved
+                    existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived) // U - preserved
                 ]];
 
                 const range = `Sheet1!A${rowNumber}:U${rowNumber}`;
@@ -4597,30 +4599,20 @@
 
                 console.log('RO updated in sheet:', response);
                 
-                // Update local data
+                // Update local data — only overwrite editable fields, preserve the rest
                 const userName = currentUser ? currentUser.name : 'Unknown User';
                 currentData[roIndex] = {
-                    customerName: formData.customerName,
-                    customerPhone: formData.customerPhone || '',
-                    customerEmail: formData.customerEmail || '',
-                    customerAddress: formData.customerAddress || '',
-                    rv: formData.rv,
-                    rvPhotoUrl: currentData[roIndex].rvPhotoUrl || '',
-                    repairType: formData.repairType,
-                    repairDescription: formData.repairDescription,
-                    technicianAssigned: formData.technicianAssigned || '',
-                    dateReceived: currentData[roIndex].dateReceived, // Keep original
-                    percentComplete: parseInt(formData.percentComplete) || 0,
-                    dollarValue: parseFloat(formData.dollarValue) || 0,
-                    status: formData.status,
-                    urgency: formData.urgency,
-                    customerType: formData.customerType,
-                    promisedDate: formData.promisedDate || '',
-                    roStatusNotes: formData.roStatusNotes || '',
-                    customerCommunicationNotes: formData.customerCommunicationNotes || '',
-                    dateArrived: formData.dateArrived || currentData[roIndex].dateArrived || '',
-                    photoLibrary: currentData[roIndex].photoLibrary || '',
-                    roId: currentData[roIndex].roId || generateROId(currentData[roIndex].customerName, currentData[roIndex].rv || '', currentData[roIndex].dateReceived)
+                    ...existing,                                        // preserve all fields
+                    customerName: formData.customerName,                // editable
+                    customerPhone: formData.customerPhone || '',        // editable
+                    customerEmail: formData.customerEmail || '',        // editable
+                    customerAddress: formData.customerAddress || '',    // editable
+                    rv: formData.rv,                                    // editable
+                    repairType: formData.repairType,                    // editable
+                    technicianAssigned: formData.technicianAssigned || '', // editable
+                    dollarValue: parseFloat(formData.dollarValue) || 0, // editable
+                    promisedDate: formData.promisedDate || existing.promisedDate || '', // editable
+                    dateArrived: formData.dateArrived || existing.dateArrived || '',   // editable
                 };
                 
                 console.log('✓ RO updated by', userName);
@@ -4631,6 +4623,34 @@
                 console.error('Error updating RO in Sheets:', err);
                 alert('Error updating RO. Check console for details.');
                 return false;
+            }
+        }
+
+        // Write one row per changed field to the Audit Log sheet
+        // Columns: Timestamp | UserEmail | UserName | RO_ID | FieldChanged | OldValue | NewValue
+        async function writeAuditLog(roId, changes) {
+            if (!changes || changes.length === 0) return;
+            try {
+                const now = new Date().toISOString();
+                const userEmail = currentUser ? currentUser.email : 'Unknown';
+                const userName = currentUser ? currentUser.name : 'Unknown';
+
+                const rows = changes.map(({ field, oldValue, newValue }) => [
+                    now, userEmail, userName, roId, field,
+                    oldValue !== undefined && oldValue !== null ? String(oldValue) : '',
+                    newValue !== undefined && newValue !== null ? String(newValue) : ''
+                ]);
+
+                await gapi.client.sheets.spreadsheets.values.append({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: GOOGLE_CONFIG.AUDIT_LOG_RANGE,
+                    valueInputOption: 'RAW',
+                    resource: { values: rows }
+                });
+                console.log(`✅ Audit log written: ${changes.length} change(s) for ${roId}`);
+            } catch (err) {
+                // Non-fatal — don't block the save if audit log fails
+                console.warn('Audit log write failed (non-fatal):', err);
             }
         }
 
@@ -5088,81 +5108,43 @@
         
         function openEditRO(index) {
             try {
-                console.log('=== openEditRO called with index:', index);
-                
                 const ro = currentFilteredData[index];
-                if (!ro) {
-                    console.error('Could not find RO at index:', index);
-                    alert('Error: Could not find the repair order.');
-                    return;
-                }
+                if (!ro) { alert('Error: Could not find the repair order.'); return; }
 
-                console.log('Found RO:', ro.customerName);
-
-                // Store which RO we're editing
-                editingROIndex = currentData.findIndex(item => 
-                    item.customerName === ro.customerName && 
+                editingROIndex = currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
                     item.dateReceived === ro.dateReceived
                 );
 
-                console.log('Editing RO at original index:', editingROIndex);
+                document.getElementById('editRoId').textContent = ro.roId || '';
+                document.getElementById('editCustomerName').value = ro.customerName || '';
+                document.getElementById('editCustomerPhone').value = ro.customerPhone || '';
+                document.getElementById('editCustomerEmail').value = ro.customerEmail || '';
+                document.getElementById('editCustomerAddress').value = ro.customerAddress || '';
+                document.getElementById('editRv').value = ro.rv || '';
+                document.getElementById('editTechnicianAssigned').value = ro.technicianAssigned || '';
+                document.getElementById('editDollarValue').value = ro.dollarValue || '';
+                document.getElementById('editPromisedDate').value = ro.promisedDate || '';
+                document.getElementById('editDateArrived').value = ro.dateArrived || '';
 
-                // Get form elements
-                const form = document.getElementById('newROForm');
-                const modalTitle = document.querySelector('#modalOverlay h2');
-                const submitBtn = document.querySelector('#newROForm button[type=\"submit\"]');
-
-                if (!form || !modalTitle || !submitBtn) {
-                    console.error('Missing form elements:', { form, modalTitle, submitBtn });
-                    alert('Error: Form elements not found');
-                    return;
-                }
-
-                // Change modal title and button text
-                modalTitle.textContent = 'Edit Repair Order';
-                submitBtn.textContent = 'Update RO';
-
-                // Populate form fields (only those that exist in the form)
-                if (form.elements['customerName']) form.elements['customerName'].value = ro.customerName || '';
-                if (form.elements['customerPhone']) form.elements['customerPhone'].value = ro.customerPhone || '';
-                if (form.elements['customerEmail']) form.elements['customerEmail'].value = ro.customerEmail || '';
-                if (form.elements['customerAddress']) form.elements['customerAddress'].value = ro.customerAddress || '';
-                if (form.elements['rv']) form.elements['rv'].value = ro.rv || '';
-                if (form.elements['rvPhotoUrl']) form.elements['rvPhotoUrl'].value = ro.rvPhotoUrl || '';
-                if (form.elements['repairDescription']) form.elements['repairDescription'].value = ro.repairDescription || '';
-                if (form.elements['technicianAssigned']) form.elements['technicianAssigned'].value = ro.technicianAssigned || '';
-                if (form.elements['dollarValue']) form.elements['dollarValue'].value = ro.dollarValue || '';
-                if (form.elements['status']) form.elements['status'].value = ro.status || '';
-                if (form.elements['urgency']) form.elements['urgency'].value = ro.urgency || '';
-                if (form.elements['customerType']) form.elements['customerType'].value = ro.customerType || '';
-                if (form.elements['promisedDate']) form.elements['promisedDate'].value = ro.promisedDate || '';
-                if (form.elements['dateArrived']) form.elements['dateArrived'].value = ro.dateArrived || '';
-
-                // Handle repair type checkboxes
                 const repairTypes = (ro.repairType || '').split(',').map(t => t.trim());
-                const checkboxes = form.querySelectorAll('input[name="repairType"]');
-                checkboxes.forEach(cb => {
+                document.querySelectorAll('#editROForm input[name="editRepairType"]').forEach(cb => {
                     cb.checked = repairTypes.includes(cb.value);
                 });
 
-                console.log('Form populated, opening modal...');
-
-                // Open modal
-                const modalOverlay = document.getElementById('modalOverlay');
-                if (modalOverlay) {
-                    modalOverlay.classList.add('active');
-                    console.log('✓ Modal opened successfully');
-                } else {
-                    console.error('Modal overlay not found!');
-                    alert('Error: Could not open edit form');
-                }
+                document.getElementById('editROOverlay').classList.add('active');
             } catch (error) {
                 console.error('Error in openEditRO:', error);
                 alert('Error opening edit form: ' + error.message);
             }
         }
 
-        function setupModalListeners() {
+        function closeEditModal() {
+            document.getElementById('editROOverlay').classList.remove('active');
+            editingROIndex = null;
+        }
+
+                function setupModalListeners() {
             const newROBtn = document.getElementById('newROBtn');
             const modalOverlay = document.getElementById('modalOverlay');
             const modalClose = document.getElementById('modalClose');
@@ -5227,7 +5209,6 @@
                 const formData = new FormData(newROForm);
                 const data = Object.fromEntries(formData.entries());
                 
-                // Handle multiple repair types (checkboxes)
                 const repairTypes = formData.getAll('repairType');
                 if (repairTypes.length === 0) {
                     alert('Please select at least one Repair Type');
@@ -5235,25 +5216,81 @@
                 }
                 data.repairType = repairTypes.join(', ');
 
-                let success;
-                
-                if (editingROIndex !== null) {
-                    // Update existing RO
-                    success = await updateROInSheets(editingROIndex, data);
-                    if (success) {
-                        closeModal();
-                        alert('Repair Order updated successfully!');
-                        editingROIndex = null;
-                    }
-                } else {
-                    // Create new RO
-                    success = await appendToSheets(data);
-                    if (success) {
-                        closeModal();
-                        alert('Repair Order saved successfully!');
-                    }
+                const success = await appendToSheets(data);
+                if (success) {
+                    closeModal();
+                    alert('Repair Order saved successfully!');
                 }
             });
+
+            // Edit RO form submit
+            const editROForm = document.getElementById('editROForm');
+            if (editROForm) {
+                editROForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    if (editingROIndex === null) return;
+
+                    const repairTypes = [];
+                    editROForm.querySelectorAll('input[name="editRepairType"]:checked').forEach(cb => {
+                        repairTypes.push(cb.value);
+                    });
+                    if (repairTypes.length === 0) {
+                        alert('Please select at least one Repair Type');
+                        return;
+                    }
+
+                    const existing = currentData[editingROIndex];
+                    const data = {
+                        customerName: document.getElementById('editCustomerName').value,
+                        customerPhone: document.getElementById('editCustomerPhone').value,
+                        customerEmail: document.getElementById('editCustomerEmail').value,
+                        customerAddress: document.getElementById('editCustomerAddress').value,
+                        rv: document.getElementById('editRv').value,
+                        technicianAssigned: document.getElementById('editTechnicianAssigned').value,
+                        dollarValue: document.getElementById('editDollarValue').value,
+                        promisedDate: document.getElementById('editPromisedDate').value,
+                        dateArrived: document.getElementById('editDateArrived').value,
+                        repairType: repairTypes.join(', '),
+                    };
+
+                    // Diff old vs new — only log fields that actually changed
+                    const fieldLabels = {
+                        customerName: 'Customer Name',
+                        customerPhone: 'Phone',
+                        customerEmail: 'Email',
+                        customerAddress: 'Address',
+                        rv: 'RV',
+                        technicianAssigned: 'Technician',
+                        dollarValue: 'RO Value',
+                        promisedDate: 'Promised Date',
+                        dateArrived: 'Date Arrived',
+                        repairType: 'Repair Type',
+                    };
+                    const changes = [];
+                    for (const [key, label] of Object.entries(fieldLabels)) {
+                        const oldVal = String(existing[key] || '').trim();
+                        const newVal = String(data[key] || '').trim();
+                        if (oldVal !== newVal) {
+                            changes.push({ field: label, oldValue: oldVal, newValue: newVal });
+                        }
+                    }
+
+                    const success = await updateROInSheets(editingROIndex, data);
+                    if (success) {
+                        // Write audit log after successful save
+                        const roId = existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived);
+                        await writeAuditLog(roId, changes);
+                        closeEditModal();
+                        alert('Repair Order updated successfully!');
+                    }
+                });
+
+                document.getElementById('editCancelBtn').addEventListener('click', closeEditModal);
+                document.getElementById('editModalClose').addEventListener('click', closeEditModal);
+                document.getElementById('editROOverlay').addEventListener('click', (e) => {
+                    if (e.target === document.getElementById('editROOverlay')) closeEditModal();
+                });
+            }
         }
 
         // Load Google APIs
@@ -5415,6 +5452,77 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Save Repair Order</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit RO Modal -->
+    <div class="modal-overlay" id="editROOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Edit Repair Order</h2>
+                <button class="modal-close" id="editModalClose">&times;</button>
+            </div>
+
+            <form id="editROForm">
+                <div style="font-size: 0.75rem; color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; margin-bottom: 16px;" id="editRoId"></div>
+
+                <div class="form-grid">
+                    <div class="form-field">
+                        <label class="form-label">Customer Name *</label>
+                        <input type="text" class="form-input" id="editCustomerName" required>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Customer Phone</label>
+                        <input type="tel" class="form-input" id="editCustomerPhone">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Customer Email</label>
+                        <input type="email" class="form-input" id="editCustomerEmail">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">RV *</label>
+                        <input type="text" class="form-input" id="editRv" required>
+                    </div>
+                    <div class="form-field full-width">
+                        <label class="form-label">Customer Address</label>
+                        <input type="text" class="form-input" id="editCustomerAddress">
+                    </div>
+                    <div class="form-field full-width">
+                        <label class="form-label">Repair Type *</label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Roof"><span>Roof</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Solar"><span>Solar</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Vroom"><span>Vroom</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Paint and Body"><span>Paint and Body</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Repairs"><span>Repairs</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="TrueTopper"><span>TrueTopper</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Detailing"><span>Detailing</span></label>
+                            <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Chassis"><span>Chassis</span></label>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Technician Assigned</label>
+                        <input type="text" class="form-input" id="editTechnicianAssigned">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">RO Value ($)</label>
+                        <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Promised Date</label>
+                        <input type="date" class="form-input" id="editPromisedDate">
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Date RV Arrived on Lot</label>
+                        <input type="date" class="form-input" id="editDateArrived">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="editCancelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update RO</button>
                 </div>
             </form>
         </div>
