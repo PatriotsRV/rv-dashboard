@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.14
+    PRVS Dashboard v1.15
     Released: 2026-03-15
-    New in v1.14:
-    - Archive system: Archive button on Delivered/Cashed Out cards moves RO to Cashiered sheet tab
-    - Auto-archive via Google Apps Script (Saturday 5PM) handled server-side
-    - Analytics page (analytics.html) for admin financial reporting from Cashiered tab
+    New in v1.15:
+    - VIN field added to all ROs — Column V in Sheet1, shown on card, editable in New RO and Edit RO forms
 -->
 <html lang="en">
 <head>
@@ -1775,7 +1773,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.14</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.15</span>
             </div>
         </header>
 
@@ -1900,6 +1898,7 @@
                 promisedDate: "2026-03-10",
                 roStatusNotes: "HVAC unit ordered, expected delivery 3/8. Roof patch materials in stock.",
                 customerCommunicationNotes: "Called customer 3/1 - OK with timeline. Will call again when parts arrive."
+                vin: ""
             },
             {
                 customerName: "Sarah Thompson",
@@ -1920,6 +1919,7 @@
                 promisedDate: "2026-03-05",
                 roStatusNotes: "Main harness replaced. Testing all circuits before final inspection.",
                 customerCommunicationNotes: "VIP - text updates preferred. Sent progress photo 2/29."
+                vin: ""
             },
             {
                 customerName: "Robert Chen",
@@ -1940,6 +1940,7 @@
                 promisedDate: "2026-03-08",
                 roStatusNotes: "Engine rebuild 30% complete. Found additional wear on cam bearings - added to scope.",
                 customerCommunicationNotes: "Approved additional $800 for cam bearings via phone 2/28. Anxious about timeline."
+                vin: ""
             },
             {
                 customerName: "Lisa Anderson",
@@ -1960,6 +1961,7 @@
                 promisedDate: "2026-03-06",
                 roStatusNotes: "Slide-out mechanism fully repaired. Interior drying complete. Final QC in progress.",
                 customerCommunicationNotes: "Emailed photos of completed work 3/1. Customer very pleased with updates."
+                vin: ""
             },
             {
                 customerName: "Michael O'Brien",
@@ -1980,6 +1982,7 @@
                 promisedDate: "2026-03-04",
                 roStatusNotes: "All maintenance complete. Generator serviced. Found minor oil leak - needs customer approval to fix.",
                 customerCommunicationNotes: "Left VM 3/1 about oil leak ($250 repair). Awaiting callback."
+                vin: ""
             },
             {
                 customerName: "Patricia Williams",
@@ -2000,6 +2003,7 @@
                 promisedDate: "2026-03-12",
                 roStatusNotes: "Brake rotors on backorder - ETA 3/10. Suspension parts arrived, ready to install.",
                 customerCommunicationNotes: "Customer frustrated with delay. Offered discount on next service."
+                vin: ""
             },
             {
                 customerName: "James Taylor",
@@ -2020,6 +2024,7 @@
                 promisedDate: "2026-03-02",
                 roStatusNotes: "Installation complete. All systems tested and operational. Invoice ready.",
                 customerCommunicationNotes: "Texted customer 3/1 - picking up tomorrow morning at 9am."
+                vin: ""
             },
             {
                 customerName: "David Kim",
@@ -2040,6 +2045,7 @@
                 promisedDate: "2026-03-07",
                 roStatusNotes: "Exterior detailing complete. Interior carpets cleaned. Leather conditioning underway.",
                 customerCommunicationNotes: "VIP - sends daily text asking for updates. Last contact 3/1 10am."
+                vin: ""
             },
             {
                 customerName: "Amanda Rodriguez",
@@ -2060,6 +2066,7 @@
                 promisedDate: "2026-03-06",
                 roStatusNotes: "Topper installed and sealed. Checking all mounting points and weatherproofing.",
                 customerCommunicationNotes: "Sent installation photos via email 2/29. Customer very responsive."
+                vin: ""
             }
         ];
 
@@ -2888,12 +2895,12 @@
                 // Step 2: Read the full row from Sheet1
                 const readResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${rowNumber}:U${rowNumber}`,
+                    range: `Sheet1!A${rowNumber}:V${rowNumber}`,
                 });
                 const rowValues = readResponse.result.values ? readResponse.result.values[0] : [];
 
-                // Pad to 21 columns (A–U)
-                while (rowValues.length < 21) rowValues.push('');
+                // Pad to 22 columns (A–V)
+                while (rowValues.length < 22) rowValues.push('');
 
                 // Step 3: Append to Cashiered tab
                 await gapi.client.sheets.spreadsheets.values.append({
@@ -2940,7 +2947,7 @@
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.14 - Released 2026-03-12');
+            console.log('📦 PRVS Dashboard v1.15 - Released 2026-03-12');
             loadSampleData();
             loadViewPreferences(); // Load tile view settings
             setupEventListeners();
@@ -3087,6 +3094,7 @@
                 'RO Notes':             'roStatusNotes',
                 'Comm Notes':           'customerCommunicationNotes',
                 'RO ID':                'roId',
+                'VIN':                  'vin',
             };
             if (headerMap[str]) return headerMap[str];
             
@@ -3326,6 +3334,12 @@
                                 <span class="info-label">RV:</span>
                                 <span class="info-value">${ro.rv || 'Not specified'}</span>
                             </div>
+                            ${ro.vin ? `
+                            <div class="info-row">
+                                <span class="info-label">VIN:</span>
+                                <span class="info-value" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; letter-spacing:0.04em;">${ro.vin}</span>
+                            </div>
+                            ` : ''}
                             ` : ''}
                             ${shouldShow('technicianAssigned') ? `
                             <div class="info-row">
@@ -3866,7 +3880,7 @@
             DRIVE_FOLDER_ID: '1SdOc3FDMN20btqR4iR6rhWXiSG6gXFgv',
             TIME_LOGS_RANGE: 'Time Logs!A:J',
             AUDIT_LOG_RANGE: 'Audit Log!A:G',
-            CASHIERED_RANGE: 'Cashiered!A:U',
+            CASHIERED_RANGE: 'Cashiered!A:V',
             DISCOVERY_DOCS: [
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -4283,7 +4297,7 @@
                 console.log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A1:U1000',  // Now includes column U (RO ID)
+                    range: 'Sheet1!A1:V1000',  // Now includes column V (VIN)
                 });
 
                 console.log('Response received:', response);
@@ -4612,7 +4626,7 @@
         async function backfillROIds() {
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:U',
+                range: 'Sheet1!A:V',
             });
             const rows = response.result.values || [];
             const updates = [];
@@ -4655,7 +4669,7 @@
 
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:U',
+                range: 'Sheet1!A:V',
             });
             const rows = response.result.values || [];
 
@@ -4704,10 +4718,11 @@
                     existing.customerCommunicationNotes || '',// R - preserved
                     formData.dateArrived || existing.dateArrived || '', // S - editable via Edit RO
                     existing.photoLibrary || '',              // T - preserved
-                    existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived) // U - preserved
+                    existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived), // U - preserved
+                    formData.vin || existing.vin || ''  // V - editable
                 ]];
 
-                const range = `Sheet1!A${rowNumber}:U${rowNumber}`;
+                const range = `Sheet1!A${rowNumber}:V${rowNumber}`;
                 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -4732,6 +4747,7 @@
                     dollarValue: parseFloat(formData.dollarValue) || 0, // editable
                     promisedDate: formData.promisedDate || existing.promisedDate || '', // editable
                     dateArrived: formData.dateArrived || existing.dateArrived || '',   // editable
+                    vin: formData.vin || existing.vin || '',                               // editable
                 };
                 
                 console.log('✓ RO updated by', userName);
@@ -4800,7 +4816,8 @@
                     formData.customerCommunicationNotes || '',
                     formData.dateArrived || '',
                     '',        // photoLibrary starts empty
-                    newRoId    // Column U — RO ID
+                    newRoId,   // Column U — RO ID
+                    formData.vin || ''  // Column V — VIN
                 ]];
 
                 // Find the true last populated row by reading column A only,
@@ -4823,7 +4840,7 @@
 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${newRow}:U${newRow}`,
+                    range: `Sheet1!A${newRow}:V${newRow}`,
                     valueInputOption: 'RAW',
                     resource: { values }
                 });
@@ -5245,6 +5262,7 @@
                 document.getElementById('editDollarValue').value = ro.dollarValue || '';
                 document.getElementById('editPromisedDate').value = ro.promisedDate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
+                document.getElementById('editVin').value = ro.vin || '';
 
                 const repairTypes = (ro.repairType || '').split(',').map(t => t.trim());
                 document.querySelectorAll('#editROForm input[name="editRepairType"]').forEach(cb => {
@@ -5334,6 +5352,7 @@
                     return;
                 }
                 data.repairType = repairTypes.join(', ');
+                if (data.vin) data.vin = data.vin.toUpperCase();
 
                 const success = await appendToSheets(data);
                 if (success) {
@@ -5370,6 +5389,7 @@
                         promisedDate: document.getElementById('editPromisedDate').value,
                         dateArrived: document.getElementById('editDateArrived').value,
                         repairType: repairTypes.join(', '),
+                        vin: document.getElementById('editVin').value.toUpperCase(),
                     };
 
                     // Diff old vs new — only log fields that actually changed
@@ -5384,6 +5404,7 @@
                         promisedDate: 'Promised Date',
                         dateArrived: 'Date Arrived',
                         repairType: 'Repair Type',
+                        vin: 'VIN',
                     };
                     const changes = [];
                     for (const [key, label] of Object.entries(fieldLabels)) {
@@ -5458,6 +5479,10 @@
                     <div class="form-field">
                         <label class="form-label">RV *</label>
                         <input type="text" class="form-input" name="rv" placeholder="2019 Winnebago Vista" required>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">VIN</label>
+                        <input type="text" class="form-input" name="vin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                     </div>
                     <div class="form-field full-width">
                         <label class="form-label">Customer Address</label>
@@ -5603,6 +5628,10 @@
                     <div class="form-field">
                         <label class="form-label">RV *</label>
                         <input type="text" class="form-input" id="editRv" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">VIN</label>
+                        <input type="text" class="form-input" id="editVin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                     </div>
                     <div class="form-field full-width">
                         <label class="form-label">Customer Address</label>
