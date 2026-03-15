@@ -2855,20 +2855,31 @@
         }
 
         // Archive an RO to the Cashiered sheet tab and remove from Sheet1
-        async function archiveRO(dataIndex) {
+        async function archiveRO(filteredIndex) {
             if (!isAdmin()) {
                 alert('Admin access required to archive ROs.');
                 return;
             }
-            const ro = currentData[dataIndex];
+
+            // Resolve filtered index → currentData index (same pattern as all other functions)
+            const ro = currentFilteredData[filteredIndex];
             if (!ro) return;
+
+            const originalIndex = currentData.findIndex(item =>
+                item.customerName === ro.customerName &&
+                item.dateReceived === ro.dateReceived
+            );
+            if (originalIndex === -1) {
+                alert('Error: Could not match this RO in local data.');
+                return;
+            }
 
             const confirmed = confirm(`Archive "${ro.customerName}" (${ro.rv}) to the Cashiered tab?\n\nThis will remove it from the active dashboard.`);
             if (!confirmed) return;
 
             try {
-                // Step 1: Get the sheet row number
-                const rowNumber = await getSheetRowNumber(dataIndex);
+                // Step 1: Get the sheet row number using the correct originalIndex
+                const rowNumber = await getSheetRowNumber(originalIndex);
                 if (!rowNumber) {
                     alert('Error: Could not locate this RO in the spreadsheet.');
                     return;
@@ -2917,7 +2928,7 @@
                 });
 
                 // Step 5: Remove from local data and re-render
-                currentData.splice(dataIndex, 1);
+                currentData.splice(originalIndex, 1);
                 renderBoard();
                 console.log(`✅ Archived RO for ${ro.customerName} to Cashiered tab`);
 
