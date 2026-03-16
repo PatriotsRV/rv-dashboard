@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.18
+    PRVS Dashboard v1.19
     Released: 2026-03-15
-    New in v1.18:
+    New in v1.19:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
 -->
 <html lang="en">
@@ -1980,6 +1980,51 @@
             letter-spacing: 0.06em;
             margin-top: 2px;
         }
+
+        .customer-pay-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(52,199,89,0.15);
+            border: 1px solid rgba(52,199,89,0.4);
+            border-radius: 12px;
+            color: #34c759;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 2px;
+        }
+        .ro-type-btn.hybrid {
+            background: linear-gradient(135deg, rgba(52,199,89,0.15) 0%, rgba(16,185,129,0.15) 100%);
+            color: #34c759;
+        }
+        .ro-type-btn.hybrid.active {
+            background: linear-gradient(135deg, rgba(52,199,89,0.3) 0%, rgba(16,185,129,0.3) 100%);
+            color: #34c759;
+        }
+        .customer-pay-section {
+            display: none;
+            grid-column: 1 / -1;
+        }
+        .customer-pay-section.visible {
+            display: contents;
+        }
+        .customer-pay-section-header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0 8px;
+            border-top: 1px solid rgba(52,199,89,0.3);
+            margin-top: 8px;
+            color: #34c759;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
     </style>
 </head>
 <body>
@@ -2008,7 +2053,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.18</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.19</span>
             </div>
         </header>
 
@@ -3208,98 +3253,130 @@
         // ── Insurance Claim RO Mode ──────────────────────────────────
         let currentROType = 'standard'; // 'standard' or 'insurance'
 
-        function setROType(type) {
+        function setROType(type, context) {
             currentROType = type;
-            const standardBtn = document.getElementById('standardROBtn');
-            const insuranceBtn = document.getElementById('insuranceROBtn');
-            const insuranceSection = document.getElementById('insuranceFieldsSection');
-            const modalTitle = document.querySelector('#modalOverlay h2');
+            // Support both New RO modal and Edit RO modal
+            const prefix = context || 'new';
+            const isEdit = prefix === 'edit';
+
+            // Toggle buttons — may be in either modal
+            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn',
+             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.remove('active');
+            });
+
+            const stdId  = isEdit ? 'editStandardROBtn'  : 'standardROBtn';
+            const insId  = isEdit ? 'editInsuranceROBtn' : 'insuranceROBtn';
+            const hybId  = isEdit ? 'editHybridROBtn'    : 'hybridROBtn';
+            const insSec = document.getElementById(isEdit ? 'editInsuranceFieldsSection' : 'insuranceFieldsSection');
+            const cpSec  = document.getElementById(isEdit ? 'editCustomerPaySection'     : 'customerPaySection');
+            const modalTitle = isEdit
+                ? document.querySelector('#editROOverlay h2')
+                : document.querySelector('#modalOverlay h2');
 
             if (type === 'insurance') {
-                standardBtn.classList.remove('active');
-                insuranceBtn.classList.add('active');
-                if (insuranceSection) insuranceSection.classList.add('visible');
+                document.getElementById(insId)?.classList.add('active');
+                if (insSec) insSec.classList.add('visible');
+                if (cpSec)  cpSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = '🛡️ Insurance Claim RO';
+            } else if (type === 'hybrid') {
+                document.getElementById(hybId)?.classList.add('active');
+                if (insSec) insSec.classList.add('visible');
+                if (cpSec)  cpSec.classList.add('visible');
+                if (modalTitle) modalTitle.textContent = isEdit ? '🔀 Hybrid RO' : '🔀 Insurance + Customer Pay RO';
             } else {
-                insuranceBtn.classList.remove('active');
-                standardBtn.classList.add('active');
-                if (insuranceSection) insuranceSection.classList.remove('visible');
-                if (modalTitle) modalTitle.textContent = 'New Repair Order';
+                document.getElementById(stdId)?.classList.add('active');
+                if (insSec) insSec.classList.remove('visible');
+                if (cpSec)  cpSec.classList.remove('visible');
+                if (modalTitle) modalTitle.textContent = isEdit ? 'Edit Repair Order' : 'New Repair Order';
             }
         }
 
-        function collectInsuranceFields() {
-            if (currentROType !== 'insurance') return null;
-            return {
+        function collectInsuranceFields(context) {
+            const isEdit = context === 'edit';
+            if (currentROType === 'standard') return null;
+            const cpPrefix = isEdit ? 'editCp_' : 'cp_';
+            const insPrefix = isEdit ? 'editIns_' : 'ins_';
+            const base = {
+                roType: currentROType,
                 isInsuranceClaim: true,
-                claimNumber:      document.getElementById('ins_claimNumber')?.value || '',
-                policyNumber:     document.getElementById('ins_policyNumber')?.value || '',
-                insuranceCompany: document.getElementById('ins_insuranceCompany')?.value || '',
-                coverageType:     document.getElementById('ins_coverageType')?.value || '',
-                dateOfLoss:       document.getElementById('ins_dateOfLoss')?.value || '',
-                claimStatus:      document.getElementById('ins_claimStatus')?.value || '',
-                deductibleAmount: document.getElementById('ins_deductibleAmount')?.value || '',
-                approvedAmount:   document.getElementById('ins_approvedAmount')?.value || '',
-                adjusterName:     document.getElementById('ins_adjusterName')?.value || '',
-                adjusterPhone:        document.getElementById('ins_adjusterPhone')?.value || '',
-                adjusterEmail:        document.getElementById('ins_adjusterEmail')?.value || '',
-                carrier:              document.getElementById('ins_carrier')?.value || '',
-                referenceNumber:      document.getElementById('ins_referenceNumber')?.value || '',
-                estimateDate:         document.getElementById('ins_estimateDate')?.value || '',
-                inspectedDate:        document.getElementById('ins_inspectedDate')?.value || '',
-                estimatedBy:          document.getElementById('ins_estimatedBy')?.value || '',
-                inspectedAt:          document.getElementById('ins_inspectedAt')?.value || '',
-                color:                document.getElementById('ins_color')?.value || '',
-                style:                document.getElementById('ins_style')?.value || '',
-                plateState:           document.getElementById('ins_plateState')?.value || '',
-                bodyLabor:            document.getElementById('ins_bodyLabor')?.value || '',
-                paintLabor:           document.getElementById('ins_paintLabor')?.value || '',
-                partsTotal:           document.getElementById('ins_partsTotal')?.value || '',
-                miscTotal:            document.getElementById('ins_miscTotal')?.value || '',
-                salesTax:             document.getElementById('ins_salesTax')?.value || '',
-                subtotal:             document.getElementById('ins_subtotal')?.value || '',
-                deductible:           document.getElementById('ins_deductible')?.value || '',
-                repairFacility:       document.getElementById('ins_repairFacility')?.value || '',
-                repairFacilityAddress:document.getElementById('ins_repairFacilityAddress')?.value || '',
-                repairFacilityPhone:  document.getElementById('ins_repairFacilityPhone')?.value || '',
+                claimNumber:      document.getElementById(insPrefix + 'claimNumber')?.value || '',
+                policyNumber:     document.getElementById(insPrefix + 'policyNumber')?.value || '',
+                insuranceCompany: document.getElementById(insPrefix + 'insuranceCompany')?.value || '',
+                coverageType:     document.getElementById(insPrefix + 'coverageType')?.value || '',
+                dateOfLoss:       document.getElementById(insPrefix + 'dateOfLoss')?.value || '',
+                claimStatus:      document.getElementById(insPrefix + 'claimStatus')?.value || '',
+                deductibleAmount: document.getElementById(insPrefix + 'deductibleAmount')?.value || '',
+                approvedAmount:   document.getElementById(insPrefix + 'approvedAmount')?.value || '',
+                adjusterName:     document.getElementById(insPrefix + 'adjusterName')?.value || '',
+                adjusterPhone:        document.getElementById(insPrefix + 'adjusterPhone')?.value || '',
+                adjusterEmail:        document.getElementById(insPrefix + 'adjusterEmail')?.value || '',
+                carrier:              document.getElementById(insPrefix + 'carrier')?.value || '',
+                referenceNumber:      document.getElementById(insPrefix + 'referenceNumber')?.value || '',
+                estimateDate:         document.getElementById(insPrefix + 'estimateDate')?.value || '',
+                inspectedDate:        document.getElementById(insPrefix + 'inspectedDate')?.value || '',
+                estimatedBy:          document.getElementById(insPrefix + 'estimatedBy')?.value || '',
+                inspectedAt:          document.getElementById(insPrefix + 'inspectedAt')?.value || '',
+                color:                document.getElementById(insPrefix + 'color')?.value || '',
+                style:                document.getElementById(insPrefix + 'style')?.value || '',
+                plateState:           document.getElementById(insPrefix + 'plateState')?.value || '',
+                bodyLabor:            document.getElementById(insPrefix + 'bodyLabor')?.value || '',
+                paintLabor:           document.getElementById(insPrefix + 'paintLabor')?.value || '',
+                partsTotal:           document.getElementById(insPrefix + 'partsTotal')?.value || '',
+                miscTotal:            document.getElementById(insPrefix + 'miscTotal')?.value || '',
+                salesTax:             document.getElementById(insPrefix + 'salesTax')?.value || '',
+                subtotal:             document.getElementById(insPrefix + 'subtotal')?.value || '',
+                deductible:           document.getElementById(insPrefix + 'deductible')?.value || '',
+                repairFacility:       document.getElementById(insPrefix + 'repairFacility')?.value || '',
+                repairFacilityAddress:document.getElementById(insPrefix + 'repairFacilityAddress')?.value || '',
+                repairFacilityPhone:  document.getElementById(insPrefix + 'repairFacilityPhone')?.value || '',
             };
+            // Add customer pay fields for hybrid
+            if (currentROType === 'hybrid') {
+                base.customerPayAmount      = document.getElementById(cpPrefix + 'customerPayAmount')?.value || '';
+                base.customerBalanceDue     = document.getElementById(cpPrefix + 'customerBalanceDue')?.value || '';
+                base.customerPayStatus      = document.getElementById(cpPrefix + 'customerPayStatus')?.value || '';
+                base.paymentMethod          = document.getElementById(cpPrefix + 'paymentMethod')?.value || '';
+                base.customerInvoiceNumber  = document.getElementById(cpPrefix + 'customerInvoiceNumber')?.value || '';
+                base.datePaid               = document.getElementById(cpPrefix + 'datePaid')?.value || '';
+                base.customerPayDescription = document.getElementById(cpPrefix + 'customerPayDescription')?.value || '';
+            }
+            return base;
         }
 
         // Extend ESTIMATE_FIELD_MAP with insurance fields for suggestion chips
         const INSURANCE_FIELD_MAP = {
-            claimNumber:      { new: 'ins_claimNumber',      label: 'Claim Number' },
-            policyNumber:     { new: 'ins_policyNumber',     label: 'Policy Number' },
-            insuranceCompany: { new: 'ins_insuranceCompany', label: 'Insurance Company' },
-            coverageType:     { new: 'ins_coverageType',     label: 'Coverage Type' },
-            dateOfLoss:       { new: 'ins_dateOfLoss',       label: 'Date of Loss' },
-            claimStatus:      { new: 'ins_claimStatus',      label: 'Claim Status' },
-            deductibleAmount: { new: 'ins_deductibleAmount', label: 'Deductible Amount' },
-            approvedAmount:   { new: 'ins_approvedAmount',   label: 'Approved Amount' },
-            adjusterName:     { new: 'ins_adjusterName',     label: 'Adjuster Name' },
-            adjusterPhone:    { new: 'ins_adjusterPhone',    label: 'Adjuster Phone' },
-            adjusterEmail:    { new: 'ins_adjusterEmail',    label: 'Adjuster Email' },
-            // Carrier & estimate info
-            carrier:              { new: 'ins_carrier',              label: 'Carrier' },
-            referenceNumber:      { new: 'ins_referenceNumber',      label: 'Reference Number' },
-            estimateDate:         { new: 'ins_estimateDate',         label: 'Estimate Date' },
-            inspectedDate:        { new: 'ins_inspectedDate',        label: 'Inspected Date' },
-            estimatedBy:          { new: 'ins_estimatedBy',          label: 'Estimated By' },
-            inspectedAt:          { new: 'ins_inspectedAt',          label: 'Inspected At' },
-            color:                { new: 'ins_color',                label: 'Vehicle Color' },
-            style:                { new: 'ins_style',                label: 'Vehicle Style' },
-            plateState:           { new: 'ins_plateState',           label: 'Plate / State' },
-            // Financial breakdown
-            bodyLabor:            { new: 'ins_bodyLabor',            label: 'Body Labor' },
-            paintLabor:           { new: 'ins_paintLabor',           label: 'Paint Labor' },
-            partsTotal:           { new: 'ins_partsTotal',           label: 'Parts Total' },
-            miscTotal:            { new: 'ins_miscTotal',            label: 'Misc Total' },
-            salesTax:             { new: 'ins_salesTax',             label: 'Sales Tax' },
-            subtotal:             { new: 'ins_subtotal',             label: 'Subtotal' },
-            deductible:           { new: 'ins_deductible',           label: 'Deductible' },
-            // Repair facility
-            repairFacility:       { new: 'ins_repairFacility',       label: 'Repair Facility' },
-            repairFacilityAddress:{ new: 'ins_repairFacilityAddress',label: 'Repair Facility Address' },
-            repairFacilityPhone:  { new: 'ins_repairFacilityPhone',  label: 'Repair Facility Phone' },
+            claimNumber:      { new: 'ins_claimNumber',      edit: 'editIns_claimNumber',      label: 'Claim Number' },
+            policyNumber:     { new: 'ins_policyNumber',     edit: 'editIns_policyNumber',     label: 'Policy Number' },
+            insuranceCompany: { new: 'ins_insuranceCompany', edit: 'editIns_insuranceCompany', label: 'Insurance Company' },
+            coverageType:     { new: 'ins_coverageType',     edit: 'editIns_coverageType',     label: 'Coverage Type' },
+            dateOfLoss:       { new: 'ins_dateOfLoss',       edit: 'editIns_dateOfLoss',       label: 'Date of Loss' },
+            claimStatus:      { new: 'ins_claimStatus',      edit: 'editIns_claimStatus',      label: 'Claim Status' },
+            deductibleAmount: { new: 'ins_deductibleAmount', edit: 'editIns_deductibleAmount', label: 'Deductible Amount' },
+            approvedAmount:   { new: 'ins_approvedAmount',   edit: 'editIns_approvedAmount',   label: 'Approved Amount' },
+            adjusterName:     { new: 'ins_adjusterName',     edit: 'editIns_adjusterName',     label: 'Adjuster Name' },
+            adjusterPhone:    { new: 'ins_adjusterPhone',    edit: 'editIns_adjusterPhone',    label: 'Adjuster Phone' },
+            adjusterEmail:    { new: 'ins_adjusterEmail',    edit: 'editIns_adjusterEmail',    label: 'Adjuster Email' },
+            carrier:              { new: 'ins_carrier',              edit: 'editIns_carrier',              label: 'Carrier' },
+            referenceNumber:      { new: 'ins_referenceNumber',      edit: 'editIns_referenceNumber',      label: 'Reference Number' },
+            estimateDate:         { new: 'ins_estimateDate',         edit: 'editIns_estimateDate',         label: 'Estimate Date' },
+            inspectedDate:        { new: 'ins_inspectedDate',        edit: 'editIns_inspectedDate',        label: 'Inspected Date' },
+            estimatedBy:          { new: 'ins_estimatedBy',          edit: 'editIns_estimatedBy',          label: 'Estimated By' },
+            inspectedAt:          { new: 'ins_inspectedAt',          edit: 'editIns_inspectedAt',          label: 'Inspected At' },
+            color:                { new: 'ins_color',                edit: 'editIns_color',                label: 'Vehicle Color' },
+            style:                { new: 'ins_style',                edit: 'editIns_style',                label: 'Vehicle Style' },
+            plateState:           { new: 'ins_plateState',           edit: 'editIns_plateState',           label: 'Plate / State' },
+            bodyLabor:            { new: 'ins_bodyLabor',            edit: 'editIns_bodyLabor',            label: 'Body Labor' },
+            paintLabor:           { new: 'ins_paintLabor',           edit: 'editIns_paintLabor',           label: 'Paint Labor' },
+            partsTotal:           { new: 'ins_partsTotal',           edit: 'editIns_partsTotal',           label: 'Parts Total' },
+            miscTotal:            { new: 'ins_miscTotal',            edit: 'editIns_miscTotal',            label: 'Misc Total' },
+            salesTax:             { new: 'ins_salesTax',             edit: 'editIns_salesTax',             label: 'Sales Tax' },
+            subtotal:             { new: 'ins_subtotal',             edit: 'editIns_subtotal',             label: 'Subtotal' },
+            deductible:           { new: 'ins_deductible',           edit: 'editIns_deductible',           label: 'Deductible' },
+            repairFacility:       { new: 'ins_repairFacility',       edit: 'editIns_repairFacility',       label: 'Repair Facility' },
+            repairFacilityAddress:{ new: 'ins_repairFacilityAddress',edit: 'editIns_repairFacilityAddress',label: 'Repair Facility Address' },
+            repairFacilityPhone:  { new: 'ins_repairFacilityPhone',  edit: 'editIns_repairFacilityPhone',  label: 'Repair Facility Phone' },
         };
 
         // ── Insurance Estimate Scanner ──────────────────────────────
@@ -3485,9 +3562,17 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         function renderSuggestions(mode, extracted) {
-            // If insurance mode is active, auto-switch to insurance mode
-            if (mode === 'new' && Object.keys(extracted).some(k => INSURANCE_FIELD_MAP[k])) {
-                setROType('insurance');
+            // Auto-switch or prompt to switch to insurance mode if insurance fields detected
+            const hasInsuranceFields = Object.keys(extracted).some(k => INSURANCE_FIELD_MAP[k]);
+            if (hasInsuranceFields) {
+                if (mode === 'new' && currentROType === 'standard') {
+                    setROType('insurance');
+                } else if (mode === 'edit' && currentROType === 'standard') {
+                    const convert = confirm('Insurance fields were detected in this estimate.\n\nConvert this RO to an Insurance Claim?\n\nClick OK for Insurance Claim, Cancel to keep Standard RO.');
+                    if (convert) {
+                        setROType('insurance', 'edit');
+                    }
+                }
             }
 
             const knownKeys = Object.keys(ESTIMATE_FIELD_MAP);
@@ -3523,30 +3608,27 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 }
             });
 
-            // Render insurance-specific fields (new mode only)
-            if (mode === 'new') {
-                Object.entries(extracted).forEach(([key, value]) => {
-                    if (!insuranceKeys.includes(key)) return;
-                    if (!value && value !== 0) return;
-                    const strVal = String(value).trim();
-                    if (!strVal) return;
+            // Render insurance-specific fields (new and edit mode)
+            Object.entries(extracted).forEach(([key, value]) => {
+                if (!insuranceKeys.includes(key)) return;
+                if (!value && value !== 0) return;
+                const strVal = String(value).trim();
+                if (!strVal) return;
 
-                    const mapping = INSURANCE_FIELD_MAP[key];
-                    const inputId = mapping.new;
-                    const input = document.getElementById(inputId);
-                    const container = document.getElementById(`sug_new_${key}`);
-                    if (!input || !container) return;
+                const mapping = INSURANCE_FIELD_MAP[key];
+                const inputId = mapping[mode] || mapping.new;
+                const input = document.getElementById(inputId);
+                const container = document.getElementById(`sug_${mode}_${key}`);
+                if (!input || !container) return;
 
-                    const existingVal = input.value.trim();
-                    if (!existingVal) {
-                        container.innerHTML = renderSimpleChip(inputId, strVal, mapping.label, mode, key);
-                    } else if (existingVal.toLowerCase() !== strVal.toLowerCase()) {
-                        container.innerHTML = renderConflictChip(inputId, existingVal, strVal, mapping.label, mode, key);
-                    }
-                    // Remove from extraFields so it doesn't show in the extra section
-                    delete extraFields[key];
-                });
-            }
+                const existingVal = input.value.trim();
+                if (!existingVal) {
+                    container.innerHTML = renderSimpleChip(inputId, strVal, mapping.label, mode, key);
+                } else if (existingVal.toLowerCase() !== strVal.toLowerCase()) {
+                    container.innerHTML = renderConflictChip(inputId, existingVal, strVal, mapping.label, mode, key);
+                }
+                delete extraFields[key];
+            });
 
             // Render extra fields section
             const extraEl = document.getElementById(`sug_${mode}_extra`);
@@ -3698,7 +3780,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.18 - Released 2026-03-12');
+            console.log('📦 PRVS Dashboard v1.19 - Released 2026-03-12');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -4055,7 +4137,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
-                        ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); return d.isInsuranceClaim ? '<div class="insurance-badge">🛡️ Insurance Claim</div>' : ''; } catch(e) { return ''; } })() : ''}
+                        ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ Insurance Claim</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 Customer Pay</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ` : ''}
                         
                         ${shouldShow('qrCode') || shouldShow('printLabel') ? `
@@ -6055,6 +6137,35 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
                 document.getElementById('editVin').value = ro.vin || '';
 
+                // Restore RO type and insurance fields from Column W JSON
+                let savedInsData = null;
+                try { savedInsData = ro.insuranceData ? JSON.parse(ro.insuranceData) : null; } catch(e) {}
+                if (savedInsData && savedInsData.roType) {
+                    setROType(savedInsData.roType, 'edit');
+                    // Populate insurance fields
+                    const insFields = ['claimNumber','policyNumber','insuranceCompany','coverageType',
+                        'dateOfLoss','claimStatus','deductibleAmount','approvedAmount','adjusterName',
+                        'adjusterPhone','adjusterEmail','carrier','referenceNumber','estimateDate',
+                        'inspectedDate','estimatedBy','inspectedAt','color','style','plateState',
+                        'bodyLabor','paintLabor','partsTotal','miscTotal','salesTax','subtotal',
+                        'deductible','repairFacility','repairFacilityAddress','repairFacilityPhone'];
+                    insFields.forEach(f => {
+                        const el = document.getElementById('editIns_' + f);
+                        if (el && savedInsData[f]) el.value = savedInsData[f];
+                    });
+                    // Populate customer pay fields for hybrid
+                    if (savedInsData.roType === 'hybrid') {
+                        const cpFields = ['customerPayAmount','customerBalanceDue','customerPayStatus',
+                            'paymentMethod','customerInvoiceNumber','datePaid','customerPayDescription'];
+                        cpFields.forEach(f => {
+                            const el = document.getElementById('editCp_' + f);
+                            if (el && savedInsData[f]) el.value = savedInsData[f];
+                        });
+                    }
+                } else {
+                    setROType('standard', 'edit');
+                }
+
                 const repairTypes = (ro.repairType || '').split(',').map(t => t.trim());
                 document.querySelectorAll('#editROForm input[name="editRepairType"]').forEach(cb => {
                     cb.checked = repairTypes.includes(cb.value);
@@ -6070,6 +6181,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         function closeEditModal() {
             document.getElementById('editROOverlay').classList.remove('active');
             editingROIndex = null;
+            setROType('standard', 'edit');
+            window._lastEstimateScan = null;
         }
 
                 function setupModalListeners() {
@@ -6231,6 +6344,14 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         // Write audit log after successful save
                         const roId = existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived);
                         await writeAuditLog(roId, changes);
+                        // Write insurance/hybrid data if RO type is not standard
+                        const insuranceFields = collectInsuranceFields('edit');
+                        if (insuranceFields) {
+                            const scanData = window._lastEstimateScan ? window._lastEstimateScan.extracted : null;
+                            const combinedData = Object.assign({}, scanData || {}, insuranceFields);
+                            writeInsuranceData(roId, combinedData, editingROIndex);
+                            window._lastEstimateScan = null;
+                        }
                         closeEditModal();
                         alert('Repair Order updated successfully!');
                     }
@@ -6272,6 +6393,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             <div class="ro-type-toggle">
                 <button type="button" class="ro-type-btn active" id="standardROBtn" onclick="setROType('standard')">🔧 Standard RO</button>
                 <button type="button" class="ro-type-btn insurance" id="insuranceROBtn" onclick="setROType('insurance')">🛡️ Insurance Claim</button>
+                <button type="button" class="ro-type-btn hybrid" id="hybridROBtn" onclick="setROType('hybrid')">🔀 Insurance + Customer Pay</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -6421,6 +6543,52 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         <label class="form-label">Customer Communication Notes</label>
                         <textarea class="form-textarea" name="customerCommunicationNotes"></textarea>
                     </div>
+                    <!-- Customer Pay Section (Hybrid mode only) -->
+                    <div class="customer-pay-section" id="customerPaySection">
+                        <div class="customer-pay-section-header">
+                            💵 Customer Pay Details
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Customer Pay Amount ($)</label>
+                            <input type="number" class="form-input" name="customerPayAmount" id="cp_customerPayAmount" min="0" step="0.01">
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Customer Balance Due ($)</label>
+                            <input type="number" class="form-input" name="customerBalanceDue" id="cp_customerBalanceDue" min="0" step="0.01">
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Customer Pay Status</label>
+                            <select class="form-select" name="customerPayStatus" id="cp_customerPayStatus">
+                                <option value="">Select Status</option>
+                                <option value="Unpaid">Unpaid</option>
+                                <option value="Partial">Partial</option>
+                                <option value="Paid">Paid</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Payment Method</label>
+                            <select class="form-select" name="paymentMethod" id="cp_paymentMethod">
+                                <option value="">Select Method</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Check">Check</option>
+                                <option value="Card">Card</option>
+                                <option value="Financing">Financing</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Customer Invoice Number</label>
+                            <input type="text" class="form-input" name="customerInvoiceNumber" id="cp_customerInvoiceNumber">
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Date Paid</label>
+                            <input type="date" class="form-input" name="datePaid" id="cp_datePaid">
+                        </div>
+                        <div class="form-field full-width">
+                            <label class="form-label">Customer Pay Description</label>
+                            <textarea class="form-textarea" name="customerPayDescription" id="cp_customerPayDescription" placeholder="Describe what the customer is paying for separately..."></textarea>
+                        </div>
+                    </div>
+
                     <div id="sug_new_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
 
                     <!-- Insurance Claim Fields (hidden until Insurance mode activated) -->
@@ -6616,6 +6784,13 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 <button class="modal-close" id="editModalClose">&times;</button>
             </div>
 
+            <!-- RO Type Toggle -->
+            <div class="ro-type-toggle">
+                <button type="button" class="ro-type-btn active" id="editStandardROBtn" onclick="setROType('standard','edit')">🔧 Standard RO</button>
+                <button type="button" class="ro-type-btn insurance" id="editInsuranceROBtn" onclick="setROType('insurance','edit')">🛡️ Insurance Claim</button>
+                <button type="button" class="ro-type-btn hybrid" id="editHybridROBtn" onclick="setROType('hybrid','edit')">🔀 Insurance + Customer Pay</button>
+            </div>
+
             <!-- Insurance Estimate Scanner -->
             <div class="scan-api-key-bar" id="editScanApiBar">
                 <label>🔑 Anthropic API Key:</label>
@@ -6690,6 +6865,78 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         <label class="form-label">Date RV Arrived on Lot</label>
                         <input type="date" class="form-input" id="editDateArrived">
                     </div>
+                    <!-- Insurance Fields (Edit mode) -->
+                    <div class="insurance-section" id="editInsuranceFieldsSection">
+                        <div class="insurance-section-header">🛡️ Insurance Claim Details</div>
+                        <div class="form-field"><label class="form-label">Claim Number</label><input type="text" class="form-input" id="editIns_claimNumber"><div id="sug_edit_claimNumber"></div></div>
+                        <div class="form-field"><label class="form-label">Policy Number</label><input type="text" class="form-input" id="editIns_policyNumber"><div id="sug_edit_policyNumber"></div></div>
+                        <div class="form-field"><label class="form-label">Insurance Company</label><input type="text" class="form-input" id="editIns_insuranceCompany"><div id="sug_edit_insuranceCompany"></div></div>
+                        <div class="form-field"><label class="form-label">Coverage Type</label><input type="text" class="form-input" id="editIns_coverageType"><div id="sug_edit_coverageType"></div></div>
+                        <div class="form-field"><label class="form-label">Date of Loss</label><input type="date" class="form-input" id="editIns_dateOfLoss"><div id="sug_edit_dateOfLoss"></div></div>
+                        <div class="form-field"><label class="form-label">Claim Status</label>
+                            <select class="form-select" id="editIns_claimStatus">
+                                <option value="">Select Status</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Approved">Approved</option>
+                                <option value="Partially Approved">Partially Approved</option>
+                                <option value="Denied">Denied</option>
+                                <option value="Under Review">Under Review</option>
+                                <option value="Supplemental Filed">Supplemental Filed</option>
+                            </select><div id="sug_edit_claimStatus"></div></div>
+                        <div class="form-field"><label class="form-label">Deductible Amount ($)</label><input type="number" class="form-input" id="editIns_deductibleAmount" min="0" step="0.01"><div id="sug_edit_deductibleAmount"></div></div>
+                        <div class="form-field"><label class="form-label">Approved Amount ($)</label><input type="number" class="form-input" id="editIns_approvedAmount" min="0" step="0.01"><div id="sug_edit_approvedAmount"></div></div>
+                        <div class="form-field"><label class="form-label">Adjuster Name</label><input type="text" class="form-input" id="editIns_adjusterName"><div id="sug_edit_adjusterName"></div></div>
+                        <div class="form-field"><label class="form-label">Adjuster Phone</label><input type="tel" class="form-input" id="editIns_adjusterPhone"><div id="sug_edit_adjusterPhone"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Adjuster Email</label><input type="email" class="form-input" id="editIns_adjusterEmail"><div id="sug_edit_adjusterEmail"></div></div>
+                        <div class="insurance-section-header" style="margin-top:8px;">🏢 Carrier &amp; Estimate Info</div>
+                        <div class="form-field"><label class="form-label">Carrier</label><input type="text" class="form-input" id="editIns_carrier"><div id="sug_edit_carrier"></div></div>
+                        <div class="form-field"><label class="form-label">Reference Number</label><input type="text" class="form-input" id="editIns_referenceNumber"><div id="sug_edit_referenceNumber"></div></div>
+                        <div class="form-field"><label class="form-label">Estimate Date</label><input type="date" class="form-input" id="editIns_estimateDate"><div id="sug_edit_estimateDate"></div></div>
+                        <div class="form-field"><label class="form-label">Inspected Date</label><input type="date" class="form-input" id="editIns_inspectedDate"><div id="sug_edit_inspectedDate"></div></div>
+                        <div class="form-field"><label class="form-label">Estimated By</label><input type="text" class="form-input" id="editIns_estimatedBy"><div id="sug_edit_estimatedBy"></div></div>
+                        <div class="form-field"><label class="form-label">Inspected At</label><input type="text" class="form-input" id="editIns_inspectedAt"><div id="sug_edit_inspectedAt"></div></div>
+                        <div class="form-field"><label class="form-label">Vehicle Color</label><input type="text" class="form-input" id="editIns_color"><div id="sug_edit_color"></div></div>
+                        <div class="form-field"><label class="form-label">Vehicle Style</label><input type="text" class="form-input" id="editIns_style"><div id="sug_edit_style"></div></div>
+                        <div class="form-field"><label class="form-label">Plate / State</label><input type="text" class="form-input" id="editIns_plateState"><div id="sug_edit_plateState"></div></div>
+                        <div class="insurance-section-header" style="margin-top:8px;">💰 Financial Breakdown</div>
+                        <div class="form-field"><label class="form-label">Body Labor ($)</label><input type="number" class="form-input" id="editIns_bodyLabor" min="0" step="0.01"><div id="sug_edit_bodyLabor"></div></div>
+                        <div class="form-field"><label class="form-label">Paint Labor ($)</label><input type="number" class="form-input" id="editIns_paintLabor" min="0" step="0.01"><div id="sug_edit_paintLabor"></div></div>
+                        <div class="form-field"><label class="form-label">Parts Total ($)</label><input type="number" class="form-input" id="editIns_partsTotal" min="0" step="0.01"><div id="sug_edit_partsTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Misc Total ($)</label><input type="number" class="form-input" id="editIns_miscTotal" min="0" step="0.01"><div id="sug_edit_miscTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Sales Tax ($)</label><input type="number" class="form-input" id="editIns_salesTax" min="0" step="0.01"><div id="sug_edit_salesTax"></div></div>
+                        <div class="form-field"><label class="form-label">Subtotal ($)</label><input type="number" class="form-input" id="editIns_subtotal" min="0" step="0.01"><div id="sug_edit_subtotal"></div></div>
+                        <div class="form-field"><label class="form-label">Deductible ($)</label><input type="number" class="form-input" id="editIns_deductible" min="0" step="0.01"><div id="sug_edit_deductible"></div></div>
+                        <div class="insurance-section-header" style="margin-top:8px;">🏪 Repair Facility</div>
+                        <div class="form-field"><label class="form-label">Repair Facility</label><input type="text" class="form-input" id="editIns_repairFacility"><div id="sug_edit_repairFacility"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Repair Facility Address</label><input type="text" class="form-input" id="editIns_repairFacilityAddress"><div id="sug_edit_repairFacilityAddress"></div></div>
+                        <div class="form-field"><label class="form-label">Repair Facility Phone</label><input type="tel" class="form-input" id="editIns_repairFacilityPhone"><div id="sug_edit_repairFacilityPhone"></div></div>
+                    </div>
+
+                    <!-- Customer Pay Section (Edit mode, Hybrid only) -->
+                    <div class="customer-pay-section" id="editCustomerPaySection">
+                        <div class="customer-pay-section-header">💵 Customer Pay Details</div>
+                        <div class="form-field"><label class="form-label">Customer Pay Amount ($)</label><input type="number" class="form-input" id="editCp_customerPayAmount" min="0" step="0.01"></div>
+                        <div class="form-field"><label class="form-label">Customer Balance Due ($)</label><input type="number" class="form-input" id="editCp_customerBalanceDue" min="0" step="0.01"></div>
+                        <div class="form-field"><label class="form-label">Customer Pay Status</label>
+                            <select class="form-select" id="editCp_customerPayStatus">
+                                <option value="">Select Status</option>
+                                <option value="Unpaid">Unpaid</option>
+                                <option value="Partial">Partial</option>
+                                <option value="Paid">Paid</option>
+                            </select></div>
+                        <div class="form-field"><label class="form-label">Payment Method</label>
+                            <select class="form-select" id="editCp_paymentMethod">
+                                <option value="">Select Method</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Check">Check</option>
+                                <option value="Card">Card</option>
+                                <option value="Financing">Financing</option>
+                            </select></div>
+                        <div class="form-field"><label class="form-label">Customer Invoice Number</label><input type="text" class="form-input" id="editCp_customerInvoiceNumber"></div>
+                        <div class="form-field"><label class="form-label">Date Paid</label><input type="date" class="form-input" id="editCp_datePaid"></div>
+                        <div class="form-field full-width"><label class="form-label">Customer Pay Description</label><textarea class="form-textarea" id="editCp_customerPayDescription"></textarea></div>
+                    </div>
+
                     <div id="sug_edit_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
                 </div>
                 <div class="form-actions">
