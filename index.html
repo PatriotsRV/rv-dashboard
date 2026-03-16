@@ -1782,10 +1782,10 @@
             gap: 6px;
             margin-top: 6px;
             padding: 5px 10px;
-            background: rgba(139,92,246,0.12);
-            border: 1px solid rgba(139,92,246,0.4);
+            background: rgba(110,231,160,0.12);
+            border: 1px solid rgba(110,231,160,0.5);
             border-radius: 20px;
-            color: #a78bfa;
+            color: #6ee7a0;
             font-size: 0.82rem;
             cursor: pointer;
             transition: all 0.2s;
@@ -1793,8 +1793,8 @@
             word-break: break-word;
         }
         .suggestion-chip:hover {
-            background: rgba(139,92,246,0.25);
-            border-color: #a78bfa;
+            background: rgba(110,231,160,0.25);
+            border-color: #6ee7a0;
             color: white;
         }
         .suggestion-chip .chip-label {
@@ -1841,15 +1841,15 @@
         }
         .conflict-btn.keep:hover { background: rgba(52,199,89,0.3); }
         .conflict-btn.use {
-            background: rgba(139,92,246,0.1);
-            border-color: #8b5cf6;
-            color: #a78bfa;
+            background: rgba(110,231,160,0.1);
+            border-color: #6ee7a0;
+            color: #6ee7a0;
         }
-        .conflict-btn.use:hover { background: rgba(139,92,246,0.3); color: white; }
+        .conflict-btn.use:hover { background: rgba(110,231,160,0.3); color: #0d0f12; }
         .extra-fields-section {
             grid-column: 1 / -1;
-            background: rgba(139,92,246,0.06);
-            border: 1px solid rgba(139,92,246,0.2);
+            background: rgba(110,231,160,0.06);
+            border: 1px solid rgba(110,231,160,0.2);
             border-radius: 8px;
             padding: 14px 16px;
             margin-top: 8px;
@@ -1863,7 +1863,7 @@
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            color: #a78bfa;
+            color: #6ee7a0;
         }
         .extra-fields-body {
             margin-top: 10px;
@@ -3241,8 +3241,27 @@
                 deductibleAmount: document.getElementById('ins_deductibleAmount')?.value || '',
                 approvedAmount:   document.getElementById('ins_approvedAmount')?.value || '',
                 adjusterName:     document.getElementById('ins_adjusterName')?.value || '',
-                adjusterPhone:    document.getElementById('ins_adjusterPhone')?.value || '',
-                adjusterEmail:    document.getElementById('ins_adjusterEmail')?.value || '',
+                adjusterPhone:        document.getElementById('ins_adjusterPhone')?.value || '',
+                adjusterEmail:        document.getElementById('ins_adjusterEmail')?.value || '',
+                carrier:              document.getElementById('ins_carrier')?.value || '',
+                referenceNumber:      document.getElementById('ins_referenceNumber')?.value || '',
+                estimateDate:         document.getElementById('ins_estimateDate')?.value || '',
+                inspectedDate:        document.getElementById('ins_inspectedDate')?.value || '',
+                estimatedBy:          document.getElementById('ins_estimatedBy')?.value || '',
+                inspectedAt:          document.getElementById('ins_inspectedAt')?.value || '',
+                color:                document.getElementById('ins_color')?.value || '',
+                style:                document.getElementById('ins_style')?.value || '',
+                plateState:           document.getElementById('ins_plateState')?.value || '',
+                bodyLabor:            document.getElementById('ins_bodyLabor')?.value || '',
+                paintLabor:           document.getElementById('ins_paintLabor')?.value || '',
+                partsTotal:           document.getElementById('ins_partsTotal')?.value || '',
+                miscTotal:            document.getElementById('ins_miscTotal')?.value || '',
+                salesTax:             document.getElementById('ins_salesTax')?.value || '',
+                subtotal:             document.getElementById('ins_subtotal')?.value || '',
+                deductible:           document.getElementById('ins_deductible')?.value || '',
+                repairFacility:       document.getElementById('ins_repairFacility')?.value || '',
+                repairFacilityAddress:document.getElementById('ins_repairFacilityAddress')?.value || '',
+                repairFacilityPhone:  document.getElementById('ins_repairFacilityPhone')?.value || '',
             };
         }
 
@@ -3259,6 +3278,28 @@
             adjusterName:     { new: 'ins_adjusterName',     label: 'Adjuster Name' },
             adjusterPhone:    { new: 'ins_adjusterPhone',    label: 'Adjuster Phone' },
             adjusterEmail:    { new: 'ins_adjusterEmail',    label: 'Adjuster Email' },
+            // Carrier & estimate info
+            carrier:              { new: 'ins_carrier',              label: 'Carrier' },
+            referenceNumber:      { new: 'ins_referenceNumber',      label: 'Reference Number' },
+            estimateDate:         { new: 'ins_estimateDate',         label: 'Estimate Date' },
+            inspectedDate:        { new: 'ins_inspectedDate',        label: 'Inspected Date' },
+            estimatedBy:          { new: 'ins_estimatedBy',          label: 'Estimated By' },
+            inspectedAt:          { new: 'ins_inspectedAt',          label: 'Inspected At' },
+            color:                { new: 'ins_color',                label: 'Vehicle Color' },
+            style:                { new: 'ins_style',                label: 'Vehicle Style' },
+            plateState:           { new: 'ins_plateState',           label: 'Plate / State' },
+            // Financial breakdown
+            bodyLabor:            { new: 'ins_bodyLabor',            label: 'Body Labor' },
+            paintLabor:           { new: 'ins_paintLabor',           label: 'Paint Labor' },
+            partsTotal:           { new: 'ins_partsTotal',           label: 'Parts Total' },
+            miscTotal:            { new: 'ins_miscTotal',            label: 'Misc Total' },
+            salesTax:             { new: 'ins_salesTax',             label: 'Sales Tax' },
+            subtotal:             { new: 'ins_subtotal',             label: 'Subtotal' },
+            deductible:           { new: 'ins_deductible',           label: 'Deductible' },
+            // Repair facility
+            repairFacility:       { new: 'ins_repairFacility',       label: 'Repair Facility' },
+            repairFacilityAddress:{ new: 'ins_repairFacilityAddress',label: 'Repair Facility Address' },
+            repairFacilityPhone:  { new: 'ins_repairFacilityPhone',  label: 'Repair Facility Phone' },
         };
 
         // ── Insurance Estimate Scanner ──────────────────────────────
@@ -6438,6 +6479,113 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                             <label class="form-label">Adjuster Email</label>
                             <input type="email" class="form-input" name="adjusterEmail" id="ins_adjusterEmail">
                             <div id="sug_new_adjusterEmail"></div>
+                        </div>
+
+                        <div class="insurance-section-header" style="margin-top:8px;">
+                            🏢 Carrier &amp; Estimate Info
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Carrier</label>
+                            <input type="text" class="form-input" name="carrier" id="ins_carrier" placeholder="e.g. USAA">
+                            <div id="sug_new_carrier"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Reference Number</label>
+                            <input type="text" class="form-input" name="referenceNumber" id="ins_referenceNumber">
+                            <div id="sug_new_referenceNumber"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Estimate Date</label>
+                            <input type="date" class="form-input" name="estimateDate" id="ins_estimateDate">
+                            <div id="sug_new_estimateDate"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Inspected Date</label>
+                            <input type="date" class="form-input" name="inspectedDate" id="ins_inspectedDate">
+                            <div id="sug_new_inspectedDate"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Estimated By</label>
+                            <input type="text" class="form-input" name="estimatedBy" id="ins_estimatedBy">
+                            <div id="sug_new_estimatedBy"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Inspected At</label>
+                            <input type="text" class="form-input" name="inspectedAt" id="ins_inspectedAt" placeholder="e.g. Home : Shop of Choice">
+                            <div id="sug_new_inspectedAt"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Vehicle Color</label>
+                            <input type="text" class="form-input" name="color" id="ins_color">
+                            <div id="sug_new_color"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Vehicle Style</label>
+                            <input type="text" class="form-input" name="style" id="ins_style" placeholder="e.g. Recreational Vehicle">
+                            <div id="sug_new_style"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Plate / State</label>
+                            <input type="text" class="form-input" name="plateState" id="ins_plateState">
+                            <div id="sug_new_plateState"></div>
+                        </div>
+
+                        <div class="insurance-section-header" style="margin-top:8px;">
+                            💰 Financial Breakdown
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Body Labor ($)</label>
+                            <input type="number" class="form-input" name="bodyLabor" id="ins_bodyLabor" min="0" step="0.01">
+                            <div id="sug_new_bodyLabor"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Paint Labor ($)</label>
+                            <input type="number" class="form-input" name="paintLabor" id="ins_paintLabor" min="0" step="0.01">
+                            <div id="sug_new_paintLabor"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Parts Total ($)</label>
+                            <input type="number" class="form-input" name="partsTotal" id="ins_partsTotal" min="0" step="0.01">
+                            <div id="sug_new_partsTotal"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Misc Total ($)</label>
+                            <input type="number" class="form-input" name="miscTotal" id="ins_miscTotal" min="0" step="0.01">
+                            <div id="sug_new_miscTotal"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Sales Tax ($)</label>
+                            <input type="number" class="form-input" name="salesTax" id="ins_salesTax" min="0" step="0.01">
+                            <div id="sug_new_salesTax"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Subtotal ($)</label>
+                            <input type="number" class="form-input" name="subtotal" id="ins_subtotal" min="0" step="0.01">
+                            <div id="sug_new_subtotal"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Deductible ($)</label>
+                            <input type="number" class="form-input" name="deductible" id="ins_deductible" min="0" step="0.01">
+                            <div id="sug_new_deductible"></div>
+                        </div>
+
+                        <div class="insurance-section-header" style="margin-top:8px;">
+                            🏪 Repair Facility
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Repair Facility</label>
+                            <input type="text" class="form-input" name="repairFacility" id="ins_repairFacility">
+                            <div id="sug_new_repairFacility"></div>
+                        </div>
+                        <div class="form-field full-width">
+                            <label class="form-label">Repair Facility Address</label>
+                            <input type="text" class="form-input" name="repairFacilityAddress" id="ins_repairFacilityAddress">
+                            <div id="sug_new_repairFacilityAddress"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Repair Facility Phone</label>
+                            <input type="tel" class="form-input" name="repairFacilityPhone" id="ins_repairFacilityPhone">
+                            <div id="sug_new_repairFacilityPhone"></div>
                         </div>
                     </div>
                 </div>
