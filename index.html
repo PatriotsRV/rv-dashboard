@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.20
+    PRVS Dashboard v1.21
     Released: 2026-03-15
-    New in v1.20:
+    New in v1.21:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
 -->
 <html lang="en">
@@ -2025,6 +2025,114 @@
             text-transform: uppercase;
             letter-spacing: 0.08em;
         }
+
+        /* ── Custom Insurance Fields ── */
+        .custom-fields-section-header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0 8px;
+            border-top: 1px solid rgba(110,231,160,0.3);
+            margin-top: 8px;
+        }
+        .custom-fields-section-title {
+            color: #6ee7a0;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .custom-fields-btns {
+            display: flex;
+            gap: 8px;
+        }
+        .add-field-btn {
+            padding: 5px 12px;
+            background: rgba(110,231,160,0.1);
+            border: 1px solid rgba(110,231,160,0.4);
+            border-radius: 6px;
+            color: #6ee7a0;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .add-field-btn:hover {
+            background: rgba(110,231,160,0.25);
+            color: white;
+        }
+        .manage-fields-btn {
+            padding: 5px 12px;
+            background: rgba(156,163,175,0.1);
+            border: 1px solid rgba(156,163,175,0.3);
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .manage-fields-btn:hover {
+            border-color: var(--accent-info);
+            color: var(--accent-info);
+            background: rgba(10,132,255,0.1);
+        }
+        .add-field-inline {
+            grid-column: 1 / -1;
+            background: rgba(110,231,160,0.05);
+            border: 1px solid rgba(110,231,160,0.2);
+            border-radius: 10px;
+            padding: 16px;
+            display: none;
+            margin-bottom: 8px;
+        }
+        .add-field-inline.open { display: block; }
+        .add-field-inline-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .add-field-inline input,
+        .add-field-inline select,
+        .add-field-inline textarea {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .add-field-inline input:focus,
+        .add-field-inline select:focus { border-color: #6ee7a0; }
+        .add-field-inline label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        .add-field-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+        .custom-field-item {
+            grid-column: span 1;
+        }
     </style>
 </head>
 <body>
@@ -2053,7 +2161,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.20</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.21</span>
             </div>
         </header>
 
@@ -3424,6 +3532,15 @@
                 if (cpSec)  cpSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? 'Edit Repair Order' : 'New Repair Order';
             }
+            // Show/hide custom fields section with insurance sections
+            const customSec = document.getElementById((isEdit ? 'edit' : 'new') + 'CustomFieldsSection');
+            if (customSec) {
+                if (type === 'insurance' || type === 'hybrid') {
+                    customSec.classList.add('visible');
+                } else {
+                    customSec.classList.remove('visible');
+                }
+            }
         }
 
         function collectInsuranceFields(context) {
@@ -3475,6 +3592,9 @@
                 base.datePaid               = document.getElementById(cpPrefix + 'datePaid')?.value || '';
                 base.customerPayDescription = document.getElementById(cpPrefix + 'customerPayDescription')?.value || '';
             }
+            // Merge in custom field values
+            const customVals = collectCustomFields(context === 'edit' ? 'edit' : 'new');
+            Object.assign(base, customVals);
             return base;
         }
 
@@ -3921,7 +4041,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.20 - Released 2026-03-12');
+            console.log('📦 PRVS Dashboard v1.21 - Released 2026-03-12');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -4893,6 +5013,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             AUDIT_LOG_RANGE: 'Audit Log!A:G',
             CASHIERED_RANGE: 'Cashiered!A:W',
             INSURANCE_DATA_RANGE: 'Insurance Data!A:C',
+            CONFIG_RANGE: 'Config!A1',
             DISCOVERY_DOCS: [
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -5236,6 +5357,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                             backfillROIds().catch(e => console.warn('backfillROIds error:', e));
                         }
                         startTimeLogsAutoRefresh();
+                        loadCustomFieldConfig(); // Load custom insurance field definitions
                     } else {
                         console.log('✅ Token silently refreshed — session continues');
                     }
@@ -5485,12 +5607,12 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     <div id="voiceNotesModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;">
                         <div style="background: white; border-radius: 16px; padding: 30px; max-width: 600px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
                             <h3 style="margin: 0 0 20px 0; color: #1e293b; font-size: 1.3rem;">${title}</h3>
-                            <div style="position: relative;">
-                                <textarea id="voiceNotesInput" placeholder="Type or use voice..." style="width: 100%; min-height: 150px; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; font-family: inherit; resize: vertical; margin-bottom: 10px;"></textarea>
-                                <button onclick="startVoiceDictationForModal()" style="position: absolute; top: 10px; right: 10px; padding: 10px 20px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
+                            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+                                <button onclick="startVoiceDictationForModal()" style="padding: 8px 18px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
                                     🎤 Dictate
                                 </button>
                             </div>
+                            <textarea id="voiceNotesInput" placeholder="Type or use voice..." style="width: 100%; min-height: 150px; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; font-family: inherit; resize: vertical; margin-bottom: 10px;"></textarea>
                             <div id="voiceNotesStatus" style="margin-bottom: 15px; font-size: 0.9rem; color: #64748b; min-height: 20px;"></div>
                             <div style="display: flex; gap: 12px; justify-content: flex-end;">
                                 <button onclick="closeVoiceNotesModal(null)" style="padding: 12px 24px; background: #64748b; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">
@@ -6303,8 +6425,13 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                             if (el && savedInsData[f]) el.value = savedInsData[f];
                         });
                     }
+                    // Restore custom field values
+                    const customVals = {};
+                    customInsuranceFields.forEach(f => { if (savedInsData[f.key]) customVals[f.key] = savedInsData[f.key]; });
+                    renderCustomFields('edit', customVals);
                 } else {
                     setROType('standard', 'edit');
+                    renderCustomFields('edit');
                 }
 
                 const repairTypes = (ro.repairType || '').split(',').map(t => t.trim());
@@ -6740,6 +6867,46 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         </div>
                     </div>
 
+                    <!-- Custom Insurance Fields (New RO) -->
+                    <div class="insurance-section" id="newCustomFieldsSection">
+                        <div class="custom-fields-section-header">
+                            <span class="custom-fields-section-title">⚙️ Custom Fields</span>
+                            <div class="custom-fields-btns">
+                                <button type="button" class="add-field-btn" onclick="toggleAddFieldForm('new')">+ Add Field</button>
+                                <button type="button" class="manage-fields-btn" onclick="openManageFieldsModal()">⚙ Manage</button>
+                            </div>
+                        </div>
+                        <!-- Inline add field form -->
+                        <div class="add-field-inline" id="addFieldInline_new">
+                            <div class="add-field-inline-grid">
+                                <div>
+                                    <label>Field Label</label>
+                                    <input type="text" id="newFieldLabel_new" placeholder="e.g. Supplemental Amount">
+                                </div>
+                                <div>
+                                    <label>Field Type</label>
+                                    <select id="newFieldType_new" onchange="toggleDropdownOptions('new')">
+                                        <option value="text">Text</option>
+                                        <option value="number">Number</option>
+                                        <option value="date">Date</option>
+                                        <option value="select">Dropdown</option>
+                                        <option value="toggle">Yes/No Toggle</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="dropdownOptionsRow_new" style="display:none; margin-bottom:10px;">
+                                <label>Dropdown Options (comma-separated)</label>
+                                <input type="text" id="newFieldOptions_new" placeholder="Option 1, Option 2, Option 3">
+                            </div>
+                            <div class="add-field-actions">
+                                <button type="button" class="manage-fields-btn" onclick="toggleAddFieldForm('new')">Cancel</button>
+                                <button type="button" class="add-field-btn" onclick="saveCustomField('new')">✓ Add to This RO &amp; Save for Future</button>
+                            </div>
+                        </div>
+                        <!-- Dynamic custom fields rendered here -->
+                        <div id="customFieldsGrid_new" style="display:contents;"></div>
+                    </div>
+
                     <div id="sug_new_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
 
                     <!-- Insurance Claim Fields (hidden until Insurance mode activated) -->
@@ -7086,6 +7253,44 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         <div class="form-field"><label class="form-label">Customer Invoice Number</label><input type="text" class="form-input" id="editCp_customerInvoiceNumber"></div>
                         <div class="form-field"><label class="form-label">Date Paid</label><input type="date" class="form-input" id="editCp_datePaid"></div>
                         <div class="form-field full-width"><label class="form-label">Customer Pay Description</label><textarea class="form-textarea" id="editCp_customerPayDescription"></textarea></div>
+                    </div>
+
+                    <!-- Custom Insurance Fields (Edit RO) -->
+                    <div class="insurance-section" id="editCustomFieldsSection">
+                        <div class="custom-fields-section-header">
+                            <span class="custom-fields-section-title">⚙️ Custom Fields</span>
+                            <div class="custom-fields-btns">
+                                <button type="button" class="add-field-btn" onclick="toggleAddFieldForm('edit')">+ Add Field</button>
+                                <button type="button" class="manage-fields-btn" onclick="openManageFieldsModal()">⚙ Manage</button>
+                            </div>
+                        </div>
+                        <div class="add-field-inline" id="addFieldInline_edit">
+                            <div class="add-field-inline-grid">
+                                <div>
+                                    <label>Field Label</label>
+                                    <input type="text" id="newFieldLabel_edit" placeholder="e.g. Supplemental Amount">
+                                </div>
+                                <div>
+                                    <label>Field Type</label>
+                                    <select id="newFieldType_edit" onchange="toggleDropdownOptions('edit')">
+                                        <option value="text">Text</option>
+                                        <option value="number">Number</option>
+                                        <option value="date">Date</option>
+                                        <option value="select">Dropdown</option>
+                                        <option value="toggle">Yes/No Toggle</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="dropdownOptionsRow_edit" style="display:none; margin-bottom:10px;">
+                                <label>Dropdown Options (comma-separated)</label>
+                                <input type="text" id="newFieldOptions_edit" placeholder="Option 1, Option 2, Option 3">
+                            </div>
+                            <div class="add-field-actions">
+                                <button type="button" class="manage-fields-btn" onclick="toggleAddFieldForm('edit')">Cancel</button>
+                                <button type="button" class="add-field-btn" onclick="saveCustomField('edit')">✓ Add to This RO &amp; Save for Future</button>
+                            </div>
+                        </div>
+                        <div id="customFieldsGrid_edit" style="display:contents;"></div>
                     </div>
 
                     <div id="sug_edit_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
