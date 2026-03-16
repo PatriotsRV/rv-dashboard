@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.17
+    PRVS Dashboard v1.18
     Released: 2026-03-15
-    New in v1.17:
+    New in v1.18:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
 -->
 <html lang="en">
@@ -1912,6 +1912,74 @@
             padding: 6px 10px;
             outline: none;
         }
+
+        /* ── Insurance Claim Mode ── */
+        .ro-type-toggle {
+            display: flex;
+            gap: 0;
+            margin-bottom: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+        .ro-type-btn {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--bg-elevated);
+            border: none;
+            color: var(--text-muted);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ro-type-btn.active {
+            background: linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(109,40,217,0.3) 100%);
+            color: #a78bfa;
+        }
+        .ro-type-btn.active.insurance {
+            background: linear-gradient(135deg, rgba(251,146,60,0.2) 0%, rgba(234,88,12,0.2) 100%);
+            color: #fb923c;
+        }
+        .insurance-section {
+            display: none;
+            grid-column: 1 / -1;
+        }
+        .insurance-section.visible {
+            display: contents;
+        }
+        .insurance-section-header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0 8px;
+            border-top: 1px solid rgba(251,146,60,0.3);
+            margin-top: 8px;
+            color: #fb923c;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .insurance-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(251,146,60,0.15);
+            border: 1px solid rgba(251,146,60,0.4);
+            border-radius: 12px;
+            color: #fb923c;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 2px;
+        }
     </style>
 </head>
 <body>
@@ -1940,7 +2008,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.17</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.18</span>
             </div>
         </header>
 
@@ -3136,6 +3204,63 @@
         }
 
 
+
+        // ── Insurance Claim RO Mode ──────────────────────────────────
+        let currentROType = 'standard'; // 'standard' or 'insurance'
+
+        function setROType(type) {
+            currentROType = type;
+            const standardBtn = document.getElementById('standardROBtn');
+            const insuranceBtn = document.getElementById('insuranceROBtn');
+            const insuranceSection = document.getElementById('insuranceFieldsSection');
+            const modalTitle = document.querySelector('#modalOverlay h2');
+
+            if (type === 'insurance') {
+                standardBtn.classList.remove('active');
+                insuranceBtn.classList.add('active');
+                if (insuranceSection) insuranceSection.classList.add('visible');
+                if (modalTitle) modalTitle.textContent = '🛡️ Insurance Claim RO';
+            } else {
+                insuranceBtn.classList.remove('active');
+                standardBtn.classList.add('active');
+                if (insuranceSection) insuranceSection.classList.remove('visible');
+                if (modalTitle) modalTitle.textContent = 'New Repair Order';
+            }
+        }
+
+        function collectInsuranceFields() {
+            if (currentROType !== 'insurance') return null;
+            return {
+                isInsuranceClaim: true,
+                claimNumber:      document.getElementById('ins_claimNumber')?.value || '',
+                policyNumber:     document.getElementById('ins_policyNumber')?.value || '',
+                insuranceCompany: document.getElementById('ins_insuranceCompany')?.value || '',
+                coverageType:     document.getElementById('ins_coverageType')?.value || '',
+                dateOfLoss:       document.getElementById('ins_dateOfLoss')?.value || '',
+                claimStatus:      document.getElementById('ins_claimStatus')?.value || '',
+                deductibleAmount: document.getElementById('ins_deductibleAmount')?.value || '',
+                approvedAmount:   document.getElementById('ins_approvedAmount')?.value || '',
+                adjusterName:     document.getElementById('ins_adjusterName')?.value || '',
+                adjusterPhone:    document.getElementById('ins_adjusterPhone')?.value || '',
+                adjusterEmail:    document.getElementById('ins_adjusterEmail')?.value || '',
+            };
+        }
+
+        // Extend ESTIMATE_FIELD_MAP with insurance fields for suggestion chips
+        const INSURANCE_FIELD_MAP = {
+            claimNumber:      { new: 'ins_claimNumber',      label: 'Claim Number' },
+            policyNumber:     { new: 'ins_policyNumber',     label: 'Policy Number' },
+            insuranceCompany: { new: 'ins_insuranceCompany', label: 'Insurance Company' },
+            coverageType:     { new: 'ins_coverageType',     label: 'Coverage Type' },
+            dateOfLoss:       { new: 'ins_dateOfLoss',       label: 'Date of Loss' },
+            claimStatus:      { new: 'ins_claimStatus',      label: 'Claim Status' },
+            deductibleAmount: { new: 'ins_deductibleAmount', label: 'Deductible Amount' },
+            approvedAmount:   { new: 'ins_approvedAmount',   label: 'Approved Amount' },
+            adjusterName:     { new: 'ins_adjusterName',     label: 'Adjuster Name' },
+            adjusterPhone:    { new: 'ins_adjusterPhone',    label: 'Adjuster Phone' },
+            adjusterEmail:    { new: 'ins_adjusterEmail',    label: 'Adjuster Email' },
+        };
+
         // ── Insurance Estimate Scanner ──────────────────────────────
 
         // Field map: extracted key → { formMode: inputId, label }
@@ -3319,7 +3444,14 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         function renderSuggestions(mode, extracted) {
+            // If insurance mode is active, auto-switch to insurance mode
+            if (mode === 'new' && Object.keys(extracted).some(k => INSURANCE_FIELD_MAP[k])) {
+                setROType('insurance');
+            }
+
             const knownKeys = Object.keys(ESTIMATE_FIELD_MAP);
+            // Also handle insurance-specific fields
+            const insuranceKeys = Object.keys(INSURANCE_FIELD_MAP);
             const extraFields = {};
 
             Object.entries(extracted).forEach(([key, value]) => {
@@ -3349,6 +3481,31 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     extraFields[key] = strVal;
                 }
             });
+
+            // Render insurance-specific fields (new mode only)
+            if (mode === 'new') {
+                Object.entries(extracted).forEach(([key, value]) => {
+                    if (!insuranceKeys.includes(key)) return;
+                    if (!value && value !== 0) return;
+                    const strVal = String(value).trim();
+                    if (!strVal) return;
+
+                    const mapping = INSURANCE_FIELD_MAP[key];
+                    const inputId = mapping.new;
+                    const input = document.getElementById(inputId);
+                    const container = document.getElementById(`sug_new_${key}`);
+                    if (!input || !container) return;
+
+                    const existingVal = input.value.trim();
+                    if (!existingVal) {
+                        container.innerHTML = renderSimpleChip(inputId, strVal, mapping.label, mode, key);
+                    } else if (existingVal.toLowerCase() !== strVal.toLowerCase()) {
+                        container.innerHTML = renderConflictChip(inputId, existingVal, strVal, mapping.label, mode, key);
+                    }
+                    // Remove from extraFields so it doesn't show in the extra section
+                    delete extraFields[key];
+                });
+            }
 
             // Render extra fields section
             const extraEl = document.getElementById(`sug_${mode}_extra`);
@@ -3489,7 +3646,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.17 - Released 2026-03-12');
+            console.log('📦 PRVS Dashboard v1.18 - Released 2026-03-12');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -3846,6 +4003,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
+                        ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); return d.isInsuranceClaim ? '<div class="insurance-badge">🛡️ Insurance Claim</div>' : ''; } catch(e) { return ''; } })() : ''}
                         ` : ''}
                         
                         ${shouldShow('qrCode') || shouldShow('printLabel') ? `
@@ -5906,8 +6064,9 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 modalOverlay.classList.remove('active');
                 newROForm.reset();
                 window._lastEstimateScan = null;
-                // Clear all suggestion chips
                 clearAllSuggestions('new');
+                // Reset RO type to standard
+                setROType('standard');
             };
 
             modalClose.addEventListener('click', closeModal);
@@ -5940,18 +6099,22 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                 const success = await appendToSheets(data);
                 if (success) {
-                    // Write insurance data if a scan was performed for this new RO
-                    if (window._lastEstimateScan && window._lastEstimateScan.mode === 'new') {
+                    // Merge insurance fields + scan data, write to Insurance Data tab + Column W
+                    const insuranceFields = collectInsuranceFields();
+                    const scanData = window._lastEstimateScan ? window._lastEstimateScan.extracted : null;
+                    const combinedData = Object.assign({}, scanData || {}, insuranceFields || {});
+
+                    if (Object.keys(combinedData).length > 0) {
                         const newRoIndex = currentData.findIndex(d =>
                             d.customerName === data.customerName && d.repairType === data.repairType
                         );
                         if (newRoIndex !== -1) {
                             const ro = currentData[newRoIndex];
                             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-                            writeInsuranceData(roId, window._lastEstimateScan.extracted, newRoIndex);
+                            writeInsuranceData(roId, combinedData, newRoIndex);
                         }
-                        window._lastEstimateScan = null;
                     }
+                    window._lastEstimateScan = null;
                     closeModal();
                     alert('Repair Order saved successfully!');
                 }
@@ -6051,6 +6214,12 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     <span id="authStatus">Not connected to Google Sheets</span>
                 </div>
                 <button class="btn btn-primary" id="authButton">Connect to Google Sheets</button>
+            </div>
+
+            <!-- RO Type Toggle -->
+            <div class="ro-type-toggle">
+                <button type="button" class="ro-type-btn active" id="standardROBtn" onclick="setROType('standard')">🔧 Standard RO</button>
+                <button type="button" class="ro-type-btn insurance" id="insuranceROBtn" onclick="setROType('insurance')">🛡️ Insurance Claim</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -6201,6 +6370,76 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         <textarea class="form-textarea" name="customerCommunicationNotes"></textarea>
                     </div>
                     <div id="sug_new_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
+
+                    <!-- Insurance Claim Fields (hidden until Insurance mode activated) -->
+                    <div class="insurance-section" id="insuranceFieldsSection">
+                        <div class="insurance-section-header">
+                            🛡️ Insurance Claim Details
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Claim Number</label>
+                            <input type="text" class="form-input" name="claimNumber" id="ins_claimNumber" placeholder="e.g. CLM-2024-001234">
+                            <div id="sug_new_claimNumber"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Policy Number</label>
+                            <input type="text" class="form-input" name="policyNumber" id="ins_policyNumber">
+                            <div id="sug_new_policyNumber"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Insurance Company</label>
+                            <input type="text" class="form-input" name="insuranceCompany" id="ins_insuranceCompany">
+                            <div id="sug_new_insuranceCompany"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Coverage Type</label>
+                            <input type="text" class="form-input" name="coverageType" id="ins_coverageType" placeholder="e.g. Comprehensive">
+                            <div id="sug_new_coverageType"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Date of Loss</label>
+                            <input type="date" class="form-input" name="dateOfLoss" id="ins_dateOfLoss">
+                            <div id="sug_new_dateOfLoss"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Claim Status</label>
+                            <select class="form-select" name="claimStatus" id="ins_claimStatus">
+                                <option value="">Select Status</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Approved">Approved</option>
+                                <option value="Partially Approved">Partially Approved</option>
+                                <option value="Denied">Denied</option>
+                                <option value="Under Review">Under Review</option>
+                                <option value="Supplemental Filed">Supplemental Filed</option>
+                            </select>
+                            <div id="sug_new_claimStatus"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Deductible Amount ($)</label>
+                            <input type="number" class="form-input" name="deductibleAmount" id="ins_deductibleAmount" min="0" step="0.01">
+                            <div id="sug_new_deductibleAmount"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Approved Amount ($)</label>
+                            <input type="number" class="form-input" name="approvedAmount" id="ins_approvedAmount" min="0" step="0.01">
+                            <div id="sug_new_approvedAmount"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Adjuster Name</label>
+                            <input type="text" class="form-input" name="adjusterName" id="ins_adjusterName">
+                            <div id="sug_new_adjusterName"></div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Adjuster Phone</label>
+                            <input type="tel" class="form-input" name="adjusterPhone" id="ins_adjusterPhone">
+                            <div id="sug_new_adjusterPhone"></div>
+                        </div>
+                        <div class="form-field full-width">
+                            <label class="form-label">Adjuster Email</label>
+                            <input type="email" class="form-input" name="adjusterEmail" id="ins_adjusterEmail">
+                            <div id="sug_new_adjusterEmail"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
