@@ -3085,12 +3085,12 @@
                 // Step 2: Read the full row from Sheet1
                 const readResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${rowNumber}:V${rowNumber}`,
+                    range: `Sheet1!A${rowNumber}:W${rowNumber}`,
                 });
                 const rowValues = readResponse.result.values ? readResponse.result.values[0] : [];
 
-                // Pad to 22 columns (A–V)
-                while (rowValues.length < 22) rowValues.push('');
+                // Pad to 23 columns (A–W)
+                while (rowValues.length < 23) rowValues.push('');
 
                 // Step 3: Append to Cashiered tab
                 await gapi.client.sheets.spreadsheets.values.append({
@@ -3194,6 +3194,16 @@
                 // Step 4: Render suggestion chips
                 clearAllSuggestions(mode);
                 renderSuggestions(mode, extracted);
+
+                // Step 5: Store extracted data for saving when RO is submitted
+                window._lastEstimateScan = { mode, extracted, timestamp: new Date().toISOString() };
+
+                // Step 6: If in Edit mode and we have an RO index, write insurance data now
+                if (mode === 'edit' && editingROIndex !== null) {
+                    const ro = currentData[editingROIndex];
+                    const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
+                    writeInsuranceData(roId, extracted, editingROIndex);
+                }
 
                 btn.textContent = '✅ Scan Complete — Review Suggestions Below';
                 btn.disabled = false;
@@ -3414,6 +3424,46 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             }
         }
 
+        // Write extracted insurance data to Insurance Data tab and Column W of Sheet1
+        async function writeInsuranceData(roId, extractedData, dataIndex) {
+            if (!accessToken || !roId) return;
+            const timestamp = new Date().toISOString();
+            const json = JSON.stringify(extractedData);
+
+            try {
+                // Write to Insurance Data tab: RO ID | Timestamp | Raw JSON
+                await gapi.client.sheets.spreadsheets.values.append({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: GOOGLE_CONFIG.INSURANCE_DATA_RANGE,
+                    valueInputOption: 'RAW',
+                    resource: { values: [[roId, timestamp, json]] }
+                });
+                console.log('✅ Insurance data written to Insurance Data tab for', roId);
+            } catch (err) {
+                console.warn('Insurance Data tab write failed (non-fatal):', err);
+            }
+
+            // Also write JSON to Column W of Sheet1 if we have a data index
+            if (dataIndex !== null && dataIndex !== undefined) {
+                try {
+                    const rowNumber = await getSheetRowNumber(dataIndex);
+                    if (rowNumber) {
+                        await gapi.client.sheets.spreadsheets.values.update({
+                            spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                            range: `Sheet1!W${rowNumber}`,
+                            valueInputOption: 'RAW',
+                            resource: { values: [[json]] }
+                        });
+                        // Update local data too
+                        currentData[dataIndex].insuranceData = json;
+                        console.log('✅ Insurance data written to Column W row', rowNumber);
+                    }
+                } catch (err) {
+                    console.warn('Column W write failed (non-fatal):', err);
+                }
+            }
+        }
+
         // Days on Lot filter functions
         function applyDaysFilter(value) {
             const num = parseInt(value);
@@ -3614,6 +3664,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 'Comm Notes':           'customerCommunicationNotes',
                 'RO ID':                'roId',
                 'VIN':                  'vin',
+                'InsuranceData':        'insuranceData',
             };
             if (headerMap[str]) return headerMap[str];
             
@@ -4407,7 +4458,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             DRIVE_FOLDER_ID: '1SdOc3FDMN20btqR4iR6rhWXiSG6gXFgv',
             TIME_LOGS_RANGE: 'Time Logs!A:J',
             AUDIT_LOG_RANGE: 'Audit Log!A:G',
-            CASHIERED_RANGE: 'Cashiered!A:V',
+            CASHIERED_RANGE: 'Cashiered!A:W',
+            INSURANCE_DATA_RANGE: 'Insurance Data!A:C',
             DISCOVERY_DOCS: [
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -4824,7 +4876,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 console.log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A1:V1000',  // Now includes column V (VIN)
+                    range: 'Sheet1!A1:W1000',  // Now includes column W (InsuranceData)
                 });
 
                 console.log('Response received:', response);
@@ -5153,7 +5205,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         async function backfillROIds() {
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:V',
+                range: 'Sheet1!A:W',
             });
             const rows = response.result.values || [];
             const updates = [];
@@ -5196,7 +5248,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:V',
+                range: 'Sheet1!A:W',
             });
             const rows = response.result.values || [];
 
@@ -5246,10 +5298,11 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     formData.dateArrived || existing.dateArrived || '', // S - editable via Edit RO
                     existing.photoLibrary || '',              // T - preserved
                     existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived), // U - preserved
-                    formData.vin || existing.vin || ''  // V - editable
+                    formData.vin || existing.vin || '',  // V - editable
+                    existing.insuranceData || ''             // W - preserved (set by scanner)
                 ]];
 
-                const range = `Sheet1!A${rowNumber}:V${rowNumber}`;
+                const range = `Sheet1!A${rowNumber}:W${rowNumber}`;
                 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -5344,7 +5397,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     formData.dateArrived || '',
                     '',        // photoLibrary starts empty
                     newRoId,   // Column U — RO ID
-                    formData.vin || ''  // Column V — VIN
+                    formData.vin || '',  // Column V — VIN
+                    ''                  // Column W — InsuranceData (set by scanner after save)
                 ]];
 
                 // Find the true last populated row by reading column A only,
@@ -5367,7 +5421,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${newRow}:V${newRow}`,
+                    range: `Sheet1!A${newRow}:W${newRow}`,
                     valueInputOption: 'RAW',
                     resource: { values }
                 });
@@ -5851,6 +5905,9 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             const closeModal = () => {
                 modalOverlay.classList.remove('active');
                 newROForm.reset();
+                window._lastEstimateScan = null;
+                // Clear all suggestion chips
+                clearAllSuggestions('new');
             };
 
             modalClose.addEventListener('click', closeModal);
@@ -5883,6 +5940,18 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                 const success = await appendToSheets(data);
                 if (success) {
+                    // Write insurance data if a scan was performed for this new RO
+                    if (window._lastEstimateScan && window._lastEstimateScan.mode === 'new') {
+                        const newRoIndex = currentData.findIndex(d =>
+                            d.customerName === data.customerName && d.repairType === data.repairType
+                        );
+                        if (newRoIndex !== -1) {
+                            const ro = currentData[newRoIndex];
+                            const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
+                            writeInsuranceData(roId, window._lastEstimateScan.extracted, newRoIndex);
+                        }
+                        window._lastEstimateScan = null;
+                    }
                     closeModal();
                     alert('Repair Order saved successfully!');
                 }
