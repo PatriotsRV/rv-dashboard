@@ -2237,6 +2237,45 @@
             max-height: 300px;
             opacity: 1;
         }
+
+        /* ── QR Code Collapsible ── */
+        .qr-collapsible-wrapper {
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        .qr-toggle-btn {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .qr-toggle-btn:hover {
+            border-color: var(--accent-info);
+            color: var(--accent-info);
+        }
+        .qr-chevron {
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+        }
+        .qr-chevron.open {
+            transform: rotate(180deg);
+        }
+        .qr-collapsible {
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -2689,8 +2728,8 @@
                 rvDetails: true,
                 dollarValue: true,
                 daysOnLot: true,
-                qrCode: true,
-                printLabel: true,
+                qrCode: false,
+                printLabel: false,
                 photoUpload: true,
                 urgencySelector: true,
                 statusDropdown: true,
@@ -4896,6 +4935,29 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             }
         }
 
+
+        // Toggle QR code section on card
+        function toggleQRSection(btn, index) {
+            const wrapper = btn.closest('.qr-collapsible-wrapper');
+            const collapsible = wrapper.querySelector('.qr-collapsible');
+            const chevron = btn.querySelector('.qr-chevron');
+            const isOpen = collapsible.style.display !== 'none';
+
+            if (isOpen) {
+                collapsible.style.display = 'none';
+                chevron.classList.remove('open');
+            } else {
+                collapsible.style.display = 'block';
+                chevron.classList.add('open');
+                // Generate QR code if not yet rendered
+                const canvas = document.getElementById('qr-' + index);
+                if (canvas && !canvas.dataset.ready) {
+                    const ro = currentFilteredData[index];
+                    if (ro) generateQRCode(canvas, ro, index);
+                }
+            }
+        }
+
         // Days on Lot filter functions
         function applyDaysFilter(value) {
             const num = parseInt(value);
@@ -5331,24 +5393,26 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' Backordered') : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' Outstanding') : 'All Received'; return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ` : ''}
                         
-                        ${shouldShow('qrCode') || shouldShow('printLabel') ? `
-                        <div class="qr-code-section">
-                            ${shouldShow('qrCode') ? `
-                            <div class="qr-code-container" onclick="openQRModal(${index})">
-                                <canvas id="qr-${index}" class="qr-canvas"></canvas>
-                            </div>
-                            <div class="qr-label">${ro.customerName || 'Unknown'}</div>
-                            ${shouldShow('rvDetails') ? `
-                            <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${ro.rv || 'RV Not Specified'}</div>
-                            ` : ''}
-                            ` : ''}
-                            ${shouldShow('printLabel') ? `
-                            <button class="print-qr-btn" onclick="printQRLabel(${index})" title="Print QR Label">
-                                🖨️ Print Label
+                        <!-- QR Code — collapsible toggle always shown, content hidden by default in Regular view -->
+                        <div class="qr-collapsible-wrapper">
+                            <button class="qr-toggle-btn" onclick="toggleQRSection(this, ${index})" title="Show/Hide QR Code">
+                                📱 QR Code <span class="qr-chevron">▼</span>
                             </button>
-                            ` : ''}
+                            <div class="qr-collapsible" style="display:none;">
+                                <div class="qr-code-section">
+                                    <div class="qr-code-container" onclick="openQRModal(${index})">
+                                        <canvas id="qr-${index}" class="qr-canvas"></canvas>
+                                    </div>
+                                    <div class="qr-label">${ro.customerName || 'Unknown'}</div>
+                                    ${shouldShow('rvDetails') ? `
+                                    <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${ro.rv || 'RV Not Specified'}</div>
+                                    ` : ''}
+                                    <button class="print-qr-btn" onclick="printQRLabel(${index})" title="Print QR Label">
+                                        🖨️ Print Label
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        ` : ''}
                         
                         <button class="checkin-btn" onclick="openCheckIn(${index})" title="Check in to this RO">
                             🚪 Tech Check In
@@ -5524,14 +5588,10 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 `;
             }).join('');
             
-            // Generate QR codes after DOM is updated
-            if (shouldShow('qrCode')) {
-                setTimeout(() => generateAllQRCodes(filtered), 100);
-            } else {
-                // Even if QR codes are hidden, load Drive images for RV photos
-                if (accessToken) {
-                    setTimeout(() => loadAllDriveImages(), 100);
-                }
+            // QR codes now render on-demand when toggle is clicked
+            // Just load Drive images for RV photos
+            if (accessToken) {
+                setTimeout(() => loadAllDriveImages(), 100);
             }
         }
 
