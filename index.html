@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.21
+    PRVS Dashboard v1.22
     Released: 2026-03-16
-    New in v1.21:
+    New in v1.22:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
 -->
 <html lang="en">
@@ -2133,6 +2133,60 @@
         .custom-field-item {
             grid-column: span 1;
         }
+
+        /* ── Parts Management ── */
+        .parts-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .parts-badge:hover { opacity: 0.85; transform: translateY(-1px); }
+        .parts-badge.red {
+            background: rgba(255,59,48,0.15);
+            border: 1px solid rgba(255,59,48,0.4);
+            color: #ff3b30;
+        }
+        .parts-badge.yellow {
+            background: rgba(255,204,0,0.15);
+            border: 1px solid rgba(255,204,0,0.4);
+            color: #ffcc00;
+        }
+        .parts-badge.green {
+            background: rgba(52,199,89,0.15);
+            border: 1px solid rgba(52,199,89,0.4);
+            color: #34c759;
+        }
+        .parts-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg-elevated);
+            border: 2px solid #ff9500;
+            border-radius: 8px;
+            color: #ff9500;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 8px;
+        }
+        .parts-btn:hover {
+            background: #ff9500;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255,149,0,0.3);
+        }
     </style>
 </head>
 <body>
@@ -2161,7 +2215,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.21</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.22</span>
             </div>
         </header>
 
@@ -2216,6 +2270,15 @@
                         <button class="filter-btn" data-filter="Waiting for QA/QC" data-type="status">Waiting for QA/QC</button>
                         <button class="filter-btn" data-filter="Ready for pickup" data-type="status">Ready for Pickup</button>
                         <button class="filter-btn" data-filter="Delivered/Cashed Out" data-type="status">Delivered/Cashed Out</button>
+                    </div>
+                </div>
+
+                <div class="filter-section" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <label class="filter-label">Outstanding Parts:</label>
+                    <div class="filter-group">
+                        <button class="filter-btn" id="partsFilterBtn" data-filter="all" data-type="parts" onclick="togglePartsFilter()">All ROs</button>
+                        <button class="filter-btn" data-filter="outstanding" data-type="parts" onclick="togglePartsFilter('outstanding')">⚠️ Outstanding</button>
+                        <button class="filter-btn" data-filter="backordered" data-type="parts" onclick="togglePartsFilter('backordered')">🔴 Backordered</button>
                     </div>
                 </div>
 
@@ -2486,6 +2549,7 @@
         let currentRepairFilter = 'all';
         let currentSearchFilter = ''; // Customer name search
         let currentDaysFilter = null; // Days on lot >= filter
+        let currentPartsFilter = 'all'; // 'all', 'outstanding', 'backordered'
         let timeLogsData = []; // Store time logs from Google Sheets
         let timeLogsRefreshInterval = null; // Auto-refresh timer
         
@@ -3439,12 +3503,12 @@
                 // Step 2: Read the full row from Sheet1
                 const readResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${rowNumber}:W${rowNumber}`,
+                    range: `Sheet1!A${rowNumber}:X${rowNumber}`,
                 });
                 const rowValues = readResponse.result.values ? readResponse.result.values[0] : [];
 
-                // Pad to 23 columns (A–W)
-                while (rowValues.length < 23) rowValues.push('');
+                // Pad to 24 columns (A–X)
+                while (rowValues.length < 24) rowValues.push('');
 
                 // Step 3: Append to Cashiered tab
                 await gapi.client.sheets.spreadsheets.values.append({
@@ -4209,6 +4273,473 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             }
         }
 
+
+        // ── Parts Management ─────────────────────────────────────────
+
+        let partsData = {}; // Cache: { roId: [parts array] }
+
+        const PART_STATUSES = ['Ordered','In Transit','Received','Installed','Backordered','Returned','Lost'];
+
+        const PART_STATUS_COLORS = {
+            'Ordered':     '#ffcc00',
+            'In Transit':  '#ff9500',
+            'Received':    '#34c759',
+            'Installed':   '#0a84ff',
+            'Backordered': '#ff3b30',
+            'Returned':    '#9ca3af',
+            'Lost':        '#ff3b30'
+        };
+
+        // Toggle parts filter
+        function togglePartsFilter(filter) {
+            currentPartsFilter = filter || 'all';
+            document.querySelectorAll('[data-type="parts"]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === currentPartsFilter);
+            });
+            renderBoard();
+        }
+
+        // Load all parts from the Parts tab
+        async function loadPartsFromSheet() {
+            if (!accessToken) return;
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: GOOGLE_CONFIG.PARTS_RANGE,
+                });
+                const rows = response.result.values || [];
+                partsData = {};
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const roId = row[0] || '';
+                    if (!roId) continue;
+                    if (!partsData[roId]) partsData[roId] = [];
+                    partsData[roId].push({
+                        rowIndex:        i + 1,
+                        roId:            row[0]  || '',
+                        partName:        row[1]  || '',
+                        partNumber:      row[2]  || '',
+                        condition:       row[3]  || '',
+                        qty:             row[4]  || '1',
+                        status:          row[5]  || 'Ordered',
+                        notes:           row[6]  || '',
+                        // Order Info
+                        partsSource:     row[7]  || '',
+                        poNumber:        row[8]  || '',
+                        orderedBy:       row[9]  || '',
+                        dateOrdered:     row[10] || '',
+                        eta:             row[11] || '',
+                        trackingNumber:  row[12] || '',
+                        partUrl:         row[13] || '',
+                        returnDeadline:  row[14] || '',
+                        // Pricing
+                        wholesalePrice:  row[15] || '',
+                        retailPrice:     row[16] || '',
+                        coreCharge:      row[17] || '',
+                        laborHours:      row[18] || '',
+                        // Supplier Contact
+                        supplier:        row[19] || '',
+                        salesAssocName:  row[20] || '',
+                        salesAssocPhone: row[21] || '',
+                        salesAssocEmail: row[22] || '',
+                        // Receipt
+                        dateReceived:    row[23] || '',
+                        receivedBy:      row[24] || '',
+                        warrantyPeriod:  row[25] || '',
+                    });
+                }
+                console.log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
+                // Update partsJson on currentData for badge rendering
+                updatePartsJsonOnData();
+                renderBoard();
+            } catch(e) {
+                console.warn('Could not load Parts tab:', e);
+            }
+        }
+
+        // Update partsJson field on each RO in currentData for fast badge rendering
+        function updatePartsJsonOnData() {
+            currentData.forEach(ro => {
+                const roId = ro.roId;
+                if (roId && partsData[roId]) {
+                    ro.partsJson = JSON.stringify(partsData[roId]);
+                }
+            });
+        }
+
+        // Write partsJson to Sheet1 Column X for an RO
+        async function updatePartsJsonInSheet(originalIndex) {
+            const ro = currentData[originalIndex];
+            const roId = ro.roId;
+            if (!roId) return;
+            const parts = partsData[roId] || [];
+            const json = parts.length > 0 ? JSON.stringify(parts) : '';
+            ro.partsJson = json;
+            try {
+                const rowNumber = await getSheetRowNumber(originalIndex);
+                if (!rowNumber) return;
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: `Sheet1!X${rowNumber}`,
+                    valueInputOption: 'RAW',
+                    resource: { values: [[json]] }
+                });
+                console.log('✅ PartsJSON updated in Sheet1 col X');
+            } catch(e) {
+                console.warn('Could not update PartsJSON:', e);
+            }
+        }
+
+        // Append a new part row to the Parts tab
+        async function appendPartToSheet(part) {
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                range: GOOGLE_CONFIG.PARTS_RANGE,
+                valueInputOption: 'RAW',
+                resource: { values: [[
+                    part.roId, part.partName, part.partNumber, part.condition, part.qty, part.status, part.notes,
+                    part.partsSource, part.poNumber, part.orderedBy, part.dateOrdered, part.eta, part.trackingNumber, part.partUrl, part.returnDeadline,
+                    part.wholesalePrice, part.retailPrice, part.coreCharge, part.laborHours,
+                    part.supplier, part.salesAssocName, part.salesAssocPhone, part.salesAssocEmail,
+                    part.dateReceived, part.receivedBy, part.warrantyPeriod
+                ]] }
+            });
+        }
+
+        // Update an existing part row in the Parts tab
+        async function updatePartInSheet(part) {
+            if (!part.rowIndex) return;
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                range: `Parts!A${part.rowIndex}:AA${part.rowIndex}`,
+                valueInputOption: 'RAW',
+                resource: { values: [[
+                    part.roId, part.partName, part.partNumber, part.condition, part.qty, part.status, part.notes,
+                    part.partsSource, part.poNumber, part.orderedBy, part.dateOrdered, part.eta, part.trackingNumber, part.partUrl, part.returnDeadline,
+                    part.wholesalePrice, part.retailPrice, part.coreCharge, part.laborHours,
+                    part.supplier, part.salesAssocName, part.salesAssocPhone, part.salesAssocEmail,
+                    part.dateReceived, part.receivedBy, part.warrantyPeriod
+                ]] }
+            });
+        }
+
+        // Delete a part row from the Parts tab
+        async function deletePartFromSheet(rowIndex) {
+            const spreadsheetMeta = await gapi.client.sheets.spreadsheets.get({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+            });
+            const partsSheet = spreadsheetMeta.result.sheets.find(s => s.properties.title === 'Parts');
+            if (!partsSheet) throw new Error('Parts tab not found');
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                resource: { requests: [{ deleteDimension: {
+                    range: {
+                        sheetId: partsSheet.properties.sheetId,
+                        dimension: 'ROWS',
+                        startIndex: rowIndex - 1,
+                        endIndex: rowIndex
+                    }
+                }}]}
+            });
+        }
+
+        // Open the Parts modal for an RO
+        function openPartsModal(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro) return;
+            const originalIndex = currentData.findIndex(d =>
+                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
+            );
+            const roId = ro.roId;
+            const parts = (roId && partsData[roId]) ? partsData[roId] : [];
+
+            const renderPartsRows = (parts) => parts.length === 0
+                ? '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
+                : parts.map((p, i) => {
+                    const color = PART_STATUS_COLORS[p.status] || '#9ca3af';
+                    return `<tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="padding:10px 8px;font-weight:600;color:#1e293b;">${p.partName || '—'}</td>
+                        <td style="padding:10px 8px;color:#64748b;font-size:0.85rem;">${p.partNumber || '—'}</td>
+                        <td style="padding:10px 8px;color:#64748b;font-size:0.85rem;">${p.supplier || '—'}</td>
+                        <td style="padding:10px 8px;text-align:center;">
+                            <span style="padding:3px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}66;">${p.status}</span>
+                        </td>
+                        <td style="padding:10px 8px;text-align:center;color:#64748b;font-size:0.85rem;">${p.qty || 1}</td>
+                        <td style="padding:10px 8px;text-align:center;">
+                            ${p.status !== 'Received' && p.status !== 'Installed'
+                                ? `<button onclick="markPartReceived(${filteredIndex},${i})" style="padding:4px 10px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">✓ Received</button>`
+                                : '<span style="color:#86efac;font-size:0.8rem;">✓</span>'}
+                        </td>
+                        <td style="padding:10px 8px;text-align:center;">
+                            <div style="display:flex;gap:4px;justify-content:center;">
+                                <button onclick="editPartRow(${filteredIndex},${i})" style="padding:4px 8px;background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;">✏️</button>
+                                <button onclick="deletePartRow(${filteredIndex},${i})" style="padding:4px 8px;background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;">✕</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+            const modalHTML = `
+                <div id="partsModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closePartsModal(event)">
+                    <div style="background:white;border-radius:16px;padding:28px;max-width:900px;width:100%;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;">🔩 Parts — ${ro.customerName}</h2>
+                            <button onclick="closePartsModal()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:600;">✕ Close</button>
+                        </div>
+                        <div style="color:#64748b;font-size:0.85rem;margin-bottom:16px;">${ro.rv || ''} &nbsp;•&nbsp; RO: ${roId || '—'}</div>
+
+                        <!-- Add Part Form (hidden by default) -->
+                        <div id="addPartForm" style="display:none;background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #e2e8f0;">
+                            <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:1rem;" id="addPartFormTitle">+ Add New Part</div>
+
+                            <!-- Section: Core Info -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ff9500;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #fed7aa;">🔩 Core Info</div>
+                            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Part Name *</label><input type="text" id="pf_partName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Part Number</label><input type="text" id="pf_partNumber" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Condition</label>
+                                    <select id="pf_condition" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
+                                        <option value="">Select</option>
+                                        <option value="New">New</option>
+                                        <option value="Remanufactured">Remanufactured</option>
+                                        <option value="Used">Used</option>
+                                        <option value="OEM">OEM</option>
+                                    </select></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Qty</label><input type="number" id="pf_qty" value="1" min="1" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 3fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Status</label>
+                                    <select id="pf_status" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
+                                        ${PART_STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
+                                    </select></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Notes</label><input type="text" id="pf_notes" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+
+                            <!-- Section: Order Info -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#3b82f6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #bfdbfe;">📦 Order Info</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Parts Source</label><input type="text" id="pf_partsSource" placeholder="Amazon, NTP, UnitedRV..." style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">PO Number</label><input type="text" id="pf_poNumber" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Ordered By</label><input type="text" id="pf_orderedBy" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Date Ordered</label><input type="date" id="pf_dateOrdered" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">ETA</label><input type="date" id="pf_eta" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Tracking Number</label><input type="text" id="pf_trackingNumber" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Return Deadline</label><input type="date" id="pf_returnDeadline" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Part URL</label><input type="url" id="pf_partUrl" placeholder="https://..." style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+
+                            <!-- Section: Pricing -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#10b981;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #a7f3d0;">💰 Pricing</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Wholesale Price ($)</label><input type="number" id="pf_wholesalePrice" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Retail Price ($)</label><input type="number" id="pf_retailPrice" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Core Charge ($)</label><input type="number" id="pf_coreCharge" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Install Labor Hrs</label><input type="number" id="pf_laborHours" min="0" step="0.25" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+
+                            <!-- Section: Supplier Contact -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+
+                            <!-- Section: Receipt -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ef4444;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #fecaca;">✅ Receipt</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Date Received</label><input type="date" id="pf_dateReceived" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Received By</label><input type="text" id="pf_receivedBy" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Warranty Period</label><input type="text" id="pf_warrantyPeriod" placeholder="e.g. 90 days, 1 year" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+
+                            <input type="hidden" id="pf_editIndex" value="">
+                            <div style="display:flex;gap:8px;justify-content:flex-end;">
+                                <button onclick="cancelPartForm()" style="padding:8px 16px;background:#64748b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">Cancel</button>
+                                <button onclick="savePartForm(${filteredIndex})" style="padding:8px 16px;background:linear-gradient(135deg,#ff9500,#e67e00);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700;">💾 Save Part</button>
+                            </div>
+                        </div>
+
+                        <button onclick="showAddPartForm()" style="width:100%;margin-top:16px;
+                    </div>
+                </div>`;
+
+            // Store context for sub-functions
+            window._partsModalContext = { filteredIndex, originalIndex, roId };
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        }
+
+        function closePartsModal(event) {
+            if (event && event.target.id !== 'partsModal') return;
+            const modal = document.getElementById('partsModal');
+            if (modal) modal.remove();
+            window._partsModalContext = null;
+        }
+
+        const ALL_PART_FIELDS = [
+            'partName','partNumber','condition','qty','status','notes',
+            'partsSource','poNumber','orderedBy','dateOrdered','eta','trackingNumber','partUrl','returnDeadline',
+            'wholesalePrice','retailPrice','coreCharge','laborHours',
+            'supplier','salesAssocName','salesAssocPhone','salesAssocEmail',
+            'dateReceived','receivedBy','warrantyPeriod'
+        ];
+
+        function showAddPartForm(editIndex) {
+            const form = document.getElementById('addPartForm');
+            if (!form) return;
+            form.style.display = 'block';
+            // Clear all fields
+            ALL_PART_FIELDS.forEach(f => {
+                const el = document.getElementById('pf_' + f);
+                if (el) el.value = '';
+            });
+            document.getElementById('pf_qty').value = '1';
+            document.getElementById('pf_status').value = 'Ordered';
+            document.getElementById('pf_dateOrdered').value = new Date().toISOString().slice(0,10);
+            document.getElementById('pf_editIndex').value = editIndex !== undefined ? editIndex : '';
+            document.getElementById('addPartFormTitle').textContent = editIndex !== undefined ? '✏️ Edit Part' : '+ Add New Part';
+
+            // If editing, populate all fields
+            if (editIndex !== undefined) {
+                const ctx = window._partsModalContext;
+                const parts = partsData[ctx.roId] || [];
+                const part = parts[editIndex];
+                if (part) {
+                    ALL_PART_FIELDS.forEach(f => {
+                        const el = document.getElementById('pf_' + f);
+                        if (el && part[f]) el.value = part[f];
+                    });
+                }
+            }
+            document.getElementById('pf_partName').focus();
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function cancelPartForm() {
+            const form = document.getElementById('addPartForm');
+            if (form) form.style.display = 'none';
+        }
+
+        async function savePartForm(filteredIndex) {
+            const partName = document.getElementById('pf_partName').value.trim();
+            if (!partName) { alert('Part Name is required.'); return; }
+
+            const ctx = window._partsModalContext;
+            const roId = ctx.roId;
+            const editIndex = document.getElementById('pf_editIndex').value;
+            const isEdit = editIndex !== '';
+
+            const gv = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+            const part = {
+                roId,
+                partName,
+                partNumber:      gv('pf_partNumber'),
+                condition:       gv('pf_condition'),
+                qty:             gv('pf_qty') || '1',
+                status:          gv('pf_status'),
+                notes:           gv('pf_notes'),
+                partsSource:     gv('pf_partsSource'),
+                poNumber:        gv('pf_poNumber'),
+                orderedBy:       gv('pf_orderedBy'),
+                dateOrdered:     gv('pf_dateOrdered'),
+                eta:             gv('pf_eta'),
+                trackingNumber:  gv('pf_trackingNumber'),
+                partUrl:         gv('pf_partUrl'),
+                returnDeadline:  gv('pf_returnDeadline'),
+                wholesalePrice:  gv('pf_wholesalePrice'),
+                retailPrice:     gv('pf_retailPrice'),
+                coreCharge:      gv('pf_coreCharge'),
+                laborHours:      gv('pf_laborHours'),
+                supplier:        gv('pf_supplier'),
+                salesAssocName:  gv('pf_salesAssocName'),
+                salesAssocPhone: gv('pf_salesAssocPhone'),
+                salesAssocEmail: gv('pf_salesAssocEmail'),
+                dateReceived:    gv('pf_dateReceived'),
+                receivedBy:      gv('pf_receivedBy'),
+                warrantyPeriod:  gv('pf_warrantyPeriod'),
+            };
+
+            const saveBtn = document.querySelector('#addPartForm button[onclick*="savePartForm"]');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Saving...'; }
+
+            try {
+                if (!partsData[roId]) partsData[roId] = [];
+
+                if (isEdit) {
+                    const existingPart = partsData[roId][parseInt(editIndex)];
+                    part.rowIndex = existingPart.rowIndex;
+                    partsData[roId][parseInt(editIndex)] = part;
+                    await updatePartInSheet(part);
+                } else {
+                    await appendPartToSheet(part);
+                    // Re-load to get the actual row index
+                    await loadPartsFromSheet();
+                }
+
+                // Update partsJson in Sheet1
+                await updatePartsJsonInSheet(ctx.originalIndex);
+
+                // Re-render the parts table
+                const parts = partsData[roId] || [];
+                const tbody = document.getElementById('partsTableBody');
+                if (tbody) {
+                    // Rebuild rows (need to re-call openPartsModal's renderPartsRows)
+                    closePartsModal();
+                    renderBoard();
+                    setTimeout(() => openPartsModal(filteredIndex), 50);
+                }
+            } catch(e) {
+                console.error('Error saving part:', e);
+                alert('Error saving part: ' + e.message);
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save Part'; }
+            }
+        }
+
+        function editPartRow(filteredIndex, partIndex) {
+            showAddPartForm(partIndex);
+        }
+
+        async function deletePartRow(filteredIndex, partIndex) {
+            const ctx = window._partsModalContext;
+            const parts = partsData[ctx.roId] || [];
+            const part = parts[partIndex];
+            if (!part) return;
+            if (!confirm('Delete part "' + part.partName + '"?')) return;
+
+            try {
+                await deletePartFromSheet(part.rowIndex);
+                await loadPartsFromSheet(); // Reload to fix row indices
+                await updatePartsJsonInSheet(ctx.originalIndex);
+                closePartsModal();
+                renderBoard();
+                setTimeout(() => openPartsModal(filteredIndex), 50);
+            } catch(e) {
+                console.error('Error deleting part:', e);
+                alert('Error deleting part: ' + e.message);
+            }
+        }
+
+        async function markPartReceived(filteredIndex, partIndex) {
+            const ctx = window._partsModalContext;
+            const parts = partsData[ctx.roId] || [];
+            const part = parts[partIndex];
+            if (!part) return;
+            part.status = 'Received';
+            try {
+                await updatePartInSheet(part);
+                await updatePartsJsonInSheet(ctx.originalIndex);
+                closePartsModal();
+                renderBoard();
+                setTimeout(() => openPartsModal(filteredIndex), 50);
+            } catch(e) {
+                console.error('Error marking received:', e);
+                alert('Error: ' + e.message);
+            }
+        }
+
         // Days on Lot filter functions
         function applyDaysFilter(value) {
             const num = parseInt(value);
@@ -4234,7 +4765,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.21 - Released 2026-03-12');
+            console.log('📦 PRVS Dashboard v1.22 - Released 2026-03-12');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -4410,6 +4941,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 'RO ID':                'roId',
                 'VIN':                  'vin',
                 'InsuranceData':        'insuranceData',
+                'PartsJSON':            'partsJson',
             };
             if (headerMap[str]) return headerMap[str];
             
@@ -4532,6 +5064,23 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 });
             }
 
+            // Parts filter
+            if (currentPartsFilter !== 'all') {
+                filtered = filtered.filter(ro => {
+                    if (!ro.partsJson) return false;
+                    try {
+                        const parts = JSON.parse(ro.partsJson);
+                        if (currentPartsFilter === 'backordered') {
+                            return parts.some(p => p.status === 'Backordered' || p.status === 'Lost');
+                        }
+                        if (currentPartsFilter === 'outstanding') {
+                            return parts.some(p => ['Ordered','In Transit','Backordered','Lost'].includes(p.status));
+                        }
+                    } catch(e) {}
+                    return false;
+                });
+            }
+
             // Store filtered data globally for functions to access
             currentFilteredData = filtered;
             
@@ -4592,6 +5141,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         <div class="customer-name">${ro.customerName || 'Unknown Customer'}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ Insurance Claim</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 Customer Pay</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
+                        ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' Backordered') : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' Outstanding') : 'All Received'; return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ` : ''}
                         
                         ${shouldShow('qrCode') || shouldShow('printLabel') ? `
@@ -4773,6 +5323,9 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         ${shouldShow('editButton') ? `
                         <button class="edit-ro-btn" onclick="openEditRO(${index})">
                             ✏️ Edit RO
+                        </button>
+                        <button class="parts-btn" onclick="openPartsModal(${index})">
+                            🔩 Manage Parts
                         </button>
                         ` : ''}
                         ${isAdmin() && (ro.status === 'Delivered/Cashed Out') ? `
@@ -5204,9 +5757,11 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             DRIVE_FOLDER_ID: '1SdOc3FDMN20btqR4iR6rhWXiSG6gXFgv',
             TIME_LOGS_RANGE: 'Time Logs!A:J',
             AUDIT_LOG_RANGE: 'Audit Log!A:G',
-            CASHIERED_RANGE: 'Cashiered!A:W',
+            CASHIERED_RANGE: 'Cashiered!A:X',
             INSURANCE_DATA_RANGE: 'Insurance Data!A:C',
             CONFIG_RANGE: 'Config!A1',
+            PARTS_RANGE: 'Parts!A:AA',
+            PARTS_JSON_COL: 'X',
             DISCOVERY_DOCS: [
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
@@ -5551,6 +6106,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         }
                         startTimeLogsAutoRefresh();
                         loadCustomFieldConfig(); // Load custom insurance field definitions
+                        loadPartsFromSheet(); // Load parts data
                     } else {
                         console.log('✅ Token silently refreshed — session continues');
                     }
@@ -5624,7 +6180,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 console.log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A1:W1000',  // Now includes column W (InsuranceData)
+                    range: 'Sheet1!A1:X1000',  // Now includes column X (PartsJSON)
                 });
 
                 console.log('Response received:', response);
@@ -5953,7 +6509,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         async function backfillROIds() {
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:W',
+                range: 'Sheet1!A:X',
             });
             const rows = response.result.values || [];
             const updates = [];
@@ -5996,7 +6552,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:W',
+                range: 'Sheet1!A:X',
             });
             const rows = response.result.values || [];
 
@@ -6047,10 +6603,11 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     existing.photoLibrary || '',              // T - preserved
                     existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived), // U - preserved
                     formData.vin || existing.vin || '',  // V - editable
-                    existing.insuranceData || ''             // W - preserved (set by scanner)
+                    existing.insuranceData || '',            // W - preserved
+                    existing.partsJson || ''                  // X - preserved
                 ]];
 
-                const range = `Sheet1!A${rowNumber}:W${rowNumber}`;
+                const range = `Sheet1!A${rowNumber}:X${rowNumber}`;
                 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -6169,7 +6726,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${newRow}:W${newRow}`,
+                    range: `Sheet1!A${newRow}:X${newRow}`,
                     valueInputOption: 'RAW',
                     resource: { values }
                 });
