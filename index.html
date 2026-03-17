@@ -3245,7 +3245,7 @@
 
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'image/*,video/mp4,video/quicktime,video/x-m4v,video/avi,video/webm,video/3gpp';
+            input.accept = 'image/*';
             input.multiple = true;
             // No capture attribute — lets mobile show native picker (Camera OR Photo Library)
             
@@ -3274,12 +3274,11 @@
                     const isFirstPhoto = !currentData[originalIndex].rvPhotoUrl;
 
                     for (const file of files) {
-                        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) continue;
+                        if (!file.type.startsWith('image/')) continue;
                         const photoUrl = await uploadToGoogleDrive(file);
-                        const isVid = file.type.startsWith('video/');
-                        library.push(isVid ? { url: photoUrl, type: 'video' } : photoUrl);
+                        library.push(photoUrl);
                         uploaded++;
-                        if (isFirstPhoto && !firstPhotoUrl && !isVid) firstPhotoUrl = photoUrl;
+                        if (isFirstPhoto && !firstPhotoUrl) firstPhotoUrl = photoUrl;
                         if (uploadBtn) uploadBtn.textContent = `⏳ Uploading ${uploaded}/${files.length}...`;
                     }
 
@@ -3376,28 +3375,19 @@
             const renderPhotosTab = () => {
                 const thumbsHtml = library.photos.length === 0
                     ? '<p style="color:#64748b;text-align:center;padding:20px;">No photos yet.</p>'
-                    : library.photos.map((entry, i) => {
-                        const { url, type } = photoEntry(entry);
+                    : library.photos.map((url, i) => {
                         const isMain = url === mainUrl;
-                        const isVideo = type === 'video';
-                        const driveViewUrl = url.includes('drive.google.com') ? url.replace('/view', '/preview') : url;
-                        const mediaEl = isVideo
-                            ? `<div style="width:100%;height:140px;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
-                                <span style="font-size:2rem;">🎥</span>
-                                <a href="${url}" target="_blank" style="background:#3b82f6;color:white;padding:5px 14px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;">▶ Play Video</a>
-                               </div>`
-                            : `<img src="${url.includes('sz=w') ? url.replace(/sz=w\d+/, 'sz=w200') : url}" loading="lazy" style="width:100%;height:140px;object-fit:cover;display:block;background:#f1f5f9;" onerror="this.style.opacity='0.3'">`;
                         return `<div style="position:relative;border-radius:10px;overflow:hidden;border:3px solid ${isMain ? '#22c55e' : '#e2e8f0'};">
-                            ${mediaEl}
+                            <img src="${url.includes('sz=w') ? url.replace(/sz=w\d+/, 'sz=w200') : url}" loading="lazy" style="width:100%;height:140px;object-fit:cover;display:block;background:#f1f5f9;" onerror="this.style.opacity='0.3'">
                             ${isMain
                                 ? '<div style="position:absolute;top:6px;left:6px;background:#22c55e;color:white;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;">⭐ MAIN</div>'
-                                : !isVideo ? `<button onclick="setMainPhoto(${index}, '${url}')" style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);background:#3b82f6;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⭐ Set as Main</button>` : ''}
+                                : `<button onclick="setMainPhoto(${index}, '${url}')" style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);background:#3b82f6;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⭐ Set as Main</button>`}
                         </div>`;
                     }).join('');
                 return `
                     ${library.photos.length > 0 ? '<p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Tap a photo to set as main.</p>' : ''}
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:16px;">${thumbsHtml}</div>
-                    <button onclick="uploadPhoto(${index}); closePhotoLibrary();" style="width:100%;padding:12px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">📷 Add Photo or Video</button>`;
+                    <button onclick="uploadPhoto(${index}); closePhotoLibrary();" style="width:100%;padding:12px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">📷 Add New Photo</button>`;
             };
 
             const renderDocsTab = () => {
@@ -5450,8 +5440,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         </button>
                         
                         ${shouldShow('photoUpload') ? `
-                        <button class="photo-upload-btn" onclick="${ro.rvPhotoUrl ? `openPhotoLibrary(${index})` : `uploadPhoto(${index})`}" title="${ro.rvPhotoUrl ? 'Manage Photos & Docs' : 'Add Photo / Video'}">
-                            📷 ${ro.rvPhotoUrl ? 'Manage Photos & Docs' : 'Add Photo / Video'}
+                        <button class="photo-upload-btn" onclick="${ro.rvPhotoUrl ? `openPhotoLibrary(${index})` : `uploadPhoto(${index})`}" title="${ro.rvPhotoUrl ? 'Manage Photos & Docs' : 'Add Photo'}">
+                            📷 ${ro.rvPhotoUrl ? 'Manage Photos & Docs' : 'Add Photo'}
                         </button>
                         ` : ''}
                         
