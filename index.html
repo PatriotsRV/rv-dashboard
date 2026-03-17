@@ -3234,7 +3234,7 @@
             const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived || 'NODATE'}`;
             
             // Open checkin.html with RO ID in new tab
-            const checkInURL = `https://prvshepard.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
+            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
             window.open(checkInURL, '_blank');
         }
 
@@ -5650,7 +5650,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived || 'NODATE'}`;
             
             // Shorter URL format for better scannability
-            const checkInURL = `https://prvshepard.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
+            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
             
             console.log('=== QR Code Debug ===');
             console.log('RO ID:', roId);
@@ -5742,7 +5742,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             if (!ro) return;
             
             const roId = `RO-${ro.customerName.replace(/\s+/g, '-')}-${ro.dateReceived || 'NODATE'}`;
-            const checkInURL = `https://prvshepard.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}&customer=${encodeURIComponent(ro.customerName)}`;
+            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}&customer=${encodeURIComponent(ro.customerName)}`;
             
             // Create modal overlay
             const modalHTML = `
