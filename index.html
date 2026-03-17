@@ -2291,6 +2291,28 @@
 
             <div class="filters-row">
                 <div class="filter-section">
+                    <label class="filter-label">📅 Filter by Days on Lot ≥</label>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <input type="number" 
+                               id="daysOnLotFilter" 
+                               min="0" 
+                               step="1"
+                               placeholder="e.g. 7"
+                               style="width: 90px; padding: 8px 12px; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; outline: none; transition: border-color 0.2s;"
+                               oninput="applyDaysFilter(this.value)"
+                               onfocus="this.style.borderColor='var(--accent-info)'"
+                               onblur="this.style.borderColor='var(--border-color)'">
+                        <button id="clearDaysFilter" 
+                                onclick="clearDaysFilter()"
+                                style="display: none; padding: 7px 12px; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; transition: all 0.2s;"
+                                onmouseover="this.style.borderColor='var(--accent-urgent)'; this.style.color='var(--accent-urgent)'"
+                                onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)'">
+                            ✕ Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filter-section">
                     <label class="filter-label">Filter by Repair Type:</label>
                     <div class="filter-group">
                         <button class="filter-btn active" data-filter="all" data-type="repair">All</button>
@@ -2358,27 +2380,7 @@
                     </div>
                 </div>
 
-                <div class="filter-section">
-                    <label class="filter-label">📅 Days on Lot ≥</label>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <input type="number" 
-                               id="daysOnLotFilter" 
-                               min="0" 
-                               step="1"
-                               placeholder="e.g. 7"
-                               style="width: 90px; padding: 8px 12px; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; outline: none; transition: border-color 0.2s;"
-                               oninput="applyDaysFilter(this.value)"
-                               onfocus="this.style.borderColor='var(--accent-info)'"
-                               onblur="this.style.borderColor='var(--border-color)'">
-                        <button id="clearDaysFilter" 
-                                onclick="clearDaysFilter()"
-                                style="display: none; padding: 7px 12px; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; transition: all 0.2s;"
-                                onmouseover="this.style.borderColor='var(--accent-urgent)'; this.style.color='var(--accent-urgent)'"
-                                onmouseout="this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)'">
-                            ✕ Clear
-                        </button>
-                    </div>
-                </div>
+
             </div>
         </div>
 
