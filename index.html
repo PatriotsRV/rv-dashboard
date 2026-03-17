@@ -1009,9 +1009,23 @@
         .note-content {
             font-size: 0.85rem;
             color: var(--text-primary);
-            line-height: 1.4;
+            line-height: 1.5;
             white-space: pre-wrap;
             word-wrap: break-word;
+            max-height: 120px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-color) transparent;
+        }
+        .note-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .note-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .note-content::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
         }
         
         .time-logs-section {
@@ -5548,7 +5562,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">RO Status</span>
                                 </div>
-                                <div class="note-content">${ro.roStatusNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
+                                <div class="note-content">${ro.roStatusNotes ? ro.roStatusNotes.split('\n').reverse().join('\n') : '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
                             ` : ''}
                             ${shouldShow('customerCommNotes') ? `
@@ -5557,7 +5571,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">Customer Comm</span>
                                 </div>
-                                <div class="note-content">${ro.customerCommunicationNotes || '<span class="placeholder-text">Click Here To Update</span>'}</div>
+                                <div class="note-content">${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.split('\n').reverse().join('\n') : '<span class="placeholder-text">Click Here To Update</span>'}</div>
                             </div>
                             ` : ''}
                         </div>
