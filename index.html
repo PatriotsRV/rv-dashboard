@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.23
+    PRVS Dashboard v1.24
     Released: 2026-03-16
     New in v1.23:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
@@ -2309,7 +2309,7 @@
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 10px; align-items: flex-end;">
                     <button class="connect-sheets-btn" id="connectSheetsBtn" style="width: 100%;">
-                        <span id="connectionStatus">🔗 Connect to Google Sheets</span>
+                        <span id="connectionStatus">🔗 Connect to PRVS</span>
                     </button>
                     <button class="new-ro-btn" id="newROBtn" style="width: 100%;">+ New RO</button>
                 </div>
@@ -2323,7 +2323,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.23</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.24</span>
             </div>
         </header>
 
@@ -2890,7 +2890,7 @@
         // Update RO Urgency
         async function updateROUrgency(index, newUrgency) {
             if (!accessToken) {
-                alert('Please connect to Google Sheets first!');
+                alert('Please connect to PRVS database first!');
                 return;
             }
 
@@ -2926,22 +2926,9 @@
                     console.log('Updated currentData at index:', originalIndex, 'by', userName);
                 }
 
-                // Update Google Sheets - Urgency is column N (14th column)
-                const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
-                const range = `Sheet1!N${rowNumber}`;
-
-                console.log('Updating sheet row:', rowNumber, 'with urgency:', newUrgency);
-
-                await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: range,
-                    valueInputOption: 'RAW',
-                    resource: {
-                        values: [[newUrgency]]
-                    }
-                });
-
-                console.log('✓ Urgency updated successfully in sheet');
+                // Update Supabase
+                await updateFieldInSupabase(originalIndex, 'urgency', newUrgency);
+                console.log('✓ Urgency updated in Supabase');
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
@@ -2962,14 +2949,14 @@
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
                 // Reload from sheets to revert
-                await loadDataFromSheets();
+                await loadDataFromSupabase();
             }
         }
 
         // Edit field inline
         async function editField(index, fieldName, currentValue) {
             if (!accessToken) {
-                alert('Please connect to Google Sheets first!');
+                alert('Please connect to PRVS database first!');
                 return;
             }
 
@@ -3035,22 +3022,11 @@
                 currentData[originalIndex][fieldName] = updatedValue;
                 console.log('Updated', fieldName, 'for:', ro.customerName);
 
-                // Update Google Sheets
-                const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
-                const range = `Sheet1!${field.column}${rowNumber}`;
+                // Write new note to Supabase notes table
+                const noteText = '[' + new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' - ' + (currentUser?.name || 'Unknown') + '] ' + newUpdate.trim();
+                await updateFieldInSupabase(originalIndex, fieldName, noteText);
 
-                console.log('Updating sheet range:', range);
-
-                await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: range,
-                    valueInputOption: 'RAW',
-                    resource: {
-                        values: [[updatedValue]]
-                    }
-                });
-
-                console.log('✓ Field updated successfully in sheet');
+                console.log('✓ Field updated in Supabase');
 
                 // Refresh the board
                 renderBoard();
@@ -3058,14 +3034,14 @@
             } catch (error) {
                 console.error('Error updating field:', error);
                 alert('Error updating field: ' + error.message);
-                await loadDataFromSheets();
+                await loadDataFromSupabase();
             }
         }
 
         // Update RO Progress manually
         async function updateROProgress(index, newProgress) {
             if (!accessToken) {
-                alert('Please connect to Google Sheets first!');
+                alert('Please connect to PRVS database first!');
                 return;
             }
 
@@ -3097,36 +3073,21 @@
                     console.log('Updated currentData at index:', originalIndex, 'by', userName);
                 }
 
-                // Update Google Sheets - Progress is column K (11th column)
-                const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
-                const range = `Sheet1!K${rowNumber}`;
-
-                console.log('Updating sheet row:', rowNumber, 'with progress:', newProgress);
-
-                await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: range,
-                    valueInputOption: 'RAW',
-                    resource: {
-                        values: [[newProgress]]
-                    }
-                });
-
-                console.log('✓ Progress updated successfully in sheet');
-
-                // Refresh the board
+                // Update Supabase
+                await updateFieldInSupabase(originalIndex, 'percentComplete', newProgress);
+                console.log('✓ Progress updated in Supabase');
                 renderBoard();
 
             } catch (error) {
                 console.error('Error updating progress:', error);
                 alert('Error updating progress: ' + error.message);
-                await loadDataFromSheets();
+                await loadDataFromSupabase();
             }
         }
 
         async function updateROStatus(index, newStatus) {
             if (!accessToken) {
-                alert('Please connect to Google Sheets first!');
+                alert('Please connect to PRVS database first!');
                 return;
             }
 
@@ -3177,27 +3138,18 @@
                     console.log('Updated currentData at index:', originalIndex, 'by', userName);
                 }
 
-                // Update Google Sheets - Status is column M (13th), Progress is column K (11th), DateArrived is column S (19th)
-                const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
-                
-                const batchData = [
-                    { range: `Sheet1!K${rowNumber}`, values: [[autoProgress]] },
-                    { range: `Sheet1!M${rowNumber}`, values: [[newStatus]] }
-                ];
-                if (autoDateArrived) {
-                    batchData.push({ range: `Sheet1!S${rowNumber}`, values: [[autoDateArrived]] });
+                // Update Supabase — status, progress, and dateArrived if set
+                const supabaseId = currentData[originalIndex]?._supabaseId;
+                if (supabaseId) {
+                    const updatePayload = {
+                        status: newStatus,
+                        pct_complete: autoProgress,
+                        updated_at: new Date().toISOString(),
+                    };
+                    if (autoDateArrived) updatePayload.date_arrived = autoDateArrived;
+                    await supabase.from('repair_orders').update(updatePayload).eq('id', supabaseId);
                 }
-
-                // Update both status and progress in one batch
-                await gapi.client.sheets.spreadsheets.values.batchUpdate({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    resource: {
-                        valueInputOption: 'RAW',
-                        data: batchData
-                    }
-                });
-
-                console.log('✓ Status and progress updated successfully in sheet');
+                console.log('✓ Status and progress updated in Supabase');
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
@@ -3218,7 +3170,7 @@
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
                 // Reload from sheets to revert
-                await loadDataFromSheets();
+                await loadDataFromSupabase();
             }
         }
 
@@ -3241,7 +3193,7 @@
         // Photo Upload Function
         async function uploadPhoto(index) {
             if (!accessToken) {
-                alert('Please connect to Google Sheets first!');
+                alert('Please connect to PRVS database first!');
                 return;
             }
 
@@ -3314,13 +3266,16 @@
         }
 
         async function updatePhotoLibraryInSheet(libraryJson, originalIndex) {
-            const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
-            await gapi.client.sheets.spreadsheets.values.update({
-                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: `Sheet1!T${rowNumber}`,
-                valueInputOption: 'RAW',
-                resource: { values: [[libraryJson]] }
-            });
+            // Route to Supabase
+            const ro = currentData[originalIndex];
+            if (!ro?._supabaseId) return;
+            let libraryObj = { photos: [], docs: [] };
+            try { libraryObj = JSON.parse(libraryJson); } catch(e) {}
+            await supabase.from('repair_orders').update({
+                photo_library: libraryObj,
+                updated_at: new Date().toISOString(),
+            }).eq('id', ro._supabaseId);
+            console.log('✅ Photo library updated in Supabase');
         }
 
 
@@ -3597,7 +3552,8 @@
             return imageUrl;
         }
 
-        async function updatePhotoInSheet(photoUrl, originalIndex, libraryJson) {
+        async function updatePhotoInSheet(photoUrl, originalIndex, libraryJson) { return updatePhotoInSupabase(photoUrl, originalIndex, libraryJson); }
+        async function updatePhotoInSheet_SHEETS(photoUrl, originalIndex, libraryJson) {
             try {
                 const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
                 await gapi.client.sheets.spreadsheets.values.batchUpdate({
@@ -3637,63 +3593,17 @@
                 return;
             }
 
-            const confirmed = confirm(`Archive "${ro.customerName}" (${ro.rv}) to the Cashiered tab?\n\nThis will remove it from the active dashboard.`);
+            const confirmed = confirm(`Archive "${ro.customerName}" (${ro.rv}) to Cashiered?\n\nThis will remove it from the active dashboard.`);
             if (!confirmed) return;
 
             try {
-                // Step 1: Get the sheet row number using the correct originalIndex
-                const rowNumber = await getSheetRowNumber(originalIndex);
-                if (!rowNumber) {
-                    alert('Error: Could not locate this RO in the spreadsheet.');
-                    return;
-                }
+                // Archive to Supabase cashiered table and delete from repair_orders
+                await archiveROInSupabase(originalIndex);
 
-                // Step 2: Read the full row from Sheet1
-                const readResponse = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${rowNumber}:X${rowNumber}`,
-                });
-                const rowValues = readResponse.result.values ? readResponse.result.values[0] : [];
-
-                // Pad to 24 columns (A–X)
-                while (rowValues.length < 24) rowValues.push('');
-
-                // Step 3: Append to Cashiered tab
-                await gapi.client.sheets.spreadsheets.values.append({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: GOOGLE_CONFIG.CASHIERED_RANGE,
-                    valueInputOption: 'RAW',
-                    resource: { values: [rowValues] }
-                });
-
-                // Step 4: Delete the row from Sheet1
-                // Get the spreadsheet to find the Sheet1 sheetId
-                const spreadsheetMeta = await gapi.client.sheets.spreadsheets.get({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                });
-                const sheet1 = spreadsheetMeta.result.sheets.find(s => s.properties.title === 'Sheet1');
-                if (!sheet1) throw new Error('Sheet1 not found');
-
-                await gapi.client.sheets.spreadsheets.batchUpdate({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    resource: {
-                        requests: [{
-                            deleteDimension: {
-                                range: {
-                                    sheetId: sheet1.properties.sheetId,
-                                    dimension: 'ROWS',
-                                    startIndex: rowNumber - 1,  // 0-indexed
-                                    endIndex: rowNumber         // exclusive
-                                }
-                            }
-                        }]
-                    }
-                });
-
-                // Step 5: Remove from local data and re-render
+                // Remove from local data and re-render
                 currentData.splice(originalIndex, 1);
                 renderBoard();
-                console.log(`✅ Archived RO for ${ro.customerName} to Cashiered tab`);
+                console.log(`✅ Archived RO for ${ro.customerName} to Cashiered`);
 
             } catch (err) {
                 console.error('Error archiving RO:', err);
@@ -3709,7 +3619,8 @@
 
         let customInsuranceFields = [];
 
-        async function loadCustomFieldConfig() {
+        async function loadCustomFieldConfig() { return loadCustomFieldConfigFromSupabase(); }
+        async function loadCustomFieldConfig_SHEETS() {
             if (!accessToken) return;
             try {
                 const response = await gapi.client.sheets.spreadsheets.values.get({
@@ -3730,7 +3641,8 @@
             renderCustomFields('edit');
         }
 
-        async function saveCustomFieldConfig() {
+        async function saveCustomFieldConfig() { return saveCustomFieldConfigToSupabase(); }
+        async function saveCustomFieldConfig_SHEETS() {
             if (!accessToken) return;
             try {
                 const config = { insuranceCustomFields: customInsuranceFields };
@@ -4383,40 +4295,40 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Write extracted insurance data to Insurance Data tab and Column W of Sheet1
         async function writeInsuranceData(roId, extractedData, dataIndex) {
-            if (!accessToken || !roId) return;
-            const timestamp = new Date().toISOString();
+            if (!roId) return;
             const json = JSON.stringify(extractedData);
 
+            // Write to insurance_scans table in Supabase
             try {
-                // Write to Insurance Data tab: RO ID | Timestamp | Raw JSON
-                await gapi.client.sheets.spreadsheets.values.append({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: GOOGLE_CONFIG.INSURANCE_DATA_RANGE,
-                    valueInputOption: 'RAW',
-                    resource: { values: [[roId, timestamp, json]] }
+                const ro = dataIndex !== null && dataIndex !== undefined ? currentData[dataIndex] : currentData.find(d => d.roId === roId);
+                const supabaseId = ro?._supabaseId;
+                await supabase.from('insurance_scans').insert({
+                    ro_id:      supabaseId || null,
+                    user_id:    supabaseSession?.user?.id || null,
+                    raw_data:   extractedData,
+                    scanned_at: new Date().toISOString(),
                 });
-                console.log('✅ Insurance data written to Insurance Data tab for', roId);
+                console.log('✅ Insurance scan written to Supabase for', roId);
             } catch (err) {
-                console.warn('Insurance Data tab write failed (non-fatal):', err);
+                console.warn('Insurance scan write failed (non-fatal):', err);
             }
 
-            // Also write JSON to Column W of Sheet1 if we have a data index
+            // Also update insurance_data on the repair_orders row
             if (dataIndex !== null && dataIndex !== undefined) {
                 try {
-                    const rowNumber = await getSheetRowNumber(dataIndex);
-                    if (rowNumber) {
-                        await gapi.client.sheets.spreadsheets.values.update({
-                            spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                            range: `Sheet1!W${rowNumber}`,
-                            valueInputOption: 'RAW',
-                            resource: { values: [[json]] }
-                        });
-                        // Update local data too
+                    const ro = currentData[dataIndex];
+                    if (ro?._supabaseId) {
+                        let parsed = extractedData;
+                        try { if (typeof extractedData === 'string') parsed = JSON.parse(extractedData); } catch(e) {}
+                        await supabase.from('repair_orders').update({
+                            insurance_data: parsed,
+                            updated_at: new Date().toISOString(),
+                        }).eq('id', ro._supabaseId);
                         currentData[dataIndex].insuranceData = json;
-                        console.log('✅ Insurance data written to Column W row', rowNumber);
+                        console.log('✅ Insurance data written to repair_orders in Supabase');
                     }
                 } catch (err) {
-                    console.warn('Column W write failed (non-fatal):', err);
+                    console.warn('Insurance data RO update failed (non-fatal):', err);
                 }
             }
         }
@@ -4504,7 +4416,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         // Load all parts from the Parts tab
-        async function loadPartsFromSheet() {
+        async function loadPartsFromSheet() { return loadPartsFromSupabase(); }
+        async function loadPartsFromSheet_SHEETS() {
             if (!accessToken) return;
             try {
                 const response = await gapi.client.sheets.spreadsheets.values.get({
@@ -4572,7 +4485,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         // Write partsJson to Sheet1 Column X for an RO
-        async function updatePartsJsonInSheet(originalIndex) {
+        async function updatePartsJsonInSheet(originalIndex) { return updatePartsJsonInSupabase(originalIndex); }
+        async function updatePartsJsonInSheet_SHEETS(originalIndex) {
             const ro = currentData[originalIndex];
             const roId = ro.roId;
             if (!roId) return;
@@ -4595,7 +4509,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         // Append a new part row to the Parts tab
-        async function appendPartToSheet(part) {
+        async function appendPartToSheet(part, roSupabaseId) { return appendPartToSupabase(part, roSupabaseId); }
+        async function appendPartToSheet_SHEETS(part) {
             await gapi.client.sheets.spreadsheets.values.append({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                 range: GOOGLE_CONFIG.PARTS_RANGE,
@@ -4611,7 +4526,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         // Update an existing part row in the Parts tab
-        async function updatePartInSheet(part) {
+        async function updatePartInSheet(part) { return updatePartInSupabase(part); }
+        async function updatePartInSheet_SHEETS(part) {
             if (!part.rowIndex) return;
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -4628,7 +4544,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         // Delete a part row from the Parts tab
-        async function deletePartFromSheet(rowIndex) {
+        async function deletePartFromSheet(rowIndex, supabaseId) { if (supabaseId) return deletePartFromSupabase(supabaseId); }
+        async function deletePartFromSheet_SHEETS(rowIndex) {
             const spreadsheetMeta = await gapi.client.sheets.spreadsheets.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
             });
@@ -4891,13 +4808,17 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                 if (isEdit) {
                     const existingPart = partsData[roId][parseInt(editIndex)];
-                    part.rowIndex = existingPart.rowIndex;
+                    part._supabaseId = existingPart._supabaseId;
                     partsData[roId][parseInt(editIndex)] = part;
                     await updatePartInSheet(part);
                 } else {
-                    await appendPartToSheet(part);
-                    // Re-load to get the actual row index
-                    await loadPartsFromSheet();
+                    // Get RO supabase ID
+                    const roRecord = currentData.find(d => d.roId === roId);
+                    const roSupabaseId = roRecord?._supabaseId;
+                    const newPart = await appendPartToSheet(part, roSupabaseId);
+                    if (newPart) part._supabaseId = newPart.id;
+                    if (!partsData[roId]) partsData[roId] = [];
+                    partsData[roId].push(part);
                 }
 
                 // Update partsJson in Sheet1
@@ -4931,8 +4852,9 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             if (!confirm('Delete part "' + part.partName + '"?')) return;
 
             try {
-                await deletePartFromSheet(part.rowIndex);
-                await loadPartsFromSheet(); // Reload to fix row indices
+                await deletePartFromSheet(part.rowIndex, part._supabaseId);
+                // Remove from local partsData
+                partsData[ctx.roId].splice(partIndex, 1);
                 await updatePartsJsonInSheet(ctx.originalIndex);
                 closePartsModal();
                 renderBoard();
@@ -5009,7 +4931,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.23 - Released 2026-03-12');
+            console.log('📦 PRVS Dashboard v1.24 - Released 2026-03-12');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -6051,6 +5973,12 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
         };
 
+        // ── Supabase Configuration ──────────────────────────────────
+        const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let supabaseSession = null;
+
         let gapiInited = false;
         let gisInited = false;
         let initialLoadDone = false; // Ensures backfillROIds only runs once on first load
@@ -6061,8 +5989,65 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Admin access control
         const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];
         
+        // User roles loaded from Supabase
+        let userRoles = []; // array of role names e.g. ['Admin', 'Manager']
+
         function isAdmin() {
-            return currentUser && ADMIN_EMAILS.includes(currentUser.email.toLowerCase());
+            return userRoles.includes('Admin');
+        }
+        function hasRole(role) {
+            return userRoles.includes(role);
+        }
+
+        // Load roles from Supabase for current user
+        async function loadUserRoles() {
+            if (!supabaseSession) return;
+            try {
+                const email = supabaseSession.user.email;
+                // Get user record
+                const { data: userRecord } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('email', email)
+                    .single();
+                if (!userRecord) return;
+                // Get roles via junction table
+                const { data: roleData } = await supabase
+                    .from('user_roles')
+                    .select('roles(name)')
+                    .eq('user_id', userRecord.id);
+                if (roleData) {
+                    userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+                    console.log('✅ User roles:', userRoles);
+                }
+                // Admin fallback — always give Roland admin
+                if (email === 'roland@patriotsrvservices.com' && !userRoles.includes('Admin')) {
+                    userRoles.push('Admin');
+                }
+            } catch(e) {
+                console.warn('Could not load roles:', e);
+                // Fallback: give admin to roland
+                if (supabaseSession?.user?.email === 'roland@patriotsrvservices.com') {
+                    userRoles = ['Admin'];
+                }
+            }
+        }
+
+        // Ensure user exists in Supabase users table after login
+        async function upsertUser(session) {
+            if (!session) return;
+            try {
+                const { user } = session;
+                await supabase.from('users').upsert({
+                    id: user.id,
+                    email: user.email,
+                    name: user.user_metadata?.full_name || user.email,
+                    avatar_url: user.user_metadata?.avatar_url || null,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch(e) {
+                console.warn('Could not upsert user:', e);
+            }
         }
         
         function updateViewModeDropdown() {
@@ -6224,16 +6209,27 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     }
                     
                     updateAuthStatus(true);
-                    await loadDataFromSheets();
-                    await loadTimeLogsFromSheets();
+
+                    // ── Restore Supabase session ──────────────────────────
+                    try {
+                        const { data: { session } } = await supabase.auth.getSession();
+                        if (session) {
+                            supabaseSession = session;
+                            console.log('✅ Supabase session restored');
+                            await upsertUser(supabaseSession);
+                            await loadUserRoles();
+                            updateViewModeDropdown();
+                        }
+                    } catch(e) {
+                        console.warn('Could not restore Supabase session:', e);
+                    }
+                    // ─────────────────────────────────────────────────────
+
+                    await loadDataFromSupabase();
+                    await loadTimeLogsFromSupabase();
                     console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
 
                     initialLoadDone = true;
-                    const needsBackfill = currentData.some(d => !d.roId);
-                    if (needsBackfill) {
-                        backfillROIds().catch(e => console.warn('backfillROIds error:', e));
-                    }
-
                     // Start auto-refresh for time logs
                     startTimeLogsAutoRefresh();
                     
@@ -6374,21 +6370,37 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     setupTokenRefresh();
 
                     // Only do full load if this is a fresh login (no data yet)
-                    // Silent refreshes just update the token — no reload needed
                     if (!initialLoadDone) {
                         await getUserInfo();
                         updateAuthStatus(true);
-                        await loadDataFromSheets();
-                        await loadTimeLogsFromSheets();
+
+                        // ── Supabase: sign in with Google token ──────────────
+                        try {
+                            const { data: sbData, error: sbErr } = await supabase.auth.signInWithIdToken({
+                                provider: 'google',
+                                token: resp.id_token || accessToken,
+                            });
+                            if (sbData?.session) {
+                                supabaseSession = sbData.session;
+                                console.log('✅ Supabase session established');
+                                await upsertUser(supabaseSession);
+                                await loadUserRoles();
+                                updateViewModeDropdown();
+                            } else if (sbErr) {
+                                console.warn('Supabase sign-in warning:', sbErr.message);
+                            }
+                        } catch(e) {
+                            console.warn('Supabase auth attempt failed:', e);
+                        }
+                        // ─────────────────────────────────────────────────────
+
+                        await loadDataFromSupabase();
+                        await loadTimeLogsFromSupabase();
 
                         initialLoadDone = true;
-                        const needsBackfill = currentData.some(d => !d.roId);
-                        if (needsBackfill) {
-                            backfillROIds().catch(e => console.warn('backfillROIds error:', e));
-                        }
                         startTimeLogsAutoRefresh();
-                        loadCustomFieldConfig(); // Load custom insurance field definitions
-                        loadPartsFromSheet(); // Load parts data
+                        loadCustomFieldConfig();
+                        loadPartsFromSupabase();
                     } else {
                         console.log('✅ Token silently refreshed — session continues');
                     }
@@ -6425,7 +6437,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             if (connected) {
                 // Modal button
                 indicator.classList.add('connected');
-                status.textContent = 'Connected to Google Sheets';
+                status.textContent = 'Connected to PRVS Database';
                 authButton.textContent = 'Disconnect';
                 authButton.onclick = () => {
                     clearToken();
@@ -6436,12 +6448,12 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 
                 // Header button
                 connectSheetsBtn.classList.add('connected');
-                connectionStatus.textContent = '✓ Connected';
+                connectionStatus.textContent = '✓ Connected to PRVS';
             } else {
                 // Modal button
                 indicator.classList.remove('connected');
-                status.textContent = 'Not connected to Google Sheets';
-                authButton.textContent = 'Connect to Google Sheets';
+                status.textContent = 'Not connected to PRVS Database';
+                authButton.textContent = 'Connect to PRVS';
                 authButton.onclick = () => {
                     if (!gapiInited || !gisInited) {
                         alert('Google APIs are still loading. Please wait a moment and try again.');
@@ -6452,7 +6464,549 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 
                 // Header button
                 connectSheetsBtn.classList.remove('connected');
-                connectionStatus.textContent = '🔗 Connect to Google Sheets';
+                connectionStatus.textContent = '🔗 Connect to PRVS';
+            }
+        }
+
+
+        // ══════════════════════════════════════════════════════════════
+        // SUPABASE DATA FUNCTIONS — replaces all gapi.client.sheets calls
+        // ══════════════════════════════════════════════════════════════
+
+        // Map Supabase row → camelCase RO object (matches existing app keys)
+        function rowToRO(row) {
+            if (!row) return null;
+            return {
+                roId:                     row.ro_id || '',
+                customerName:             row.customer_name || '',
+                customerPhone:            row.phone || '',
+                customerEmail:            row.email || '',
+                customerAddress:          row.address || '',
+                rv:                       row.rv || '',
+                vin:                      row.vin || '',
+                rvPhotoUrl:               row.photo_url || '',
+                repairType:               row.repair_type || '',
+                repairDescription:        row.description || '',
+                technicianAssigned:       row.technician || '',
+                dateReceived:             row.date_received || '',
+                dateArrived:              row.date_arrived || '',
+                promisedDate:             row.promised_date || '',
+                percentComplete:          row.pct_complete || 0,
+                dollarValue:              row.dollar_value || 0,
+                status:                   row.status || 'Not On Lot',
+                urgency:                  row.urgency || '',
+                customerType:             row.customer_type || '',
+                roType:                   row.ro_type || 'standard',
+                photoLibrary:             row.photo_library ? JSON.stringify(row.photo_library) : '',
+                insuranceData:            row.insurance_data ? JSON.stringify(row.insurance_data) : '',
+                roStatusNotes:            row._ro_notes || '',
+                customerCommunicationNotes: row._comm_notes || '',
+                partsJson:                row._parts_json || '',
+                _supabaseId:              row.id,  // keep uuid for updates
+            };
+        }
+
+        // Load all repair orders from Supabase
+        async function loadDataFromSupabase() {
+            console.log('=== loadDataFromSupabase called ===');
+            try {
+                // Load repair orders
+                const { data: ros, error } = await supabase
+                    .from('repair_orders')
+                    .select('*')
+                    .order('date_received', { ascending: false });
+
+                if (error) throw error;
+
+                // Load notes for all ROs in one query
+                const roIds = ros.map(r => r.id);
+                const { data: notes } = await supabase
+                    .from('notes')
+                    .select('ro_id, type, body, created_at')
+                    .in('ro_id', roIds)
+                    .order('created_at', { ascending: true });
+
+                // Load parts summary for badges
+                const { data: parts } = await supabase
+                    .from('parts')
+                    .select('ro_id, status')
+                    .in('ro_id', roIds);
+
+                // Build notes map
+                const notesMap = {};
+                if (notes) {
+                    notes.forEach(n => {
+                        if (!notesMap[n.ro_id]) notesMap[n.ro_id] = { ro_status: [], customer_comm: [] };
+                        if (n.type === 'ro_status') notesMap[n.ro_id].ro_status.push(n.body);
+                        if (n.type === 'customer_comm') notesMap[n.ro_id].customer_comm.push(n.body);
+                    });
+                }
+
+                // Build parts map for badge
+                const partsMap = {};
+                if (parts) {
+                    parts.forEach(p => {
+                        if (!partsMap[p.ro_id]) partsMap[p.ro_id] = [];
+                        partsMap[p.ro_id].push({ status: p.status });
+                    });
+                }
+
+                // Map to app format
+                const data = ros.map(row => {
+                    const nm = notesMap[row.id] || {};
+                    row._ro_notes   = (nm.ro_status   || []).join('\n');
+                    row._comm_notes = (nm.customer_comm || []).join('\n');
+                    row._parts_json = partsMap[row.id] ? JSON.stringify(partsMap[row.id]) : '';
+                    return rowToRO(row);
+                });
+
+                currentData = data;
+                console.log('✅ Loaded', data.length, 'repair orders from Supabase');
+                renderBoard();
+
+                // Load custom fields config
+                loadCustomFieldConfig();
+                // Load parts detail
+                loadPartsFromSupabase();
+
+            } catch(err) {
+                console.error('Error loading from Supabase:', err);
+                alert('Error loading data from database: ' + err.message);
+            }
+        }
+
+        // Load time logs from Supabase
+        async function loadTimeLogsFromSupabase() {
+            try {
+                const { data: logs, error } = await supabase
+                    .from('time_logs')
+                    .select('*, repair_orders(ro_id)')
+                    .order('clock_in', { ascending: false });
+
+                if (error) throw error;
+
+                timeLogsData = (logs || []).map(row => ({
+                    logId:        row.id,
+                    roId:         row.repair_orders?.ro_id || '',
+                    techEmail:    row.user_id || '',
+                    techName:     row.tech_name || '',
+                    checkIn:      row.clock_in || '',
+                    checkOut:     row.clock_out || '',
+                    duration:     row.duration_seconds || 0,
+                    workNotes:    row.work_notes || '',
+                    serviceTypes: row.service_type || '',
+                }));
+
+                console.log('✅ Loaded', timeLogsData.length, 'time logs from Supabase');
+                renderBoard();
+            } catch(err) {
+                console.error('Error loading time logs from Supabase:', err);
+                timeLogsData = [];
+            }
+        }
+
+        // Load all parts from Supabase (for Parts modal detail view)
+        async function loadPartsFromSupabase() {
+            try {
+                const { data: rows, error } = await supabase
+                    .from('parts')
+                    .select('*, repair_orders(ro_id)')
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+
+                partsData = {};
+                (rows || []).forEach((row, i) => {
+                    const roId = row.repair_orders?.ro_id;
+                    if (!roId) return;
+                    if (!partsData[roId]) partsData[roId] = [];
+                    partsData[roId].push({
+                        _supabaseId:     row.id,
+                        roId:            roId,
+                        partName:        row.part_name || '',
+                        partNumber:      row.part_number || '',
+                        condition:       row.condition || '',
+                        qty:             row.qty || 1,
+                        status:          row.status || 'Ordered',
+                        partsSource:     row.parts_source || '',
+                        poNumber:        row.po_number || '',
+                        orderedBy:       row.ordered_by || '',
+                        dateOrdered:     row.date_ordered || '',
+                        eta:             row.eta || '',
+                        trackingNumber:  row.tracking_number || '',
+                        partUrl:         row.part_url || '',
+                        returnDeadline:  row.return_deadline || '',
+                        wholesalePrice:  row.wholesale_price || '',
+                        retailPrice:     row.retail_price || '',
+                        coreCharge:      row.core_charge || '',
+                        laborHours:      row.labor_hours || '',
+                        supplier:        row.supplier || '',
+                        salesAssocName:  row.sales_assoc_name || '',
+                        salesAssocPhone: row.sales_assoc_phone || '',
+                        salesAssocEmail: row.sales_assoc_email || '',
+                        dateReceived:    row.date_received || '',
+                        receivedBy:      row.received_by || '',
+                        warrantyPeriod:  row.warranty_period || '',
+                        notes:           row.notes || '',
+                    });
+                });
+
+                console.log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
+                updatePartsJsonOnData();
+                renderBoard();
+            } catch(e) {
+                console.warn('Could not load parts from Supabase:', e);
+            }
+        }
+
+        // Append a new part to Supabase
+        async function appendPartToSupabase(part, roSupabaseId) {
+            const { data, error } = await supabase.from('parts').insert({
+                ro_id:            roSupabaseId,
+                part_name:        part.partName,
+                part_number:      part.partNumber || null,
+                condition:        part.condition || null,
+                qty:              parseInt(part.qty) || 1,
+                status:           part.status || 'Ordered',
+                parts_source:     part.partsSource || null,
+                po_number:        part.poNumber || null,
+                ordered_by:       part.orderedBy || null,
+                date_ordered:     part.dateOrdered || null,
+                eta:              part.eta || null,
+                tracking_number:  part.trackingNumber || null,
+                part_url:         part.partUrl || null,
+                return_deadline:  part.returnDeadline || null,
+                wholesale_price:  part.wholesalePrice ? parseFloat(part.wholesalePrice) : null,
+                retail_price:     part.retailPrice ? parseFloat(part.retailPrice) : null,
+                core_charge:      part.coreCharge ? parseFloat(part.coreCharge) : null,
+                labor_hours:      part.laborHours ? parseFloat(part.laborHours) : null,
+                supplier:         part.supplier || null,
+                sales_assoc_name: part.salesAssocName || null,
+                sales_assoc_phone:part.salesAssocPhone || null,
+                sales_assoc_email:part.salesAssocEmail || null,
+                date_received:    part.dateReceived || null,
+                received_by:      part.receivedBy || null,
+                warranty_period:  part.warrantyPeriod || null,
+                notes:            part.notes || null,
+            }).select().single();
+            if (error) throw error;
+            return data;
+        }
+
+        // Update a part in Supabase
+        async function updatePartInSupabase(part) {
+            if (!part._supabaseId) return;
+            const { error } = await supabase.from('parts').update({
+                part_name:        part.partName,
+                part_number:      part.partNumber || null,
+                condition:        part.condition || null,
+                qty:              parseInt(part.qty) || 1,
+                status:           part.status || 'Ordered',
+                parts_source:     part.partsSource || null,
+                po_number:        part.poNumber || null,
+                ordered_by:       part.orderedBy || null,
+                date_ordered:     part.dateOrdered || null,
+                eta:              part.eta || null,
+                tracking_number:  part.trackingNumber || null,
+                part_url:         part.partUrl || null,
+                return_deadline:  part.returnDeadline || null,
+                wholesale_price:  part.wholesalePrice ? parseFloat(part.wholesalePrice) : null,
+                retail_price:     part.retailPrice ? parseFloat(part.retailPrice) : null,
+                core_charge:      part.coreCharge ? parseFloat(part.coreCharge) : null,
+                labor_hours:      part.laborHours ? parseFloat(part.laborHours) : null,
+                supplier:         part.supplier || null,
+                sales_assoc_name: part.salesAssocName || null,
+                sales_assoc_phone:part.salesAssocPhone || null,
+                sales_assoc_email:part.salesAssocEmail || null,
+                date_received:    part.dateReceived || null,
+                received_by:      part.receivedBy || null,
+                warranty_period:  part.warrantyPeriod || null,
+                notes:            part.notes || null,
+                updated_at:       new Date().toISOString(),
+            }).eq('id', part._supabaseId);
+            if (error) throw error;
+        }
+
+        // Delete a part from Supabase
+        async function deletePartFromSupabase(supabaseId) {
+            const { error } = await supabase.from('parts').delete().eq('id', supabaseId);
+            if (error) throw error;
+        }
+
+        // Update partsJson on RO data for badge rendering
+        async function updatePartsJsonInSupabase(originalIndex) {
+            // In Supabase version, partsJson is computed from partsData in memory
+            // Just update the in-memory display
+            const ro = currentData[originalIndex];
+            const roId = ro.roId;
+            if (roId && partsData[roId]) {
+                ro.partsJson = JSON.stringify(partsData[roId]);
+            }
+        }
+
+        // Append new RO to Supabase
+        async function appendToSupabase(formData) {
+            const roId = generateROId(formData.customerName, formData.rv || '', new Date().toISOString().slice(0,10));
+
+            const { data, error } = await supabase.from('repair_orders').insert({
+                ro_id:          roId,
+                customer_name:  formData.customerName,
+                phone:          formData.customerPhone || null,
+                email:          formData.customerEmail || null,
+                address:        formData.customerAddress || null,
+                rv:             formData.rv || null,
+                vin:            formData.vin || null,
+                repair_type:    formData.repairType || null,
+                description:    formData.repairDescription || null,
+                technician:     formData.technicianAssigned || null,
+                date_received:  new Date().toISOString().slice(0,10),
+                promised_date:  formData.promisedDate || null,
+                pct_complete:   0,
+                dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                status:         formData.status || 'Not On Lot',
+                urgency:        formData.urgency || null,
+                customer_type:  formData.customerType || null,
+                ro_type:        'standard',
+                photo_library:  { photos: [], docs: [] },
+            }).select().single();
+
+            if (error) throw error;
+
+            // Add initial notes if present
+            if (formData.roStatusNotes) {
+                await supabase.from('notes').insert({
+                    ro_id: data.id, type: 'ro_status',
+                    body: formData.roStatusNotes,
+                });
+            }
+            if (formData.customerCommunicationNotes) {
+                await supabase.from('notes').insert({
+                    ro_id: data.id, type: 'customer_comm',
+                    body: formData.customerCommunicationNotes,
+                });
+            }
+
+            console.log('✅ New RO saved to Supabase:', roId);
+            return data;
+        }
+
+        // Update RO in Supabase
+        async function updateROInSupabase(originalIndex, formData) {
+            const ro = currentData[originalIndex];
+            const supabaseId = ro._supabaseId;
+            if (!supabaseId) {
+                console.warn('No Supabase ID found for RO, trying to find by ro_id');
+                return;
+            }
+
+            const { error } = await supabase.from('repair_orders').update({
+                customer_name:  formData.customerName,
+                phone:          formData.customerPhone || null,
+                email:          formData.customerEmail || null,
+                address:        formData.customerAddress || null,
+                rv:             formData.rv || null,
+                vin:            formData.vin || null,
+                repair_type:    formData.repairType || null,
+                description:    formData.repairDescription || null,
+                technician:     formData.technicianAssigned || null,
+                promised_date:  formData.promisedDate || null,
+                dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                updated_at:     new Date().toISOString(),
+            }).eq('id', supabaseId);
+
+            if (error) throw error;
+
+            // Write audit log
+            await writeAuditLog(ro.roId, formData);
+
+            console.log('✅ RO updated in Supabase');
+        }
+
+        // Update a single field on an RO in Supabase
+        async function updateFieldInSupabase(originalIndex, fieldName, newValue) {
+            const ro = currentData[originalIndex];
+            const supabaseId = ro._supabaseId;
+            if (!supabaseId) return;
+
+            const fieldMap = {
+                status:         'status',
+                urgency:        'urgency',
+                percentComplete:'pct_complete',
+                dollarValue:    'dollar_value',
+                dateArrived:    'date_arrived',
+            };
+
+            const dbField = fieldMap[fieldName];
+            if (dbField) {
+                await supabase.from('repair_orders').update({
+                    [dbField]: newValue,
+                    updated_at: new Date().toISOString(),
+                }).eq('id', supabaseId);
+            }
+
+            // Notes fields go to notes table
+            if (fieldName === 'roStatusNotes') {
+                await supabase.from('notes').insert({
+                    ro_id: supabaseId,
+                    type: 'ro_status',
+                    body: newValue,
+                    created_at: new Date().toISOString(),
+                });
+            }
+            if (fieldName === 'customerCommunicationNotes') {
+                await supabase.from('notes').insert({
+                    ro_id: supabaseId,
+                    type: 'customer_comm',
+                    body: newValue,
+                    created_at: new Date().toISOString(),
+                });
+            }
+        }
+
+        // Update photo URL and library in Supabase
+        async function updatePhotoInSupabase(photoUrl, originalIndex, libraryJson) {
+            const ro = currentData[originalIndex];
+            const supabaseId = ro._supabaseId;
+            if (!supabaseId) return;
+
+            let libraryObj = { photos: [], docs: [] };
+            try { libraryObj = JSON.parse(libraryJson); } catch(e) {}
+
+            await supabase.from('repair_orders').update({
+                photo_url:      photoUrl || ro.rvPhotoUrl,
+                photo_library:  libraryObj,
+                updated_at:     new Date().toISOString(),
+            }).eq('id', supabaseId);
+        }
+
+        // Archive RO to cashiered table in Supabase
+        async function archiveROInSupabase(originalIndex) {
+            const ro = currentData[originalIndex];
+            const supabaseId = ro._supabaseId;
+            if (!supabaseId) throw new Error('No Supabase ID for RO');
+
+            const daysOnLot = calculateDaysOnLot(ro) || 0;
+
+            // Insert into cashiered
+            const { error: cashErr } = await supabase.from('cashiered').insert({
+                original_ro_id: supabaseId,
+                ro_id:          ro.roId,
+                customer_name:  ro.customerName,
+                phone:          ro.customerPhone,
+                email:          ro.customerEmail,
+                address:        ro.customerAddress,
+                rv:             ro.rv,
+                vin:            ro.vin,
+                repair_type:    ro.repairType,
+                description:    ro.repairDescription,
+                technician:     ro.technicianAssigned,
+                date_received:  ro.dateReceived || null,
+                date_arrived:   ro.dateArrived || null,
+                promised_date:  ro.promisedDate || null,
+                pct_complete:   ro.percentComplete || 0,
+                dollar_value:   ro.dollarValue || null,
+                status:         ro.status,
+                urgency:        ro.urgency,
+                customer_type:  ro.customerType,
+                ro_type:        ro.roType || 'standard',
+                photo_url:      ro.rvPhotoUrl,
+                insurance_data: ro.insuranceData ? JSON.parse(ro.insuranceData) : null,
+                days_on_lot:    daysOnLot,
+                date_closed:    new Date().toISOString().slice(0,10),
+                week_label:     getWeekLabel(),
+                archived_at:    new Date().toISOString(),
+            });
+            if (cashErr) throw cashErr;
+
+            // Delete from repair_orders
+            const { error: delErr } = await supabase.from('repair_orders').delete().eq('id', supabaseId);
+            if (delErr) throw delErr;
+
+            console.log('✅ RO archived to cashiered in Supabase');
+        }
+
+        function getWeekLabel() {
+            const now = new Date();
+            const start = new Date(now.getFullYear(), 0, 1);
+            const week = Math.ceil(((now - start) / 86400000 + start.getDay() + 1) / 7);
+            return `Week ${week} ${now.getFullYear()}`;
+        }
+
+        // Write audit log entry to Supabase
+        async function writeAuditLog(roId, changedFields) {
+            if (!supabaseSession) return;
+            const email = supabaseSession.user.email;
+            const name = currentUser?.name || email;
+
+            // Find RO supabase ID
+            const { data: roRecord } = await supabase
+                .from('repair_orders')
+                .select('id')
+                .eq('ro_id', roId)
+                .single();
+
+            if (!roRecord) return;
+
+            // Log each changed field
+            const entries = Object.entries(changedFields).map(([field, value]) => ({
+                ro_id:         roRecord.id,
+                user_email:    email,
+                user_name:     name,
+                field_changed: field,
+                new_value:     String(value),
+                changed_at:    new Date().toISOString(),
+            }));
+
+            if (entries.length > 0) {
+                await supabase.from('audit_log').insert(entries);
+            }
+        }
+
+        // Load custom field config from Supabase config table
+        async function loadCustomFieldConfigFromSupabase() {
+            try {
+                const { data } = await supabase
+                    .from('config')
+                    .select('value')
+                    .eq('key', 'insurance_custom_fields')
+                    .single();
+                if (data?.value) {
+                    customInsuranceFields = Array.isArray(data.value) ? data.value : [];
+                    console.log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields from Supabase');
+                }
+            } catch(e) {
+                console.warn('Could not load custom fields from Supabase:', e);
+                customInsuranceFields = [];
+            }
+            renderCustomFields('new');
+            renderCustomFields('edit');
+        }
+
+        // Save custom field config to Supabase config table
+        async function saveCustomFieldConfigToSupabase() {
+            try {
+                await supabase.from('config').upsert({
+                    key: 'insurance_custom_fields',
+                    value: customInsuranceFields,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'key' });
+                console.log('✅ Custom field config saved to Supabase');
+            } catch(e) {
+                console.warn('Could not save custom field config to Supabase:', e);
+            }
+        }
+
+        // Insurance scan log to Supabase
+        async function logInsuranceScanToSupabase(roSupabaseId, rawData) {
+            try {
+                await supabase.from('insurance_scans').insert({
+                    ro_id:      roSupabaseId,
+                    user_id:    supabaseSession?.user?.id || null,
+                    raw_data:   typeof rawData === 'string' ? JSON.parse(rawData) : rawData,
+                    scanned_at: new Date().toISOString(),
+                });
+            } catch(e) {
+                console.warn('Could not log insurance scan:', e);
             }
         }
 
@@ -6615,7 +7169,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             btn.disabled = true;
             
             try {
-                await loadTimeLogsFromSheets();
+                await loadTimeLogsFromSupabase();
                 btn.textContent = '✅ Refreshed!';
                 setTimeout(() => {
                     btn.textContent = originalText;
@@ -6788,7 +7342,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         // Backfill roId for any RO that doesn't have one, writing to column U in the sheet
-        async function backfillROIds() {
+        async function backfillROIds() { console.log("backfillROIds skipped — using Supabase"); return; // Sheets-only function
+
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                 range: 'Sheet1!A:X',
@@ -6852,7 +7407,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             return null;
         }
 
-        async function updateROInSheets(roIndex, formData) {
+        async function updateROInSheets(roIndex, formData) { return updateROInSupabase(roIndex, formData); }
+        async function updateROInSheets_SHEETS(roIndex, formData) {
             try {
                 const rowNumber = await getSheetRowNumber(roIndex);
                 if (!rowNumber) {
@@ -6928,8 +7484,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             }
         }
 
-        // Write one row per changed field to the Audit Log sheet
-        // Columns: Timestamp | UserEmail | UserName | RO_ID | FieldChanged | OldValue | NewValue
+        // Write audit log entries to Supabase audit_log table
         async function writeAuditLog(roId, changes) {
             if (!changes || changes.length === 0) return;
             try {
@@ -6937,26 +7492,29 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 const userEmail = currentUser ? currentUser.email : 'Unknown';
                 const userName = currentUser ? currentUser.name : 'Unknown';
 
-                const rows = changes.map(({ field, oldValue, newValue }) => [
-                    now, userEmail, userName, roId, field,
-                    oldValue !== undefined && oldValue !== null ? String(oldValue) : '',
-                    newValue !== undefined && newValue !== null ? String(newValue) : ''
-                ]);
+                // Find RO uuid
+                const ro = currentData.find(d => d.roId === roId);
+                const supabaseId = ro?._supabaseId;
 
-                await gapi.client.sheets.spreadsheets.values.append({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: GOOGLE_CONFIG.AUDIT_LOG_RANGE,
-                    valueInputOption: 'RAW',
-                    resource: { values: rows }
-                });
-                console.log(`✅ Audit log written: ${changes.length} change(s) for ${roId}`);
+                const rows = changes.map(({ field, oldValue, newValue }) => ({
+                    ro_id:         supabaseId || null,
+                    user_email:    userEmail,
+                    user_name:     userName,
+                    field_changed: field,
+                    old_value:     oldValue !== undefined && oldValue !== null ? String(oldValue) : '',
+                    new_value:     newValue !== undefined && newValue !== null ? String(newValue) : '',
+                    changed_at:    now,
+                }));
+
+                await supabase.from('audit_log').insert(rows);
+                console.log(`✅ Audit log written to Supabase: ${changes.length} change(s) for ${roId}`);
             } catch (err) {
-                // Non-fatal — don't block the save if audit log fails
                 console.warn('Audit log write failed (non-fatal):', err);
             }
         }
 
-        async function appendToSheets(formData) {
+        async function appendToSheets(formData) { return appendToSupabase(formData); }
+        async function appendToSheets_SHEETS(formData) {
             try {
                 // Use today's date as the received date for new entries
                 const today = new Date().toISOString().split('T')[0];
@@ -7547,7 +8105,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 e.preventDefault();
                 
                 if (!accessToken) {
-                    alert('Please connect to Google Sheets first!');
+                    alert('Please connect to PRVS database first!');
                     return;
                 }
 
@@ -8335,6 +8893,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="https://apis.google.com/js/api.js?v=2" onload="gapiLoaded()"></script>
