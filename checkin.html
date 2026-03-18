@@ -212,6 +212,7 @@ let isOnline        = navigator.onLine;
 let recognition     = null;
 let isRecording     = false;
 let selectedService = null; // single selection only
+let roServiceTypes = []; // service types for this RO
 
 const urlParams  = new URLSearchParams(window.location.search);
 const roIdParam  = urlParams.get('ro');   // PRVS-XXXX-XXXX string
@@ -390,12 +391,36 @@ async function loadAndRender() {
 
     if (isOnline) {
         try {
-            // Load RO data
-            const { data: ro, error: roErr } = await getSB()
-                .from('repair_orders')
-                .select('*')
-                .eq('ro_id', roIdParam)
-                .maybeSingle();
+            // Load RO data — support both PRVS-XXXX-XXXX and legacy RO-Name-Date formats
+            let ro = null;
+            let roErr = null;
+
+            if (roIdParam.startsWith('PRVS-')) {
+                // New format — direct lookup
+                const result = await getSB()
+                    .from('repair_orders')
+                    .select('*')
+                    .eq('ro_id', roIdParam)
+                    .maybeSingle();
+                ro = result.data;
+                roErr = result.error;
+            } else {
+                // Legacy format — try to extract customer name and find by name
+                // Format: RO-FirstName-LastName-YYYY-MM-DD
+                const parts = roIdParam.replace('RO-', '').split('-');
+                const datePart = parts.slice(-3).join('-'); // YYYY-MM-DD
+                const namePart = parts.slice(0, -3).join(' ');
+                console.warn('Legacy RO ID format detected:', roIdParam, '— searching by name:', namePart);
+                const result = await getSB()
+                    .from('repair_orders')
+                    .select('*')
+                    .ilike('customer_name', '%' + namePart + '%')
+                    .limit(1)
+                    .maybeSingle();
+                ro = result.data;
+                roErr = result.error;
+                if (!ro) throw new Error('This QR code uses the old format. Please use the Tech Check-In button on the dashboard to get an updated QR code for ' + namePart + '.');
+            }
 
             if (roErr) throw roErr;
             if (!ro) throw new Error('RO not found: ' + roIdParam);
@@ -485,7 +510,10 @@ async function autoClockOut(session) {
 
     // answer is minutes ago they actually finished
     const now = new Date();
-    const clockOutTime = new Date(now.getTime() - (answer * 60 * 1000));
+    // Cap adjustment so clock_out never goes before clock_in
+    const maxAdjustMinutes = Math.floor((now - new Date(session.clock_in)) / 60000);
+    const adjustMinutes = Math.min(answer, maxAdjustMinutes);
+    const clockOutTime = new Date(now.getTime() - (adjustMinutes * 60 * 1000));
     const duration = Math.max(0, Math.round((clockOutTime - new Date(session.clock_in)) / 1000));
 
     const updateData = {
@@ -583,9 +611,9 @@ function render() {
     const isClockedIn = !!activeSession;
 
     // Only show service types on this RO, auto-select if just one
-        const roServiceTypes = roData.repair_type
+        roServiceTypes = roData.repair_type
             ? roData.repair_type.split(',').map(s => s.trim()).filter(s => ALL_SERVICE_TYPES.includes(s))
-            : ALL_SERVICE_TYPES;
+            : ALL_SERVICE_TYPES.slice();
         if (!selectedService && roServiceTypes.length === 1) {
             selectedService = roServiceTypes[0];
         }
