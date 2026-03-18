@@ -7111,7 +7111,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         async function loadTimeLogsFromSheets() {
             try {
-                console.log('Loading time logs from Google Sheets...');
+                // Time logs now load from Supabase
+            return loadTimeLogsFromSupabase();
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                     range: GOOGLE_CONFIG.TIME_LOGS_RANGE,
@@ -8245,22 +8246,20 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         }
                     }
 
-                    const success = await updateROInSheets(editingROIndex, data);
-                    if (success) {
-                        // Write audit log after successful save
-                        const roId = existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived);
-                        await writeAuditLog(roId, changes);
-                        // Write insurance/hybrid data if RO type is not standard
-                        const insuranceFields = collectInsuranceFields('edit');
-                        if (insuranceFields) {
-                            const scanData = window._lastEstimateScan ? window._lastEstimateScan.extracted : null;
-                            const combinedData = Object.assign({}, scanData || {}, insuranceFields);
-                            writeInsuranceData(roId, combinedData, editingROIndex);
-                            window._lastEstimateScan = null;
-                        }
-                        closeEditModal();
-                        alert('Repair Order updated successfully!');
+                    await updateROInSheets(editingROIndex, data);
+                    // Write audit log
+                    const roId = existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived);
+                    await writeAuditLog(roId, changes);
+                    // Write insurance/hybrid data if RO type is not standard
+                    const insuranceFields = collectInsuranceFields('edit');
+                    if (insuranceFields) {
+                        const scanData = window._lastEstimateScan ? window._lastEstimateScan.extracted : null;
+                        const combinedData = Object.assign({}, scanData || {}, insuranceFields);
+                        writeInsuranceData(roId, combinedData, editingROIndex);
+                        window._lastEstimateScan = null;
                     }
+                    closeEditModal();
+                    await loadDataFromSupabase();
                 });
 
                 document.getElementById('editCancelBtn').addEventListener('click', closeEditModal);
