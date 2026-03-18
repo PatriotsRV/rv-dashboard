@@ -6985,7 +6985,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     .from('config')
                     .select('value')
                     .eq('key', 'insurance_custom_fields')
-                    .single();
+                    .maybeSingle();
                 if (data?.value) {
                     customInsuranceFields = Array.isArray(data.value) ? data.value : [];
                     console.log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields from Supabase');
