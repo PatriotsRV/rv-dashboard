@@ -1896,14 +1896,16 @@
             font-size: 0.85rem;
             color: var(--text-secondary);
             line-height: 1.8;
+            overflow: visible;
         }
         .extra-fields-body.open { display: block; }
         .extra-field-row {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 4px 0;
+            padding: 6px 0;
             border-bottom: 1px solid rgba(255,255,255,0.05);
+            flex-wrap: nowrap;
         }
         .extra-field-row:last-child { border-bottom: none; }
         .extra-field-key {
@@ -3897,6 +3899,30 @@
                 repairFacility:       document.getElementById(insPrefix + 'repairFacility')?.value || '',
                 repairFacilityAddress:document.getElementById(insPrefix + 'repairFacilityAddress')?.value || '',
                 repairFacilityPhone:  document.getElementById(insPrefix + 'repairFacilityPhone')?.value || '',
+                // Progressive / carrier-specific fields
+                estimateId:           document.getElementById(insPrefix + 'estimateId')?.value || '',
+                lossType:             document.getElementById(insPrefix + 'lossType')?.value || '',
+                lossDate:             document.getElementById(insPrefix + 'lossDate')?.value || '',
+                reportedDate:         document.getElementById(insPrefix + 'reportedDate')?.value || '',
+                appraiserName:        document.getElementById(insPrefix + 'appraiserName')?.value || '',
+                appraiserPhone:       document.getElementById(insPrefix + 'appraiserPhone')?.value || '',
+                appraiserEmail:       document.getElementById(insPrefix + 'appraiserEmail')?.value || '',
+                supplementedBy:       document.getElementById(insPrefix + 'supplementedBy')?.value || '',
+                supplementedByPhone:  document.getElementById(insPrefix + 'supplementedByPhone')?.value || '',
+                supplementedByEmail:  document.getElementById(insPrefix + 'supplementedByEmail')?.value || '',
+                adjusterFax:          document.getElementById(insPrefix + 'adjusterFax')?.value || '',
+                inspectionSite:       document.getElementById(insPrefix + 'inspectionSite')?.value || '',
+                inspectionDate:       document.getElementById(insPrefix + 'inspectionDate')?.value || '',
+                exteriorColor:        document.getElementById(insPrefix + 'exteriorColor')?.value || '',
+                drivable:             document.getElementById(insPrefix + 'drivable')?.value || '',
+                laborTotal:           document.getElementById(insPrefix + 'laborTotal')?.value || '',
+                laborRate:            document.getElementById(insPrefix + 'laborRate')?.value || '',
+                laborHours:           document.getElementById(insPrefix + 'laborHours')?.value || '',
+                shopMaterials:        document.getElementById(insPrefix + 'shopMaterials')?.value || '',
+                grossTotal:           document.getElementById(insPrefix + 'grossTotal')?.value || '',
+                taxAmount:            document.getElementById(insPrefix + 'taxAmount')?.value || '',
+                estimatedCompletionDate: document.getElementById(insPrefix + 'estimatedCompletionDate')?.value || '',
+                arrivedAtShop:        document.getElementById(insPrefix + 'arrivedAtShop')?.value || '',
             };
             // Add customer pay fields for hybrid
             if (currentROType === 'hybrid') {
@@ -4459,8 +4485,8 @@ Always prefer mapping to a standard key over creating a new one.`;
                 extraEl.innerHTML = `
                     <div class="extra-fields-section">
                         <div class="extra-fields-toggle" onclick="toggleExtraFields(this)">
-                            📋 Additional Extracted Fields (${Object.keys(extraFields).length}) — click to expand
-                            <span>▼</span>
+                            📋 Additional Extracted Fields (${Object.keys(extraFields).length})
+                            <span style="transform:rotate(180deg);display:inline-block;">▼</span>
                         </div>
                         <div class="extra-fields-body open">${rows}</div>
                     </div>`;
@@ -4560,8 +4586,10 @@ Always prefer mapping to a standard key over creating a new one.`;
             const input = document.getElementById(inputId);
             if (input) {
                 const normalized = normalizeExtractedValue(key, value);
-                if (input.tagName === 'TEXTAREA') {
-                    input.value = normalized;
+                // For number inputs, round to 2 decimal places to avoid step validation errors
+                if (input.type === 'number') {
+                    const num = parseFloat(normalized);
+                    input.value = isNaN(num) ? normalized : Math.round(num * 100) / 100;
                 } else {
                     input.value = normalized;
                 }
@@ -9212,12 +9240,12 @@ Always prefer mapping to a standard key over creating a new one.`;
                         <div class="form-field"><label class="form-label">Inspection Date</label><input type="text" class="form-input" id="ins_inspectionDate"><div id="sug_new_inspectionDate"></div></div>
                         <div class="form-field"><label class="form-label">Exterior Color</label><input type="text" class="form-input" id="ins_exteriorColor"><div id="sug_new_exteriorColor"></div></div>
                         <div class="form-field"><label class="form-label">Drivable</label><input type="text" class="form-input" id="ins_drivable"><div id="sug_new_drivable"></div></div>
-                        <div class="form-field"><label class="form-label">Labor Total ($)</label><input type="number" class="form-input" id="ins_laborTotal"><div id="sug_new_laborTotal"></div></div>
-                        <div class="form-field"><label class="form-label">Labor Rate ($/hr)</label><input type="number" class="form-input" id="ins_laborRate"><div id="sug_new_laborRate"></div></div>
-                        <div class="form-field"><label class="form-label">Labor Hours</label><input type="number" class="form-input" id="ins_laborHours"><div id="sug_new_laborHours"></div></div>
-                        <div class="form-field"><label class="form-label">Shop Materials ($)</label><input type="number" class="form-input" id="ins_shopMaterials"><div id="sug_new_shopMaterials"></div></div>
-                        <div class="form-field"><label class="form-label">Gross Total ($)</label><input type="number" class="form-input" id="ins_grossTotal"><div id="sug_new_grossTotal"></div></div>
-                        <div class="form-field"><label class="form-label">Tax Amount ($)</label><input type="number" class="form-input" id="ins_taxAmount"><div id="sug_new_taxAmount"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Total ($)</label><input type="number" class="form-input" id="ins_laborTotal" min="0" step="0.01"><div id="sug_new_laborTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Rate ($/hr)</label><input type="number" class="form-input" id="ins_laborRate" min="0" step="0.01"><div id="sug_new_laborRate"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Hours</label><input type="number" class="form-input" id="ins_laborHours" min="0" step="0.01"><div id="sug_new_laborHours"></div></div>
+                        <div class="form-field"><label class="form-label">Shop Materials ($)</label><input type="number" class="form-input" id="ins_shopMaterials" min="0" step="0.01"><div id="sug_new_shopMaterials"></div></div>
+                        <div class="form-field"><label class="form-label">Gross Total ($)</label><input type="number" class="form-input" id="ins_grossTotal" min="0" step="0.01"><div id="sug_new_grossTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Tax Amount ($)</label><input type="number" class="form-input" id="ins_taxAmount" min="0" step="0.01"><div id="sug_new_taxAmount"></div></div>
                         <div class="form-field"><label class="form-label">Est. Completion Date</label><input type="text" class="form-input" id="ins_estimatedCompletionDate"><div id="sug_new_estimatedCompletionDate"></div></div>
                         <div class="form-field"><label class="form-label">Arrived at Shop</label><input type="text" class="form-input" id="ins_arrivedAtShop"><div id="sug_new_arrivedAtShop"></div></div>
                     </div>
@@ -9255,7 +9283,7 @@ Always prefer mapping to a standard key over creating a new one.`;
             </button>
             <input type="file" id="editEstimateFile" accept="image/*,.pdf" style="display:none;" onchange="handleEstimateFile(this, 'edit')">
 
-            <form id="editROForm">
+            <form id="editROForm" novalidate>
                 <div style="font-size: 0.75rem; color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; margin-bottom: 16px;" id="editRoId"></div>
 
                 <div class="form-grid">
@@ -9308,7 +9336,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                     </div>
                     <div class="form-field">
                         <label class="form-label">RO Value ($)</label>
-                        <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01">
+                        <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
                     </div>
                     <div class="form-field">
@@ -9379,12 +9407,12 @@ Always prefer mapping to a standard key over creating a new one.`;
                         <div class="form-field"><label class="form-label">Inspection Date</label><input type="text" class="form-input" id="editIns_inspectionDate"><div id="sug_edit_inspectionDate"></div></div>
                         <div class="form-field"><label class="form-label">Exterior Color</label><input type="text" class="form-input" id="editIns_exteriorColor"><div id="sug_edit_exteriorColor"></div></div>
                         <div class="form-field"><label class="form-label">Drivable</label><input type="text" class="form-input" id="editIns_drivable"><div id="sug_edit_drivable"></div></div>
-                        <div class="form-field"><label class="form-label">Labor Total ($)</label><input type="number" class="form-input" id="editIns_laborTotal"><div id="sug_edit_laborTotal"></div></div>
-                        <div class="form-field"><label class="form-label">Labor Rate ($/hr)</label><input type="number" class="form-input" id="editIns_laborRate"><div id="sug_edit_laborRate"></div></div>
-                        <div class="form-field"><label class="form-label">Labor Hours</label><input type="number" class="form-input" id="editIns_laborHours"><div id="sug_edit_laborHours"></div></div>
-                        <div class="form-field"><label class="form-label">Shop Materials ($)</label><input type="number" class="form-input" id="editIns_shopMaterials"><div id="sug_edit_shopMaterials"></div></div>
-                        <div class="form-field"><label class="form-label">Gross Total ($)</label><input type="number" class="form-input" id="editIns_grossTotal"><div id="sug_edit_grossTotal"></div></div>
-                        <div class="form-field"><label class="form-label">Tax Amount ($)</label><input type="number" class="form-input" id="editIns_taxAmount"><div id="sug_edit_taxAmount"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Total ($)</label><input type="number" class="form-input" id="editIns_laborTotal" min="0" step="0.01"><div id="sug_edit_laborTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Rate ($/hr)</label><input type="number" class="form-input" id="editIns_laborRate" min="0" step="0.01"><div id="sug_edit_laborRate"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Hours</label><input type="number" class="form-input" id="editIns_laborHours" min="0" step="0.01"><div id="sug_edit_laborHours"></div></div>
+                        <div class="form-field"><label class="form-label">Shop Materials ($)</label><input type="number" class="form-input" id="editIns_shopMaterials" min="0" step="0.01"><div id="sug_edit_shopMaterials"></div></div>
+                        <div class="form-field"><label class="form-label">Gross Total ($)</label><input type="number" class="form-input" id="editIns_grossTotal" min="0" step="0.01"><div id="sug_edit_grossTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Tax Amount ($)</label><input type="number" class="form-input" id="editIns_taxAmount" min="0" step="0.01"><div id="sug_edit_taxAmount"></div></div>
                         <div class="form-field"><label class="form-label">Est. Completion Date</label><input type="text" class="form-input" id="editIns_estimatedCompletionDate"><div id="sug_edit_estimatedCompletionDate"></div></div>
                         <div class="form-field"><label class="form-label">Arrived at Shop</label><input type="text" class="form-input" id="editIns_arrivedAtShop"><div id="sug_edit_arrivedAtShop"></div></div>
                     </div>
