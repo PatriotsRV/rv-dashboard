@@ -6832,8 +6832,13 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
             if (error) throw error;
 
-            // Write audit log
-            await writeAuditLog(ro.roId, formData);
+            // Write audit log — build array of changed fields
+            const auditChanges = Object.entries(formData).map(([field, value]) => ({
+                field,
+                oldValue: ro[field] || '',
+                newValue: value || '',
+            }));
+            await writeAuditLog(ro.roId, auditChanges);
 
             console.log('✅ RO updated in Supabase');
         }
