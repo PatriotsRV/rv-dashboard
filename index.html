@@ -3147,7 +3147,7 @@
                         updated_at: new Date().toISOString(),
                     };
                     if (autoDateArrived) updatePayload.date_arrived = autoDateArrived;
-                    await supabase.from('repair_orders').update(updatePayload).eq('id', supabaseId);
+                    await _sb.from('repair_orders').update(updatePayload).eq('id', supabaseId);
                 }
                 console.log('✓ Status and progress updated in Supabase');
 
@@ -3271,7 +3271,7 @@
             if (!ro?._supabaseId) return;
             let libraryObj = { photos: [], docs: [] };
             try { libraryObj = JSON.parse(libraryJson); } catch(e) {}
-            await supabase.from('repair_orders').update({
+            await _sb.from('repair_orders').update({
                 photo_library: libraryObj,
                 updated_at: new Date().toISOString(),
             }).eq('id', ro._supabaseId);
@@ -4302,7 +4302,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             try {
                 const ro = dataIndex !== null && dataIndex !== undefined ? currentData[dataIndex] : currentData.find(d => d.roId === roId);
                 const supabaseId = ro?._supabaseId;
-                await supabase.from('insurance_scans').insert({
+                await _sb.from('insurance_scans').insert({
                     ro_id:      supabaseId || null,
                     user_id:    supabaseSession?.user?.id || null,
                     raw_data:   extractedData,
@@ -4320,7 +4320,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     if (ro?._supabaseId) {
                         let parsed = extractedData;
                         try { if (typeof extractedData === 'string') parsed = JSON.parse(extractedData); } catch(e) {}
-                        await supabase.from('repair_orders').update({
+                        await _sb.from('repair_orders').update({
                             insurance_data: parsed,
                             updated_at: new Date().toISOString(),
                         }).eq('id', ro._supabaseId);
@@ -5974,17 +5974,17 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         };
 
         // ── Supabase Configuration ──────────────────────────────────
-        const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+        const SUPABASE_URL = 'https://axfejhudchdejoiwaetq._sb.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let supabaseSession = null;
 
-        let gapiInited = false;
-        let gisInited = false;
-        let initialLoadDone = false; // Ensures backfillROIds only runs once on first load
-        let tokenClient;
-        let accessToken = null;
-        let currentUser = null; // Store logged-in user info
+        var gapiInited = false;
+        var gisInited = false;
+        var initialLoadDone = false;
+        var tokenClient;
+        var accessToken = null;
+        var currentUser = null;
         
         // Admin access control
         const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];
@@ -6038,7 +6038,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             if (!session) return;
             try {
                 const { user } = session;
-                await supabase.from('users').upsert({
+                await _sb.from('users').upsert({
                     id: user.id,
                     email: user.email,
                     name: user.user_metadata?.full_name || user.email,
@@ -6212,7 +6212,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                     // ── Restore Supabase session ──────────────────────────
                     try {
-                        const { data: { session } } = await supabase.auth.getSession();
+                        const { data: { session } } = await _sb.auth.getSession();
                         if (session) {
                             supabaseSession = session;
                             console.log('✅ Supabase session restored');
@@ -6376,7 +6376,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                         // ── Supabase: sign in with Google token ──────────────
                         try {
-                            const { data: sbData, error: sbErr } = await supabase.auth.signInWithIdToken({
+                            const { data: sbData, error: sbErr } = await _sb.auth.signInWithIdToken({
                                 provider: 'google',
                                 token: resp.id_token || accessToken,
                             });
@@ -6661,7 +6661,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Append a new part to Supabase
         async function appendPartToSupabase(part, roSupabaseId) {
-            const { data, error } = await supabase.from('parts').insert({
+            const { data, error } = await _sb.from('parts').insert({
                 ro_id:            roSupabaseId,
                 part_name:        part.partName,
                 part_number:      part.partNumber || null,
@@ -6696,7 +6696,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Update a part in Supabase
         async function updatePartInSupabase(part) {
             if (!part._supabaseId) return;
-            const { error } = await supabase.from('parts').update({
+            const { error } = await _sb.from('parts').update({
                 part_name:        part.partName,
                 part_number:      part.partNumber || null,
                 condition:        part.condition || null,
@@ -6729,7 +6729,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         // Delete a part from Supabase
         async function deletePartFromSupabase(supabaseId) {
-            const { error } = await supabase.from('parts').delete().eq('id', supabaseId);
+            const { error } = await _sb.from('parts').delete().eq('id', supabaseId);
             if (error) throw error;
         }
 
@@ -6748,7 +6748,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         async function appendToSupabase(formData) {
             const roId = generateROId(formData.customerName, formData.rv || '', new Date().toISOString().slice(0,10));
 
-            const { data, error } = await supabase.from('repair_orders').insert({
+            const { data, error } = await _sb.from('repair_orders').insert({
                 ro_id:          roId,
                 customer_name:  formData.customerName,
                 phone:          formData.customerPhone || null,
@@ -6774,13 +6774,13 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
             // Add initial notes if present
             if (formData.roStatusNotes) {
-                await supabase.from('notes').insert({
+                await _sb.from('notes').insert({
                     ro_id: data.id, type: 'ro_status',
                     body: formData.roStatusNotes,
                 });
             }
             if (formData.customerCommunicationNotes) {
-                await supabase.from('notes').insert({
+                await _sb.from('notes').insert({
                     ro_id: data.id, type: 'customer_comm',
                     body: formData.customerCommunicationNotes,
                 });
@@ -6799,7 +6799,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 return;
             }
 
-            const { error } = await supabase.from('repair_orders').update({
+            const { error } = await _sb.from('repair_orders').update({
                 customer_name:  formData.customerName,
                 phone:          formData.customerPhone || null,
                 email:          formData.customerEmail || null,
@@ -6838,7 +6838,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
             const dbField = fieldMap[fieldName];
             if (dbField) {
-                await supabase.from('repair_orders').update({
+                await _sb.from('repair_orders').update({
                     [dbField]: newValue,
                     updated_at: new Date().toISOString(),
                 }).eq('id', supabaseId);
@@ -6846,7 +6846,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
             // Notes fields go to notes table
             if (fieldName === 'roStatusNotes') {
-                await supabase.from('notes').insert({
+                await _sb.from('notes').insert({
                     ro_id: supabaseId,
                     type: 'ro_status',
                     body: newValue,
@@ -6854,7 +6854,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 });
             }
             if (fieldName === 'customerCommunicationNotes') {
-                await supabase.from('notes').insert({
+                await _sb.from('notes').insert({
                     ro_id: supabaseId,
                     type: 'customer_comm',
                     body: newValue,
@@ -6872,7 +6872,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             let libraryObj = { photos: [], docs: [] };
             try { libraryObj = JSON.parse(libraryJson); } catch(e) {}
 
-            await supabase.from('repair_orders').update({
+            await _sb.from('repair_orders').update({
                 photo_url:      photoUrl || ro.rvPhotoUrl,
                 photo_library:  libraryObj,
                 updated_at:     new Date().toISOString(),
@@ -6888,7 +6888,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             const daysOnLot = calculateDaysOnLot(ro) || 0;
 
             // Insert into cashiered
-            const { error: cashErr } = await supabase.from('cashiered').insert({
+            const { error: cashErr } = await _sb.from('cashiered').insert({
                 original_ro_id: supabaseId,
                 ro_id:          ro.roId,
                 customer_name:  ro.customerName,
@@ -6919,7 +6919,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             if (cashErr) throw cashErr;
 
             // Delete from repair_orders
-            const { error: delErr } = await supabase.from('repair_orders').delete().eq('id', supabaseId);
+            const { error: delErr } = await _sb.from('repair_orders').delete().eq('id', supabaseId);
             if (delErr) throw delErr;
 
             console.log('✅ RO archived to cashiered in Supabase');
@@ -6958,7 +6958,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             }));
 
             if (entries.length > 0) {
-                await supabase.from('audit_log').insert(entries);
+                await _sb.from('audit_log').insert(entries);
             }
         }
 
@@ -6985,7 +6985,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Save custom field config to Supabase config table
         async function saveCustomFieldConfigToSupabase() {
             try {
-                await supabase.from('config').upsert({
+                await _sb.from('config').upsert({
                     key: 'insurance_custom_fields',
                     value: customInsuranceFields,
                     updated_at: new Date().toISOString(),
@@ -6999,7 +6999,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Insurance scan log to Supabase
         async function logInsuranceScanToSupabase(roSupabaseId, rawData) {
             try {
-                await supabase.from('insurance_scans').insert({
+                await _sb.from('insurance_scans').insert({
                     ro_id:      roSupabaseId,
                     user_id:    supabaseSession?.user?.id || null,
                     raw_data:   typeof rawData === 'string' ? JSON.parse(rawData) : rawData,
@@ -7506,7 +7506,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     changed_at:    now,
                 }));
 
-                await supabase.from('audit_log').insert(rows);
+                await _sb.from('audit_log').insert(rows);
                 console.log(`✅ Audit log written to Supabase: ${changes.length} change(s) for ${roId}`);
             } catch (err) {
                 console.warn('Audit log write failed (non-fatal):', err);
@@ -8893,7 +8893,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="https://apis.google.com/js/api.js?v=2" onload="gapiLoaded()"></script>
