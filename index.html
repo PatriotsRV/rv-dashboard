@@ -7,7 +7,7 @@
 -->
 <html lang="en">
 <head>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@_sb/_sb-js@2/dist/umd/supabase.min.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RV Repair Order Dashboard</title>
@@ -4813,7 +4813,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                     partsData[roId][parseInt(editIndex)] = part;
                     await updatePartInSheet(part);
                 } else {
-                    // Get RO supabase ID
+                    // Get RO _sb ID
                     const roRecord = currentData.find(d => d.roId === roId);
                     const roSupabaseId = roRecord?._supabaseId;
                     const newPart = await appendPartToSheet(part, roSupabaseId);
@@ -5975,9 +5975,9 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         };
 
         // ── Supabase Configuration ──────────────────────────────────
-        const SUPABASE_URL = 'https://axfejhudchdejoiwaetq._sb.co';
+        const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
-        if (typeof supabase === 'undefined') { console.error('Supabase SDK not loaded!'); }
+        if (typeof _sb === 'undefined') { console.error('Supabase SDK not loaded!'); }
         const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let supabaseSession = null;
 
@@ -6007,14 +6007,14 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             try {
                 const email = supabaseSession.user.email;
                 // Get user record
-                const { data: userRecord } = await supabase
+                const { data: userRecord } = await _sb
                     .from('users')
                     .select('id')
                     .eq('email', email)
                     .single();
                 if (!userRecord) return;
                 // Get roles via junction table
-                const { data: roleData } = await supabase
+                const { data: roleData } = await _sb
                     .from('user_roles')
                     .select('roles(name)')
                     .eq('user_id', userRecord.id);
@@ -6513,7 +6513,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             console.log('=== loadDataFromSupabase called ===');
             try {
                 // Load repair orders
-                const { data: ros, error } = await supabase
+                const { data: ros, error } = await _sb
                     .from('repair_orders')
                     .select('*')
                     .order('date_received', { ascending: false });
@@ -6522,14 +6522,14 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
                 // Load notes for all ROs in one query
                 const roIds = ros.map(r => r.id);
-                const { data: notes } = await supabase
+                const { data: notes } = await _sb
                     .from('notes')
                     .select('ro_id, type, body, created_at')
                     .in('ro_id', roIds)
                     .order('created_at', { ascending: true });
 
                 // Load parts summary for badges
-                const { data: parts } = await supabase
+                const { data: parts } = await _sb
                     .from('parts')
                     .select('ro_id, status')
                     .in('ro_id', roIds);
@@ -6580,7 +6580,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Load time logs from Supabase
         async function loadTimeLogsFromSupabase() {
             try {
-                const { data: logs, error } = await supabase
+                const { data: logs, error } = await _sb
                     .from('time_logs')
                     .select('*, repair_orders(ro_id)')
                     .order('clock_in', { ascending: false });
@@ -6610,7 +6610,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Load all parts from Supabase (for Parts modal detail view)
         async function loadPartsFromSupabase() {
             try {
-                const { data: rows, error } = await supabase
+                const { data: rows, error } = await _sb
                     .from('parts')
                     .select('*, repair_orders(ro_id)')
                     .order('created_at', { ascending: true });
@@ -6940,8 +6940,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             const email = supabaseSession.user.email;
             const name = currentUser?.name || email;
 
-            // Find RO supabase ID
-            const { data: roRecord } = await supabase
+            // Find RO _sb ID
+            const { data: roRecord } = await _sb
                 .from('repair_orders')
                 .select('id')
                 .eq('ro_id', roId)
@@ -6967,7 +6967,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         // Load custom field config from Supabase config table
         async function loadCustomFieldConfigFromSupabase() {
             try {
-                const { data } = await supabase
+                const { data } = await _sb
                     .from('config')
                     .select('value')
                     .eq('key', 'insurance_custom_fields')
