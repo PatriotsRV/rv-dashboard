@@ -3926,6 +3926,30 @@
             repairFacility:       { new: 'ins_repairFacility',       edit: 'editIns_repairFacility',       label: 'Repair Facility' },
             repairFacilityAddress:{ new: 'ins_repairFacilityAddress',edit: 'editIns_repairFacilityAddress',label: 'Repair Facility Address' },
             repairFacilityPhone:  { new: 'ins_repairFacilityPhone',  edit: 'editIns_repairFacilityPhone',  label: 'Repair Facility Phone' },
+            // Progressive / carrier-specific fields
+            estimateId:           { new: 'ins_estimateId',           edit: 'editIns_estimateId',           label: 'Estimate ID' },
+            lossType:             { new: 'ins_lossType',             edit: 'editIns_lossType',             label: 'Loss Type' },
+            lossDate:             { new: 'ins_lossDate',             edit: 'editIns_lossDate',             label: 'Loss Date' },
+            reportedDate:         { new: 'ins_reportedDate',         edit: 'editIns_reportedDate',         label: 'Reported Date' },
+            appraiserName:        { new: 'ins_appraiserName',        edit: 'editIns_appraiserName',        label: 'Appraiser Name' },
+            appraiserPhone:       { new: 'ins_appraiserPhone',       edit: 'editIns_appraiserPhone',       label: 'Appraiser Phone' },
+            appraiserEmail:       { new: 'ins_appraiserEmail',       edit: 'editIns_appraiserEmail',       label: 'Appraiser Email' },
+            supplementedBy:       { new: 'ins_supplementedBy',       edit: 'editIns_supplementedBy',       label: 'Supplemented By' },
+            supplementedByPhone:  { new: 'ins_supplementedByPhone',  edit: 'editIns_supplementedByPhone',  label: 'Supplement Phone' },
+            supplementedByEmail:  { new: 'ins_supplementedByEmail',  edit: 'editIns_supplementedByEmail',  label: 'Supplement Email' },
+            adjusterFax:          { new: 'ins_adjusterFax',          edit: 'editIns_adjusterFax',          label: 'Adjuster Fax' },
+            inspectionSite:       { new: 'ins_inspectionSite',       edit: 'editIns_inspectionSite',       label: 'Inspection Site' },
+            inspectionDate:       { new: 'ins_inspectionDate',       edit: 'editIns_inspectionDate',       label: 'Inspection Date' },
+            exteriorColor:        { new: 'ins_exteriorColor',        edit: 'editIns_exteriorColor',        label: 'Exterior Color' },
+            drivable:             { new: 'ins_drivable',             edit: 'editIns_drivable',             label: 'Drivable' },
+            laborTotal:           { new: 'ins_laborTotal',           edit: 'editIns_laborTotal',           label: 'Labor Total' },
+            laborRate:            { new: 'ins_laborRate',            edit: 'editIns_laborRate',            label: 'Labor Rate' },
+            laborHours:           { new: 'ins_laborHours',           edit: 'editIns_laborHours',           label: 'Labor Hours' },
+            shopMaterials:        { new: 'ins_shopMaterials',        edit: 'editIns_shopMaterials',        label: 'Shop Materials' },
+            grossTotal:           { new: 'ins_grossTotal',           edit: 'editIns_grossTotal',           label: 'Gross Total' },
+            taxAmount:            { new: 'ins_taxAmount',            edit: 'editIns_taxAmount',            label: 'Tax Amount' },
+            estimatedCompletionDate: { new: 'ins_estimatedCompletionDate', edit: 'editIns_estimatedCompletionDate', label: 'Est. Completion Date' },
+            arrivedAtShop:        { new: 'ins_arrivedAtShop',        edit: 'editIns_arrivedAtShop',        label: 'Arrived at Shop' },
         };
 
         // ── Insurance Estimate Scanner ──────────────────────────────
@@ -4000,6 +4024,9 @@
                 btn.textContent = '✅ Scan Complete — Review Suggestions Below';
                 btn.disabled = false;
 
+                // Check scan count milestone — remind admin to review prompt at 30
+                checkScanMilestone();
+
                 // Add scanned estimate to RO document library if we're in edit mode
                 if (driveUrl) {
                     console.log('✅ Estimate stored in Drive:', driveUrl);
@@ -4054,21 +4081,227 @@
             });
         }
 
+        // ── Scan Milestone Reminder ──────────────────────────────
+        async function checkScanMilestone() {
+            try {
+                const { count, error } = await getSB()
+                    .from('insurance_scans')
+                    .select('*', { count: 'exact', head: true });
+
+                if (error || !count) return;
+
+                const milestones = [30, 60, 100, 150, 200];
+                const lastNotified = parseInt(localStorage.getItem('prvs_scan_milestone_notified') || '0');
+
+                for (const milestone of milestones) {
+                    if (count >= milestone && lastNotified < milestone) {
+                        localStorage.setItem('prvs_scan_milestone_notified', milestone.toString());
+                        console.log(`📊 Scan milestone reached: ${count} scans`);
+
+                        // Show admin notification banner
+                        if (isAdmin()) {
+                            showScanMilestoneBanner(count, milestone);
+                        }
+                        break;
+                    }
+                }
+            } catch(e) {
+                console.warn('Scan milestone check failed (non-fatal):', e);
+            }
+        }
+
+        function showScanMilestoneBanner(totalScans, milestone) {
+            const existing = document.getElementById('scanMilestoneBanner');
+            if (existing) existing.remove();
+
+            const banner = document.createElement('div');
+            banner.id = 'scanMilestoneBanner';
+            banner.style.cssText = `
+                position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+                background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+                color: white; border-radius: 12px; padding: 16px 20px;
+                max-width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+                font-family: 'Barlow Condensed', sans-serif;
+                animation: slideIn 0.3s ease;
+            `;
+            banner.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                    <div>
+                        <div style="font-size:1.1rem;font-weight:700;margin-bottom:4px;">
+                            📊 ${milestone} Insurance Scans Reached!
+                        </div>
+                        <div style="font-size:0.85rem;opacity:0.9;margin-bottom:12px;">
+                            You've completed ${totalScans} estimate scans. Time to review the AI prompt 
+                            for any new carrier field names that aren't being recognized.
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button onclick="sendScanMilestoneEmail(${totalScans})" style="
+                                padding:7px 14px;background:white;color:#1e3a8a;border:none;
+                                border-radius:6px;font-size:0.85rem;font-weight:700;cursor:pointer;">
+                                📧 Email Reminder
+                            </button>
+                            <button onclick="document.getElementById('scanMilestoneBanner').remove()" style="
+                                padding:7px 14px;background:rgba(255,255,255,0.2);color:white;border:none;
+                                border-radius:6px;font-size:0.85rem;font-weight:600;cursor:pointer;">
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(banner);
+
+            // Auto-dismiss after 60 seconds
+            setTimeout(() => {
+                const b = document.getElementById('scanMilestoneBanner');
+                if (b) b.remove();
+            }, 60000);
+        }
+
+        function sendScanMilestoneEmail(totalScans) {
+            const subject = encodeURIComponent(`PRVS Action Required: ${totalScans} Insurance Scans — Review AI Prompt`);
+            const body = encodeURIComponent(
+                `Hi Roland,
+
+` +
+                `You've reached ${totalScans} insurance estimate scans on the PRVS Dashboard.
+
+` +
+                `ACTION REQUIRED:
+` +
+                `Review the Claude Vision prompt in index.html to add any new carrier field aliases ` +
+                `that appeared in the "Additional Extracted Fields" section during recent scans.
+
+` +
+                `To review:
+` +
+                `1. Open index.html in your code editor
+` +
+                `2. Search for "callClaudeVision"
+` +
+                `3. Check the systemPrompt for any missing carrier aliases
+` +
+                `4. Add new aliases for fields you saw in "Additional Fields" during scans
+
+` +
+                `Current scan count: ${totalScans}
+` +
+                `Next reminder: ${totalScans + 30} scans
+
+` +
+                `-- PRVS Dashboard Auto-Reminder`
+            );
+            window.location.href = `mailto:roland@patriotsrvservices.com?subject=${subject}&body=${body}`;
+            document.getElementById('scanMilestoneBanner').remove();
+        }
+
         async function callClaudeVision(apiKey, base64Data, mediaType, isPDF) {
-            const systemPrompt = `You are an insurance estimate data extractor for an RV repair shop. 
+            const systemPrompt = `You are an insurance estimate data extractor for an RV repair shop.
 Extract all field/value pairs from the provided insurance estimate document.
 Respond ONLY with a valid JSON object. No markdown, no explanation, no backticks.
-Use these exact keys when the data matches:
-- customerName: full name of the vehicle/RV owner
-- customerPhone: phone number
-- customerEmail: email address
-- customerAddress: full mailing address
-- rv: year make model of the RV (e.g. "2019 Winnebago Vista")
-- vin: vehicle identification number (17 chars)
-- repairDescription: summary of all repair line items as a single string
-- dollarValue: total estimate amount as a number only (no $ sign)
-For any other fields found in the document that don't match the above, include them as additional key/value pairs using camelCase keys.
-If a field is not found, omit it entirely. Do not include null or empty string values.`;
+If a field is not found, omit it entirely. Do not include null or empty string values.
+
+CRITICAL: Always normalize field names to the standard keys below, regardless of how each insurance carrier labels them. Different carriers use different terminology for the same data — always map to the standard key.
+
+── CUSTOMER & VEHICLE ──────────────────────────────────────────
+customerName: Owner/insured/claimant full name
+  (Progressive: "Owner", State Farm: "Insured", Allstate: "Claimant Name", GEICO: "Vehicle Owner")
+customerPhone: Any phone for the vehicle owner
+customerEmail: Any email for the vehicle owner
+customerAddress: Full mailing address of the owner
+rv: Year + Make + Model of the RV/vehicle (e.g. "2024 Venture Sporttrek 353VIK")
+vin: 17-character Vehicle Identification Number
+  (may appear as "VIN", "Vehicle ID", "Serial Number")
+exteriorColor: Color of the vehicle
+  (may appear as "Color", "Vehicle Color", "Ext. Color")
+drivable: Whether vehicle is drivable (Yes/No)
+  (may appear as "Drivable?", "Operable", "Driveable")
+
+── CLAIM INFO ───────────────────────────────────────────────────
+claimNumber: The primary claim or file number
+  (Progressive: "Claim No.", State Farm: "Claim Number", Allstate: "Claim #", GEICO: "Claim Number", Farmers: "File Number")
+estimateId: Estimate or appraisal ID number
+  (Progressive: "Estimate No.", State Farm: "Estimate Number", may appear as "Assignment #", "Appraisal ID")
+policyNumber: Insured's policy number
+  (may appear as "Policy No.", "Policy #", "Certificate Number")
+insuranceCompany: Name of the insurance carrier
+  (may appear as "Insurance Company", "Carrier", "Insurer", "Written By")
+coverageType: Type of coverage (Comprehensive, Collision, etc.)
+  (may appear as "Coverage", "Loss Coverage", "Type of Loss", "Peril")
+lossType: Type/cause of loss
+  (Progressive: "Type of Loss", State Farm: "Cause of Loss", Allstate: "Loss Type", may appear as "Peril", "Loss Cause")
+lossDate: Date the loss/damage occurred
+  (may appear as "Date of Loss", "Loss Date", "Accident Date", "Date of Accident", "Occurrence Date")
+reportedDate: Date claim was reported
+  (may appear as "Date Reported", "Reported Date", "Claim Reported")
+claimStatus: Current status of the claim
+  (may appear as "Status", "Claim Status", "Assignment Status")
+deductible: Deductible amount (number only, no $ sign)
+  (may appear as "Deductible", "Deductible Amount", "Owner Responsibility", "Customer Pays")
+approvedAmount: Total approved/authorized repair amount
+  (may appear as "Net Claim", "Insurance Pays", "Amount Approved", "Net Amount", "Authorized Amount")
+
+── FINANCIAL TOTALS ─────────────────────────────────────────────
+dollarValue: TOTAL estimate amount — the grand total the shop will be paid (number only, no $ sign)
+  (may appear as "Total", "Grand Total", "Estimate Total", "Total Amount", "RO Total")
+laborTotal: Total labor charges (number only)
+  (may appear as "Labor Total", "Total Labor", "Body Labor Total")
+laborRate: Labor rate per hour (number only)
+  (may appear as "Labor Rate", "Rate", "$/hr", "Hourly Rate")
+laborHours: Total labor hours (number only)
+  (may appear as "Labor Hours", "Total Hours", "Hours")
+partsTotal: Total parts cost (number only)
+  (may appear as "Parts Total", "Total Parts", "Parts Amount")
+shopMaterials: Shop supplies / materials charge (number only)
+  (may appear as "Shop Materials", "Shop Supplies", "Supplies", "Materials")
+grossTotal: Total before deductible/adjustments (number only)
+  (may appear as "Gross Total", "Subtotal", "Total Before Deductible")
+taxAmount: Sales tax amount (number only)
+  (may appear as "Tax", "Sales Tax", "Tax Amount")
+
+── APPRAISER / INSPECTOR ────────────────────────────────────────
+appraiserName: Name of the person who wrote/inspected the estimate
+  (Progressive: "Appraiser", State Farm: "Estimator", Allstate: "Field Appraiser", GEICO: "Inspector", Farmers: "Adjuster")
+appraiserPhone: Appraiser/estimator phone number
+appraiserEmail: Appraiser/estimator email address
+inspectionSite: Location where inspection occurred
+  (may appear as "Inspection Location", "Inspected At", "Shop Address", "Facility")
+inspectionDate: Date of inspection
+  (may appear as "Inspection Date", "Date Inspected", "Date of Inspection", "Survey Date")
+
+── ADJUSTER ──────────────────────────────────────────────────────
+adjusterName: Handling adjuster name
+  (may appear as "Adjuster", "Claim Adjuster", "Handler", "Claim Handler", "Assigned To")
+adjusterPhone: Adjuster phone
+adjusterFax: Adjuster fax number
+adjusterEmail: Adjuster email
+
+── SUPPLEMENT ────────────────────────────────────────────────────
+supplementedBy: Person who wrote/approved a supplement
+  (may appear as "Supplement By", "Supplemented By", "Re-Inspected By")
+supplementedByPhone: Supplement contact phone
+supplementedByEmail: Supplement contact email
+
+── REPAIR FACILITY ───────────────────────────────────────────────
+repairFacility: Name of the repair shop
+  (may appear as "Repair Facility", "Shop Name", "Repairer", "Body Shop")
+repairFacilityAddress: Address of the repair shop
+repairFacilityPhone: Phone of the repair shop
+
+── REPAIR DETAILS ────────────────────────────────────────────────
+repairDescription: Concatenate ALL repair line items into a single descriptive string listing all parts and labor operations
+estimatedCompletionDate: Expected completion/ready date
+  (may appear as "Completion Date", "Ready Date", "Est. Completion", "Promised Date")
+arrivedAtShop: Date vehicle arrived at the repair facility
+  (may appear as "Arrived", "Date In", "Check-In Date", "Received Date")
+
+── OTHER ──────────────────────────────────────────────────────────
+referenceNumber: Any secondary reference number not captured above
+estimateDate: Date the estimate was written
+  (may appear as "Date Written", "Estimate Date", "Written Date")
+
+For any field in the document that genuinely does not fit any of the above categories, include it using camelCase keys.
+Always prefer mapping to a standard key over creating a new one.`;
 
             const contentBlock = isPDF
                 ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } }
@@ -4084,7 +4317,7 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                 },
                 body: JSON.stringify({
                     model: 'claude-opus-4-5',
-                    max_tokens: 1024,
+                    max_tokens: 2048,
                     system: systemPrompt,
                     messages: [{ role: 'user', content: [
                         contentBlock,
@@ -4109,8 +4342,9 @@ If a field is not found, omit it entirely. Do not include null or empty string v
         }
 
         function clearAllSuggestions(mode) {
-            // Clear all known suggestion containers
-            Object.keys(ESTIMATE_FIELD_MAP).forEach(key => {
+            // Clear all known suggestion containers — both estimate and insurance maps
+            const allKeys = [...Object.keys(ESTIMATE_FIELD_MAP), ...Object.keys(INSURANCE_FIELD_MAP)];
+            allKeys.forEach(key => {
                 const el = document.getElementById(`sug_${mode}_${key}`);
                 if (el) el.innerHTML = '';
             });
@@ -8880,6 +9114,29 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                             <input type="tel" class="form-input" name="repairFacilityPhone" id="ins_repairFacilityPhone">
                             <div id="sug_new_repairFacilityPhone"></div>
                         </div>
+                        <div class="form-field"><label class="form-label">Estimate ID</label><input type="text" class="form-input" id="ins_estimateId"><div id="sug_new_estimateId"></div></div>
+                        <div class="form-field"><label class="form-label">Loss Type</label><input type="text" class="form-input" id="ins_lossType"><div id="sug_new_lossType"></div></div>
+                        <div class="form-field"><label class="form-label">Loss Date</label><input type="text" class="form-input" id="ins_lossDate"><div id="sug_new_lossDate"></div></div>
+                        <div class="form-field"><label class="form-label">Reported Date</label><input type="text" class="form-input" id="ins_reportedDate"><div id="sug_new_reportedDate"></div></div>
+                        <div class="form-field"><label class="form-label">Appraiser Name</label><input type="text" class="form-input" id="ins_appraiserName"><div id="sug_new_appraiserName"></div></div>
+                        <div class="form-field"><label class="form-label">Appraiser Phone</label><input type="tel" class="form-input" id="ins_appraiserPhone"><div id="sug_new_appraiserPhone"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Appraiser Email</label><input type="email" class="form-input" id="ins_appraiserEmail"><div id="sug_new_appraiserEmail"></div></div>
+                        <div class="form-field"><label class="form-label">Supplemented By</label><input type="text" class="form-input" id="ins_supplementedBy"><div id="sug_new_supplementedBy"></div></div>
+                        <div class="form-field"><label class="form-label">Supplement Phone</label><input type="tel" class="form-input" id="ins_supplementedByPhone"><div id="sug_new_supplementedByPhone"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Supplement Email</label><input type="email" class="form-input" id="ins_supplementedByEmail"><div id="sug_new_supplementedByEmail"></div></div>
+                        <div class="form-field"><label class="form-label">Adjuster Fax</label><input type="text" class="form-input" id="ins_adjusterFax"><div id="sug_new_adjusterFax"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Inspection Site</label><input type="text" class="form-input" id="ins_inspectionSite"><div id="sug_new_inspectionSite"></div></div>
+                        <div class="form-field"><label class="form-label">Inspection Date</label><input type="text" class="form-input" id="ins_inspectionDate"><div id="sug_new_inspectionDate"></div></div>
+                        <div class="form-field"><label class="form-label">Exterior Color</label><input type="text" class="form-input" id="ins_exteriorColor"><div id="sug_new_exteriorColor"></div></div>
+                        <div class="form-field"><label class="form-label">Drivable</label><input type="text" class="form-input" id="ins_drivable"><div id="sug_new_drivable"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Total ($)</label><input type="number" class="form-input" id="ins_laborTotal"><div id="sug_new_laborTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Rate ($/hr)</label><input type="number" class="form-input" id="ins_laborRate"><div id="sug_new_laborRate"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Hours</label><input type="number" class="form-input" id="ins_laborHours"><div id="sug_new_laborHours"></div></div>
+                        <div class="form-field"><label class="form-label">Shop Materials ($)</label><input type="number" class="form-input" id="ins_shopMaterials"><div id="sug_new_shopMaterials"></div></div>
+                        <div class="form-field"><label class="form-label">Gross Total ($)</label><input type="number" class="form-input" id="ins_grossTotal"><div id="sug_new_grossTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Tax Amount ($)</label><input type="number" class="form-input" id="ins_taxAmount"><div id="sug_new_taxAmount"></div></div>
+                        <div class="form-field"><label class="form-label">Est. Completion Date</label><input type="text" class="form-input" id="ins_estimatedCompletionDate"><div id="sug_new_estimatedCompletionDate"></div></div>
+                        <div class="form-field"><label class="form-label">Arrived at Shop</label><input type="text" class="form-input" id="ins_arrivedAtShop"><div id="sug_new_arrivedAtShop"></div></div>
                     </div>
                 </div>
                 <div class="form-actions">
@@ -9024,6 +9281,29 @@ If a field is not found, omit it entirely. Do not include null or empty string v
                         <div class="form-field"><label class="form-label">Repair Facility</label><input type="text" class="form-input" id="editIns_repairFacility"><div id="sug_edit_repairFacility"></div></div>
                         <div class="form-field full-width"><label class="form-label">Repair Facility Address</label><input type="text" class="form-input" id="editIns_repairFacilityAddress"><div id="sug_edit_repairFacilityAddress"></div></div>
                         <div class="form-field"><label class="form-label">Repair Facility Phone</label><input type="tel" class="form-input" id="editIns_repairFacilityPhone"><div id="sug_edit_repairFacilityPhone"></div></div>
+                        <div class="form-field"><label class="form-label">Estimate ID</label><input type="text" class="form-input" id="editIns_estimateId"><div id="sug_edit_estimateId"></div></div>
+                        <div class="form-field"><label class="form-label">Loss Type</label><input type="text" class="form-input" id="editIns_lossType"><div id="sug_edit_lossType"></div></div>
+                        <div class="form-field"><label class="form-label">Loss Date</label><input type="text" class="form-input" id="editIns_lossDate"><div id="sug_edit_lossDate"></div></div>
+                        <div class="form-field"><label class="form-label">Reported Date</label><input type="text" class="form-input" id="editIns_reportedDate"><div id="sug_edit_reportedDate"></div></div>
+                        <div class="form-field"><label class="form-label">Appraiser Name</label><input type="text" class="form-input" id="editIns_appraiserName"><div id="sug_edit_appraiserName"></div></div>
+                        <div class="form-field"><label class="form-label">Appraiser Phone</label><input type="tel" class="form-input" id="editIns_appraiserPhone"><div id="sug_edit_appraiserPhone"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Appraiser Email</label><input type="email" class="form-input" id="editIns_appraiserEmail"><div id="sug_edit_appraiserEmail"></div></div>
+                        <div class="form-field"><label class="form-label">Supplemented By</label><input type="text" class="form-input" id="editIns_supplementedBy"><div id="sug_edit_supplementedBy"></div></div>
+                        <div class="form-field"><label class="form-label">Supplement Phone</label><input type="tel" class="form-input" id="editIns_supplementedByPhone"><div id="sug_edit_supplementedByPhone"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Supplement Email</label><input type="email" class="form-input" id="editIns_supplementedByEmail"><div id="sug_edit_supplementedByEmail"></div></div>
+                        <div class="form-field"><label class="form-label">Adjuster Fax</label><input type="text" class="form-input" id="editIns_adjusterFax"><div id="sug_edit_adjusterFax"></div></div>
+                        <div class="form-field full-width"><label class="form-label">Inspection Site</label><input type="text" class="form-input" id="editIns_inspectionSite"><div id="sug_edit_inspectionSite"></div></div>
+                        <div class="form-field"><label class="form-label">Inspection Date</label><input type="text" class="form-input" id="editIns_inspectionDate"><div id="sug_edit_inspectionDate"></div></div>
+                        <div class="form-field"><label class="form-label">Exterior Color</label><input type="text" class="form-input" id="editIns_exteriorColor"><div id="sug_edit_exteriorColor"></div></div>
+                        <div class="form-field"><label class="form-label">Drivable</label><input type="text" class="form-input" id="editIns_drivable"><div id="sug_edit_drivable"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Total ($)</label><input type="number" class="form-input" id="editIns_laborTotal"><div id="sug_edit_laborTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Rate ($/hr)</label><input type="number" class="form-input" id="editIns_laborRate"><div id="sug_edit_laborRate"></div></div>
+                        <div class="form-field"><label class="form-label">Labor Hours</label><input type="number" class="form-input" id="editIns_laborHours"><div id="sug_edit_laborHours"></div></div>
+                        <div class="form-field"><label class="form-label">Shop Materials ($)</label><input type="number" class="form-input" id="editIns_shopMaterials"><div id="sug_edit_shopMaterials"></div></div>
+                        <div class="form-field"><label class="form-label">Gross Total ($)</label><input type="number" class="form-input" id="editIns_grossTotal"><div id="sug_edit_grossTotal"></div></div>
+                        <div class="form-field"><label class="form-label">Tax Amount ($)</label><input type="number" class="form-input" id="editIns_taxAmount"><div id="sug_edit_taxAmount"></div></div>
+                        <div class="form-field"><label class="form-label">Est. Completion Date</label><input type="text" class="form-input" id="editIns_estimatedCompletionDate"><div id="sug_edit_estimatedCompletionDate"></div></div>
+                        <div class="form-field"><label class="form-label">Arrived at Shop</label><input type="text" class="form-input" id="editIns_arrivedAtShop"><div id="sug_edit_arrivedAtShop"></div></div>
                     </div>
 
                     <!-- Customer Pay Section (Edit mode, Hybrid only) -->
