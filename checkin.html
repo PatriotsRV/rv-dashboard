@@ -195,7 +195,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];
 
-const SERVICE_TYPES = ['Roof', 'Solar', 'Vroom', 'Paint and Body', 'Repairs', 'TrueTopper', 'Detailing', 'Chassis'];
+const ALL_SERVICE_TYPES = ['Roof', 'Solar', 'Vroom', 'Paint and Body', 'Repairs', 'TrueTopper', 'Detailing', 'Chassis'];
 
 // ── State ─────────────────────────────────────────────────────
 let _sb = null;
@@ -211,7 +211,7 @@ let timerInterval   = null;
 let isOnline        = navigator.onLine;
 let recognition     = null;
 let isRecording     = false;
-let selectedServices = [];
+let selectedService = null; // single selection only
 
 const urlParams  = new URLSearchParams(window.location.search);
 const roIdParam  = urlParams.get('ro');   // PRVS-XXXX-XXXX string
@@ -471,7 +471,7 @@ async function autoClockOut(session) {
         clock_out:        clockOutTime.toISOString(),
         duration_seconds: duration,
         updated_at:       now.toISOString(),
-        work_notes:       (session.work_notes || '') + (session.work_notes ? '\n' : '') + `[Auto clocked out — tech indicated finished ${answer} min ago]`,
+        work_notes:       (session.work_notes || '') + (session.work_notes ? '\n' : '') + '[Auto clocked out — tech indicated finished ' + answer + ' min ago]',
     };
 
     console.log(`🔄 Auto clocking out of ${prevROName}, adjusted by -${answer} min. Duration: ${Math.round(duration/60)} min`);
@@ -616,11 +616,12 @@ function render() {
         </div>` : ''}
 
         <div class="service-types">
-            <h3>Service Types</h3>
+            <h3>Service Type <span style="color:#ef4444;">*</span></h3>
+            <p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Select one service to work on</p>
             <div class="service-grid">
-                ${SERVICE_TYPES.map(s => `
-                    <div class="service-chip ${selectedServices.includes(s) ? 'selected' : ''}"
-                         onclick="toggleService('${s}')">
+                ${roServiceTypes.map(s => `
+                    <div class="service-chip ${selectedService === s ? 'selected' : ''}"
+                         onclick="selectService('${s}')">
                         ${s}
                     </div>`).join('')}
             </div>
@@ -657,22 +658,18 @@ function render() {
     }
 }
 
-// ── Service Type Toggle ───────────────────────────────────────
-function toggleService(type) {
-    if (selectedServices.includes(type)) {
-        selectedServices = selectedServices.filter(s => s !== type);
-    } else {
-        selectedServices.push(type);
-    }
+// ── Service Type Select (single) ─────────────────────────────
+function selectService(type) {
+    selectedService = (selectedService === type) ? null : type;
     document.querySelectorAll('.service-chip').forEach(chip => {
-        chip.classList.toggle('selected', selectedServices.includes(chip.textContent.trim()));
+        chip.classList.toggle('selected', chip.textContent.trim() === selectedService);
     });
 }
 
 // ── Clock In ─────────────────────────────────────────────────
 async function clockIn() {
-    if (selectedServices.length === 0) {
-        alert('Please select at least one service type before clocking in.');
+    if (!selectedService) {
+        alert('Please select a service type before clocking in.');
         return;
     }
 
@@ -685,7 +682,7 @@ async function clockIn() {
         tech_name:     currentUser.name,
         clock_in:      now,
         clock_out:     null,
-        service_type:  selectedServices.join(', '),
+        service_type:  selectedService,
         work_notes:    notes,
         duration_seconds: 0,
     };
@@ -731,13 +728,13 @@ async function clockOut() {
     const now      = new Date().toISOString();
     const duration = Math.round((new Date(now) - new Date(activeSession.clock_in)) / 1000);
     const notes    = document.getElementById('workNotes')?.value || activeSession.work_notes || '';
-    const services = selectedServices.join(', ') || activeSession.service_type || '';
+    const services = selectedService || activeSession.service_type || '';
 
     const updateData = {
         clock_out:        now,
         duration_seconds: duration,
         work_notes:       notes,
-        service_type:     services,
+        service_type:     selectedService || activeSession.service_type || '',
         updated_at:       now,
     };
 
