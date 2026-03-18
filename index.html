@@ -6334,72 +6334,85 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             const tokenExpiry = localStorage.getItem('google_token_expiry');
             const savedUser = localStorage.getItem('currentUser');
             const lastAuthTime = localStorage.getItem('last_auth_time');
-            
-            console.log('Saved token exists:', !!savedToken);
-            console.log('Token expiry:', tokenExpiry);
-            
-            // Detect Safari
             const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-            console.log('Is Safari:', isSafari);
-            
+
+            console.log('Saved token exists:', !!savedToken, '| Expiry:', tokenExpiry);
+
+            // ── STEP 1: Always check Supabase session first ──────────
+            // Supabase persists its own session in localStorage for weeks.
+            // If valid, load data immediately regardless of Google token state.
+            try {
+                const { data: { session } } = await getSB().auth.getSession();
+                if (session) {
+                    supabaseSession = session;
+                    console.log('✅ Supabase session active — loading data');
+
+                    // Restore user from Supabase session
+                    if (!currentUser) {
+                        const u = session.user;
+                        currentUser = {
+                            email: u.email,
+                            name:  u.user_metadata?.full_name || u.email,
+                            id:    u.id,
+                        };
+                        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    } else if (savedUser) {
+                        try { currentUser = JSON.parse(savedUser); } catch(e) {}
+                    }
+
+                    // Restore Google token if still valid (for Drive compat)
+                    const now = Date.now();
+                    if (savedToken && tokenExpiry && now < (parseInt(tokenExpiry) - 300000)) {
+                        accessToken = savedToken;
+                        gapi.client.setToken({access_token: savedToken});
+                        console.log('✅ Google token also valid');
+                    }
+
+                    await loadUserRoles();
+                    updateViewModeDropdown();
+                    updateAuthStatus(true);
+                    await loadDataFromSupabase();
+                    await loadTimeLogsFromSupabase();
+
+                    initialLoadDone = true;
+                    startTimeLogsAutoRefresh();
+                    if (!isSafari) setupTokenRefresh();
+
+                    console.log('✅ Session restored via Supabase');
+                    return true;
+                }
+            } catch(e) {
+                console.warn('Supabase session check failed:', e);
+            }
+
+            // ── STEP 2: Fall back to Google token if Supabase session gone ──
             if (savedToken && tokenExpiry) {
                 const now = Date.now();
                 const expiryTime = parseInt(tokenExpiry);
-                
-                console.log('Time until expiry (minutes):', Math.round((expiryTime - now) / 60000));
-                
-                // Check if token is still valid (with 5 minute buffer)
+
+                console.log('Time until Google token expiry (minutes):', Math.round((expiryTime - now) / 60000));
+
                 if (now < (expiryTime - 300000)) {
-                    console.log('✅ Token still valid, loading...');
+                    console.log('✅ Google token valid, loading...');
                     accessToken = savedToken;
-                    
-                    // CRITICAL: Set token in gapi so API calls work
                     gapi.client.setToken({access_token: savedToken});
-                    console.log('✅ Token set in gapi client');
-                    
-                    // Load saved user info
+
                     if (savedUser) {
                         try {
                             currentUser = JSON.parse(savedUser);
                             console.log('Loaded saved user:', currentUser.name);
-                            
-                            // Update view mode dropdown based on admin status
                             updateViewModeDropdown();
-                        } catch (e) {
-                            console.error('Error parsing saved user:', e);
-                        }
+                        } catch(e) {}
                     }
-                    
+
                     updateAuthStatus(true);
-
-                    // ── Restore Supabase session ──────────────────────────
-                    try {
-                        const { data: { session } } = await getSB().auth.getSession();
-                        if (session) {
-                            supabaseSession = session;
-                            console.log('✅ Supabase session restored');
-                            await upsertUser(supabaseSession);
-                            await loadUserRoles();
-                            updateViewModeDropdown();
-                        }
-                    } catch(e) {
-                        console.warn('Could not restore Supabase session:', e);
-                    }
-                    // ─────────────────────────────────────────────────────
-
                     await loadDataFromSupabase();
                     await loadTimeLogsFromSupabase();
-                    console.log('Loaded saved token, expires in:', Math.round((expiryTime - now) / 60000), 'minutes');
 
                     initialLoadDone = true;
-                    // Start auto-refresh for time logs
                     startTimeLogsAutoRefresh();
-                    
-                    // Setup auto-refresh (but not on Safari - it doesn't support silent refresh)
-                    if (!isSafari) {
-                        setupTokenRefresh();
-                    }
-                    
+                    if (!isSafari) setupTokenRefresh();
+
                     return true;
                 } else if (lastAuthTime && !isSafari) {
                     console.log('Token expired, attempting silent refresh (Chrome only)...');
