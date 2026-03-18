@@ -6326,12 +6326,13 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             if (refreshTime > 0) {
                 console.log('Token refresh scheduled in', Math.round(refreshTime / 60000), 'minutes');
                 setTimeout(() => {
-                    console.log('Auto-refreshing token...');
-                    // Request new token silently
+                    console.log('Auto-refreshing token silently...');
+                    // Silent refresh only — no popup ever
+                    // If it fails, user just reconnects manually when needed (Drive uploads)
                     try {
-                        tokenClient.requestAccessToken({prompt: ''});
+                        tokenClient.requestAccessToken({prompt: '', hint: currentUser?.email || ''});
                     } catch (e) {
-                        console.log('Auto-refresh not supported on this browser');
+                        console.log('Silent refresh not available — token will expire naturally');
                     }
                 }, refreshTime);
             }
@@ -6428,17 +6429,16 @@ If a field is not found, omit it entirely. Do not include null or empty string v
 
         function handleAuthClick() {
             console.log('=== handleAuthClick called ===');
-
+            // Always try silent first, only show popup on explicit user click
             if (accessToken === null) {
                 console.log('Requesting new token...');
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
-                console.log('Refreshing existing token...');
+                console.log('Refreshing existing token silently...');
                 try {
                     tokenClient.requestAccessToken({prompt: ''});
                 } catch (e) {
-                    console.log('Silent refresh not supported, requesting with consent');
-                    tokenClient.requestAccessToken({prompt: 'consent'});
+                    console.log('Silent refresh not available');
                 }
             }
         }
