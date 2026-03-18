@@ -1900,14 +1900,34 @@
         .extra-fields-body.open { display: block; }
         .extra-field-row {
             display: flex;
+            align-items: center;
             gap: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
         }
+        .extra-field-row:last-child { border-bottom: none; }
         .extra-field-key {
             font-weight: 700;
             color: var(--text-muted);
-            min-width: 140px;
+            min-width: 160px;
+            flex-shrink: 0;
         }
-        .extra-field-val { color: var(--text-primary); }
+        .extra-field-val { color: var(--text-primary); flex: 1; }
+        .extra-field-add-btn {
+            padding: 3px 10px;
+            background: rgba(110,231,160,0.15);
+            border: 1px solid rgba(110,231,160,0.4);
+            border-radius: 6px;
+            color: #6ee7a0;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.15s;
+        }
+        .extra-field-add-btn:hover { background: rgba(110,231,160,0.3); }
+        .extra-field-add-btn.added { background: rgba(110,231,160,0.08); color: var(--text-muted); cursor: default; border-color: transparent; }
         .scan-api-key-bar {
             display: flex;
             align-items: center;
@@ -4424,17 +4444,80 @@ Always prefer mapping to a standard key over creating a new one.`;
             // Render extra fields section
             const extraEl = document.getElementById(`sug_${mode}_extra`);
             if (extraEl && Object.keys(extraFields).length > 0) {
-                const rows = Object.entries(extraFields).map(([k, v]) =>
-                    `<div class="extra-field-row"><span class="extra-field-key">${k}:</span><span class="extra-field-val">${v}</span></div>`
-                ).join('');
+                const rows = Object.entries(extraFields).map(([k, v]) => {
+                    const safeKey = k.replace(/'/g, "\'");
+                    const safeVal = v.replace(/'/g, "\'").replace(/"/g, '&quot;');
+                    const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+                    return `<div class="extra-field-row" id="extra-row-${mode}-${k}">
+                        <span class="extra-field-key">${label}:</span>
+                        <span class="extra-field-val">${v}</span>
+                        <button class="extra-field-add-btn" onclick="addExtraFieldToRO('${safeKey}', '${safeVal}', '${mode}', this)">
+                            + Add to RO
+                        </button>
+                    </div>`;
+                }).join('');
                 extraEl.innerHTML = `
                     <div class="extra-fields-section">
                         <div class="extra-fields-toggle" onclick="toggleExtraFields(this)">
-                            📋 Additional Extracted Fields (${Object.keys(extraFields).length})
+                            📋 Additional Extracted Fields (${Object.keys(extraFields).length}) — click to expand
                             <span>▼</span>
                         </div>
-                        <div class="extra-fields-body">${rows}</div>
+                        <div class="extra-fields-body open">${rows}</div>
                     </div>`;
+            }
+        }
+
+
+        // ── Add Extra Field to RO ─────────────────────────────────────
+        // Called when user clicks "+ Add to RO" in the Additional Fields section.
+        // 1. Adds the field as a custom insurance field (persisted to Supabase config)
+        // 2. Re-renders custom fields grid with the new field pre-populated
+        // 3. Updates the button state to "Added ✓"
+        async function addExtraFieldToRO(key, value, mode, btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Adding...';
+
+            try {
+                // Check if already exists
+                const exists = customInsuranceFields.some(f => f.key === key);
+                if (!exists) {
+                    // Generate a friendly label from camelCase key
+                    const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+
+                    // Add to customInsuranceFields array
+                    customInsuranceFields.push({
+                        key,
+                        label,
+                        type: 'text',
+                    });
+
+                    // Save to Supabase config
+                    await saveCustomFieldConfig();
+                    console.log(`✅ Custom field "${label}" added to config`);
+                }
+
+                // Re-render custom fields grid — new field will auto-populate from scan
+                renderCustomFields(mode);
+
+                // Scroll to the new field
+                setTimeout(() => {
+                    const newField = document.getElementById(`${mode}_custom_${key}`);
+                    if (newField) {
+                        newField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        newField.style.outline = '2px solid #6ee7a0';
+                        setTimeout(() => { newField.style.outline = ''; }, 2000);
+                    }
+                }, 200);
+
+                btn.textContent = '✅ Added';
+                btn.classList.add('added');
+                btn.disabled = true;
+
+            } catch(e) {
+                console.error('Error adding field to RO:', e);
+                btn.textContent = '❌ Error';
+                btn.disabled = false;
+                setTimeout(() => { btn.textContent = '+ Add to RO'; }, 2000);
             }
         }
 
