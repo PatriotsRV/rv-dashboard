@@ -3636,9 +3636,17 @@
                 grid.innerHTML = '<div class="form-field full-width" style="color:var(--text-muted);font-size:0.85rem;padding:4px 0;">No custom fields yet. Click + Add Field to create one.</div>';
                 return;
             }
+
+            // Auto-populate from last scan if available and mode matches
+            const scanVals = (window._lastEstimateScan && window._lastEstimateScan.mode === mode)
+                ? window._lastEstimateScan.extracted : null;
+
             grid.innerHTML = customInsuranceFields.map(field => {
                 const id = mode + '_custom_' + field.key;
-                const savedVal = savedValues ? (savedValues[field.key] || '') : '';
+                // Priority: explicit savedValues > scan extracted > empty
+                const savedVal = savedValues
+                    ? (savedValues[field.key] || '')
+                    : (scanVals ? (scanVals[field.key] || '') : '');
                 let input = '';
                 if (field.type === 'toggle') {
                     input = `<select class="form-select" id="${id}">
@@ -8239,7 +8247,8 @@ If a field is not found, omit it entirely. Do not include null or empty string v
             document.getElementById('editROOverlay').classList.remove('active');
             editingROIndex = null;
             setROType('standard', 'edit');
-            window._lastEstimateScan = null;
+            // Keep _lastEstimateScan — so adding new fields and reopening still
+            // auto-populates from the scan. Cleared only on save or new scan.
         }
 
                 function setupModalListeners() {
