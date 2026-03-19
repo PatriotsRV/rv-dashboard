@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.24
+    PRVS Dashboard v1.25
     Released: 2026-03-16
     New in v1.23:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
@@ -2346,7 +2346,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.24</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.25</span>
             </div>
         </header>
 
@@ -2636,7 +2636,7 @@
                 status: "Awaiting parts",
                 urgency: "High",
                 customerType: "Regular",
-                promisedDate: "2026-03-12",
+                promisedDate: "2026-03-18",
                 roStatusNotes: "Brake rotors on backorder - ETA 3/10. Suspension parts arrived, ready to install.",
                 customerCommunicationNotes: "Customer frustrated with delay. Offered discount on next service.",
                 vin: ""
@@ -2903,6 +2903,7 @@
             'On Lot': 10,
             'Awaiting Approval': 20,
             'Awaiting parts': 30,
+            'Scheduled': 45,
             'In progress': 60,
             'Repairs Completed': 80,
             'Waiting for QA/QC': 85,
@@ -4829,6 +4830,288 @@ Always prefer mapping to a standard key over creating a new one.`;
             }
         }
 
+
+        // ══════════════════════════════════════════════════════════════
+        // GOOGLE CALENDAR SCHEDULING
+        // ══════════════════════════════════════════════════════════════
+
+        async function openScheduleModal(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro) return;
+
+            const originalIndex = currentData.findIndex(d =>
+                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
+            );
+
+            // Parse service types from RO
+            const roServices = (ro.repairType || '').split(',').map(s => s.trim()).filter(s => CALENDAR_IDS[s] !== undefined);
+            const hasCalendars = roServices.some(s => CALENDAR_IDS[s]);
+
+            // Default start: tomorrow at 8am
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(8, 0, 0, 0);
+            const defaultDate = tomorrow.toISOString().slice(0, 16);
+
+            const modalHTML = `
+                <div id="scheduleModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;">
+                    <div style="background:#1a1d24;border:1px solid #2d3139;border-radius:16px;padding:28px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;">
+                        <h2 style="color:#e8eaed;font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;margin-bottom:4px;">📅 Schedule RO</h2>
+                        <p style="color:#6b7280;font-size:0.9rem;margin-bottom:20px;">${ro.customerName} — ${ro.rv || '—'}</p>
+
+                        ${!accessToken ? `<div style="background:#fef3c7;color:#92400e;padding:12px;border-radius:8px;margin-bottom:16px;font-size:0.85rem;">
+                            ⚠️ Connect to PRVS first to enable calendar integration.
+                        </div>` : ''}
+
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:0.8rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Start Date & Time</label>
+                            <input type="datetime-local" id="scheduleStart" value="${defaultDate}"
+                                style="width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;">
+                        </div>
+
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:0.8rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Duration</label>
+                            <select id="scheduleDuration" style="width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;">
+                                <option value="120">2 Hours</option>
+                                <option value="240">4 Hours (Half Day)</option>
+                                <option value="480" selected>8 Hours (Full Day)</option>
+                                <option value="960">2 Days</option>
+                                <option value="custom">Custom...</option>
+                            </select>
+                            <input type="number" id="scheduleCustomHours" placeholder="Hours" min="1" max="240"
+                                style="display:none;width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;margin-top:8px;">
+                        </div>
+
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block;font-size:0.8rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Service Calendars</label>
+                            ${roServices.length === 0 ? `<p style="color:#6b7280;font-size:0.85rem;">No service types assigned to this RO.</p>` :
+                            roServices.map(s => `
+                                <label style="display:flex;align-items:center;gap:10px;padding:8px;background:#252930;border-radius:8px;margin-bottom:6px;cursor:pointer;">
+                                    <input type="checkbox" name="schedCalendar" value="${s}" ${CALENDAR_IDS[s] ? 'checked' : 'disabled'}
+                                        style="width:16px;height:16px;accent-color:#39ff6e;">
+                                    <span style="color:${CALENDAR_IDS[s] ? '#e8eaed' : '#6b7280'};font-size:0.9rem;font-weight:600;">${s}</span>
+                                    ${!CALENDAR_IDS[s] ? '<span style="font-size:0.75rem;color:#6b7280;">(no calendar configured)</span>' : ''}
+                                </label>`).join('')}
+                        </div>
+
+                        <div style="margin-bottom:20px;">
+                            <label style="display:block;font-size:0.8rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Notes (optional)</label>
+                            <textarea id="scheduleNotes" placeholder="Additional notes for the calendar event..."
+                                style="width:100%;min-height:70px;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:0.9rem;resize:vertical;"></textarea>
+                        </div>
+
+                        <div id="scheduleConflicts" style="display:none;"></div>
+                        <div id="scheduleStatus" style="margin-bottom:12px;font-size:0.85rem;color:#9ca3af;min-height:20px;"></div>
+
+                        <div style="display:flex;gap:8px;">
+                            <button id="scheduleConfirmBtn" onclick="confirmSchedule(${filteredIndex})" style="flex:2;padding:12px;background:linear-gradient(135deg,#39ff6e,#10b981);border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;color:#0d0f12;">
+                                📅 Schedule
+                            </button>
+                            <button onclick="closeScheduleModal()" style="flex:1;padding:12px;background:#252930;border:1px solid #2d3139;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;color:#9ca3af;">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+            // Custom duration toggle
+            document.getElementById('scheduleDuration').addEventListener('change', function() {
+                document.getElementById('scheduleCustomHours').style.display =
+                    this.value === 'custom' ? 'block' : 'none';
+            });
+        }
+
+        function closeScheduleModal() {
+            const m = document.getElementById('scheduleModalOverlay');
+            if (m) m.remove();
+        }
+
+        async function confirmSchedule(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            const originalIndex = currentData.findIndex(d =>
+                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
+            );
+
+            const btn = document.getElementById('scheduleConfirmBtn');
+            const statusEl = document.getElementById('scheduleStatus');
+            const conflictsEl = document.getElementById('scheduleConflicts');
+
+            const startInput = document.getElementById('scheduleStart').value;
+            if (!startInput) { alert('Please select a start date and time.'); return; }
+
+            const durationSel = document.getElementById('scheduleDuration').value;
+            const durationMins = durationSel === 'custom'
+                ? parseInt(document.getElementById('scheduleCustomHours').value || 8) * 60
+                : parseInt(durationSel);
+
+            const startDt = new Date(startInput);
+            const endDt = new Date(startDt.getTime() + durationMins * 60000);
+
+            // Which calendars selected
+            const selectedCals = Array.from(document.querySelectorAll('input[name="schedCalendar"]:checked')).map(c => c.value);
+            if (selectedCals.length === 0) { alert('Please select at least one service calendar.'); return; }
+
+            btn.disabled = true;
+            btn.textContent = '🔍 Checking conflicts...';
+            conflictsEl.style.display = 'none';
+            conflictsEl.innerHTML = '';
+
+            // ── Check conflicts ────────────────────────────────────────
+            const conflicts = [];
+            if (accessToken) {
+                for (const service of selectedCals) {
+                    const calId = CALENDAR_IDS[service];
+                    if (!calId) continue;
+                    try {
+                        const params = new URLSearchParams({
+                            timeMin: startDt.toISOString(),
+                            timeMax: endDt.toISOString(),
+                            singleEvents: 'true',
+                            orderBy: 'startTime',
+                        });
+                        const resp = await fetch(
+                            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?${params}`,
+                            { headers: { Authorization: `Bearer ${accessToken}` } }
+                        );
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            if (data.items?.length > 0) {
+                                data.items.forEach(ev => conflicts.push({ service, title: ev.summary, start: ev.start?.dateTime || ev.start?.date }));
+                            }
+                        }
+                    } catch(e) { console.warn('Conflict check failed for', service, e); }
+                }
+            }
+
+            if (conflicts.length > 0) {
+                conflictsEl.style.display = 'block';
+                conflictsEl.innerHTML = `
+                    <div style="background:rgba(255,149,0,0.1);border:1px solid rgba(255,149,0,0.4);border-radius:8px;padding:14px;margin-bottom:14px;">
+                        <div style="color:#ff9500;font-weight:700;font-size:0.9rem;margin-bottom:8px;">⚠️ Conflicts Detected</div>
+                        ${conflicts.map(c => `
+                            <div style="font-size:0.85rem;color:#e8eaed;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                                <strong>${c.service}:</strong> ${c.title} at ${new Date(c.start).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+                            </div>`).join('')}
+                        <div style="margin-top:10px;display:flex;gap:8px;">
+                            <button onclick="proceedWithSchedule(${filteredIndex})" style="flex:1;padding:8px;background:#ff9500;border:none;border-radius:6px;font-size:0.85rem;font-weight:700;cursor:pointer;color:white;">
+                                Schedule Anyway
+                            </button>
+                            <button onclick="document.getElementById('scheduleConfirmBtn').disabled=false;document.getElementById('scheduleConfirmBtn').textContent='📅 Schedule';document.getElementById('scheduleConflicts').style.display='none';"
+                                style="flex:1;padding:8px;background:#252930;border:1px solid #2d3139;border-radius:6px;font-size:0.85rem;font-weight:600;cursor:pointer;color:#9ca3af;">
+                                Pick Different Time
+                            </button>
+                        </div>
+                    </div>`;
+                btn.disabled = false;
+                btn.textContent = '📅 Schedule';
+                return;
+            }
+
+            await proceedWithSchedule(filteredIndex);
+        }
+
+        async function proceedWithSchedule(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            const originalIndex = currentData.findIndex(d =>
+                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
+            );
+
+            const btn = document.getElementById('scheduleConfirmBtn');
+            const statusEl = document.getElementById('scheduleStatus');
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Creating events...';
+
+            const startInput = document.getElementById('scheduleStart').value;
+            const durationSel = document.getElementById('scheduleDuration').value;
+            const durationMins = durationSel === 'custom'
+                ? parseInt(document.getElementById('scheduleCustomHours').value || 8) * 60
+                : parseInt(durationSel);
+            const notes = document.getElementById('scheduleNotes').value.trim();
+            const selectedCals = Array.from(document.querySelectorAll('input[name="schedCalendar"]:checked')).map(c => c.value);
+
+            const startDt = new Date(startInput);
+            const endDt = new Date(startDt.getTime() + durationMins * 60000);
+
+            const eventTitle = `${ro.customerName} — ${ro.rv || 'RV'}`;
+            const description = [
+                `Customer: ${ro.customerName}`,
+                `RV: ${ro.rv || '—'}`,
+                `Phone: ${ro.customerPhone || '—'}`,
+                `Service: ${ro.repairType || '—'}`,
+                `Tech: ${ro.technicianAssigned || '—'}`,
+                `Promised: ${ro.promisedDate || '—'}`,
+                `RO ID: ${ro.roId || '—'}`,
+                notes ? `
+Notes: ${notes}` : '',
+            ].filter(Boolean).join('\n');
+
+            let created = 0;
+            let failed = 0;
+
+            for (const service of selectedCals) {
+                const calId = CALENDAR_IDS[service];
+                if (!calId || !accessToken) { failed++; continue; }
+
+                try {
+                    const event = {
+                        summary: eventTitle,
+                        description,
+                        start: { dateTime: startDt.toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+                        end:   { dateTime: endDt.toISOString(),   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+                        colorId: '2', // sage green
+                    };
+
+                    const resp = await fetch(
+                        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`,
+                        {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify(event),
+                        }
+                    );
+
+                    if (resp.ok) { created++; }
+                    else { console.warn('Calendar event failed:', await resp.text()); failed++; }
+                } catch(e) { console.warn('Calendar event error:', e); failed++; }
+            }
+
+            // ── Update RO status to Scheduled ─────────────────────────
+            if (created > 0) {
+                currentData[originalIndex].status = 'Scheduled';
+                const supabaseId = currentData[originalIndex]._supabaseId;
+                if (supabaseId) {
+                    await getSB().from('repair_orders').update({
+                        status: 'Scheduled',
+                        pct_complete: 45,
+                        updated_at: new Date().toISOString(),
+                    }).eq('id', supabaseId);
+                }
+
+                // Write audit log entry
+                await writeAuditLog(ro.roId, [{
+                    field: 'status',
+                    oldValue: ro.status,
+                    newValue: 'Scheduled',
+                }]);
+
+                statusEl.style.color = '#39ff6e';
+                statusEl.textContent = `✅ ${created} calendar event(s) created — RO marked Scheduled`;
+
+                setTimeout(() => {
+                    closeScheduleModal();
+                    renderBoard();
+                }, 1500);
+            } else {
+                statusEl.style.color = '#ff3b30';
+                statusEl.textContent = `❌ Failed to create calendar events. Check Google connection.`;
+                btn.disabled = false;
+                btn.textContent = '📅 Retry';
+            }
+        }
+
         // ── Parts Management ─────────────────────────────────────────
 
         let partsData = {}; // Cache: { roId: [parts array] }
@@ -5426,7 +5709,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.24 - Released 2026-03-18');
+            console.log('📦 PRVS Dashboard v1.25 - Released 2026-03-18');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -5876,6 +6159,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                                 <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
                                 <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
                                 <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>Awaiting Parts</option>
+                                <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
                                 <option value="In progress" ${ro.status === 'In progress' ? 'selected' : ''}>In Progress</option>
                                 <option value="Repairs Completed" ${ro.status === 'Repairs Completed' ? 'selected' : ''}>Repairs Completed</option>
                                 <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>Waiting for QA/QC</option>
@@ -6465,7 +6749,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                 'https://sheets.googleapis.com/$discovery/rest?version=v4',
                 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
             ],
-            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile'
+            SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/calendar.events'
         };
 
         // ── Supabase Configuration ──────────────────────────────────
@@ -6498,6 +6782,19 @@ Always prefer mapping to a standard key over creating a new one.`;
         
         // Admin access control
         const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+        const MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'mauricio@patriotsrvservices.com', 'andrew@patriotsrvservices.com'];
+
+        // ── Google Calendar IDs per service type ─────────────────────
+        const CALENDAR_IDS = {
+            'Roof':          'c_23890bb21428b7a92b1f942387a4ea769f4b00b9a08a2448ccbd31e0f1f0234d@group.calendar.google.com',
+            'Solar':         'c_f7395ae6ecb439db38486d6aa9750c15dadbf34e7c29b0cdf64e0d5b0bfc1b95@group.calendar.google.com',
+            'Vroom':         'c_5ih1tgaloe3kitrpidg2fttrgk@group.calendar.google.com',
+            'Repairs':       'c_44c8f542bbfa7b68f7414af2d2548d495a25b4a00ee9e4c7081ff0b46d1e7316@group.calendar.google.com',
+            'TrueTopper':    'c_be232eeb5a69d31311ee16f4aafc5988999223207b34d28ef93ff4094a0de891@group.calendar.google.com',
+            'Paint and Body': null,  // add calendar ID when ready
+            'Detailing':     null,
+            'Chassis':       null,
+        };
         
         // User roles loaded from Supabase
         let userRoles = []; // array of role names e.g. ['Admin', 'Manager']
@@ -6509,7 +6806,11 @@ Always prefer mapping to a standard key over creating a new one.`;
             return false;
         }
         function hasRole(role) {
-            return userRoles.includes(role);
+            if (userRoles.includes(role)) return true;
+            // Email fallback while Supabase roles load
+            if (role === 'Manager' && currentUser) return MANAGER_EMAILS.includes(currentUser.email?.toLowerCase());
+            if (role === 'Admin' && currentUser) return ADMIN_EMAILS.includes(currentUser.email?.toLowerCase());
+            return false;
         }
 
         // Load roles from Supabase for current user
