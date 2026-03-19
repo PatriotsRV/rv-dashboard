@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.25
+    PRVS Dashboard v1.26
     Released: 2026-03-16
     New in v1.23:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
@@ -2377,7 +2377,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.25</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.26</span>
             </div>
         </header>
 
@@ -2670,7 +2670,7 @@
                 status: "Awaiting parts",
                 urgency: "High",
                 customerType: "Regular",
-                promisedDate: "2026-03-18",
+                promisedDate: "2026-03-19",
                 roStatusNotes: "Brake rotors on backorder - ETA 3/10. Suspension parts arrived, ready to install.",
                 customerCommunicationNotes: "Customer frustrated with delay. Offered discount on next service.",
                 vin: ""
@@ -5774,7 +5774,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.25 - Released 2026-03-18');
+            console.log('📦 PRVS Dashboard v1.26 - Released 2026-03-19');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -6950,7 +6950,7 @@ Notes: ${notes}` : '',
             const solarBtn = document.getElementById('solarBtn');
             if (solarBtn) {
                 const hasSolarAccess = isAdmin() || hasRole('Solar') ||
-                    (currentUser && ['solar@patriotsrvservices.com','tipton@patriotsrvservices.com'].includes(currentUser.email?.toLowerCase()));
+                    (currentUser && ['solar@patriotsrvservices.com','tipton@patriotsrvservices.com','ryan@patriotsrvservices.com'].includes(currentUser.email?.toLowerCase()));
                 solarBtn.style.display = hasSolarAccess ? 'inline-block' : 'none';
             }
             
@@ -7282,21 +7282,42 @@ Notes: ${notes}` : '',
                         await getUserInfo();
                         updateAuthStatus(true);
 
-                        // ── Store identity for persistent sessions ──────────
-                        // Data ops use anon key (no Supabase auth session needed).
-                        // We store user identity in localStorage long-term.
-                        // Google token only needed for photo uploads.
                         if (currentUser?.email) {
+                            // ── Store identity for persistent sessions ──────
                             localStorage.setItem('prvs_user_identity', JSON.stringify({
                                 email: currentUser.email,
                                 name:  currentUser.name,
                                 savedAt: Date.now(),
                             }));
                             console.log('✅ User identity saved for persistent sessions');
+
+                            // ── Wire Supabase authenticated session ──────────
+                            // Exchange Google ID token for a real Supabase session.
+                            // This enables proper RLS enforcement and replaces anon key writes.
+                            try {
+                                // Google access token → Supabase session via signInWithIdToken
+                                // Note: requires the Google token to have id_token claim.
+                                // We use the access_token as a fallback identity signal.
+                                const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
+                                    provider: 'google',
+                                    token: resp.id_token || accessToken,
+                                });
+                                if (sbError) {
+                                    console.warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
+                                    console.log('Continuing with anon key — RBAC not enforced this session');
+                                } else {
+                                    supabaseSession = sbData.session;
+                                    console.log('✅ Supabase authenticated session created — RBAC active');
+                                    console.log('Session expires:', new Date(supabaseSession.expires_at * 1000).toLocaleString());
+                                }
+                            } catch(e) {
+                                console.warn('⚠️ Supabase auth exchange failed (non-fatal):', e.message);
+                            }
+                            // ─────────────────────────────────────────────────
+
                             await loadUserRoles();
                             updateViewModeDropdown();
                         }
-                        // ─────────────────────────────────────────────────────
 
                         await loadDataFromSupabase();
                         await loadTimeLogsFromSupabase();
@@ -7307,6 +7328,14 @@ Notes: ${notes}` : '',
                         loadPartsFromSupabase();
                     } else {
                         console.log('✅ Token silently refreshed — session continues');
+                        // Refresh Supabase session on Google token refresh
+                        if (supabaseSession) {
+                            const { data } = await getSB().auth.getSession();
+                            if (data?.session) {
+                                supabaseSession = data.session;
+                                console.log('✅ Supabase session refreshed');
+                            }
+                        }
                     }
                 },
             });
