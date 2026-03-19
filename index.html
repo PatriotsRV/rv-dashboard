@@ -7253,7 +7253,7 @@ Notes: ${notes}` : '',
             }
         }
 
-        function gisLoaded() {
+        async function gisLoaded() {
             if (typeof google === 'undefined' || !google.accounts) {
                 console.error('google identity services not loaded yet, retrying...');
                 setTimeout(gisLoaded, 500);
