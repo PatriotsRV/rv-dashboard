@@ -22,7 +22,7 @@
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.262** | Main dashboard — repair orders, time tracking, parts, etc. |
+| `index.html` | **v1.263** | Main dashboard — repair orders, time tracking, parts, etc. |
 | `checkin.html` | **v1.26** | Technician clock-in/out, offline-first IndexedDB queue |
 | `analytics.html` | — | Analytics/reporting view |
 | `solar.html` | — | Solar installation tracking |
@@ -45,20 +45,26 @@
 
 ## Key Architecture Decisions
 
-### Google OAuth + Supabase Nonce Flow
-Supabase `signInWithIdToken` requires a nonce in the Google credential to prevent replay attacks. The nonce must be:
-1. Generated as a random string → SHA-256 hashed → base64url encoded
-2. Passed as **top-level** `nonce` in `google.accounts.id.initialize()` (NOT nested under `params`)
-3. The raw (unhashed) nonce passed to `supabase.auth.signInWithIdToken()`
+### Google OAuth + Supabase Nonce Flow (v1.263 — CORRECT)
+Supabase `signInWithIdToken` requires a nonce to prevent replay attacks. The correct pattern:
 
-**v1.262 fix:** `nonce` was incorrectly nested inside `params: { nonce: hashedNonce }` — Google silently ignores unknown top-level keys like `params`, so the id_token was issued without a nonce, causing Supabase to throw "Nonces mismatch" on every sign-in.
+1. Generate a raw nonce as a **hex string** (16 random bytes, hex-encoded)
+2. Compute SHA-256 of the raw nonce, also encoded as **hex string** — this is `hashedNonce`
+3. Pass `hashedNonce` as top-level `nonce` in `google.accounts.id.initialize()`
+4. Store both nonces in `localStorage('prvs_sb_nonce')` / `localStorage('prvs_sb_nonce_hash')` — survives async callback gaps
+5. In the callback, retrieve raw nonce from localStorage and pass to `supabase.auth.signInWithIdToken()`
+6. Clear nonces from localStorage after success or failure
+
+**v1.263 fix:** `hashedNonce` was encoded with `btoa()` (base64) but Supabase expects **hex** SHA-256. Supabase hashes the raw nonce server-side as hex and compares to the JWT `nonce` claim — encoding mismatch = "Nonces mismatch" on every sign-in.
+
+**v1.262 fix (still in place):** `nonce` must be at **top level** of `google.accounts.id.initialize()`, NOT nested under `params`. Chrome 145 will deprecate top-level support in favor of `params.nonce` — not urgent (Chrome ~124 as of 2026-03).
 
 ### Supabase RBAC
 - RLS enabled on all 11 tables: `repair_orders`, `notes`, `parts`, `time_logs`, `cashiered`, `users`, `user_roles`, `roles`, `audit_log`, `config`, `insurance_scans`
 - Storage bucket `rv-media` also protected
 - Helper function `has_role(role_name text)` — SECURITY DEFINER, checks `user_roles` + `roles` tables
 - Pattern: `TO authenticated USING (true)` for reads; `WITH CHECK (has_role('Admin'))` for restricted writes
-- **Status: ✅ Complete** — SQL run in Supabase SQL editor
+- **Status: ✅ Complete**
 
 ---
 
@@ -103,7 +109,8 @@ Supabase `signInWithIdToken` requires a nonce in the Google credential to preven
 | v1.1 | — | Supabase migration begins |
 | v1.26 | 2026-03 | checkin.html — Supabase backend, IndexedDB offline queue, auto clock-out |
 | v1.261 | 2026-03 | index.html — various fixes (pre-nonce-fix) |
-| **v1.262** | **2026-03-19** | **index.html — Fix nonce mismatch: moved `nonce` to top-level in `google.accounts.id.initialize`** |
+| v1.262 | 2026-03-19 | index.html — Fix nonce placement: top-level in `google.accounts.id.initialize` (not `params`) |
+| **v1.263** | **2026-03-19** | **index.html — Fix nonce encoding: hex not base64; localStorage persistence for async safety** |
 
 ---
 
@@ -111,7 +118,8 @@ Supabase `signInWithIdToken` requires a nonce in the Google credential to preven
 
 - ✅ **Supabase RBAC** — RLS policies on all tables + storage, `has_role()` helper
 - ✅ **checkin.html v1.26** — Pushed to repo (offline-first, Supabase backend)
-- ✅ **Nonce mismatch fix (v1.262)** — Google sign-in now works without "Nonces mismatch" error
+- ✅ **Nonce placement fix (v1.262)** — `nonce` moved to top-level in `google.accounts.id.initialize`
+- ✅ **Nonce encoding fix (v1.263)** — hex encoding fixes Supabase "Nonces mismatch" permanently
 - ✅ **CLAUDE_CONTEXT.md** — This context document established for cross-session continuity
 - ✅ **GitHub Issues** — TODOs tracked as Issues #1–#8
 
@@ -121,7 +129,7 @@ Supabase `signInWithIdToken` requires a nonce in the Google credential to preven
 
 | Date | Summary |
 |---|---|
-| 2026-03-19 | Full session: GitHub MCP confirmed, RBAC SQL written + executed, checkin.html v1.26 pushed, nonce mismatch root-caused and fixed (v1.262 force-pushed), this context doc created |
+| 2026-03-19 | Full session: GitHub MCP confirmed, RBAC SQL written + executed, checkin.html v1.26 pushed, nonce placement fixed (v1.262), nonce encoding fixed base64→hex + localStorage (v1.263), CLAUDE_CONTEXT.md created |
 
 ---
 
