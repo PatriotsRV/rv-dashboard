@@ -6310,10 +6310,7 @@ Notes: ${notes}` : '',
                         <button class="schedule-ro-btn" onclick="openScheduleModal(${index})" style="width:100%;padding:10px;margin-top:6px;background:linear-gradient(135deg,rgba(57,255,110,0.15),rgba(57,255,110,0.08));border:1px solid rgba(57,255,110,0.4);border-radius:8px;color:#39ff6e;font-size:0.85rem;font-weight:700;cursor:pointer;letter-spacing:0.03em;">
                             📅 ${ro.status === 'Scheduled' ? 'Reschedule' : 'Schedule'}
                         </button>` : ''}
-                        ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? `
-                        <button onclick="openScheduleModal(${index})" style="width:100%;padding:10px;margin-top:6px;background:linear-gradient(135deg,rgba(57,255,110,0.15),rgba(57,255,110,0.08));border:1px solid rgba(57,255,110,0.4);border-radius:8px;color:#39ff6e;font-size:0.85rem;font-weight:700;cursor:pointer;">
-                            📅 ${ro.status === 'Scheduled' ? 'Reschedule' : 'Schedule'}
-                        </button>` : ''}
+
                         ${isAdmin() && (ro.status === 'Delivered/Cashed Out') ? `
                         <button class="archive-ro-btn visible" onclick="archiveRO(${index})">
                             📦 Archive to Cashiered
