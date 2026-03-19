@@ -7275,30 +7275,35 @@ Notes: ${notes}` : '',
                 callback: async (credentialResponse) => {
                     if (credentialResponse.credential) {
                         googleIdToken = credentialResponse.credential;
-                        console.log('✅ Google id_token captured for Supabase RBAC');
-                        if (!supabaseSession) {
-                            try {
-                                const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
-                                    provider: 'google',
-                                    token: googleIdToken,
-                                    nonce: supabaseNonce, // unhashed nonce — Supabase hashes it to verify
-                                });
-                                if (sbError) {
-                                    console.warn('⚠️ Supabase signInWithIdToken failed:', sbError.message);
-                                } else {
-                                    supabaseSession = sbData.session;
-                                    console.log('✅ Supabase authenticated session created — RBAC active');
-                                    console.log('Session persists indefinitely (free plan)');
-                                }
-                            } catch(e) {
-                                console.warn('⚠️ Supabase auth exchange failed:', e.message);
+                        console.log('\u2705 Google id_token captured for Supabase RBAC');
+                        // Skip if Supabase session already active (loaded from saved session)
+                        if (supabaseSession) {
+                            console.log('\u2705 Supabase session already active — skipping signInWithIdToken');
+                            return;
+                        }
+                        try {
+                            const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
+                                provider: 'google',
+                                token: googleIdToken,
+                                nonce: supabaseNonce || undefined,
+                            });
+                            if (sbError) {
+                                console.warn('\u26a0\ufe0f Supabase signInWithIdToken failed:', sbError.message);
+                            } else {
+                                supabaseSession = sbData.session;
+                                console.log('\u2705 Supabase authenticated session created — RBAC active');
                             }
+                        } catch(e) {
+                            console.warn('\u26a0\ufe0f Supabase auth exchange failed:', e.message);
                         }
                     }
                 },
                 auto_select: true,
             });
-            google.accounts.id.prompt(); // silent — no UI shown
+            // Only prompt if no Supabase session yet — avoids nonce mismatch on cached sessions
+            if (!supabaseSession) {
+                google.accounts.id.prompt();
+            }
 
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
