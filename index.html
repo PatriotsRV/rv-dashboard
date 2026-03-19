@@ -4846,6 +4846,9 @@ Always prefer mapping to a standard key over creating a new one.`;
             // Parse service types from RO
             const roServices = (ro.repairType || '').split(',').map(s => s.trim()).filter(s => CALENDAR_IDS[s] !== undefined);
             const hasCalendars = roServices.some(s => CALENDAR_IDS[s]);
+            const isDayBased = roServices.some(s => DAY_BASED_SERVICES.includes(s));
+            // Check if any selected service uses day-based scheduling
+            const isDayBased = roServices.some(s => DAY_BASED_SERVICES.includes(s));
 
             // Default start: tomorrow at 8am
             const tomorrow = new Date();
@@ -4871,6 +4874,18 @@ Always prefer mapping to a standard key over creating a new one.`;
 
                         <div style="margin-bottom:16px;">
                             <label style="display:block;font-size:0.8rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Duration</label>
+                            ${isDayBased ? `
+                            <select id="scheduleDuration" style="width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;">
+                                <option value="1d">1 Day</option>
+                                <option value="2d" selected>2 Days</option>
+                                <option value="3d">3 Days</option>
+                                <option value="5d">5 Days (1 Week)</option>
+                                <option value="10d">10 Days (2 Weeks)</option>
+                                <option value="customd">Custom Days...</option>
+                            </select>
+                            <input type="number" id="scheduleCustomDays" placeholder="Number of days" min="1" max="90"
+                                style="display:none;width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;margin-top:8px;">
+                            ` : `
                             <select id="scheduleDuration" style="width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;">
                                 <option value="120">2 Hours</option>
                                 <option value="240">4 Hours (Half Day)</option>
@@ -4880,6 +4895,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                             </select>
                             <input type="number" id="scheduleCustomHours" placeholder="Hours" min="1" max="240"
                                 style="display:none;width:100%;padding:10px 12px;background:#252930;border:1px solid #2d3139;border-radius:8px;color:#e8eaed;font-size:1rem;margin-top:8px;">
+                            `}
                         </div>
 
                         <div style="margin-bottom:16px;">
@@ -4918,8 +4934,10 @@ Always prefer mapping to a standard key over creating a new one.`;
 
             // Custom duration toggle
             document.getElementById('scheduleDuration').addEventListener('change', function() {
-                document.getElementById('scheduleCustomHours').style.display =
-                    this.value === 'custom' ? 'block' : 'none';
+                const customHours = document.getElementById('scheduleCustomHours');
+                const customDays = document.getElementById('scheduleCustomDays');
+                if (customHours) customHours.style.display = this.value === 'custom' ? 'block' : 'none';
+                if (customDays) customDays.style.display = this.value === 'customd' ? 'block' : 'none';
             });
         }
 
@@ -4942,9 +4960,16 @@ Always prefer mapping to a standard key over creating a new one.`;
             if (!startInput) { alert('Please select a start date and time.'); return; }
 
             const durationSel = document.getElementById('scheduleDuration').value;
-            const durationMins = durationSel === 'custom'
-                ? parseInt(document.getElementById('scheduleCustomHours').value || 8) * 60
-                : parseInt(durationSel);
+            let durationMins;
+            if (durationSel === 'custom') {
+                durationMins = parseInt(document.getElementById('scheduleCustomHours')?.value || 8) * 60;
+            } else if (durationSel === 'customd') {
+                durationMins = parseInt(document.getElementById('scheduleCustomDays')?.value || 1) * 480;
+            } else if (durationSel.endsWith('d')) {
+                durationMins = parseInt(durationSel) * 480; // 8hr work day
+            } else {
+                durationMins = parseInt(durationSel);
+            }
 
             const startDt = new Date(startInput);
             const endDt = new Date(startDt.getTime() + durationMins * 60000);
@@ -5026,9 +5051,16 @@ Always prefer mapping to a standard key over creating a new one.`;
 
             const startInput = document.getElementById('scheduleStart').value;
             const durationSel = document.getElementById('scheduleDuration').value;
-            const durationMins = durationSel === 'custom'
-                ? parseInt(document.getElementById('scheduleCustomHours').value || 8) * 60
-                : parseInt(durationSel);
+            let durationMins;
+            if (durationSel === 'custom') {
+                durationMins = parseInt(document.getElementById('scheduleCustomHours')?.value || 8) * 60;
+            } else if (durationSel === 'customd') {
+                durationMins = parseInt(document.getElementById('scheduleCustomDays')?.value || 1) * 480;
+            } else if (durationSel.endsWith('d')) {
+                durationMins = parseInt(durationSel) * 480; // 8hr work day
+            } else {
+                durationMins = parseInt(durationSel);
+            }
             const notes = document.getElementById('scheduleNotes').value.trim();
             const selectedCals = Array.from(document.querySelectorAll('input[name="schedCalendar"]:checked')).map(c => c.value);
 
@@ -6789,6 +6821,9 @@ Notes: ${notes}` : '',
         const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
         const MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'mauricio@patriotsrvservices.com', 'andrew@patriotsrvservices.com'];
 
+        // Services that schedule in DAYS (not hours)
+        const DAY_BASED_SERVICES = ['Roof', 'Paint and Body', 'Solar', 'Vroom'];
+
         // ── Google Calendar IDs per service type ─────────────────────
         const CALENDAR_IDS = {
             'Roof':          'c_23890bb21428b7a92b1f942387a4ea769f4b00b9a08a2448ccbd31e0f1f0234d@group.calendar.google.com',
@@ -6796,9 +6831,9 @@ Notes: ${notes}` : '',
             'Vroom':         'c_5ih1tgaloe3kitrpidg2fttrgk@group.calendar.google.com',
             'Repairs':       'c_44c8f542bbfa7b68f7414af2d2548d495a25b4a00ee9e4c7081ff0b46d1e7316@group.calendar.google.com',
             'TrueTopper':    'c_be232eeb5a69d31311ee16f4aafc5988999223207b34d28ef93ff4094a0de891@group.calendar.google.com',
-            'Paint and Body': null,  // add calendar ID when ready
-            'Detailing':     null,
-            'Chassis':       null,
+            'Paint and Body': 'c_911600141e4e8e889da76b4dfe294277016b68d2cae7d3d4523dab46ada7cc99@group.calendar.google.com',
+            'Detailing':     'c_121e30023259fa55ae879ae30dab545b9a49c6d88b27bc8a5113b9ab20c8a88e@group.calendar.google.com',
+            'Chassis':       'c_00fe106cb9b6c88fd83296d6bc2afde52b94fd5a5a46e598f0d8d9447fefaf0e@group.calendar.google.com',
         };
         
         // User roles loaded from Supabase
