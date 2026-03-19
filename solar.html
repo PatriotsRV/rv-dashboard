@@ -881,6 +881,8 @@ const buildCss = (t) => {
     .quote-sig-block{break-inside:avoid !important;}
     .quote-deposit-box{break-inside:avoid !important;}
     .quote-terms-section{break-inside:avoid !important;}
+    /* Summary rows (Parts Subtotal → Grand Total) stay together; break before them if needed */
+    .quote-summary-tbody{break-before:auto;break-inside:avoid;}
     .diagram-canvas-section{display:block !important;page-break-before:always;}
     .diagram-canvas-wrap{overflow:visible !important;border:1px solid #999 !important;background:#fff !important;position:relative !important;}
     .diagram-canvas-wrap *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
@@ -5399,7 +5401,7 @@ function App() {
                                 React.createElement("th", { style: { textAlign: "right" } }, "Unit Price"),
                                 React.createElement("th", { style: { textAlign: "right" } }, "Amount"),
                                 React.createElement("th", { style: { textAlign: "right" } }, "Labor"))),
-                        React.createElement("tbody", null,
+                        React.createElement(React.Fragment, null, React.createElement("tbody", null,
                             Object.entries(inverterQtys).filter(([, q]) => q > 0).map(([id, q]) => {
                                 const x = PRODUCTS.inverters.find(m => m.id === id);
                                 return x ? React.createElement("tr", { key: id },
@@ -5599,7 +5601,8 @@ function App() {
                                     React.createElement("span", { className: "print-val" },
                                         Number(item.labor || 0).toFixed(2),
                                         "h"),
-                                    "h")))),
+                                    "h"))))
+                            ), React.createElement("tbody", { className: "quote-summary-tbody" },
                             React.createElement("tr", { style: { background: "var(--panel2)" } },
                                 React.createElement("td", { colSpan: 3, style: { fontWeight: 700, color: "var(--text)", fontSize: 13 } }, "Parts Subtotal"),
                                 React.createElement("td", { className: "val-green", style: { textAlign: "right", fontWeight: 700, fontSize: 14 } },
@@ -5667,7 +5670,7 @@ function App() {
                                 React.createElement("td", { style: { textAlign: "right", fontWeight: 800, fontSize: 18, color: "var(--accent3)", fontFamily: "'Roboto Mono',monospace" } },
                                     "$",
                                     grandTotal.toLocaleString()),
-                                React.createElement("td", null))))),
+                                React.createElement("td", null)))))),
             grandTotal > 0 && React.createElement("div", { className: "section-body", style: { paddingTop: 0 } },
                 [
                     ...Object.entries(inverterQtys).filter(([, q]) => q > 0).map(([id, q]) => { const x = PRODUCTS.inverters.find(m => m.id === id); return x ? { name: `${x.brand} ${x.model}`, sub: `${x.voltage}V ${x.va}VA`, qty: q, unit: x.price, amt: effPrice(id, x.price) * q, labor: x.labor * q } : null; }).filter(Boolean),
