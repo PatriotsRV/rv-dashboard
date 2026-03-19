@@ -2,8 +2,8 @@ name: Daily Supabase Backup
 
 on:
   schedule:
-    - cron: '0 8 * * *'   # 8 AM UTC = 4 AM EST / 1 AM PST — runs while shop is closed
-  workflow_dispatch:        # Allow manual trigger from GitHub Actions tab
+    - cron: '0 8 * * *'
+  workflow_dispatch:
 
 jobs:
   backup:
@@ -21,49 +21,34 @@ jobs:
           TABLES="repair_orders notes parts time_logs cashiered users user_roles roles audit_log config insurance_scans"
 
           for TABLE in $TABLES; do
-            echo "📦 Backing up $TABLE..."
+            echo "Backing up $TABLE..."
             HTTP_STATUS=$(curl -s -o "backups/$DATE/$TABLE.json" -w "%{http_code}" \
               -H "apikey: $SUPABASE_SERVICE_KEY" \
               -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
               -H "Accept: application/json" \
               "$SUPABASE_URL/rest/v1/$TABLE?select=*")
             if [ "$HTTP_STATUS" = "200" ]; then
-              ROW_COUNT=$(python3 -c "import json; data=json.load(open('backups/$DATE/$TABLE.json')); print(len(data) if isinstance(data,list) else 'N/A')")
-              echo "  ✅ $TABLE — $ROW_COUNT rows"
+              ROW_COUNT=$(jq 'length' backups/$DATE/$TABLE.json 2>/dev/null || echo 0)
+              echo "  OK: $TABLE - $ROW_COUNT rows"
             else
-              echo "  ⚠️  $TABLE — HTTP $HTTP_STATUS"
+              echo "  WARN: $TABLE - HTTP $HTTP_STATUS"
             fi
           done
 
-          # Write manifest
-          python3 - <<'PYEOF'
-import os, json, glob
-from datetime import datetime, timezone
+          # Build manifest using jq
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          MANIFEST="{\"backup_date\":\"$DATE\",\"backup_time_utc\":\"$TIMESTAMP\",\"tables\":{}}"
 
-date = datetime.now().strftime('%Y-%m-%d')
-backup_dir = f"backups/{date}"
-manifest = {
-    "backup_date": date,
-    "backup_time_utc": datetime.now(timezone.utc).isoformat(),
-    "tables": {}
-}
-for f in sorted(glob.glob(f"{backup_dir}/*.json")):
-    table = os.path.basename(f).replace('.json', '')
-    if table == 'manifest':
-        continue
-    try:
-        with open(f) as fp:
-            data = json.load(fp)
-        manifest["tables"][table] = len(data) if isinstance(data, list) else "unknown"
-    except Exception as e:
-        manifest["tables"][table] = f"error: {e}"
+          for TABLE in $TABLES; do
+            if [ -f "backups/$DATE/$TABLE.json" ]; then
+              COUNT=$(jq 'if type=="array" then length else 0 end' backups/$DATE/$TABLE.json 2>/dev/null || echo 0)
+              MANIFEST=$(echo "$MANIFEST" | jq --arg t "$TABLE" --argjson c "$COUNT" '.tables[$t] = $c')
+            fi
+          done
 
-with open(f"{backup_dir}/manifest.json", 'w') as fp:
-    json.dump(manifest, fp, indent=2)
-
-total = sum(v for v in manifest["tables"].values() if isinstance(v, int))
-print(f"📋 Manifest written — {len(manifest['tables'])} tables, {total} total rows")
-PYEOF
+          echo "$MANIFEST" | jq '.' > backups/$DATE/manifest.json
+          echo "Manifest written:"
+          cat backups/$DATE/manifest.json
 
       - name: Push backups to private backup repo
         env:
@@ -71,15 +56,13 @@ PYEOF
         run: |
           DATE=$(date +%Y-%m-%d)
 
-          # Clone the private backup repo
           git clone https://prvshepard:$GH_BACKUP_PAT@github.com/prvshepard/rv-dashboard-backups.git backup-repo
 
-          # Copy today's backup into it, remove backups older than 30 days
           cp -r backups/$DATE backup-repo/
 
           cd backup-repo
 
-          echo "🧹 Cleaning up backups older than 30 days..."
+          echo "Cleaning up backups older than 30 days..."
           find . -maxdepth 1 -type d -name "20*" | sort | head -n -30 | while read dir; do
             echo "  Removing $dir"
             rm -rf "$dir"
@@ -89,9 +72,9 @@ PYEOF
           git config user.email "backup@patriotsrvservices.com"
           git add .
           if git diff --staged --quiet; then
-            echo "ℹ️  No changes — backup already current"
+            echo "No changes to commit"
           else
-            git commit -m "🗄️ Daily backup $DATE"
+            git commit -m "Daily backup $DATE"
             git push
-            echo "✅ Backup pushed to prvshepard/rv-dashboard-backups"
+            echo "Backup pushed successfully"
           fi
