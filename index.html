@@ -7261,19 +7261,26 @@ Notes: ${notes}` : '',
             }
 
             // Initialize ID token client — captures id_token for Supabase RBAC
+            // Generate nonce for Supabase — must be passed to both Google and Supabase
+            const rawNonce = crypto.getRandomValues(new Uint8Array(32));
+            const nonce = btoa(String.fromCharCode(...rawNonce));
+            // SHA-256 hash of nonce for Google
+            const nonceHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(nonce));
+            const hashedNonce = btoa(String.fromCharCode(...new Uint8Array(nonceHash)));
+
             google.accounts.id.initialize({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
+                nonce: hashedNonce,
                 callback: async (credentialResponse) => {
                     if (credentialResponse.credential) {
                         googleIdToken = credentialResponse.credential;
                         console.log('✅ Google id_token captured for Supabase RBAC');
-                        // Attempt Supabase sign-in immediately when id_token arrives
-                        // (covers both fresh login and restored session paths)
                         if (!supabaseSession) {
                             try {
                                 const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
                                     provider: 'google',
                                     token: googleIdToken,
+                                    nonce: nonce, // unhashed nonce — Supabase hashes it to verify
                                 });
                                 if (sbError) {
                                     console.warn('⚠️ Supabase signInWithIdToken failed:', sbError.message);
