@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-    PRVS Dashboard v1.262
+    PRVS Dashboard v1.263
     Released: 2026-03-19
+    v1.263: Fix nonce encoding — was base64 (btoa), must be hex for Supabase verification; add localStorage persistence so nonce survives async callback gaps
     v1.262: Fix Google id_token nonce placement in google.accounts.id.initialize (was nested under params — Google ignored it, causing Supabase nonce mismatch on every sign-in)
     New in v1.23:
     - Insurance Claim Estimate Scanner — scan/upload estimate image or PDF in New RO and Edit RO modals, Claude vision extracts fields, inline suggestion chips for review and conflict resolution, file saved to Google Drive
@@ -2378,7 +2379,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.261</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.263</span>
             </div>
         </header>
 
@@ -5775,7 +5776,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.262 - Released 2026-03-19');
+            console.log('📦 PRVS Dashboard v1.263 - Released 2026-03-19');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -7266,16 +7267,22 @@ Notes: ${notes}` : '',
             }
 
             // Initialize ID token client — captures id_token for Supabase RBAC
-            // Generate nonce for Supabase — must be passed to both Google and Supabase
-            const rawNonce = crypto.getRandomValues(new Uint8Array(32));
-            supabaseNonce = btoa(String.fromCharCode(...rawNonce));
-            // SHA-256 hash of nonce for Google
-            const nonceHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(supabaseNonce));
-            const hashedNonce = btoa(String.fromCharCode(...new Uint8Array(nonceHash)));
+            // Nonce persisted in localStorage so it survives async callback gaps and page reloads.
+            // IMPORTANT: both raw nonce and hash must be hex strings — Supabase verifies using hex SHA-256.
+            let sbNonce = localStorage.getItem('prvs_sb_nonce');
+            let sbHashedNonce = localStorage.getItem('prvs_sb_nonce_hash');
+            if (!sbNonce) {
+                const rawNonceBytes = crypto.getRandomValues(new Uint8Array(16));
+                sbNonce = Array.from(rawNonceBytes).map(b => b.toString(16).padStart(2,'0')).join('');
+                const nonceBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sbNonce));
+                sbHashedNonce = Array.from(new Uint8Array(nonceBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+                localStorage.setItem('prvs_sb_nonce', sbNonce);
+                localStorage.setItem('prvs_sb_nonce_hash', sbHashedNonce);
+            }
 
             google.accounts.id.initialize({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
-                nonce: hashedNonce,
+                nonce: sbHashedNonce,
                 callback: async (credentialResponse) => {
                     if (credentialResponse.credential) {
                         googleIdToken = credentialResponse.credential;
@@ -7286,16 +7293,23 @@ Notes: ${notes}` : '',
                             return;
                         }
                         try {
+                            const retrievedNonce = localStorage.getItem('prvs_sb_nonce');
                             const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
                                 provider: 'google',
                                 token: googleIdToken,
-                                nonce: supabaseNonce || undefined,
+                                nonce: retrievedNonce,
                             });
                             if (sbError) {
                                 console.warn('\u26a0\ufe0f Supabase signInWithIdToken failed:', sbError.message);
+                                // Clear nonce on failure — fresh one generated on next attempt
+                                localStorage.removeItem('prvs_sb_nonce');
+                                localStorage.removeItem('prvs_sb_nonce_hash');
                             } else {
                                 supabaseSession = sbData.session;
                                 console.log('\u2705 Supabase authenticated session created — RBAC active');
+                                // Clear nonce after successful use
+                                localStorage.removeItem('prvs_sb_nonce');
+                                localStorage.removeItem('prvs_sb_nonce_hash');
                             }
                         } catch(e) {
                             console.warn('\u26a0\ufe0f Supabase auth exchange failed:', e.message);
@@ -7358,7 +7372,7 @@ Notes: ${notes}` : '',
                                 const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
                                     provider: 'google',
                                     token: idTokenToUse || '',
-                                    nonce: supabaseNonce || undefined,
+                                    nonce: localStorage.getItem('prvs_sb_nonce') || undefined,
                                 });
                                 if (sbError) {
                                     console.warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
