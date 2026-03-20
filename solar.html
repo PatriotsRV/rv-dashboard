@@ -3120,7 +3120,7 @@ function App() {
         const amtX = pageW - mr;
         const lblX = amtX - 34;
         const deposit = Math.round(partsTotal * depositPct / 100);
-        let ty = footerY - 9;   // start just above footer separator line
+        let ty = footerY - 15;  // start well above footer separator line
         // Parts Deposit
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110, 110, 110);
         doc.text(`Parts Deposit (${depositPct}% due before ordering): $${deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, ty, { align: 'right' });
