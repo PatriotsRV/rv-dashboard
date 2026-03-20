@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.267
+    PRVS Dashboard v1.268
     Released: 2026-03-20
+    v1.268: Fix notes_type_check constraint error — use ro_status type + body prefix filter instead of parts_request type
     v1.267: Parts Request System — modal w/ voice dictation, neon-pink pulsing chip, RO Status auto-note, management email, Mark Parts Ordered flow; send-quote-email Edge Function extended for parts_request type
     v1.266: Error handling + audit log for updateFieldInSupabase, updateROStatus, updateROUrgency, updateROProgress, updatePhotoInSupabase; photo migration bug confirmed not an issue
     v1.265: RO description fixes (4), mobile filter cutoff, calendar re-auth flow, Chrome 145 nonce fix, Supabase users 406 fix
@@ -2466,7 +2467,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.267</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.268</span>
             </div>
         </header>
 
@@ -5891,7 +5892,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.267 - Released 2026-03-20');
+            console.log('📦 PRVS Dashboard v1.268 - Released 2026-03-20');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -8739,23 +8740,15 @@ Notes: ${notes}` : '',
                 const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
                 const noteText  = `[${ts} - ${userName}] 🔩 PARTS REQUESTED: ${description}`;
 
-                // 1. Write to notes as type 'parts_request'
+                // 1. Write a single ro_status note (parts_request type not in constraint yet —
+                //    the 🔩 PARTS REQUESTED: prefix makes it queryable without a separate type)
                 const { error: prErr } = await getSB().from('notes').insert({
-                    ro_id:      ro._supabaseId,
-                    type:       'parts_request',
-                    body:       noteText,
-                    created_at: new Date().toISOString(),
-                });
-                if (prErr) throw prErr;
-
-                // 2. Also write to RO status notes so it appears in the RO Status section
-                const { error: snErr } = await getSB().from('notes').insert({
                     ro_id:      ro._supabaseId,
                     type:       'ro_status',
                     body:       noteText,
                     created_at: new Date().toISOString(),
                 });
-                if (snErr) throw snErr;
+                if (prErr) throw prErr;
 
                 // 3. Set has_open_parts_request = true on the RO
                 const { error: updErr } = await getSB().from('repair_orders').update({
@@ -8823,7 +8816,8 @@ Notes: ${notes}` : '',
                     .from('notes')
                     .select('body, created_at')
                     .eq('ro_id', ro._supabaseId)
-                    .eq('type', 'parts_request')
+                    .eq('type', 'ro_status')
+                    .ilike('body', '%PARTS REQUESTED%')
                     .order('created_at', { ascending: false })
                     .limit(5);
                 if (notes?.length) {
