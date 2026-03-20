@@ -3024,7 +3024,7 @@ function App() {
         const pageH = doc.internal.pageSize.getHeight();
         const ml = 14; const mr = 14;
         // ── Header ──────────────────────────────────────────────────────────────
-        try { doc.addImage(COMPANY_LOGO_EMBEDDED, 'JPEG', ml, 9, 36, 18); } catch(e) {}
+        try { doc.addImage(COMPANY_LOGO_EMBEDDED, 'JPEG', ml, 8, 24, 24); } catch(e) {}
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(17);
         doc.setTextColor(200, 16, 46);
@@ -3109,29 +3109,32 @@ function App() {
             });
             y = doc.lastAutoTable.finalY + 6;
         }
-        // ── Totals ───────────────────────────────────────────────────────────────
-        const totalsData = [
-            ['Parts Subtotal:', `$${partsTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
-            [`Install Labor (${laborTotal.toFixed(1)}h @ $${laborRate}/hr):`, `$${laborCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
-        ];
-        if (configTotal > 0) totalsData.push([`Configuration (${configTotal.toFixed(1)}h @ $${laborRate}/hr):`, `$${configCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`]);
-        doc.autoTable({
-            startY: y, body: totalsData, theme: 'plain',
-            bodyStyles: { fontSize: 9, textColor: [80, 80, 80] },
-            columnStyles: { 0: { cellWidth: 70, halign: 'right', fontStyle: 'normal' }, 1: { cellWidth: 28, halign: 'right' } },
-            margin: { left: pageW - ml - mr - 28, right: mr },
-        });
-        y = doc.lastAutoTable.finalY + 2;
+        // ── Totals (drawn with doc.text for reliable positioning) ────────────────
+        const amtX = pageW - mr;          // right-align amounts at right margin
+        const lblX = amtX - 34;           // right-align labels 34mm left of amounts
+        y += 2;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+        doc.text('Parts Subtotal:', lblX, y, { align: 'right' });
+        doc.text(`$${partsTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+        y += 5.5;
+        doc.text(`Install Labor (${laborTotal.toFixed(1)}h @ $${laborRate}/hr):`, lblX, y, { align: 'right' });
+        doc.text(`$${laborCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+        y += 5.5;
+        if (configTotal > 0) {
+            doc.text(`Configuration (${configTotal.toFixed(1)}h @ $${laborRate}/hr):`, lblX, y, { align: 'right' });
+            doc.text(`$${configCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+            y += 5.5;
+        }
         doc.setDrawColor(200, 16, 46); doc.setLineWidth(0.4);
-        doc.line(pageW - ml - mr - 26, y, pageW - mr, y);
+        doc.line(lblX - 60, y, amtX, y);
         y += 6;
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(200, 16, 46);
-        doc.text('GRAND TOTAL:', pageW - mr - 28, y, { align: 'right' });
-        doc.text(`$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, pageW - mr, y, { align: 'right' });
+        doc.text('GRAND TOTAL:', lblX, y, { align: 'right' });
+        doc.text(`$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
         y += 6;
         const deposit = Math.round(partsTotal * depositPct / 100);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(100, 100, 100);
-        doc.text(`Parts Deposit (${depositPct}% due before ordering): $${deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, pageW - mr, y, { align: 'right' });
+        doc.text(`Parts Deposit (${depositPct}% due before ordering): $${deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
         // ── Footer ───────────────────────────────────────────────────────────────
         const footerY = pageH - 16;
         doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
