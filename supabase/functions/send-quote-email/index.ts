@@ -42,7 +42,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const subject = `🔩 Parts Request — ${roId || "RO"} | ${customerName || "Customer"}`;
+      const subject = `🔩 Parts Request — ${customerName || "Customer"} (${roId || "RO"})`;
 
       const htmlBody = `
 <!DOCTYPE html>
