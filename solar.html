@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700;800;900&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}html,body{height:100%;}
     body{font-family:'Source Sans 3',sans-serif;background:#0a0f1a;color:#eef2fa;}
@@ -3015,10 +3017,136 @@ function App() {
         lines.push(``, `View full quote: https://patriotsrv.github.io/rv-dashboard/solar.html`, ``, `Patriots RV Services`, `11399 US 380, Krum TX 76249`, `(940) 488-5047`, `patriotsrvservices.com`);
         return lines.join('\n');
     };
+    const generateQuotePdf = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const ml = 14; const mr = 14;
+        // ── Header ──────────────────────────────────────────────────────────────
+        try { doc.addImage(COMPANY_LOGO_EMBEDDED, 'JPEG', ml, 9, 36, 18); } catch(e) {}
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        doc.setTextColor(200, 16, 46);
+        doc.text('Patriots RV Services', 56, 16);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text('Your Mission Critical RV Service and Upgrade Center', 56, 21);
+        doc.setFontSize(8);
+        doc.setTextColor(60, 60, 60);
+        doc.text('11399 US 380, Krum TX 76249', pageW - mr, 12, { align: 'right' });
+        doc.text('(940) 488-5047', pageW - mr, 17, { align: 'right' });
+        doc.setTextColor(200, 16, 46);
+        doc.text('patriotsrvservices.com', pageW - mr, 22, { align: 'right' });
+        doc.setDrawColor(200, 16, 46);
+        doc.setLineWidth(0.7);
+        doc.line(ml, 30, pageW - mr, 30);
+        // ── Quote title ─────────────────────────────────────────────────────────
+        let y = 38;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.setTextColor(20, 20, 20);
+        doc.text(`Solar Installation Quote #${quoteNumber}`, ml, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(100, 100, 100);
+        const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        doc.text(`Date: ${dateStr}`, pageW - mr, y, { align: 'right' });
+        y += 8;
+        // ── Customer info block ──────────────────────────────────────────────────
+        const infoLines = [];
+        if (customerInfo.name) infoLines.push(['Customer:', customerInfo.name]);
+        if (linkedRO) infoLines.push(['Repair Order:', `RO #${linkedRO.ro_number}`]);
+        if (coachInfo.year || coachInfo.make || coachInfo.model) infoLines.push(['Vehicle:', [coachInfo.year, coachInfo.make, coachInfo.model].filter(Boolean).join(' ')]);
+        if (customerInfo.phone) infoLines.push(['Phone:', customerInfo.phone]);
+        if (customerInfo.email) infoLines.push(['Email:', customerInfo.email]);
+        if (infoLines.length > 0) {
+            const blockH = Math.ceil(infoLines.length / 2) * 5 + 8;
+            doc.setFillColor(247, 247, 247);
+            doc.roundedRect(ml, y, pageW - ml - mr, blockH, 2, 2, 'F');
+            doc.setDrawColor(220, 220, 220);
+            doc.setLineWidth(0.2);
+            doc.roundedRect(ml, y, pageW - ml - mr, blockH, 2, 2, 'S');
+            const half = Math.ceil(infoLines.length / 2);
+            infoLines.forEach(([lbl, val], i) => {
+                const col = i < half ? 0 : 1;
+                const row = i < half ? i : i - half;
+                const cx = ml + 4 + col * ((pageW - ml - mr) / 2);
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+                doc.text(lbl, cx, y + 6 + row * 5);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 30, 30);
+                doc.text(val, cx + doc.getTextWidth(lbl) + 1.5, y + 6 + row * 5);
+            });
+            y += blockH + 6;
+        }
+        // ── Items table ──────────────────────────────────────────────────────────
+        const rows = [];
+        const addRow = (label, qty, unitPrice) => rows.push([
+            label, String(qty),
+            `$${unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+            `$${(unitPrice * qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        ]);
+        Object.entries(inverterQtys).filter(([,q]) => q > 0).forEach(([id,q]) => { const x = PRODUCTS.inverters.find(m => m.id === id); if (x) addRow(x.model, q, effPrice(id, x.price)); });
+        Object.entries(mpptQtys).filter(([,q]) => q > 0).forEach(([id,q]) => { const x = PRODUCTS.mppTs.find(m => m.id === id); if (x) addRow(x.model, q, effPrice(id, x.price)); });
+        Object.entries(batteryQtys).filter(([,q]) => q > 0).forEach(([id,q]) => { const x = PRODUCTS.batteries.find(m => m.id === id); if (x) addRow(`${x.brand} ${x.series} ${x.voltage}V ${x.ah}Ah`, q, effPrice(id, x.price)); });
+        Object.entries(panelQtys).filter(([,q]) => q > 0).forEach(([id,q]) => { const x = PRODUCTS.panels.find(m => m.id === id); if (x) addRow(`${x.brand} ${x.model}`, q, effPrice(id, x.price)); });
+        Object.entries(accessoryQtys).filter(([,q]) => q > 0).forEach(([id,q]) => { const x = PRODUCTS.accessories.find(m => m.id === id); if (x) addRow(x.name, q, effPrice(id, x.price)); });
+        Object.entries(bosQtys).filter(([,q]) => q > 0).forEach(([id,q]) => { const x = PRODUCTS.bos.find(m => m.id === id); if (x) addRow(x.name, q, effPrice(id, x.price)); });
+        customLineItems.filter(i => i.name).forEach(i => rows.push([i.name, '—', '—', `$${Number(i.price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`]));
+        if (rows.length > 0) {
+            doc.autoTable({
+                startY: y,
+                head: [['Description', 'Qty', 'Unit Price', 'Total']],
+                body: rows,
+                theme: 'grid',
+                headStyles: { fillColor: [200, 16, 46], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+                bodyStyles: { fontSize: 9, textColor: [50, 50, 50] },
+                alternateRowStyles: { fillColor: [252, 252, 252] },
+                columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 14, halign: 'center' }, 2: { cellWidth: 28, halign: 'right' }, 3: { cellWidth: 30, halign: 'right' } },
+                margin: { left: ml, right: mr },
+                styles: { overflow: 'linebreak' }
+            });
+            y = doc.lastAutoTable.finalY + 6;
+        }
+        // ── Totals ───────────────────────────────────────────────────────────────
+        const totalsData = [
+            ['Parts Subtotal:', `$${partsTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+            [`Install Labor (${laborTotal.toFixed(1)}h @ $${laborRate}/hr):`, `$${laborCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+        ];
+        if (configTotal > 0) totalsData.push([`Configuration (${configTotal.toFixed(1)}h @ $${laborRate}/hr):`, `$${configCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`]);
+        doc.autoTable({
+            startY: y, body: totalsData, theme: 'plain',
+            bodyStyles: { fontSize: 9, textColor: [80, 80, 80] },
+            columnStyles: { 0: { cellWidth: 70, halign: 'right', fontStyle: 'normal' }, 1: { cellWidth: 28, halign: 'right' } },
+            margin: { left: pageW - ml - mr - 28, right: mr },
+        });
+        y = doc.lastAutoTable.finalY + 2;
+        doc.setDrawColor(200, 16, 46); doc.setLineWidth(0.4);
+        doc.line(pageW - ml - mr - 26, y, pageW - mr, y);
+        y += 6;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(200, 16, 46);
+        doc.text('GRAND TOTAL:', pageW - mr - 28, y, { align: 'right' });
+        doc.text(`$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, pageW - mr, y, { align: 'right' });
+        y += 6;
+        const deposit = Math.round(partsTotal * depositPct / 100);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(100, 100, 100);
+        doc.text(`Parts Deposit (${depositPct}% due before ordering): $${deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, pageW - mr, y, { align: 'right' });
+        // ── Footer ───────────────────────────────────────────────────────────────
+        const footerY = pageH - 16;
+        doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
+        doc.line(ml, footerY - 4, pageW - mr, footerY - 4);
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(150, 150, 150);
+        doc.text('This quote is valid for 30 days. Prices subject to change based on parts availability.', ml, footerY);
+        doc.text('Patriots RV Services  |  11399 US 380, Krum TX 76249  |  (940) 488-5047  |  patriotsrvservices.com', ml, footerY + 5);
+        return doc.output('datauristring').split(',')[1]; // base64 only
+    };
     const sendQuoteEmail = async () => {
         if (!emailAddr) { showToast('Enter an email address', 'warn'); return; }
         setEmailSending(true);
         try {
+            let pdfBase64 = null;
+            try { pdfBase64 = generateQuotePdf(); } catch(pdfErr) { console.warn('PDF generation failed, sending without attachment:', pdfErr); }
             const res = await fetch(`${_SB_URL}/functions/v1/send-quote-email`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${_SB_ANON}`, 'Content-Type': 'application/json' },
@@ -3029,6 +3157,7 @@ function App() {
                     roNumber: linkedRO?.ro_number || null,
                     grandTotal,
                     body: buildEmailBody(),
+                    pdfBase64,
                 })
             });
             if (!res.ok) { const t = await res.text(); throw new Error(t); }
@@ -6118,9 +6247,12 @@ function App() {
                 React.createElement("div", { style: { marginBottom: 14 } },
                     React.createElement("label", { style: { display: "block", fontSize: 11, fontWeight: 600, color: "var(--text2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" } }, "Send To"),
                     React.createElement("input", { type: "email", autoFocus: true, placeholder: "customer@email.com", value: emailAddr, onChange: e => setEmailAddr(e.target.value), onKeyDown: e => e.key === 'Enter' && sendQuoteEmail(), style: { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel2)", color: "var(--text)", fontSize: 15, outline: "none", boxSizing: "border-box" } })),
-                React.createElement("div", { style: { background: "var(--panel2)", borderRadius: 8, padding: "10px 12px", marginBottom: 18, maxHeight: 160, overflowY: "auto" } },
-                    React.createElement("div", { style: { fontSize: 10, color: "var(--muted)", marginBottom: 6, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase" } }, "Quote Summary Preview"),
-                    React.createElement("pre", { style: { fontSize: 10, color: "var(--text2)", fontFamily: "'Roboto Mono',monospace", margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5 } }, buildEmailBody())),
+                React.createElement("div", { style: { background: "var(--panel2)", borderRadius: 8, padding: "14px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 14 } },
+                    React.createElement("div", { style: { fontSize: 28, lineHeight: 1 } }, "\uD83D\uDCC4"),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { fontWeight: 700, fontSize: 13, color: "var(--text)", marginBottom: 3 } }, `PatriotsRV-Quote-${quoteNumber}.pdf`),
+                        React.createElement("div", { style: { fontSize: 11, color: "var(--text2)" } }, "Branded PDF with logo, itemized quote, and totals — attached to the email"),
+                        React.createElement("div", { style: { fontSize: 11, color: "var(--accent3)", marginTop: 4, fontWeight: 600 } }, `Grand Total: $${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`))),
                 React.createElement("div", { style: { display: "flex", gap: 10 } },
                     React.createElement("button", { onClick: () => { navigator.clipboard.writeText(buildEmailBody()); showToast('Copied to clipboard', 'ok'); }, style: { flex: 1, padding: "10px 0", borderRadius: 9, border: "1px solid var(--border)", background: "transparent", color: "var(--text2)", cursor: "pointer", fontSize: 13 } }, "Copy Text"),
                     React.createElement("button", { onClick: sendQuoteEmail, disabled: emailSending, style: { flex: 2, padding: "10px 0", borderRadius: 9, border: "none", background: "#c8102e", color: "#fff", cursor: emailSending ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, opacity: emailSending ? 0.7 : 1 } }, emailSending ? "Sending…" : "Send Email →")))),

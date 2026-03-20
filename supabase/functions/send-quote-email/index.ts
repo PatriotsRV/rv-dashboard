@@ -11,7 +11,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { to, customerName, quoteNumber, roNumber, grandTotal, body } = await req.json();
+    const { to, customerName, quoteNumber, roNumber, grandTotal, body, pdfBase64 } = await req.json();
 
     if (!to) {
       return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
@@ -44,12 +44,9 @@ Deno.serve(async (req: Request) => {
     <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Your Mission Critical RV Service and Upgrade Center</p>
   </div>
   <p>Dear ${customerName},</p>
-  <p>Thank you for your interest in our solar installation services. Please find your quote details below.</p>
+  <p>Thank you for your interest in our solar installation services. Please see the <strong>attached PDF</strong> for your complete quote details.</p>
   ${roNumber ? `<p><strong>Repair Order:</strong> RO #${roNumber}</p>` : ""}
-  <p><strong>Quote #${quoteNumber}</strong> &nbsp;&middot;&nbsp; <strong>Total: $${Number(grandTotal || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></p>
-  <div style="background: #f5f5f5; border-radius: 8px; padding: 16px; margin: 20px 0;">
-    <pre style="font-family: 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; margin: 0;">${body}</pre>
-  </div>
+  <p style="font-size: 16px;"><strong>Quote #${quoteNumber}</strong> &nbsp;&middot;&nbsp; <strong style="color: #c8102e;">Total: $${Number(grandTotal || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></p>
   <p>To discuss this quote or schedule your installation, please contact us:</p>
   <p>
     &#128205; 11399 US 380, Krum TX 76249<br>
@@ -69,14 +66,25 @@ Deno.serve(async (req: Request) => {
       auth: { user: gmailUser, pass: gmailPass },
     });
 
-    await transporter.sendMail({
+    const mailOptions: Record<string, unknown> = {
       from: `"Patriots RV Services" <${gmailUser}>`,
       replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
       to,
       subject,
       text: body,
       html: htmlBody,
-    });
+    };
+
+    if (pdfBase64) {
+      mailOptions.attachments = [{
+        filename: `PatriotsRV-Quote-${quoteNumber}.pdf`,
+        content: pdfBase64,
+        encoding: "base64",
+        contentType: "application/pdf",
+      }];
+    }
+
+    await transporter.sendMail(mailOptions);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
