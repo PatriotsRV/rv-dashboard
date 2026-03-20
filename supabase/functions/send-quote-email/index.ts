@@ -11,14 +11,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { to, customerName, quoteNumber, roNumber, grandTotal, body, pdfBase64 } = await req.json();
-
-    if (!to) {
-      return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const body = await req.json();
+    const { type } = body;
 
     const gmailUser = Deno.env.get("GMAIL_USER");
     const gmailPass = Deno.env.get("GMAIL_APP_PASSWORD");
@@ -26,6 +20,90 @@ Deno.serve(async (req: Request) => {
     if (!gmailUser || !gmailPass) {
       return new Response(JSON.stringify({ error: "GMAIL_USER or GMAIL_APP_PASSWORD secret not set" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user: gmailUser, pass: gmailPass },
+    });
+
+    // ── PARTS REQUEST EMAIL ────────────────────────────────────────────
+    if (type === "parts_request") {
+      const { to, techName, techEmail, customerName, roId, rv, vin, timestamp, description } = body;
+
+      if (!to) {
+        return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const subject = `🔩 Parts Request — ${roId || "RO"} | ${customerName || "Customer"}`;
+
+      const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="border-bottom: 3px solid #c8102e; padding-bottom: 16px; margin-bottom: 20px;">
+    <h1 style="color: #c8102e; margin: 0; font-size: 22px;">Patriots RV Services</h1>
+    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Parts Request — Action Required</p>
+  </div>
+
+  <div style="background: #fff3f8; border: 2px solid #FF1493; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: #FF1493; margin: 0 0 12px; font-size: 18px;">🔩 New Parts Request</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <tr><td style="padding:4px 0; color:#666; width:120px;">Submitted by:</td><td style="padding:4px 0; font-weight:700;">${techName || "Unknown Tech"}${techEmail ? ` &lt;${techEmail}&gt;` : ""}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Date/Time:</td><td style="padding:4px 0;">${timestamp || new Date().toLocaleString()}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Customer:</td><td style="padding:4px 0; font-weight:700;">${customerName || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">RO Number:</td><td style="padding:4px 0; font-family:monospace;">${roId || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Vehicle:</td><td style="padding:4px 0;">${rv || "N/A"}</td></tr>
+      ${vin ? `<tr><td style="padding:4px 0; color:#666;">VIN:</td><td style="padding:4px 0; font-family:monospace; font-size:12px;">${vin}</td></tr>` : ""}
+    </table>
+  </div>
+
+  <div style="background: #f9f9f9; border-radius: 8px; padding: 16px; margin-bottom: 20px; border-left: 4px solid #FF1493;">
+    <h3 style="margin: 0 0 10px; color: #333; font-size: 15px;">Parts Needed:</h3>
+    <p style="margin: 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${description || "No description provided."}</p>
+  </div>
+
+  <p style="font-size: 14px; color: #555;">Please order the required parts and mark the request as <strong>Ordered</strong> in the PRVS Dashboard to clear the alert on this RO.</p>
+
+  <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">
+    <p style="margin: 0; color: #888; font-size: 11px;">
+      Patriots RV Services &nbsp;·&nbsp; 11399 US 380, Krum TX 76249 &nbsp;·&nbsp;
+      <a href="tel:9404885047" style="color:#c8102e;">(940) 488-5047</a> &nbsp;·&nbsp;
+      <a href="https://patriotsrvservices.com" style="color:#c8102e;">patriotsrvservices.com</a>
+    </p>
+    <p style="margin: 6px 0 0; color: #aaa; font-size: 10px;">This is an automated notification from the PRVS Dashboard.</p>
+  </div>
+</body>
+</html>`;
+
+      await transporter.sendMail({
+        from:    `"Patriots RV Services" <${gmailUser}>`,
+        replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
+        to,
+        subject,
+        text:    `Parts Request\n\nSubmitted by: ${techName}\nDate/Time: ${timestamp}\nCustomer: ${customerName}\nRO: ${roId}\nVehicle: ${rv}\n\nParts Needed:\n${description}`,
+        html:    htmlBody,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── SOLAR QUOTE EMAIL (original behaviour) ─────────────────────────
+    const { to, customerName, quoteNumber, roNumber, grandTotal, body: emailBody, pdfBase64 } = body;
+
+    if (!to) {
+      return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -59,27 +137,20 @@ Deno.serve(async (req: Request) => {
 </body>
 </html>`;
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user: gmailUser, pass: gmailPass },
-    });
-
     const mailOptions: Record<string, unknown> = {
-      from: `"Patriots RV Services" <${gmailUser}>`,
+      from:    `"Patriots RV Services" <${gmailUser}>`,
       replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
       to,
       subject,
-      text: body,
-      html: htmlBody,
+      text:    emailBody,
+      html:    htmlBody,
     };
 
     if (pdfBase64) {
       mailOptions.attachments = [{
-        filename: `PatriotsRV-Quote-${quoteNumber}.pdf`,
-        content: pdfBase64,
-        encoding: "base64",
+        filename:    `PatriotsRV-Quote-${quoteNumber}.pdf`,
+        content:     pdfBase64,
+        encoding:    "base64",
         contentType: "application/pdf",
       }];
     }

@@ -64,6 +64,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | — | **Test calendar re-auth on iPhone** | Full mobile OAuth round-trip flow — confirm Schedule modal reopens after auth | ⏳ Needs field test |
 | 🟡 | — | **GitHub Release v1.265** | Tag exists on main; Roland creates manually at github.com/PatriotsRV/rv-dashboard/releases/new | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.266** | Create release notes page on GitHub | ⏳ Roland action |
+| 🔴 | — | **Run SQL migration for Parts Request** | `ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS has_open_parts_request BOOLEAN DEFAULT false;` — run in Supabase SQL Editor before using the feature | ⏳ Roland action |
+| 🟠 | — | **Redeploy send-quote-email Edge Function** | v1.2 adds parts_request email type; run `supabase functions deploy send-quote-email` | ⏳ Needs CLI deploy |
+| 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
 
 ---
 
@@ -71,12 +74,12 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.266** | Main dashboard — ROs, time tracking, parts, calendar, audit log |
+| `index.html` | **v1.267** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system |
 | `checkin.html` | **v1.26** | Technician clock-in/out, offline-first IndexedDB queue |
 | `analytics.html` | **v1.0** | Analytics/reporting view |
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
-| `supabase/functions/send-quote-email/index.ts` | **v1.1** | Edge Function — email w/ PDF attachment via nodemailer |
+| `supabase/functions/send-quote-email/index.ts` | **v1.2** | Edge Function — solar quote email + parts request email (type: 'parts_request') |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |
 | `SESSION_STARTER.md` | — | Copyable session kickoff prompt for Roland to paste into Claude |
 | `RELEASE_NOTES_v1.265.md` | — | Release notes for v1.265 |
@@ -121,6 +124,14 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - `_pendingScheduleIndex` global stores the filtered-data index across the OAuth round-trip
 - `reauthorizeCalendar(filteredIndex)` uses `prompt:'consent'` to force interactive popup
 - After successful OAuth, `initSupabaseAuthListener()` in tokenClient callback re-opens the modal
+
+### Parts Request System (v1.267)
+- `has_open_parts_request` boolean column on `repair_orders` — **requires SQL migration** (see TODO list)
+- Parts request notes stored in `notes` table as BOTH `type: 'parts_request'` (for history modal) AND `type: 'ro_status'` (so they appear in the RO Status section on the card)
+- Email uses `send-quote-email` Edge Function with `type: 'parts_request'` param — **requires redeploy** of the Edge Function after v1.2 code is pushed
+- Management email hardcoded as `parts@patriotsrvservices.com` — placeholder until email group is created
+- `SUPABASE_ANON_KEY` and `SUPABASE_URL` constants (defined at top of init block) are used directly in the fetch call — no auth header upgrade needed since Edge Function is public
+- `markPartsOrdered()` is available to ALL roles (no role restriction) — business rule is that it's a manual acknowledgement only, tracked in audit log
 
 ### GitHub Push
 - `gh` CLI is NOT available in the sandbox; use `git` directly from `/sessions/.../mnt/rv-dashboard/`
@@ -208,6 +219,7 @@ supabase functions deploy roof-lookup
 - ✅ **Chrome 145 nonce fix** — `params: { nonce: sbHashedNonce }` added
 - ✅ **Supabase users 406 fix** — `getUserRole()` `.single()` → `.maybeSingle()`
 - ✅ **Write function hardening (v1.266)** — Error handling + audit log: `updateFieldInSupabase`, `updateROStatus`, `updateROUrgency`, `updateROProgress`, `updatePhotoInSupabase`
+- ✅ **Parts Request System (v1.267)** — `openPartsRequestModal()` with voice dictation; `submitPartsRequest()` writes notes (type `parts_request` + `ro_status`), sets `has_open_parts_request=true`, emails `parts@patriotsrvservices.com`; neon-pink pulsing chip + card border on RO card; `openPartsRequestDetails()` shows history; `markPartsOrdered()` clears flag + logs resolution; `send-quote-email` v1.2 handles `type:'parts_request'` branch
 
 ---
 
@@ -224,6 +236,7 @@ supabase functions deploy roof-lookup
 | solar v2.0 | 2026-03-19 | solar.html rebuilt — React 18, roof planner, AI lookup, PDF quote |
 | v1.265 | 2026-03-20 | 4× RO description fixes; mobile filter fix; calendar re-auth; persistent auth; 406 fix; audit log fix |
 | v1.266 | 2026-03-20 | Write function hardening — error handling + audit log on 5 functions |
+| v1.267 | 2026-03-20 | Parts Request System — modal, voice dictation, neon-pink pulsing chip, auto-note, management email, Mark Ordered flow |
 
 ---
 
@@ -237,3 +250,4 @@ supabase functions deploy roof-lookup
 | 2026-03-20 | 4 | v1.265 — PDF quote (jsPDF), email attachment, 4× description fixes, mobile filter, calendar re-auth |
 | 2026-03-20 | 5 | v1.265 cont. — persistent auth, 5× guard fixes, audit log fix, Chrome 145, 406 fix. v1.266 — write hardening |
 | 2026-03-20 | 6 | CLAUDE_CONTEXT.md restructured with TODO list, Session Protocol, Known Issues, SESSION_STARTER.md created |
+| 2026-03-20 | 7 | v1.267 — Parts Request System built end-to-end: modal, dictation, chip, email, resolution flow |
