@@ -3109,46 +3109,41 @@ function App() {
             });
             y = doc.lastAutoTable.finalY + 6;
         }
-        // ── Footer (drawn first so totals can anchor above it) ───────────────────
+        // ── Totals — flow downward; start new page if table filled this one ────────
+        const amtX = pageW - mr;
+        const lblX = amtX - 34;
+        const footerZone = pageH - 38; // keep totals above footer + buffer
+        if (y > footerZone - 42) { doc.addPage(); y = 20; }
+        y += 4;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+        doc.text('Parts Subtotal:', lblX, y, { align: 'right' });
+        doc.text(`$${partsTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+        y += 5.5;
+        doc.text(`Install Labor (${laborTotal.toFixed(1)}h @ $${laborRate}/hr):`, lblX, y, { align: 'right' });
+        doc.text(`$${laborCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+        y += 5.5;
+        if (configTotal > 0) {
+            doc.text(`Configuration (${configTotal.toFixed(1)}h @ $${laborRate}/hr):`, lblX, y, { align: 'right' });
+            doc.text(`$${configCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+            y += 5.5;
+        }
+        doc.setDrawColor(200, 16, 46); doc.setLineWidth(0.4);
+        doc.line(lblX - 60, y, amtX, y);
+        y += 6;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(200, 16, 46);
+        doc.text('GRAND TOTAL:', lblX, y, { align: 'right' });
+        doc.text(`$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+        y += 6;
+        const deposit = Math.round(partsTotal * depositPct / 100);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110, 110, 110);
+        doc.text(`Parts Deposit (${depositPct}% due before ordering): $${deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, y, { align: 'right' });
+        // ── Footer on page 1 ─────────────────────────────────────────────────────
         const footerY = pageH - 14;
         doc.setDrawColor(220, 220, 220); doc.setLineWidth(0.3);
         doc.line(ml, footerY - 5, pageW - mr, footerY - 5);
         doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(150, 150, 150);
         doc.text('This quote is valid for 30 days. Prices subject to change based on parts availability.', ml, footerY);
         doc.text('Patriots RV Services  |  11399 US 380, Krum TX 76249  |  (940) 488-5047  |  patriotsrvservices.com', ml, footerY + 5);
-        // ── Totals (anchored upward from footer so they never overlap) ───────────
-        const amtX = pageW - mr;
-        const lblX = amtX - 34;
-        const deposit = Math.round(partsTotal * depositPct / 100);
-        let ty = footerY - 15;  // start well above footer separator line
-        // Parts Deposit
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110, 110, 110);
-        doc.text(`Parts Deposit (${depositPct}% due before ordering): $${deposit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, ty, { align: 'right' });
-        ty -= 7;
-        // Grand Total
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(200, 16, 46);
-        doc.text('GRAND TOTAL:', lblX, ty, { align: 'right' });
-        doc.text(`$${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, ty, { align: 'right' });
-        ty -= 4;
-        // Red separator
-        doc.setDrawColor(200, 16, 46); doc.setLineWidth(0.4);
-        doc.line(lblX - 60, ty, amtX, ty);
-        ty -= 6;
-        // Configuration (optional)
-        if (configTotal > 0) {
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-            doc.text(`Configuration (${configTotal.toFixed(1)}h @ $${laborRate}/hr):`, lblX, ty, { align: 'right' });
-            doc.text(`$${configCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, ty, { align: 'right' });
-            ty -= 5.5;
-        }
-        // Install Labor
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-        doc.text(`Install Labor (${laborTotal.toFixed(1)}h @ $${laborRate}/hr):`, lblX, ty, { align: 'right' });
-        doc.text(`$${laborCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, ty, { align: 'right' });
-        ty -= 5.5;
-        // Parts Subtotal
-        doc.text('Parts Subtotal:', lblX, ty, { align: 'right' });
-        doc.text(`$${partsTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, amtX, ty, { align: 'right' });
 
         // ── Page 2: Assumptions, Additional Notes, Terms, Signature ─────────────
         doc.addPage();
@@ -3204,8 +3199,8 @@ function App() {
                 y2 += wrapped.length * 4.8 + 1;
             });
         }
-        // Signature block — anchored near page bottom
-        const sigStartY = pageH - 68;
+        // Signature block — anchored with enough room for 2 rows + deposit box
+        const sigStartY = pageH - 102;
         doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
         doc.line(ml, sigStartY, pageW - mr, sigStartY);
         doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(40, 40, 40);
