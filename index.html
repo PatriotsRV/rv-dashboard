@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<!-- 
-    PRVS Dashboard v1.264
-    Released: 2026-03-19
+<!--
+    PRVS Dashboard v1.265
+    Released: 2026-03-20
+    v1.265: RO description fixes (4), mobile filter cutoff, calendar re-auth flow, Chrome 145 nonce fix, Supabase users 406 fix
+    v1.264: Add Analytics button (Admin only, dark green); version tags on all files
     v1.263: Fix nonce encoding — was base64 (btoa), must be hex for Supabase verification; add localStorage persistence so nonce survives async callback gaps
     v1.262: Fix Google id_token nonce placement in google.accounts.id.initialize (was nested under params — Google ignored it, causing Supabase nonce mismatch on every sign-in)
     New in v1.23:
@@ -6921,7 +6923,7 @@ Notes: ${notes}` : '',
                     .from('users')
                     .select('id')
                     .eq('email', email)
-                    .single();
+                    .maybeSingle(); // .single() returns 406 when no row found; .maybeSingle() returns null
                 if (!userRecord) return;
                 // Get roles via junction table
                 const { data: roleData } = await getSB()
@@ -7307,7 +7309,8 @@ Notes: ${notes}` : '',
 
             google.accounts.id.initialize({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
-                nonce: sbHashedNonce,
+                nonce: sbHashedNonce,             // top-level: current Chrome support
+                params: { nonce: sbHashedNonce }, // inside params: required by Chrome 145+
                 callback: async (credentialResponse) => {
                     if (credentialResponse.credential) {
                         googleIdToken = credentialResponse.credential;
