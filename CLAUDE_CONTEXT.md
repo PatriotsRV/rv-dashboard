@@ -24,6 +24,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - [ ] 3. Add a row to the **Session Log** table
 - [ ] 4. Add new items to **Completed Work**
 - [ ] 5. Update the **Version History** table if version was bumped
+- [ ] 5a. If version was bumped: add a **GitHub Release TODO** to the Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
 - [ ] 6. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
 - [ ] 7. Commit and push CLAUDE_CONTEXT.md to GitHub
 
@@ -62,8 +63,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
 | ✅ | — | **Deploy roof-lookup Edge Function** | Confirmed deployed — 5 deployments, updated 2 days ago | ✅ Done |
 | ✅ | — | **Test calendar re-auth on iPhone** | Full mobile OAuth round-trip flow — confirm Schedule modal reopens after auth | ✅ Done |
-| 🟡 | — | **GitHub Release v1.265** | Tag exists on main; Roland creates manually at github.com/PatriotsRV/rv-dashboard/releases/new | ⏳ Roland action |
-| 🟡 | — | **GitHub Release v1.266** | Create release notes page on GitHub | ⏳ Roland action |
+| 🟡 | — | **GitHub Release v1.271** | Create release at github.com/PatriotsRV/rv-dashboard/releases/new — tag v1.271, paste RELEASE_NOTES content | ⏳ Roland action |
 | ✅ | — | **Run SQL migration for Parts Request** | `has_open_parts_request BOOLEAN` column confirmed present in `repair_orders` table | ✅ Done |
 | ✅ | — | **Redeploy send-quote-email Edge Function** | Confirmed deployed — 13 deployments, updated a day ago | ✅ Done |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
