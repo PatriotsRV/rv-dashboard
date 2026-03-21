@@ -60,12 +60,12 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#2 | **Regular view layout customization** | Drag/resize tiles | ⏳ Open |
 | 🟡 | GH#3 | **Parts field layout review** | UX improvements to parts section | ⏳ Open |
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
-| 🟠 | — | **Deploy roof-lookup Edge Function** | `supabase functions deploy roof-lookup` — solar.html AI lookup returns 404 until done | ⏳ Pending CLI access |
+| ✅ | — | **Deploy roof-lookup Edge Function** | Confirmed deployed — 5 deployments, updated 2 days ago | ✅ Done |
 | 🟡 | — | **Test calendar re-auth on iPhone** | Full mobile OAuth round-trip flow — confirm Schedule modal reopens after auth | ⏳ Needs field test |
 | 🟡 | — | **GitHub Release v1.265** | Tag exists on main; Roland creates manually at github.com/PatriotsRV/rv-dashboard/releases/new | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.266** | Create release notes page on GitHub | ⏳ Roland action |
 | ✅ | — | **Run SQL migration for Parts Request** | `has_open_parts_request BOOLEAN` column confirmed present in `repair_orders` table | ✅ Done |
-| 🟠 | — | **Redeploy send-quote-email Edge Function** | v1.3 adds photo thumbnails in email; run `supabase functions deploy send-quote-email` | ⏳ Needs CLI deploy |
+| ✅ | — | **Redeploy send-quote-email Edge Function** | Confirmed deployed — 13 deployments, updated a day ago | ✅ Done |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
 
 ---
@@ -129,7 +129,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - `has_open_parts_request` boolean column on `repair_orders` — **requires SQL migration** (see TODO list)
 - Parts request notes stored in `notes` table as `type: 'ro_status'` ONLY with body prefixed `🔩 PARTS REQUESTED: ...` — do NOT use `type: 'parts_request'` (violates `notes_type_check` constraint which only allows `ro_status` and `customer_comm`)
 - History modal (`openPartsRequestDetails`) queries: `.eq('type', 'ro_status').ilike('body', '%PARTS REQUESTED%')` — not `.eq('type', 'parts_request')`
-- Email uses `send-quote-email` Edge Function with `type: 'parts_request'` param — **requires redeploy** after v1.3 code push (adds inline photo thumbnails)
+- Email uses `send-quote-email` Edge Function with `type: 'parts_request'` param — ✅ deployed (v1.3 with photo thumbnails confirmed live)
 - Management email hardcoded as `parts@patriotsrvservices.com` — placeholder until email group is created
 - `SUPABASE_ANON_KEY` and `SUPABASE_URL` constants (defined at top of init block) are used directly in the fetch call — no auth header upgrade needed since Edge Function is public
 - `markPartsOrdered()` is available to ALL roles (no role restriction) — business rule is that it's a manual acknowledgement only, tracked in audit log
