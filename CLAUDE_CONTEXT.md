@@ -61,7 +61,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#3 | **Parts field layout review** | UX improvements to parts section | ⏳ Open |
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
 | ✅ | — | **Deploy roof-lookup Edge Function** | Confirmed deployed — 5 deployments, updated 2 days ago | ✅ Done |
-| 🟡 | — | **Test calendar re-auth on iPhone** | Full mobile OAuth round-trip flow — confirm Schedule modal reopens after auth | ⏳ Needs field test |
+| ✅ | — | **Test calendar re-auth on iPhone** | Full mobile OAuth round-trip flow — confirm Schedule modal reopens after auth | ✅ Done |
 | 🟡 | — | **GitHub Release v1.265** | Tag exists on main; Roland creates manually at github.com/PatriotsRV/rv-dashboard/releases/new | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.266** | Create release notes page on GitHub | ⏳ Roland action |
 | ✅ | — | **Run SQL migration for Parts Request** | `has_open_parts_request BOOLEAN` column confirmed present in `repair_orders` table | ✅ Done |
