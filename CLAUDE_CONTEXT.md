@@ -58,6 +58,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟠 | GH#4 | **Twilio SMS v1.27** | Customer + tech notifications via SMS | ⏳ Open |
 | 🟠 | GH#5 | **Work Assignment System** | Assign ROs to specific technicians | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
+| 🟡 | GH#9 | **Parts form autocomplete** | Suggest part names, suppliers, part numbers from existing `parts` table history — both Manage Parts and Parts Request modal | ⏳ Open |
 | 🟡 | GH#2 | **Regular view layout customization** | Drag/resize tiles | ⏳ Open |
 | 🟡 | GH#3 | **Parts field layout review** | UX improvements to parts section | ⏳ Open |
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
