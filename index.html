@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.273
+    PRVS Dashboard v1.274
     Released: 2026-03-20
+    v1.274: Add 60-second visibility note to document upload success message
     v1.273: Fix document modal not refreshing after upload — sync currentFilteredData photoLibrary after addDocToLibrary; openPhotoLibrary accepts initialTab param; reopens on docs tab after upload
     v1.272: Fix document upload MIME rejection — uploadToSupabaseStorage accepts skipContentType option; uploadDocument passes skipContentType:true so non-image file types (docx, xlsx, etc.) are not rejected by rv-media bucket MIME policy; improved MIME error message with fix instructions
     v1.271: Fix photo & document uploads — uploadDocument migrated from Google Drive to Supabase Storage; uploadPhoto and uploadDocument now check supabaseSession before upload; session-expiry re-check added inside async onchange callback
@@ -2472,7 +2473,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.273</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.274</span>
             </div>
         </header>
 
@@ -3620,7 +3621,7 @@
                 if (currentFilteredData[index]) {
                     currentFilteredData[index].photoLibrary = currentData[originalIndex].photoLibrary;
                 }
-                alert('✅ Document uploaded successfully!');
+                alert('✅ Document uploaded successfully!\n\nNote: It may take up to 60 seconds for the document to appear in the list. If you don\'t see it right away, close and reopen Photos & Docs shortly.');
                 closePhotoLibrary();
                 // Reopen directly on the Documents tab so the new doc is immediately visible
                 setTimeout(() => openPhotoLibrary(index, 'docs'), 100);
@@ -5909,7 +5910,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.273 - Released 2026-03-22');
+            console.log('📦 PRVS Dashboard v1.274 - Released 2026-03-22');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
