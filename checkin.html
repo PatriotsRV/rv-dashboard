@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.26
-    Released: 2026-03-19
-    Backend: Supabase (replaces Google Sheets)
-    Features: Offline-first with IndexedDB queue, auto clock-out, one RO at a time
+    PRVS Tech Check-In v1.27
+    Released: 2026-03-22
+    v1.27: Spanish language toggle — globe button, TRANSLATIONS_ES dictionary, t() helper, full UI translation (check-in/out flow, auto clock-out modal, clock-out summary, offline banner, dictation button)
+    v1.26: Supabase backend (replaces Google Sheets); offline-first IndexedDB queue; auto clock-out; one RO at a time
 -->
 <html lang="en">
 <head>
@@ -181,12 +181,15 @@
 <body>
     <div class="container">
         <div class="logo">
-            <h1>🚐 PRVS Tech Check-In</h1>
+            <h1 data-i18n="🚐 PRVS Tech Check-In">🚐 PRVS Tech Check-In</h1>
             <p>Patriots RV Services</p>
+            <div style="margin-top:8px;">
+                <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:monospace;">🌐 ES</button>
+            </div>
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.26</div>
+    <div class="version">v1.27</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -196,6 +199,89 @@ const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.goo
 const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];
 
 const ALL_SERVICE_TYPES = ['Roof', 'Solar', 'Vroom', 'Paint and Body', 'Repairs', 'TrueTopper', 'Detailing', 'Chassis'];
+
+// ── Spanish Language Toggle ────────────────────────────────────
+const TRANSLATIONS_ES = {
+    // Logo / header
+    '🚐 PRVS Tech Check-In': '🚐 PRVS Check-In Técnico',
+    // Sync banner
+    '📵 Offline — actions will sync when reconnected': '📵 Sin conexión — se sincronizará al reconectar',
+    // Sign-in
+    'Sign in with your Patriots RV Google account to check in or out.': 'Inicia sesión con tu cuenta Google de Patriots RV.',
+    // RO info section
+    '📋 Repair Order': '📋 Orden de Reparación',
+    'Customer': 'Cliente',
+    'RV': 'RV',
+    'RO ID': 'ID de OR',
+    'Status': 'Estado',
+    'Technician': 'Técnico',
+    'Your Status': 'Tu Estado',
+    '🟢 Clocked In': '🟢 Registrado',
+    '🔴 Not Clocked In': '🔴 No Registrado',
+    'Clocked In': 'Hora de Entrada',
+    // Timer
+    '⏱ Time on this RO': '⏱ Tiempo en esta OR',
+    // Service type
+    'Service Type': 'Tipo de Servicio',
+    'Select one service to work on': 'Selecciona un servicio',
+    // Work notes
+    'Work Notes': 'Notas de Trabajo',
+    '🎤 Dictate': '🎤 Dictar',
+    '⏹ Stop Dictating': '⏹ Parar',
+    'Describe work performed...': 'Describe el trabajo realizado...',
+    // Action buttons
+    '🔴 Clock Out': '🔴 Registrar Salida',
+    '🟢 Clock In / Start Work': '🟢 Registrar Entrada',
+    'Close': 'Cerrar',
+    'Switch account': 'Cambiar cuenta',
+    // Clock-out summary
+    'Clocked Out!': '¡Salida Registrada!',
+    'Your time has been recorded.': 'Tu tiempo ha sido guardado.',
+    'Time Worked': 'Tiempo Trabajado',
+    'Services': 'Servicios',
+    'Notes': 'Notas',
+    '🔄 Clock Back In': '🔄 Registrar Entrada',
+    // Auto clock-out modal
+    'Still Clocked In!': '¡Aún Registrado!',
+    'You are clocked in to:': 'Estás registrado en:',
+    'How long ago did you finish that RO?': '¿Cuánto tiempo hace que terminaste?',
+    '(minutes — required)': '(minutos — requerido)',
+    'Enter minutes ago...': 'Ingresa los minutos...',
+    'Cancel': 'Cancelar',
+    '✅ Clock Out & Switch RO': '✅ Salir y Cambiar OR',
+    // Errors / loading
+    'Loading...': 'Cargando...',
+    'Loading RO...': 'Cargando OR...',
+    'Please select a service type before clocking in.': 'Por favor selecciona un tipo de servicio.',
+};
+
+function getLang() { return localStorage.getItem('prvs_lang') || 'en'; }
+
+function setLang(lang) {
+    localStorage.setItem('prvs_lang', lang);
+    translateStaticUI();
+    // Re-render if app is already loaded
+    if (currentUser && roData) render();
+    const btn = document.getElementById('langToggleBtn');
+    if (btn) btn.textContent = lang === 'es' ? '🌐 EN' : '🌐 ES';
+}
+
+function t(str) {
+    if (getLang() !== 'es') return str;
+    return (TRANSLATIONS_ES[str] !== undefined) ? TRANSLATIONS_ES[str] : str;
+}
+
+function translateStaticUI() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        el.textContent = t(key);
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+        el.placeholder = t(el.dataset.i18nPh);
+    });
+    const btn = document.getElementById('langToggleBtn');
+    if (btn) btn.textContent = getLang() === 'es' ? '🌐 EN' : '🌐 ES';
+}
 
 // ── State ─────────────────────────────────────────────────────
 let _sb = null;
@@ -270,7 +356,7 @@ function updateSyncBanner() {
     if (!el) return;
     if (!isOnline) {
         el.className = 'sync-banner offline';
-        el.textContent = '📵 Offline — actions will sync when reconnected';
+        el.textContent = t('📵 Offline — actions will sync when reconnected');
         el.style.display = 'block';
     } else {
         el.style.display = 'none';
@@ -304,7 +390,8 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('📦 PRVS Tech Check-In v1.26 - Released 2026-03-19');
+    console.log('📦 PRVS Tech Check-In v1.27 - Released 2026-03-22');
+    translateStaticUI(); // Apply saved language to static DOM elements
 
     if (!roIdParam) {
         showError('No RO specified. Please scan a valid QR code or use the Check-In button on the dashboard.');
@@ -338,7 +425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 function showSignIn() {
     document.getElementById('app').innerHTML = `
         <div class="signin-container">
-            <p>Sign in with your Patriots RV Google account to check in or out.</p>
+            <p>${t('Sign in with your Patriots RV Google account to check in or out.')}</p>
             <div id="googleSignInBtn"></div>
         </div>`;
 
@@ -387,7 +474,7 @@ async function handleSignIn(response) {
 
 // ── Load RO + Active Session ──────────────────────────────────
 async function loadAndRender() {
-    showLoading('Loading RO...');
+    showLoading(t('Loading RO...'));
 
     if (isOnline) {
         try {
@@ -546,9 +633,9 @@ function showFinishedTimePrompt(prevROName, clockInTime) {
         overlay.innerHTML = `
             <div style="background:white;border-radius:16px;padding:28px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
                 <div style="font-size:36px;text-align:center;margin-bottom:12px;">⚠️</div>
-                <h2 style="color:#92400e;font-size:18px;font-weight:700;margin-bottom:8px;text-align:center;">Still Clocked In!</h2>
+                <h2 style="color:#92400e;font-size:18px;font-weight:700;margin-bottom:8px;text-align:center;">${t('Still Clocked In!')}</h2>
                 <p style="color:#64748b;font-size:14px;margin-bottom:6px;text-align:center;">
-                    You are clocked in to:
+                    ${t('You are clocked in to:')}
                 </p>
                 <p style="color:#1e293b;font-size:15px;font-weight:700;margin-bottom:6px;text-align:center;">${prevROName}</p>
                 <p style="color:#64748b;font-size:13px;margin-bottom:20px;text-align:center;">
@@ -556,21 +643,21 @@ function showFinishedTimePrompt(prevROName, clockInTime) {
                 </p>
 
                 <label style="display:block;font-size:14px;font-weight:600;color:#475569;margin-bottom:6px;">
-                    How long ago did you finish that RO? <span style="color:#ef4444;font-weight:700;">*</span>
-                    <span style="color:#94a3b8;font-weight:400;font-size:13px;"> (minutes — required)</span>
+                    ${t('How long ago did you finish that RO?')} <span style="color:#ef4444;font-weight:700;">*</span>
+                    <span style="color:#94a3b8;font-weight:400;font-size:13px;"> ${t('(minutes — required)')}</span>
                 </label>
 
                 <input type="number" id="finishedMins" min="0" max="${elapsed}"
-                    placeholder="Enter minutes ago..."
+                    placeholder="${t('Enter minutes ago...')}"
                     oninput="document.getElementById('confirmAutoClockout').disabled = !this.value || parseInt(this.value) < 0"
                     style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:16px;margin-bottom:16px;">
 
                 <div style="display:flex;gap:8px;">
                     <button id="cancelAutoClockout" style="flex:1;padding:12px;background:#f1f5f9;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;color:#475569;">
-                        Cancel
+                        ${t('Cancel')}
                     </button>
                     <button id="confirmAutoClockout" disabled style="flex:2;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;color:white;opacity:0.5;">
-                        ✅ Clock Out & Switch RO
+                        ${t('✅ Clock Out & Switch RO')}
                     </button>
                 </div>
             </div>`;
@@ -627,49 +714,49 @@ function render() {
         </div>` : ''}
 
         <div class="ro-info">
-            <h2>📋 Repair Order</h2>
+            <h2>${t('📋 Repair Order')}</h2>
             <div class="info-row">
-                <span class="info-label">Customer</span>
+                <span class="info-label">${t('Customer')}</span>
                 <span class="info-value">${roData.customer_name || '—'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">RV</span>
+                <span class="info-label">${t('RV')}</span>
                 <span class="info-value">${roData.rv || '—'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">RO ID</span>
+                <span class="info-label">${t('RO ID')}</span>
                 <span class="info-value" style="font-family:monospace;font-size:12px;">${roData.ro_id}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Status</span>
+                <span class="info-label">${t('Status')}</span>
                 <span class="info-value">${roData.status || '—'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Technician</span>
+                <span class="info-label">${t('Technician')}</span>
                 <span class="info-value">${roData.technician || '—'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Your Status</span>
+                <span class="info-label">${t('Your Status')}</span>
                 <span class="status-badge ${isClockedIn ? 'checked-in' : 'checked-out'}">
-                    ${isClockedIn ? '🟢 Clocked In' : '🔴 Not Clocked In'}
+                    ${isClockedIn ? t('🟢 Clocked In') : t('🔴 Not Clocked In')}
                 </span>
             </div>
             ${isClockedIn ? `
             <div class="info-row">
-                <span class="info-label">Clocked In</span>
+                <span class="info-label">${t('Clocked In')}</span>
                 <span class="info-value">${new Date(activeSession.clock_in).toLocaleTimeString()}</span>
             </div>` : ''}
         </div>
 
         ${isClockedIn ? `
         <div class="timer">
-            <h3>⏱ Time on this RO</h3>
+            <h3>${t('⏱ Time on this RO')}</h3>
             <div class="timer-display" id="timerDisplay">00:00:00</div>
         </div>` : ''}
 
         <div class="service-types">
-            <h3>Service Type <span style="color:#ef4444;">*</span></h3>
-            <p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Select one service to work on</p>
+            <h3>${t('Service Type')} <span style="color:#ef4444;">*</span></h3>
+            <p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">${t('Select one service to work on')}</p>
             <div class="service-grid">
                 ${roServiceTypes.map(s => `
                     <div class="service-chip ${selectedService === s ? 'selected' : ''}"
@@ -680,26 +767,26 @@ function render() {
         </div>
 
         <div class="notes-section">
-            <h3>Work Notes</h3>
+            <h3>${t('Work Notes')}</h3>
             <div class="notes-toolbar">
-                <button class="btn-dictate" id="dictateBtn" onclick="toggleDictation()">🎤 Dictate</button>
+                <button class="btn-dictate" id="dictateBtn" onclick="toggleDictation()">${t('🎤 Dictate')}</button>
             </div>
-            <textarea id="workNotes" placeholder="Describe work performed...">${activeSession?.work_notes || ''}</textarea>
+            <textarea id="workNotes" placeholder="${t('Describe work performed...')}">${activeSession?.work_notes || ''}</textarea>
         </div>
 
         <div class="action-buttons">
             ${isClockedIn ? `
-                <button class="btn btn-end" onclick="clockOut()">🔴 Clock Out</button>
+                <button class="btn btn-end" onclick="clockOut()">${t('🔴 Clock Out')}</button>
             ` : `
-                <button class="btn btn-start" onclick="clockIn()">🟢 Clock In / Start Work</button>
+                <button class="btn btn-start" onclick="clockIn()">${t('🟢 Clock In / Start Work')}</button>
             `}
-            <button class="btn btn-secondary" onclick="window.close()">Close</button>
+            <button class="btn btn-secondary" onclick="window.close()">${t('Close')}</button>
         </div>
 
         <div style="text-align:center;margin-top:16px;font-size:12px;color:#94a3b8;">
-            Signed in as ${currentUser?.name || 'Unknown'} (${currentUser?.email || ''})
+            ${t('Signed in as')} ${currentUser?.name || 'Unknown'} (${currentUser?.email || ''})
             &nbsp;·&nbsp;
-            <span onclick="signOut()" style="color:#3b82f6;cursor:pointer;text-decoration:underline;">Switch account</span>
+            <span onclick="signOut()" style="color:#3b82f6;cursor:pointer;text-decoration:underline;">${t('Switch account')}</span>
         </div>
     `;
 
@@ -723,7 +810,7 @@ function selectService(type) {
 // ── Clock In ─────────────────────────────────────────────────
 async function clockIn() {
     if (!selectedService) {
-        alert('Please select a service type before clocking in.');
+        alert(t('Please select a service type before clocking in.'));
         return;
     }
 
@@ -824,31 +911,31 @@ function showClockOutSummary(durationSec, notes, services) {
     document.getElementById('app').innerHTML = `
         <div style="text-align:center;padding:20px 0;">
             <div style="font-size:64px;margin-bottom:16px;">✅</div>
-            <h2 style="color:#166534;font-size:24px;margin-bottom:8px;">Clocked Out!</h2>
-            <p style="color:#64748b;margin-bottom:24px;">Your time has been recorded.</p>
+            <h2 style="color:#166534;font-size:24px;margin-bottom:8px;">${t('Clocked Out!')}</h2>
+            <p style="color:#64748b;margin-bottom:24px;">${t('Your time has been recorded.')}</p>
 
             <div style="background:#f0fdf4;border-radius:12px;padding:20px;margin-bottom:20px;text-align:left;">
                 <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
-                    <span style="color:#64748b;font-size:14px;">Customer</span>
+                    <span style="color:#64748b;font-size:14px;">${t('Customer')}</span>
                     <span style="font-weight:600;font-size:14px;">${roData.customer_name}</span>
                 </div>
                 <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
-                    <span style="color:#64748b;font-size:14px;">Time Worked</span>
+                    <span style="color:#64748b;font-size:14px;">${t('Time Worked')}</span>
                     <span style="font-weight:700;font-size:14px;color:#166534;">${timeStr}</span>
                 </div>
                 <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
-                    <span style="color:#64748b;font-size:14px;">Services</span>
+                    <span style="color:#64748b;font-size:14px;">${t('Services')}</span>
                     <span style="font-weight:600;font-size:13px;">${services || '—'}</span>
                 </div>
                 ${notes ? `
                 <div style="padding:6px 0;">
-                    <span style="color:#64748b;font-size:14px;display:block;margin-bottom:4px;">Notes</span>
+                    <span style="color:#64748b;font-size:14px;display:block;margin-bottom:4px;">${t('Notes')}</span>
                     <span style="font-size:13px;color:#1e293b;">${notes}</span>
                 </div>` : ''}
             </div>
 
             <button class="btn btn-start" style="width:100%;" onclick="loadAndRender()">
-                🔄 Clock Back In
+                ${t('🔄 Clock Back In')}
             </button>
         </div>`;
 }
@@ -891,7 +978,7 @@ function toggleDictation() {
     recognition.onstart = () => {
         isRecording = true;
         const btn = document.getElementById('dictateBtn');
-        if (btn) { btn.textContent = '⏹ Stop Dictating'; btn.classList.add('recording'); }
+        if (btn) { btn.textContent = t('⏹ Stop Dictating'); btn.classList.add('recording'); }
     };
 
     recognition.onresult = (e) => {
@@ -904,14 +991,14 @@ function toggleDictation() {
     recognition.onend = () => {
         isRecording = false;
         const btn = document.getElementById('dictateBtn');
-        if (btn) { btn.textContent = '🎤 Dictate'; btn.classList.remove('recording'); }
+        if (btn) { btn.textContent = t('🎤 Dictate'); btn.classList.remove('recording'); }
     };
 
     recognition.onerror = (e) => {
         console.warn('Speech error:', e.error);
         isRecording = false;
         const btn = document.getElementById('dictateBtn');
-        if (btn) { btn.textContent = '🎤 Dictate'; btn.classList.remove('recording'); }
+        if (btn) { btn.textContent = t('🎤 Dictate'); btn.classList.remove('recording'); }
     };
 
     recognition.start();
