@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.275
+    PRVS Dashboard v1.276
     Released: 2026-03-22
+    v1.276: Fix email photos auth — switch from session access_token to SUPABASE_ANON_KEY (consistent with submitPartsRequest); improve error message to include result.message and HTTP status
     v1.275: Photo lightbox viewer (tap to view/save full size, prev/next nav, Set as Main); Email photos to customer from Photos modal; photo_share Edge Function type
     v1.274: Add 60-second visibility note to document upload success message
     v1.273: Fix document modal not refreshing after upload — sync currentFilteredData photoLibrary after addDocToLibrary; openPhotoLibrary accepts initialTab param; reopens on docs tab after upload
@@ -2474,7 +2475,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.275</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.276</span>
             </div>
         </header>
 
@@ -3781,12 +3782,12 @@
             if (btn) { btn.disabled = true; btn.textContent = '⏳ Sending...'; }
 
             try {
-                const { data: { session } } = await getSB().auth.getSession();
-                const token = session?.access_token;
-
-                const resp = await fetch('https://axfejhudchdejoiwaetq.supabase.co/functions/v1/send-quote-email', {
+                const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    },
                     body: JSON.stringify({
                         type: 'photo_share',
                         to: toEmail,
@@ -3799,7 +3800,7 @@
                 });
 
                 const result = await resp.json();
-                if (!resp.ok || result.error) throw new Error(result.error || 'Send failed');
+                if (!resp.ok || result.error) throw new Error(result.error || result.message || `HTTP ${resp.status}`);
 
                 document.getElementById('photoEmailModal')?.remove();
                 alert(`✅ ${checked.length} photo(s) sent to ${toEmail} successfully!`);
@@ -6059,7 +6060,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.275 - Released 2026-03-22');
+            console.log('📦 PRVS Dashboard v1.276 - Released 2026-03-22');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
