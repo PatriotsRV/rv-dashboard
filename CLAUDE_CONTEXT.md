@@ -59,7 +59,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟠 | GH#5 | **Work Assignment System** | Assign ROs to specific technicians | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
 | 🔴 | GH#10 | **Kenect API integration** | Pull customer conversation threads into RO view — blocked on Roland getting API credentials from Kenect support | ⏳ Roland action |
-| 🟡 | GH#12 | **Spanish language role** | Full UI translation of presentation layer only — labels, buttons, modals, status text. DB stays English. `t()` function approach. checkin.html highest priority (techs). Confirm: role vs. user preference? | ⏳ Open |
+| 🟡 | GH#12 | **Spanish language toggle** | Full UI translation of presentation layer only — labels, buttons, modals, status text. DB stays English. `t()` function approach. Self-selectable toggle per user (localStorage). Globe icon in header. checkin.html highest priority (techs). | ⏳ Open |
 | 🟡 | GH#11 | **Solar Battery Bank tile — add Watt Hours** | Show Wh alongside Ah in Quote section (Wh = Ah × system voltage); update PDF output too | ⏳ Open |
 | 🟡 | GH#9 | **Parts form autocomplete** | Suggest part names, suppliers, part numbers from existing `parts` table history — both Manage Parts and Parts Request modal | ⏳ Open |
 | 🟡 | GH#2 | **Regular view layout customization** | Drag/resize tiles | ⏳ Open |
