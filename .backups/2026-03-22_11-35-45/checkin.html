@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<!--
+    PRVS Tech Check-In v1.26
+    Released: 2026-03-19
+    Backend: Supabase (replaces Google Sheets)
+    Features: Offline-first with IndexedDB queue, auto clock-out, one RO at a time
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tech Check-In - PRVS</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .logo { text-align: center; margin-bottom: 24px; }
+        .logo h1 { color: #1e3a8a; font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+        .logo p { color: #64748b; font-size: 13px; }
+
+        .ro-info {
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 24px;
+        }
+        .ro-info h2 { color: #1e3a8a; font-size: 18px; margin-bottom: 12px; }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 14px;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #64748b; font-weight: 500; }
+        .info-value { color: #1e293b; font-weight: 600; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .status-badge.checked-in { background: #dcfce7; color: #166534; }
+        .status-badge.checked-out { background: #fee2e2; color: #991b1b; }
+
+        .timer {
+            text-align: center;
+            padding: 20px;
+            background: #fffbeb;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        .timer h3 { color: #92400e; font-size: 13px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        .timer-display { font-size: 48px; font-weight: 700; color: #78350f; font-family: 'Courier New', monospace; }
+
+        .action-buttons { display: flex; flex-direction: column; gap: 12px; }
+
+        .btn {
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+        .btn-start { background: #22c55e; color: white; }
+        .btn-start:hover:not(:disabled) { background: #16a34a; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(34,197,94,0.3); }
+        .btn-end { background: #ef4444; color: white; }
+        .btn-end:hover:not(:disabled) { background: #dc2626; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(239,68,68,0.3); }
+        .btn-secondary { background: #f1f5f9; color: #475569; font-size: 14px; padding: 12px; }
+        .btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
+
+        .sync-banner {
+            padding: 10px 14px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 16px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .sync-banner.offline { background: #fef3c7; color: #92400e; }
+        .sync-banner.syncing { background: #dbeafe; color: #1e40af; }
+        .sync-banner.online { background: #dcfce7; color: #166534; }
+
+        .service-types {
+            margin-bottom: 20px;
+        }
+        .service-types h3 { font-size: 14px; color: #475569; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .service-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .service-chip {
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #475569;
+            transition: all 0.15s;
+            text-align: center;
+        }
+        .service-chip.selected { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+        .service-chip:hover:not(.selected) { border-color: #94a3b8; background: #f8fafc; }
+
+        .notes-section { margin-bottom: 20px; }
+        .notes-section h3 { font-size: 14px; color: #475569; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .notes-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+        .btn-dictate {
+            padding: 6px 14px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-dictate.recording { background: linear-gradient(135deg, #ef4444, #dc2626); animation: pulse 1s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        textarea:focus { outline: none; border-color: #3b82f6; }
+
+        .auto-clockout-banner {
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            color: #9a3412;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+
+        .loading { text-align: center; padding: 40px; color: #64748b; }
+        .error { background: #fee2e2; color: #991b1b; padding: 14px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+
+        .version { text-align: center; margin-top: 16px; font-size: 11px; color: rgba(255,255,255,0.4); font-family: monospace; }
+
+        /* Sign-in screen */
+        .signin-container { text-align: center; padding: 20px 0; }
+        .signin-container p { color: #64748b; margin-bottom: 20px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>🚐 PRVS Tech Check-In</h1>
+            <p>Patriots RV Services</p>
+        </div>
+        <div id="app" class="loading">Loading...</div>
+    </div>
+    <div class="version">v1.26</div>
+
+<script>
+// ── Configuration ─────────────────────────────────────────────
+const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];
+
+const ALL_SERVICE_TYPES = ['Roof', 'Solar', 'Vroom', 'Paint and Body', 'Repairs', 'TrueTopper', 'Detailing', 'Chassis'];
+
+// ── State ─────────────────────────────────────────────────────
+let _sb = null;
+function getSB() {
+    if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    return _sb;
+}
+
+let currentUser     = null;
+let roData          = null;         // RO from Supabase
+let activeSession   = null;         // current open time_log row
+let timerInterval   = null;
+let isOnline        = navigator.onLine;
+let recognition     = null;
+let isRecording     = false;
+let selectedService = null; // single selection only
+let roServiceTypes = []; // service types for this RO
+
+const urlParams  = new URLSearchParams(window.location.search);
+const roIdParam  = urlParams.get('ro');   // PRVS-XXXX-XXXX string
+
+// ── IndexedDB Offline Queue ───────────────────────────────────
+const IDB_NAME    = 'prvs_checkin';
+const IDB_STORE   = 'sync_queue';
+let idb = null;
+
+function openIDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE, { keyPath: 'id', autoIncrement: true });
+        req.onsuccess = e => { idb = e.target.result; resolve(idb); };
+        req.onerror   = () => reject(req.error);
+    });
+}
+
+async function queueOfflineAction(action) {
+    if (!idb) return;
+    return new Promise((resolve, reject) => {
+        const tx  = idb.transaction(IDB_STORE, 'readwrite');
+        const req = tx.objectStore(IDB_STORE).add({ ...action, queuedAt: new Date().toISOString() });
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+    });
+}
+
+async function getQueuedActions() {
+    if (!idb) return [];
+    return new Promise((resolve, reject) => {
+        const tx  = idb.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror   = () => reject(req.error);
+    });
+}
+
+async function removeQueuedAction(id) {
+    if (!idb) return;
+    return new Promise((resolve, reject) => {
+        const tx  = idb.transaction(IDB_STORE, 'readwrite');
+        const req = tx.objectStore(IDB_STORE).delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror   = () => reject(req.error);
+    });
+}
+
+// ── Online/Offline Handling ───────────────────────────────────
+window.addEventListener('online',  () => { isOnline = true;  updateSyncBanner(); drainQueue(); });
+window.addEventListener('offline', () => { isOnline = false; updateSyncBanner(); });
+
+function updateSyncBanner() {
+    const el = document.getElementById('syncBanner');
+    if (!el) return;
+    if (!isOnline) {
+        el.className = 'sync-banner offline';
+        el.textContent = '📵 Offline — actions will sync when reconnected';
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+async function drainQueue() {
+    const items = await getQueuedActions();
+    if (!items.length) return;
+
+    const banner = document.getElementById('syncBanner');
+    if (banner) { banner.className = 'sync-banner syncing'; banner.textContent = `🔄 Syncing ${items.length} offline action(s)...`; banner.style.display = 'block'; }
+
+    for (const item of items) {
+        try {
+            if (item.type === 'clock_in') {
+                const { error } = await getSB().from('time_logs').insert(item.data);
+                if (!error) await removeQueuedAction(item.id);
+            } else if (item.type === 'clock_out') {
+                const { error } = await getSB().from('time_logs').update(item.data).eq('id', item.logId);
+                if (!error) await removeQueuedAction(item.id);
+            }
+        } catch(e) {
+            console.warn('Queue drain error:', e);
+        }
+    }
+
+    if (banner) banner.style.display = 'none';
+    console.log('✅ Offline queue drained');
+}
+
+// ── Init ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('📦 PRVS Tech Check-In v1.26 - Released 2026-03-19');
+
+    if (!roIdParam) {
+        showError('No RO specified. Please scan a valid QR code or use the Check-In button on the dashboard.');
+        return;
+    }
+
+    await openIDB();
+
+    // ── Check for stored identity first (30-day persistence) ──
+    const storedIdentity = localStorage.getItem('prvs_user_identity') 
+                        || localStorage.getItem('prvs_checkin_user');
+    if (storedIdentity) {
+        try {
+            const stored = JSON.parse(storedIdentity);
+            const savedAt = stored.savedAt || Date.now();
+            const daysSince = (Date.now() - savedAt) / 86400000;
+            if (daysSince < 30 && stored.email) {
+                currentUser = { email: stored.email, name: stored.name };
+                console.log('✅ Auto sign-in from stored identity:', currentUser.name);
+                await loadAndRender();
+                return;
+            }
+        } catch(e) { console.warn('Identity parse error:', e); }
+    }
+
+    // No stored identity — show sign-in
+    showSignIn();
+});
+
+// ── Google Sign-In ────────────────────────────────────────────
+function showSignIn() {
+    document.getElementById('app').innerHTML = `
+        <div class="signin-container">
+            <p>Sign in with your Patriots RV Google account to check in or out.</p>
+            <div id="googleSignInBtn"></div>
+        </div>`;
+
+    // Wait for GSI to load
+    const tryInit = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts) {
+            clearInterval(tryInit);
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleSignIn,
+                auto_select: true,
+            });
+            google.accounts.id.renderButton(
+                document.getElementById('googleSignInBtn'),
+                { theme: 'outline', size: 'large', text: 'sign_in_with', width: 300 }
+            );
+            google.accounts.id.prompt();
+        }
+    }, 200);
+}
+
+async function handleSignIn(response) {
+    try {
+        // Decode JWT to get user info
+        const payload = JSON.parse(atob(response.credential.split('.')[1]));
+        currentUser = { email: payload.email, name: payload.name, id: payload.sub };
+        console.log('✅ Signed in as:', currentUser.name);
+
+        // Store identity with timestamp for 30-day persistence
+        const identityRecord = { email: currentUser.email, name: currentUser.name, savedAt: Date.now() };
+        localStorage.setItem('prvs_user_identity', JSON.stringify(identityRecord));
+        localStorage.setItem('prvs_checkin_user', JSON.stringify(currentUser));
+
+        await loadAndRender();
+    } catch(e) {
+        // Try cached user for offline
+        const cached = localStorage.getItem('prvs_checkin_user');
+        if (cached) {
+            currentUser = JSON.parse(cached);
+            await loadAndRender();
+        } else {
+            showError('Sign-in failed. Please try again.');
+        }
+    }
+}
+
+// ── Load RO + Active Session ──────────────────────────────────
+async function loadAndRender() {
+    showLoading('Loading RO...');
+
+    if (isOnline) {
+        try {
+            // Load RO data — support both PRVS-XXXX-XXXX and legacy RO-Name-Date formats
+            let ro = null;
+            let roErr = null;
+
+            if (roIdParam.startsWith('PRVS-')) {
+                // New format — direct lookup
+                const result = await getSB()
+                    .from('repair_orders')
+                    .select('*')
+                    .eq('ro_id', roIdParam)
+                    .maybeSingle();
+                ro = result.data;
+                roErr = result.error;
+            } else {
+                // Legacy format — try to extract customer name and find by name
+                // Format: RO-FirstName-LastName-YYYY-MM-DD
+                const parts = roIdParam.replace('RO-', '').split('-');
+                const datePart = parts.slice(-3).join('-'); // YYYY-MM-DD
+                const namePart = parts.slice(0, -3).join(' ');
+                console.warn('Legacy RO ID format detected:', roIdParam, '— searching by name:', namePart);
+                const result = await getSB()
+                    .from('repair_orders')
+                    .select('*')
+                    .ilike('customer_name', '%' + namePart + '%')
+                    .limit(1)
+                    .maybeSingle();
+                ro = result.data;
+                roErr = result.error;
+                if (!ro) throw new Error('This QR code uses the old format. Please use the Tech Check-In button on the dashboard to get an updated QR code for ' + namePart + '.');
+            }
+
+            if (roErr) throw roErr;
+            if (!ro) throw new Error('RO not found: ' + roIdParam);
+            roData = ro;
+
+            // Check for any active session for this user (any RO)
+            const { data: activeLogs } = await getSB()
+                .from('time_logs')
+                .select('*')
+                .eq('tech_email', currentUser.email)
+                .is('clock_out', null)
+                .order('clock_in', { ascending: false })
+                .limit(1);
+
+            const anyActiveSession = activeLogs?.[0] || null;
+
+            // If active session is on a DIFFERENT RO — prompt and auto clock-out
+            if (anyActiveSession && anyActiveSession.ro_id !== roData.id) {
+                try {
+                    await autoClockOut(anyActiveSession);
+                    // Show banner on next render
+                    if (window._autoClockoutMsg) {
+                        // Will be picked up by render()
+                    }
+                } catch(e) {
+                    if (e.message === 'CANCELLED') {
+                        // Tech cancelled — go back
+                        showError('Clock-in cancelled. You are still clocked in to the previous RO.');
+                        return;
+                    }
+                    throw e;
+                }
+            }
+
+            // Check for active session on THIS RO
+            const { data: thisLogs } = await getSB()
+                .from('time_logs')
+                .select('*')
+                .eq('ro_id', roData.id)
+                .eq('tech_email', currentUser.email)
+                .is('clock_out', null)
+                .order('clock_in', { ascending: false })
+                .limit(1);
+
+            activeSession = thisLogs?.[0] || null;
+
+        } catch(e) {
+            console.warn('Online load failed, using cached data:', e);
+            loadFromCache();
+        }
+    } else {
+        loadFromCache();
+    }
+
+    render();
+}
+
+function loadFromCache() {
+    const cachedRO = localStorage.getItem('prvs_ro_' + roIdParam);
+    if (cachedRO) {
+        roData = JSON.parse(cachedRO);
+    } else {
+        roData = { ro_id: roIdParam, customer_name: 'Unknown (Offline)', rv: '', status: '', technician: '' };
+    }
+    const cachedSession = localStorage.getItem('prvs_session_' + roIdParam + '_' + (currentUser?.email || ''));
+    activeSession = cachedSession ? JSON.parse(cachedSession) : null;
+}
+
+async function autoClockOut(session) {
+    // Look up the previous RO name for the prompt
+    let prevROName = 'previous RO';
+    if (isOnline) {
+        const { data: prevRO } = await getSB()
+            .from('repair_orders')
+            .select('customer_name, ro_id')
+            .eq('id', session.ro_id)
+            .maybeSingle();
+        if (prevRO) prevROName = `${prevRO.customer_name} (${prevRO.ro_id})`;
+    }
+
+    // Ask tech how long ago they finished
+    const answer = await showFinishedTimePrompt(prevROName, session.clock_in);
+    if (answer === null) {
+        // Tech cancelled — don't proceed to new RO
+        throw new Error('CANCELLED');
+    }
+
+    // answer is minutes ago they actually finished
+    const now = new Date();
+    // Cap adjustment so clock_out never goes before clock_in
+    const maxAdjustMinutes = Math.floor((now - new Date(session.clock_in)) / 60000);
+    const adjustMinutes = Math.min(answer, maxAdjustMinutes);
+    const clockOutTime = new Date(now.getTime() - (adjustMinutes * 60 * 1000));
+    const duration = Math.max(0, Math.round((clockOutTime - new Date(session.clock_in)) / 1000));
+
+    const updateData = {
+        clock_out:        clockOutTime.toISOString(),
+        duration_seconds: duration,
+        updated_at:       now.toISOString(),
+        work_notes:       (session.work_notes || '') + (session.work_notes ? '\n' : '') + '[Auto clocked out — tech indicated finished ' + answer + ' min ago]',
+    };
+
+    console.log(`🔄 Auto clocking out of ${prevROName}, adjusted by -${answer} min. Duration: ${Math.round(duration/60)} min`);
+
+    if (isOnline) {
+        await getSB().from('time_logs').update(updateData).eq('id', session.id);
+    } else {
+        await queueOfflineAction({ type: 'clock_out', logId: session.id, data: updateData });
+    }
+    localStorage.removeItem('prvs_session_' + roIdParam + '_' + currentUser.email);
+
+    // Flag so render() can show a banner
+    window._autoClockoutMsg = `Auto clocked out of ${prevROName} — adjusted by ${answer} min.`;
+}
+
+function showFinishedTimePrompt(prevROName, clockInTime) {
+    return new Promise((resolve) => {
+        const clockInStr = new Date(clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const elapsed = Math.round((Date.now() - new Date(clockInTime)) / 60000);
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        overlay.innerHTML = `
+            <div style="background:white;border-radius:16px;padding:28px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+                <div style="font-size:36px;text-align:center;margin-bottom:12px;">⚠️</div>
+                <h2 style="color:#92400e;font-size:18px;font-weight:700;margin-bottom:8px;text-align:center;">Still Clocked In!</h2>
+                <p style="color:#64748b;font-size:14px;margin-bottom:6px;text-align:center;">
+                    You are clocked in to:
+                </p>
+                <p style="color:#1e293b;font-size:15px;font-weight:700;margin-bottom:6px;text-align:center;">${prevROName}</p>
+                <p style="color:#64748b;font-size:13px;margin-bottom:20px;text-align:center;">
+                    Since ${clockInStr} (${elapsed} min ago)
+                </p>
+
+                <label style="display:block;font-size:14px;font-weight:600;color:#475569;margin-bottom:6px;">
+                    How long ago did you finish that RO? <span style="color:#ef4444;font-weight:700;">*</span>
+                    <span style="color:#94a3b8;font-weight:400;font-size:13px;"> (minutes — required)</span>
+                </label>
+
+                <input type="number" id="finishedMins" min="0" max="${elapsed}"
+                    placeholder="Enter minutes ago..."
+                    oninput="document.getElementById('confirmAutoClockout').disabled = !this.value || parseInt(this.value) < 0"
+                    style="width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:16px;margin-bottom:16px;">
+
+                <div style="display:flex;gap:8px;">
+                    <button id="cancelAutoClockout" style="flex:1;padding:12px;background:#f1f5f9;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;color:#475569;">
+                        Cancel
+                    </button>
+                    <button id="confirmAutoClockout" disabled style="flex:2;padding:12px;background:linear-gradient(135deg,#f59e0b,#d97706);border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;color:white;opacity:0.5;">
+                        ✅ Clock Out & Switch RO
+                    </button>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        document.getElementById('finishedMins').addEventListener('input', function() {
+            const btn = document.getElementById('confirmAutoClockout');
+            const valid = this.value !== '' && parseInt(this.value) >= 0;
+            btn.disabled = !valid;
+            btn.style.opacity = valid ? '1' : '0.5';
+        });
+
+        document.getElementById('confirmAutoClockout').addEventListener('click', () => {
+            const val = parseInt(document.getElementById('finishedMins').value);
+            if (isNaN(val) || val < 0) {
+                alert('Please enter how many minutes ago you finished.');
+                return;
+            }
+            overlay.remove();
+            resolve(val);
+        });
+
+        document.getElementById('cancelAutoClockout').addEventListener('click', () => {
+            overlay.remove();
+            resolve(null);
+        });
+    });
+}
+
+// ── Render ────────────────────────────────────────────────────
+function render() {
+    if (!roData) { showError('Could not load RO data.'); return; }
+
+    // Cache RO for offline
+    localStorage.setItem('prvs_ro_' + roIdParam, JSON.stringify(roData));
+
+    const isClockedIn = !!activeSession;
+
+    // Only show service types on this RO, auto-select if just one
+        roServiceTypes = roData.repair_type
+            ? roData.repair_type.split(',').map(s => s.trim()).filter(s => ALL_SERVICE_TYPES.includes(s))
+            : ALL_SERVICE_TYPES.slice();
+        if (!selectedService && roServiceTypes.length === 1) {
+            selectedService = roServiceTypes[0];
+        }
+
+    document.getElementById('app').innerHTML = `
+        <div id="syncBanner" class="sync-banner" style="display:none;"></div>
+
+        ${window._autoClockoutMsg ? `
+        <div class="auto-clockout-banner">
+            ✅ ${window._autoClockoutMsg}
+        </div>` : ''}
+
+        <div class="ro-info">
+            <h2>📋 Repair Order</h2>
+            <div class="info-row">
+                <span class="info-label">Customer</span>
+                <span class="info-value">${roData.customer_name || '—'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">RV</span>
+                <span class="info-value">${roData.rv || '—'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">RO ID</span>
+                <span class="info-value" style="font-family:monospace;font-size:12px;">${roData.ro_id}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Status</span>
+                <span class="info-value">${roData.status || '—'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Technician</span>
+                <span class="info-value">${roData.technician || '—'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Your Status</span>
+                <span class="status-badge ${isClockedIn ? 'checked-in' : 'checked-out'}">
+                    ${isClockedIn ? '🟢 Clocked In' : '🔴 Not Clocked In'}
+                </span>
+            </div>
+            ${isClockedIn ? `
+            <div class="info-row">
+                <span class="info-label">Clocked In</span>
+                <span class="info-value">${new Date(activeSession.clock_in).toLocaleTimeString()}</span>
+            </div>` : ''}
+        </div>
+
+        ${isClockedIn ? `
+        <div class="timer">
+            <h3>⏱ Time on this RO</h3>
+            <div class="timer-display" id="timerDisplay">00:00:00</div>
+        </div>` : ''}
+
+        <div class="service-types">
+            <h3>Service Type <span style="color:#ef4444;">*</span></h3>
+            <p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Select one service to work on</p>
+            <div class="service-grid">
+                ${roServiceTypes.map(s => `
+                    <div class="service-chip ${selectedService === s ? 'selected' : ''}"
+                         onclick="selectService('${s}')">
+                        ${s}
+                    </div>`).join('')}
+            </div>
+        </div>
+
+        <div class="notes-section">
+            <h3>Work Notes</h3>
+            <div class="notes-toolbar">
+                <button class="btn-dictate" id="dictateBtn" onclick="toggleDictation()">🎤 Dictate</button>
+            </div>
+            <textarea id="workNotes" placeholder="Describe work performed...">${activeSession?.work_notes || ''}</textarea>
+        </div>
+
+        <div class="action-buttons">
+            ${isClockedIn ? `
+                <button class="btn btn-end" onclick="clockOut()">🔴 Clock Out</button>
+            ` : `
+                <button class="btn btn-start" onclick="clockIn()">🟢 Clock In / Start Work</button>
+            `}
+            <button class="btn btn-secondary" onclick="window.close()">Close</button>
+        </div>
+
+        <div style="text-align:center;margin-top:16px;font-size:12px;color:#94a3b8;">
+            Signed in as ${currentUser?.name || 'Unknown'} (${currentUser?.email || ''})
+            &nbsp;·&nbsp;
+            <span onclick="signOut()" style="color:#3b82f6;cursor:pointer;text-decoration:underline;">Switch account</span>
+        </div>
+    `;
+
+    updateSyncBanner();
+    // Clear one-time auto clock-out message
+    window._autoClockoutMsg = null;
+
+    if (isClockedIn) {
+        startTimer(new Date(activeSession.clock_in));
+    }
+}
+
+// ── Service Type Select (single) ─────────────────────────────
+function selectService(type) {
+    selectedService = (selectedService === type) ? null : type;
+    document.querySelectorAll('.service-chip').forEach(chip => {
+        chip.classList.toggle('selected', chip.textContent.trim() === selectedService);
+    });
+}
+
+// ── Clock In ─────────────────────────────────────────────────
+async function clockIn() {
+    if (!selectedService) {
+        alert('Please select a service type before clocking in.');
+        return;
+    }
+
+    const now = new Date().toISOString();
+    const notes = document.getElementById('workNotes')?.value || '';
+
+    const logData = {
+        ro_id:         roData.id,
+        tech_email:    currentUser.email,
+        tech_name:     currentUser.name,
+        clock_in:      now,
+        clock_out:     null,
+        service_type:  selectedService,
+        work_notes:    notes,
+        duration_seconds: 0,
+    };
+
+    try {
+        if (isOnline) {
+            const { data, error } = await getSB().from('time_logs').insert(logData).select().single();
+            if (error) throw error;
+            activeSession = data;
+            console.log('✅ Clocked in:', activeSession.id);
+        } else {
+            // Store locally with temp ID
+            const tempId = 'offline_' + Date.now();
+            activeSession = { ...logData, id: tempId, _offline: true };
+            await queueOfflineAction({ type: 'clock_in', data: logData, tempId });
+            console.log('📵 Clock-in queued for sync');
+        }
+
+        // Cache session locally
+        localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
+
+        // Update RO status to In Progress if not already
+        if (isOnline && roData.status !== 'In Progress') {
+            await getSB().from('repair_orders').update({
+                status: 'In Progress',
+                pct_complete: 60,
+                updated_at: now,
+            }).eq('id', roData.id);
+            roData.status = 'In Progress';
+        }
+
+        render();
+    } catch(e) {
+        console.error('Clock-in error:', e);
+        alert('Error clocking in: ' + e.message);
+    }
+}
+
+// ── Clock Out ────────────────────────────────────────────────
+async function clockOut() {
+    if (!activeSession) return;
+
+    const now      = new Date().toISOString();
+    const duration = Math.round((new Date(now) - new Date(activeSession.clock_in)) / 1000);
+    const notes    = document.getElementById('workNotes')?.value || activeSession.work_notes || '';
+    const services = selectedService || activeSession.service_type || '';
+
+    const updateData = {
+        clock_out:        now,
+        duration_seconds: duration,
+        work_notes:       notes,
+        service_type:     selectedService || activeSession.service_type || '',
+        updated_at:       now,
+    };
+
+    try {
+        if (isOnline && !activeSession._offline) {
+            const { error } = await getSB().from('time_logs').update(updateData).eq('id', activeSession.id);
+            if (error) throw error;
+            console.log('✅ Clocked out. Duration:', Math.round(duration / 60), 'minutes');
+        } else {
+            await queueOfflineAction({ type: 'clock_out', logId: activeSession.id, data: updateData });
+            console.log('📵 Clock-out queued for sync');
+        }
+
+        // Clear local session
+        localStorage.removeItem('prvs_session_' + roIdParam + '_' + currentUser.email);
+        activeSession = null;
+
+        stopTimer();
+        showClockOutSummary(duration, notes, services);
+
+    } catch(e) {
+        console.error('Clock-out error:', e);
+        alert('Error clocking out: ' + e.message);
+    }
+}
+
+function showClockOutSummary(durationSec, notes, services) {
+    const mins  = Math.floor(durationSec / 60);
+    const hours = Math.floor(mins / 60);
+    const rem   = mins % 60;
+    const timeStr = hours > 0 ? `${hours}h ${rem}m` : `${mins}m`;
+
+    document.getElementById('app').innerHTML = `
+        <div style="text-align:center;padding:20px 0;">
+            <div style="font-size:64px;margin-bottom:16px;">✅</div>
+            <h2 style="color:#166534;font-size:24px;margin-bottom:8px;">Clocked Out!</h2>
+            <p style="color:#64748b;margin-bottom:24px;">Your time has been recorded.</p>
+
+            <div style="background:#f0fdf4;border-radius:12px;padding:20px;margin-bottom:20px;text-align:left;">
+                <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
+                    <span style="color:#64748b;font-size:14px;">Customer</span>
+                    <span style="font-weight:600;font-size:14px;">${roData.customer_name}</span>
+                </div>
+                <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
+                    <span style="color:#64748b;font-size:14px;">Time Worked</span>
+                    <span style="font-weight:700;font-size:14px;color:#166534;">${timeStr}</span>
+                </div>
+                <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
+                    <span style="color:#64748b;font-size:14px;">Services</span>
+                    <span style="font-weight:600;font-size:13px;">${services || '—'}</span>
+                </div>
+                ${notes ? `
+                <div style="padding:6px 0;">
+                    <span style="color:#64748b;font-size:14px;display:block;margin-bottom:4px;">Notes</span>
+                    <span style="font-size:13px;color:#1e293b;">${notes}</span>
+                </div>` : ''}
+            </div>
+
+            <button class="btn btn-start" style="width:100%;" onclick="loadAndRender()">
+                🔄 Clock Back In
+            </button>
+        </div>`;
+}
+
+// ── Timer ─────────────────────────────────────────────────────
+function startTimer(startTime) {
+    stopTimer();
+    timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const h = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+        const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+        const s = (elapsed % 60).toString().padStart(2, '0');
+        const el = document.getElementById('timerDisplay');
+        if (el) el.textContent = `${h}:${m}:${s}`;
+    }, 1000);
+}
+
+function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+// ── Voice Dictation ───────────────────────────────────────────
+function toggleDictation() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert('Voice dictation not supported in this browser. Try Chrome on Android or iOS Safari.');
+        return;
+    }
+
+    if (isRecording) {
+        recognition?.stop();
+        return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+        isRecording = true;
+        const btn = document.getElementById('dictateBtn');
+        if (btn) { btn.textContent = '⏹ Stop Dictating'; btn.classList.add('recording'); }
+    };
+
+    recognition.onresult = (e) => {
+        const textarea = document.getElementById('workNotes');
+        if (!textarea) return;
+        const transcript = Array.from(e.results).map(r => r[0].transcript).join(' ');
+        textarea.value = (textarea.value ? textarea.value + ' ' : '') + transcript;
+    };
+
+    recognition.onend = () => {
+        isRecording = false;
+        const btn = document.getElementById('dictateBtn');
+        if (btn) { btn.textContent = '🎤 Dictate'; btn.classList.remove('recording'); }
+    };
+
+    recognition.onerror = (e) => {
+        console.warn('Speech error:', e.error);
+        isRecording = false;
+        const btn = document.getElementById('dictateBtn');
+        if (btn) { btn.textContent = '🎤 Dictate'; btn.classList.remove('recording'); }
+    };
+
+    recognition.start();
+}
+
+
+// ── Sign Out ──────────────────────────────────────────────────
+function signOut() {
+    localStorage.removeItem('prvs_user_identity');
+    localStorage.removeItem('prvs_checkin_user');
+    currentUser = null;
+    activeSession = null;
+    if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
+    showSignIn();
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function showLoading(msg = 'Loading...') {
+    document.getElementById('app').innerHTML = `<div class="loading">⏳ ${msg}</div>`;
+}
+
+function showError(msg) {
+    document.getElementById('app').innerHTML = `<div class="error">❌ ${msg}</div>`;
+}
+</script>
+</body>
+</html>

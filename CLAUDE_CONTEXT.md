@@ -26,7 +26,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - [ ] 5. Update the **Version History** table if version was bumped
 - [ ] 5a. If version was bumped: add a **GitHub Release TODO** to the Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
 - [ ] 6. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
-- [ ] 7. Commit and push CLAUDE_CONTEXT.md to GitHub
+- [ ] 7. **Run `bash scripts/backup.sh`** before pushing — creates timestamped snapshot in `.backups/`, keeps last 6
+- [ ] 8. Commit and push CLAUDE_CONTEXT.md to GitHub
 
 > ⚠️ If the session is about to end due to context limits, Claude should say:
 > *"Context is getting full — let me update CLAUDE_CONTEXT.md before we lose this session."*
@@ -59,6 +60,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟠 | GH#5 | **Work Assignment System** | Assign ROs to specific technicians | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
 | 🔴 | GH#10 | **Kenect API integration** | Pull customer conversation threads into RO view — blocked on Roland getting API credentials from Kenect support | ⏳ Roland action |
+| ✅ | GH#13 | **Pre-deploy backup system** | `scripts/backup.sh` — 6-version rolling snapshots to `.backups/` before every push | ✅ Done |
 | 🟡 | GH#12 | **Spanish language toggle** | Full UI translation of presentation layer only — labels, buttons, modals, status text. DB stays English. `t()` function approach. Self-selectable toggle per user (localStorage). Globe icon in header. checkin.html highest priority (techs). | ⏳ Open |
 | 🟡 | GH#11 | **Solar Battery Bank tile — add Watt Hours** | Show Wh alongside Ah in Quote section (Wh = Ah × system voltage); update PDF output too | ⏳ Open |
 | 🟡 | GH#9 | **Parts form autocomplete** | Suggest part names, suppliers, part numbers from existing `parts` table history — both Manage Parts and Parts Request modal | ⏳ Open |
@@ -84,6 +86,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
 | `supabase/functions/send-quote-email/index.ts` | **v1.3** | Edge Function — solar quote email + parts request email with inline photo thumbnails (type: 'parts_request') |
+| `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |
 | `SESSION_STARTER.md` | — | Copyable session kickoff prompt for Roland to paste into Claude |
 | `RELEASE_NOTES_v1.265.md` | — | Release notes for v1.265 |
@@ -149,6 +152,13 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - `repairDescription` → **full replace**: modal pre-fills with current text, save writes the entire new value to `repair_orders.description`, audit log records old + new
 - `roStatusNotes` / `customerCommunicationNotes` → **append-only**: blank modal, new text gets `[timestamp - user]` prefix appended with `\n---\n` separator, written as new row in `notes` table
 - `showVoiceNotesModal(title, prefillValue = '')` — second param pre-fills textarea; leave empty for append-style fields
+
+### Pre-Deploy Backup System
+- **Always run `bash scripts/backup.sh` before `git push origin main`** — this is step 7 of the End of Session Checklist
+- Snapshots saved to `.backups/YYYY-MM-DD_HH-MM-SS/` — 6 rotating versions kept automatically
+- Files backed up: `index.html`, `checkin.html`, `solar.html`, `analytics.html`, `supabase/functions/send-quote-email/index.ts`, `supabase/functions/roof-lookup/index.ts`
+- To restore a file: `cp .backups/YYYY-MM-DD_HH-MM-SS/index.html ./index.html`
+- `.backups/` is committed to the repo — visible and restorable without any git knowledge
 
 ### GitHub Push
 - `gh` CLI is NOT available in the sandbox; use `git` directly from `/sessions/.../mnt/rv-dashboard/`
@@ -240,6 +250,7 @@ supabase functions deploy roof-lookup
 - ✅ **notes_type_check fix (v1.268)** — Changed parts request note insert from `type:'parts_request'` to `type:'ro_status'` with `🔩 PARTS REQUESTED:` body prefix; history query uses `.ilike('body', '%PARTS REQUESTED%')`
 - ✅ **Parts Request photo attachments (v1.269)** — `_partsRequestFiles[]` global array + `previewPartsPhotos/removePartsPhoto/renderPartsPhotoPreview` helpers; orange "📷 Attach / Take Photo(s)" button in modal; thumbnails with × remove; on submit uploads via `uploadToSupabaseStorage`, adds to RO `photo_library`, passes `photoUrls[]` to Edge Function; `send-quote-email` v1.3 embeds photos as inline clickable thumbnails in email HTML
 - ✅ **RO Description inline edit fix (v1.270)** — `showVoiceNotesModal` now accepts optional `prefillValue` param; modal pre-fills textarea with existing description, cursor placed at end; `editField` branches on `repairDescription`: full replace on save (not append), old value captured from `currentFilteredData` before mutation, `writeAuditLog` called with before/after; `roStatusNotes` and `customerCommunicationNotes` keep existing append + timestamp behavior
+- ✅ **Pre-deploy backup system** — `scripts/backup.sh` creates timestamped snapshots of all 6 key files in `.backups/`, keeps last 6 versions, runs before every push per End of Session Checklist
 - ✅ **Photo & document upload fix (v1.271)** — `uploadDocument` fully migrated from Google Drive (was using expired `accessToken` → 401) to Supabase Storage (`uploadToSupabaseStorage` → `addDocToLibrary`); `uploadPhoto` and `uploadDocument` guards changed from `!getSB()` to `!getSB() || !supabaseSession`; session re-check added inside async `onchange` callback; error message updated to "Session expired — please refresh"
 
 ---
