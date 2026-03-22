@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.272
+    PRVS Dashboard v1.273
     Released: 2026-03-20
+    v1.273: Fix document modal not refreshing after upload — sync currentFilteredData photoLibrary after addDocToLibrary; openPhotoLibrary accepts initialTab param; reopens on docs tab after upload
     v1.272: Fix document upload MIME rejection — uploadToSupabaseStorage accepts skipContentType option; uploadDocument passes skipContentType:true so non-image file types (docx, xlsx, etc.) are not rejected by rv-media bucket MIME policy; improved MIME error message with fix instructions
     v1.271: Fix photo & document uploads — uploadDocument migrated from Google Drive to Supabase Storage; uploadPhoto and uploadDocument now check supabaseSession before upload; session-expiry re-check added inside async onchange callback
     v1.270: RO Description edit — pre-fill modal with existing content, full replace on save, before/after audit log
@@ -2471,7 +2472,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.272</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.273</span>
             </div>
         </header>
 
@@ -3495,7 +3496,7 @@
             console.log('✅ Document added to library:', docName);
         }
 
-        function openPhotoLibrary(index) {
+        function openPhotoLibrary(index, initialTab = 'photos') {
             const ro = currentFilteredData[index];
             if (!ro) return;
 
@@ -3565,6 +3566,8 @@
             div.innerHTML = modalHTML;
             document.body.appendChild(div);
             setTimeout(() => loadAllDriveImages(), 50);
+            // Switch to requested tab (e.g. 'docs' after a document upload)
+            if (initialTab === 'docs') setTimeout(() => switchLibTab('docs', index), 10);
         }
 
         function switchLibTab(tab, index) {
@@ -3613,10 +3616,14 @@
                     : 'doc';
 
                 await addDocToLibrary(originalIndex, docUrl, file.name, docType);
+                // Sync updated photoLibrary back to currentFilteredData so the modal reflects the new doc
+                if (currentFilteredData[index]) {
+                    currentFilteredData[index].photoLibrary = currentData[originalIndex].photoLibrary;
+                }
                 alert('✅ Document uploaded successfully!');
                 closePhotoLibrary();
-                // Reopen to refresh
-                setTimeout(() => openPhotoLibrary(index), 100);
+                // Reopen directly on the Documents tab so the new doc is immediately visible
+                setTimeout(() => openPhotoLibrary(index, 'docs'), 100);
             } catch (err) {
                 console.error('Document upload error:', err);
                 const msg = err.message || '';
@@ -5902,7 +5909,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.272 - Released 2026-03-22');
+            console.log('📦 PRVS Dashboard v1.273 - Released 2026-03-22');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
