@@ -181,6 +181,7 @@ Deno.serve(async (req: Request) => {
         from:    `"Patriots RV Services" <${gmailUser}>`,
         replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
         to,
+        cc:      "Patriots RV Services <repair@patriotsrvservices.com>",
         subject,
         text:    `Photos from Patriots RV Services\n\nDear ${customerName},\n\nPlease find ${photos.length} photo(s) of your RV${rv ? ` (${rv})` : ""}${roId ? ` — RO #${roId}` : ""} at the following links:\n\n${photos.map((u, i) => `  ${i + 1}. ${u}`).join("\n")}${message ? `\n\nMessage: ${message}` : ""}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
         html:    htmlBody,
