@@ -1,7 +1,10 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.271
+    PRVS Dashboard v1.274
     Released: 2026-03-20
+    v1.274: Add 60-second visibility note to document upload success message
+    v1.273: Fix document modal not refreshing after upload — sync currentFilteredData photoLibrary after addDocToLibrary; openPhotoLibrary accepts initialTab param; reopens on docs tab after upload
+    v1.272: Fix document upload MIME rejection — uploadToSupabaseStorage accepts skipContentType option; uploadDocument passes skipContentType:true so non-image file types (docx, xlsx, etc.) are not rejected by rv-media bucket MIME policy; improved MIME error message with fix instructions
     v1.271: Fix photo & document uploads — uploadDocument migrated from Google Drive to Supabase Storage; uploadPhoto and uploadDocument now check supabaseSession before upload; session-expiry re-check added inside async onchange callback
     v1.270: RO Description edit — pre-fill modal with existing content, full replace on save, before/after audit log
     v1.269: Parts Request photo attachments — upload to Supabase Storage, add to RO photo_library, embed inline thumbnails in management email
@@ -2470,7 +2473,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.271</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.274</span>
             </div>
         </header>
 
@@ -3494,7 +3497,7 @@
             console.log('✅ Document added to library:', docName);
         }
 
-        function openPhotoLibrary(index) {
+        function openPhotoLibrary(index, initialTab = 'photos') {
             const ro = currentFilteredData[index];
             if (!ro) return;
 
@@ -3564,6 +3567,8 @@
             div.innerHTML = modalHTML;
             document.body.appendChild(div);
             setTimeout(() => loadAllDriveImages(), 50);
+            // Switch to requested tab (e.g. 'docs' after a document upload)
+            if (initialTab === 'docs') setTimeout(() => switchLibTab('docs', index), 10);
         }
 
         function switchLibTab(tab, index) {
@@ -3602,8 +3607,9 @@
 
             try {
                 // Upload to Supabase Storage — same rv-media bucket, docs subfolder
+                // skipContentType: true so non-image MIME types are not rejected by bucket policy
                 const roId = currentData[originalIndex]?.roId || 'general';
-                const docUrl = await uploadToSupabaseStorage(file, roId + '/docs');
+                const docUrl = await uploadToSupabaseStorage(file, roId + '/docs', { skipContentType: true });
 
                 const ext = file.name.split('.').pop().toLowerCase();
                 const docType = ext === 'pdf' ? 'pdf'
@@ -3611,13 +3617,22 @@
                     : 'doc';
 
                 await addDocToLibrary(originalIndex, docUrl, file.name, docType);
-                alert('✅ Document uploaded successfully!');
+                // Sync updated photoLibrary back to currentFilteredData so the modal reflects the new doc
+                if (currentFilteredData[index]) {
+                    currentFilteredData[index].photoLibrary = currentData[originalIndex].photoLibrary;
+                }
+                alert('✅ Document uploaded successfully!\n\nNote: It may take up to 60 seconds for the document to appear in the list. If you don\'t see it right away, close and reopen Photos & Docs shortly.');
                 closePhotoLibrary();
-                // Reopen to refresh
-                setTimeout(() => openPhotoLibrary(index), 100);
+                // Reopen directly on the Documents tab so the new doc is immediately visible
+                setTimeout(() => openPhotoLibrary(index, 'docs'), 100);
             } catch (err) {
                 console.error('Document upload error:', err);
-                alert('Upload failed: ' + err.message);
+                const msg = err.message || '';
+                if (msg.toLowerCase().includes('mime type') || msg.toLowerCase().includes('not supported')) {
+                    alert('Upload failed: This file type is not yet allowed in storage.\n\nFix: Go to Supabase → Storage → rv-media bucket → Edit → remove the MIME type restriction (or add application/octet-stream). Then try again.');
+                } else {
+                    alert('Upload failed: ' + msg);
+                }
                 if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = '📎 Upload Document'; }
             }
             input.value = '';
@@ -3652,20 +3667,23 @@
             return uploadToSupabaseStorage(file);
         }
 
-        async function uploadToSupabaseStorage(file, roId) {
+        async function uploadToSupabaseStorage(file, roId, options = {}) {
             console.log('Uploading to Supabase Storage...');
 
             const ext = file.name.split('.').pop() || 'jpg';
             const folder = roId || 'general';
             const filename = `${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
+            // For document uploads (non-image), omit contentType so the bucket's
+            // MIME allowlist does not reject non-image file types. For images, keep
+            // the explicit type so previews render correctly.
+            const uploadOpts = { upsert: false };
+            if (!options.skipContentType) uploadOpts.contentType = file.type;
+
             const { data, error } = await getSB()
                 .storage
                 .from('rv-media')
-                .upload(filename, file, {
-                    contentType: file.type,
-                    upsert: false
-                });
+                .upload(filename, file, uploadOpts);
 
             if (error) {
                 console.error('Supabase Storage upload error:', error);
@@ -5892,7 +5910,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.271 - Released 2026-03-20');
+            console.log('📦 PRVS Dashboard v1.274 - Released 2026-03-22');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');

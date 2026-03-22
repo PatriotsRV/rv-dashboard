@@ -69,8 +69,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
 | ✅ | — | **Deploy roof-lookup Edge Function** | Confirmed deployed — 5 deployments, updated 2 days ago | ✅ Done |
 | ✅ | — | **Test calendar re-auth on iPhone** | Full mobile OAuth round-trip flow — confirm Schedule modal reopens after auth | ✅ Done |
-| 🟡 | — | **GitHub Release v1.272** | Create release at github.com/PatriotsRV/rv-dashboard/releases/new — tag v1.272 | ⏳ Roland action |
-| 🟡 | — | **Fix Supabase rv-media bucket MIME types** | Go to Supabase → Storage → rv-media → Edit → remove MIME type restriction (or add application/octet-stream). Required for document uploads to fully work. | ⏳ Roland action |
+| 🟡 | — | **GitHub Release v1.275** | Create release at github.com/PatriotsRV/rv-dashboard/releases/new — tag v1.275 | ⏳ Roland action |
+| ✅ | — | **Fix Supabase rv-media bucket MIME types** | Roland confirmed bucket MIME list updated to include docx, xlsx, pptx, pdf, text, octet-stream | ✅ Done |
+| 🔴 | — | **Redeploy send-quote-email Edge Function** | v1.4 adds photo_share type — must redeploy for email photos feature to work | ⏳ Roland action |
 | ✅ | — | **Run SQL migration for Parts Request** | `has_open_parts_request BOOLEAN` column confirmed present in `repair_orders` table | ✅ Done |
 | ✅ | — | **Redeploy send-quote-email Edge Function** | Confirmed deployed — 13 deployments, updated a day ago | ✅ Done |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
@@ -81,12 +82,12 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.272** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system with photo attachments |
+| `index.html` | **v1.275** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system with photo attachments, photo lightbox viewer, email photos to customer |
 | `checkin.html` | **v1.26** | Technician clock-in/out, offline-first IndexedDB queue |
 | `analytics.html` | **v1.0** | Analytics/reporting view |
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
-| `supabase/functions/send-quote-email/index.ts` | **v1.3** | Edge Function — solar quote email + parts request email with inline photo thumbnails (type: 'parts_request') |
+| `supabase/functions/send-quote-email/index.ts` | **v1.4** | Edge Function — solar quote email + parts request email + photo share email (types: 'solar_quote', 'parts_request', 'photo_share') |
 | `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |
 | `SESSION_STARTER.md` | — | Copyable session kickoff prompt for Roland to paste into Claude |
@@ -251,7 +252,11 @@ supabase functions deploy roof-lookup
 - ✅ **notes_type_check fix (v1.268)** — Changed parts request note insert from `type:'parts_request'` to `type:'ro_status'` with `🔩 PARTS REQUESTED:` body prefix; history query uses `.ilike('body', '%PARTS REQUESTED%')`
 - ✅ **Parts Request photo attachments (v1.269)** — `_partsRequestFiles[]` global array + `previewPartsPhotos/removePartsPhoto/renderPartsPhotoPreview` helpers; orange "📷 Attach / Take Photo(s)" button in modal; thumbnails with × remove; on submit uploads via `uploadToSupabaseStorage`, adds to RO `photo_library`, passes `photoUrls[]` to Edge Function; `send-quote-email` v1.3 embeds photos as inline clickable thumbnails in email HTML
 - ✅ **RO Description inline edit fix (v1.270)** — `showVoiceNotesModal` now accepts optional `prefillValue` param; modal pre-fills textarea with existing description, cursor placed at end; `editField` branches on `repairDescription`: full replace on save (not append), old value captured from `currentFilteredData` before mutation, `writeAuditLog` called with before/after; `roStatusNotes` and `customerCommunicationNotes` keep existing append + timestamp behavior
-- ✅ **Document upload MIME fix (v1.272)** — `uploadToSupabaseStorage` accepts `skipContentType` option; `uploadDocument` passes `skipContentType:true` to bypass bucket MIME policy for non-image files; improved error message with fix instructions; Roland must also remove MIME restriction from rv-media bucket in Supabase dashboard
+- ✅ **Document upload MIME fix (v1.272)** — `uploadToSupabaseStorage` accepts `skipContentType` option; `uploadDocument` passes `skipContentType:true` to bypass bucket MIME policy for non-image files; improved error message with fix instructions; Roland confirmed bucket MIME list updated in Supabase dashboard
+- ✅ **Document modal refresh fix (v1.273)** — After document upload, `currentFilteredData[index].photoLibrary` explicitly synced from `currentData[originalIndex].photoLibrary`; `openPhotoLibrary` accepts `initialTab = 'photos'|'docs'` param; modal closes and reopens on Documents tab after upload so new doc is immediately visible
+- ✅ **60-second visibility note (v1.274)** — Document upload success alert now tells user documents may take up to 60 seconds to appear due to Supabase Storage propagation delay
+- ✅ **Photo lightbox viewer (v1.275)** — Photo thumbnails tap to open full-screen lightbox; `openPhotoLightbox(photoIdx, libIndex)` renders full-size photo with prev/next nav, photo counter, "💾 Open / Save" link (opens in new tab/prompts save), "⭐ Set as Main" button (non-main) or "Main Photo" label (main); `navigateLightbox(dir)` cycles photos; `closePhotoLightbox()` removes overlay; `window._libPhotos`, `_libMainUrl`, `_libRoIndex` set at modal open for lightbox navigation; "Set as Main" moved from grid thumbnails to lightbox view
+- ✅ **Email photos to customer (v1.275)** — "📧 Email Photos to Customer" button appears below photo grid if `ro.customerEmail` exists and photos are present; `openPhotoEmailModal(index)` shows overlay with checkboxes per photo (all pre-checked), pre-filled recipient email, optional message textarea; `sendPhotosToCustomer(index)` calls Edge Function with `type:'photo_share'`; `send-quote-email` Edge Function v1.4 adds `photo_share` branch — branded customer email with inline photo grid, each photo as clickable full-size link; **Roland must redeploy Edge Function** for this to work
 - ✅ **Pre-deploy backup system** — `scripts/backup.sh` creates timestamped snapshots of all 6 key files in `.backups/`, keeps last 6 versions, runs before every push per End of Session Checklist
 - ✅ **Photo & document upload fix (v1.271)** — `uploadDocument` fully migrated from Google Drive (was using expired `accessToken` → 401) to Supabase Storage (`uploadToSupabaseStorage` → `addDocToLibrary`); `uploadPhoto` and `uploadDocument` guards changed from `!getSB()` to `!getSB() || !supabaseSession`; session re-check added inside async `onchange` callback; error message updated to "Session expired — please refresh"
 
@@ -276,6 +281,9 @@ supabase functions deploy roof-lookup
 | v1.270 | 2026-03-20 | RO Description inline edit — pre-fill modal with current content, full replace, before/after audit log |
 | v1.271 | 2026-03-20 | Fix photo & document uploads — uploadDocument migrated to Supabase Storage; supabaseSession guard on both upload paths |
 | v1.272 | 2026-03-22 | Fix document upload MIME rejection — skipContentType option on uploadToSupabaseStorage; document uploads bypass bucket MIME policy; improved error message |
+| v1.273 | 2026-03-22 | Fix document modal refresh — sync currentFilteredData photoLibrary after addDocToLibrary; openPhotoLibrary initialTab param; reopens on docs tab after upload |
+| v1.274 | 2026-03-22 | Add 60-second visibility note to document upload success alert |
+| v1.275 | 2026-03-22 | Photo lightbox viewer (tap to view/save, prev/next nav, Set as Main from viewer); Email photos to customer (send selected photos to RO customer email via Edge Function); Edge Function v1.4 adds photo_share type |
 
 ---
 
@@ -294,3 +302,4 @@ supabase functions deploy roof-lookup
 | 2026-03-20 | 9 | v1.270 — RO Description inline edit fix: showVoiceNotesModal prefillValue param, full replace on save, writeAuditLog before/after. Start-of-session checklist followed. |
 | 2026-03-20 | 10 | v1.271 — Fixed photo upload auth guard (!getSB() → !getSB()\|\|!supabaseSession, re-check in onchange). Migrated uploadDocument from Google Drive to Supabase Storage (eliminates 401). |
 | 2026-03-21 | 11 | No code changes. Verified + marked ✅ Done: SQL migration, roof-lookup deploy, send-quote-email deploy, calendar re-auth iPhone test. Added GH#9 (parts autocomplete), GH#10 (Kenect API integration), GH#11 (solar battery Wh). Added GitHub Release step to End of Session Checklist. Dropped v1.265/v1.266 backfill release items. |
+| 2026-03-22 | 12 | Added GH#12 (Spanish toggle), GH#13 (pre-deploy backup). Built scripts/backup.sh (6-version rotating snapshots). SESSION_STARTER.md overhauled (hardened rules, GitHub fallback path, RESET/PAUSE/STOP commands, Key Reference table). PRVS_Technician_Guide.docx created. v1.272 MIME fix. v1.273 document modal refresh fix. v1.274 60-second note. v1.275 photo lightbox viewer + email photos to customer + Edge Function v1.4 photo_share type. Context limit hit — session ended mid-work. |

@@ -1,9 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.275
-    Released: 2026-03-22
-    v1.275: Photo lightbox viewer (tap to view/save full size, prev/next nav, Set as Main); Email photos to customer from Photos modal; photo_share Edge Function type
-    v1.274: Add 60-second visibility note to document upload success message
+    PRVS Dashboard v1.273
+    Released: 2026-03-20
     v1.273: Fix document modal not refreshing after upload — sync currentFilteredData photoLibrary after addDocToLibrary; openPhotoLibrary accepts initialTab param; reopens on docs tab after upload
     v1.272: Fix document upload MIME rejection — uploadToSupabaseStorage accepts skipContentType option; uploadDocument passes skipContentType:true so non-image file types (docx, xlsx, etc.) are not rejected by rv-media bucket MIME policy; improved MIME error message with fix instructions
     v1.271: Fix photo & document uploads — uploadDocument migrated from Google Drive to Supabase Storage; uploadPhoto and uploadDocument now check supabaseSession before upload; session-expiry re-check added inside async onchange callback
@@ -2474,7 +2472,7 @@
                 <span id="totalRVs">0 RVs on Lot</span>
             </div>
             <div style="text-align: right; margin-top: 8px;">
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.275</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.273</span>
             </div>
         </header>
 
@@ -3504,9 +3502,6 @@
 
             const library = parseLibrary(ro.photoLibrary || '');
             const mainUrl = ro.rvPhotoUrl || '';
-            window._libPhotos = library.photos;
-            window._libMainUrl = mainUrl;
-            window._libRoIndex = index;
             // Helper available via photoEntry()
 
             const renderPhotosTab = () => {
@@ -3514,20 +3509,17 @@
                     ? '<p style="color:#64748b;text-align:center;padding:20px;">No photos yet.</p>'
                     : library.photos.map((url, i) => {
                         const isMain = url === mainUrl;
-                        return `<div onclick="openPhotoLightbox(${i}, ${index})" style="position:relative;border-radius:10px;overflow:hidden;border:3px solid ${isMain ? '#22c55e' : '#e2e8f0'};cursor:pointer;">
+                        return `<div style="position:relative;border-radius:10px;overflow:hidden;border:3px solid ${isMain ? '#22c55e' : '#e2e8f0'};">
                             <img src="${url.includes('sz=w') ? url.replace(/sz=w\d+/, 'sz=w200') : url}" loading="lazy" style="width:100%;height:140px;object-fit:cover;display:block;background:#f1f5f9;" onerror="this.style.opacity='0.3'">
-                            ${isMain ? '<div style="position:absolute;top:6px;left:6px;background:#22c55e;color:white;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;">⭐ MAIN</div>' : ''}
-                            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.45);color:white;text-align:center;font-size:11px;padding:4px;pointer-events:none;">🔍 Tap to view</div>
+                            ${isMain
+                                ? '<div style="position:absolute;top:6px;left:6px;background:#22c55e;color:white;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;">⭐ MAIN</div>'
+                                : `<button onclick="setMainPhoto(${index}, '${url}')" style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);background:#3b82f6;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">⭐ Set as Main</button>`}
                         </div>`;
                     }).join('');
-                const emailBtn = ro.customerEmail && library.photos.length > 0
-                    ? `<button onclick="openPhotoEmailModal(${index})" style="width:100%;padding:12px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:10px;">📧 Email Photos to Customer</button>`
-                    : '';
                 return `
-                    ${library.photos.length > 0 ? '<p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Tap a photo to view full size. Set as main from the viewer.</p>' : ''}
+                    ${library.photos.length > 0 ? '<p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Tap a photo to set as main.</p>' : ''}
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:16px;">${thumbsHtml}</div>
-                    <button onclick="uploadPhoto(${index}); closePhotoLibrary();" style="width:100%;padding:12px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">📷 Add New Photo</button>
-                    ${emailBtn}`;
+                    <button onclick="uploadPhoto(${index}); closePhotoLibrary();" style="width:100%;padding:12px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">📷 Add New Photo</button>`;
             };
 
             const renderDocsTab = () => {
@@ -3628,7 +3620,7 @@
                 if (currentFilteredData[index]) {
                     currentFilteredData[index].photoLibrary = currentData[originalIndex].photoLibrary;
                 }
-                alert('✅ Document uploaded successfully!\n\nNote: It may take up to 60 seconds for the document to appear in the list. If you don\'t see it right away, close and reopen Photos & Docs shortly.');
+                alert('✅ Document uploaded successfully!');
                 closePhotoLibrary();
                 // Reopen directly on the Documents tab so the new doc is immediately visible
                 setTimeout(() => openPhotoLibrary(index, 'docs'), 100);
@@ -3666,148 +3658,6 @@
             closePhotoLibrary();
             renderBoard();
             alert('✅ Main photo updated!');
-        }
-
-        // ── PHOTO LIGHTBOX ────────────────────────────────────────────────
-        function openPhotoLightbox(photoIdx, libIndex) {
-            const photos = window._libPhotos || [];
-            if (!photos.length) return;
-            const url = photos[photoIdx];
-            if (!url) return;
-            window._lightboxIdx = photoIdx;
-            window._lightboxLibIdx = libIndex;
-            const existing = document.getElementById('photoLightbox');
-            if (existing) existing.remove();
-
-            const isMain = url === (window._libMainUrl || '');
-            const hasMultiple = photos.length > 1;
-
-            const setMainHtml = isMain
-                ? `<span style="background:#22c55e;color:white;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;white-space:nowrap;">⭐ Main Photo</span>`
-                : `<button onclick="setMainPhoto(${libIndex},'${url}');closePhotoLightbox();" style="background:#22c55e;color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">⭐ Set as Main</button>`;
-
-            const overlay = document.createElement('div');
-            overlay.id = 'photoLightbox';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:10010;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
-            overlay.onclick = (e) => { if (e.target === overlay) closePhotoLightbox(); };
-
-            overlay.innerHTML = `
-                <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;z-index:1;">
-                    ${setMainHtml}
-                    <a href="${url}" target="_blank" style="background:#3b82f6;color:white;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;">💾 Open / Save</a>
-                    <button onclick="closePhotoLightbox()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✕ Close</button>
-                </div>
-                ${hasMultiple ? `<button onclick="navigateLightbox(-1)" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);color:white;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:1;display:flex;align-items:center;justify-content:center;">&#8249;</button>` : ''}
-                <img src="${url}" style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;box-shadow:0 4px 40px rgba(0,0,0,0.5);margin-top:60px;">
-                ${hasMultiple ? `<button onclick="navigateLightbox(1)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);color:white;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:1;display:flex;align-items:center;justify-content:center;">&#8250;</button>` : ''}
-                ${hasMultiple ? `<div style="position:absolute;bottom:16px;color:rgba(255,255,255,0.7);font-size:13px;">${photoIdx + 1} / ${photos.length}</div>` : ''}`;
-
-            document.body.appendChild(overlay);
-        }
-
-        function navigateLightbox(dir) {
-            const photos = window._libPhotos || [];
-            if (!photos.length) return;
-            const newIdx = (window._lightboxIdx + dir + photos.length) % photos.length;
-            openPhotoLightbox(newIdx, window._lightboxLibIdx);
-        }
-
-        function closePhotoLightbox() {
-            const lb = document.getElementById('photoLightbox');
-            if (lb) lb.remove();
-        }
-
-        // ── EMAIL PHOTOS TO CUSTOMER ──────────────────────────────────────
-        function openPhotoEmailModal(index) {
-            const ro = currentFilteredData[index];
-            if (!ro) return;
-            const photos = window._libPhotos || [];
-            if (!photos.length) { alert('No photos to send.'); return; }
-
-            const existing = document.getElementById('photoEmailModal');
-            if (existing) existing.remove();
-
-            const checkboxesHtml = photos.map((url, i) => {
-                const thumb = url.includes('sz=w') ? url.replace(/sz=w\d+/, 'sz=w120') : url;
-                return `<label style="display:flex;align-items:center;gap:10px;padding:8px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;">
-                    <input type="checkbox" name="emailPhoto" value="${url}" checked style="width:18px;height:18px;flex-shrink:0;cursor:pointer;">
-                    <img src="${thumb}" style="width:60px;height:45px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.style.opacity='0.3'">
-                    <span style="font-size:12px;color:#475569;">Photo ${i + 1}</span>
-                </label>`;
-            }).join('');
-
-            const overlay = document.createElement('div');
-            overlay.id = 'photoEmailModal';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10010;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
-            overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-
-            overlay.innerHTML = `
-                <div style="background:white;border-radius:16px;padding:28px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                        <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;margin:0;font-size:1.4rem;">📧 Email Photos to Customer</h2>
-                        <button onclick="document.getElementById('photoEmailModal').remove()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:14px;font-weight:600;">✕</button>
-                    </div>
-                    <div style="margin-bottom:14px;">
-                        <label style="display:block;font-size:13px;font-weight:700;color:#475569;margin-bottom:6px;">Send To:</label>
-                        <input id="photoEmailTo" type="email" value="${ro.customerEmail || ''}" placeholder="customer@email.com" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;box-sizing:border-box;">
-                    </div>
-                    <div style="margin-bottom:14px;">
-                        <label style="display:block;font-size:13px;font-weight:700;color:#475569;margin-bottom:8px;">Select Photos to Send:</label>
-                        <div style="display:flex;flex-direction:column;gap:6px;">${checkboxesHtml}</div>
-                    </div>
-                    <div style="margin-bottom:18px;">
-                        <label style="display:block;font-size:13px;font-weight:700;color:#475569;margin-bottom:6px;">Optional Message:</label>
-                        <textarea id="photoEmailMsg" rows="3" placeholder="Add a personal note to the customer..." style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;box-sizing:border-box;resize:vertical;"></textarea>
-                    </div>
-                    <button id="sendPhotosBtn" onclick="sendPhotosToCustomer(${index})" style="width:100%;padding:13px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">📧 Send Photos</button>
-                </div>`;
-
-            document.body.appendChild(overlay);
-        }
-
-        async function sendPhotosToCustomer(index) {
-            const ro = currentFilteredData[index];
-            if (!ro) return;
-
-            const toEmail = document.getElementById('photoEmailTo')?.value?.trim();
-            if (!toEmail) { alert('Please enter a recipient email address.'); return; }
-
-            const checked = [...document.querySelectorAll('input[name="emailPhoto"]:checked')].map(cb => cb.value);
-            if (!checked.length) { alert('Please select at least one photo to send.'); return; }
-
-            const message = document.getElementById('photoEmailMsg')?.value?.trim() || '';
-
-            const btn = document.getElementById('sendPhotosBtn');
-            if (btn) { btn.disabled = true; btn.textContent = '⏳ Sending...'; }
-
-            try {
-                const { data: { session } } = await getSB().auth.getSession();
-                const token = session?.access_token;
-
-                const resp = await fetch('https://axfejhudchdejoiwaetq.supabase.co/functions/v1/send-quote-email', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({
-                        type: 'photo_share',
-                        to: toEmail,
-                        customerName: ro.customerName,
-                        roId: ro.roId,
-                        rv: ro.rv,
-                        message,
-                        photoUrls: checked
-                    })
-                });
-
-                const result = await resp.json();
-                if (!resp.ok || result.error) throw new Error(result.error || 'Send failed');
-
-                document.getElementById('photoEmailModal')?.remove();
-                alert(`✅ ${checked.length} photo(s) sent to ${toEmail} successfully!`);
-            } catch (err) {
-                console.error('Email photos error:', err);
-                alert('❌ Failed to send photos: ' + (err.message || 'Unknown error'));
-                if (btn) { btn.disabled = false; btn.textContent = '📧 Send Photos'; }
-            }
         }
 
         // Upload file to Supabase Storage rv-media bucket
@@ -6059,7 +5909,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.275 - Released 2026-03-22');
+            console.log('📦 PRVS Dashboard v1.273 - Released 2026-03-22');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
