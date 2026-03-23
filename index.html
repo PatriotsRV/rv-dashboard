@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.280
+    PRVS Dashboard v1.281
     Released: 2026-03-23
+    v1.281: Fix roId scope bug in appendToSupabase — console.log after insert loop was referencing for-loop variable roId (out of scope); changed to data.ro_id
     v1.280: Fix RO insert race condition — replace check-then-insert with optimistic insert loop (generateROIdCandidates); 23505 → retry next suffix automatically; submit button disabled during save to prevent concurrent submissions
     v1.279: Video support in Photos tab — isVideoUrl() helper; uploadPhoto accepts image/*,video/*; video-only file filter lifted; thumbnail grid shows 🎬 tile for videos; lightbox plays <video controls> for videos, suppresses Set as Main; email modal shows videos as non-selectable with 🎬 label
     v1.278: Fix duplicate ro_id 409 crash — async generateUniqueROId() checks Supabase for collision before insert, appends -2/-3 suffix if needed; try/catch at submit handler gives user-visible error instead of silent failure
@@ -2480,7 +2481,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.280</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.281</span>
             </div>
         </header>
 
@@ -6084,7 +6085,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.280 - Released 2026-03-23');
+            console.log('📦 PRVS Dashboard v1.281 - Released 2026-03-23');
 
             // Auto-fill saved Anthropic API key into both scan inputs
             const savedAnthropicKey = localStorage.getItem('prvs_anthropic_key');
@@ -8347,7 +8348,7 @@ Notes: ${notes}` : '',
                 });
             }
 
-            console.log('✅ New RO saved to Supabase:', roId);
+            console.log('✅ New RO saved to Supabase:', data.ro_id);
             return data;
         }
 
