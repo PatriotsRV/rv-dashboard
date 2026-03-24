@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.283
+    PRVS Dashboard v1.284
     Released: 2026-03-23
+    v1.284: Parts chip states (GH#14) — three-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all three states; submitPartsRequest now sets parts_status='outstanding'
     v1.283: Fix "Date RV Arrived on Lot" not saving — date_arrived was missing from updateROInSupabase() payload; field was read from Edit RO form but silently dropped before Supabase write
     v1.282: Duplicate RO Manager (Admin only) — getBaseROId()/findDuplicateGroups() detect ROs sharing a base PRVS hash; 🔗 Merge Dupes button appears in header with red badge count; modal lets admin pick master per group; executeDupeMerge() reassigns notes/parts/time_logs/insurance_scans/audit_log FKs, merges photo_library, then deletes duplicates; button auto-hides when no dupes remain
     v1.281: Fix roId scope bug in appendToSupabase — console.log after insert loop was referencing for-loop variable roId (out of scope); changed to data.ro_id
@@ -537,6 +538,85 @@
         .parts-request-chip:hover {
             background: rgba(255, 20, 147, 0.22);
         }
+
+        /* ── Parts Status Chips (GH#14) ─────────────────────────────── */
+        .parts-status-chip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border-width: 1.5px;
+            border-style: solid;
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            cursor: pointer;
+            margin-bottom: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            transition: background 0.2s;
+        }
+        .parts-status-chip.sourcing {
+            border-color: #ff6a00;
+            background: rgba(255, 106, 0, 0.13);
+            color: #ff6a00;
+            animation: chip-pulse 2.0s ease-in-out infinite;
+            text-shadow: 0 0 8px rgba(255,106,0,0.5);
+        }
+        .parts-status-chip.sourcing:hover { background: rgba(255, 106, 0, 0.25); }
+        .parts-status-chip.outstanding {
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.13);
+            color: #f59e0b;
+            animation: chip-pulse 2.4s ease-in-out infinite;
+        }
+        .parts-status-chip.outstanding:hover { background: rgba(245, 158, 11, 0.25); }
+        .parts-status-chip.received {
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.13);
+            color: #22c55e;
+        }
+        .parts-status-chip.received:hover { background: rgba(34, 197, 94, 0.25); }
+
+        .parts-status-modal-btn {
+            flex: 1;
+            padding: 12px 8px;
+            border-radius: 10px;
+            border: 2px solid;
+            font-weight: 800;
+            font-size: 0.82rem;
+            cursor: pointer;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .parts-status-modal-btn.sourcing {
+            border-color: #ff6a00;
+            background: rgba(255,106,0,0.12);
+            color: #ff6a00;
+        }
+        .parts-status-modal-btn.sourcing:hover { background: rgba(255,106,0,0.28); }
+        .parts-status-modal-btn.outstanding {
+            border-color: #f59e0b;
+            background: rgba(245,158,11,0.12);
+            color: #f59e0b;
+        }
+        .parts-status-modal-btn.outstanding:hover { background: rgba(245,158,11,0.28); }
+        .parts-status-modal-btn.received {
+            border-color: #22c55e;
+            background: rgba(34,197,94,0.12);
+            color: #22c55e;
+        }
+        .parts-status-modal-btn.received:hover { background: rgba(34,197,94,0.28); }
+        .parts-status-modal-btn.clear {
+            border-color: var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+        }
+        .parts-status-modal-btn.clear:hover { background: var(--bg-tertiary); }
 
         .request-parts-btn {
             width: 100%;
@@ -2483,7 +2563,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.283</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.284</span>
             </div>
         </header>
 
@@ -2551,7 +2631,9 @@
                     <div class="filter-collapsible" id="parts-collapsible">
                         <div class="filter-group" style="padding-top:8px;">
                             <button class="filter-btn active" id="partsFilterBtn" data-filter="all" data-type="parts" onclick="togglePartsFilter()">All ROs</button>
-                            <button class="filter-btn" data-filter="outstanding" data-type="parts" onclick="togglePartsFilter('outstanding')">⚠️ Outstanding</button>
+                            <button class="filter-btn" data-filter="ps-sourcing" data-type="parts" onclick="togglePartsFilter('ps-sourcing')" style="color:#ff6a00; border-color:rgba(255,106,0,0.4);">🔍 Part Sourcing</button>
+                            <button class="filter-btn" data-filter="ps-outstanding" data-type="parts" onclick="togglePartsFilter('ps-outstanding')" style="color:#f59e0b; border-color:rgba(245,158,11,0.4);">⚠️ Parts Outstanding</button>
+                            <button class="filter-btn" data-filter="ps-received" data-type="parts" onclick="togglePartsFilter('ps-received')" style="color:#22c55e; border-color:rgba(34,197,94,0.4);">✅ Parts Received</button>
                             <button class="filter-btn" data-filter="backordered" data-type="parts" onclick="togglePartsFilter('backordered')">🔴 Backordered</button>
                         </div>
                     </div>
@@ -6033,6 +6115,17 @@ Notes: ${notes}` : '',
             try {
                 await updatePartInSheet(part);
                 await updatePartsJsonInSheet(ctx.originalIndex);
+
+                // Auto-flip parts_status to 'received' if ALL parts are now Received or Installed
+                const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed');
+                const ro = currentFilteredData[filteredIndex];
+                if (allDone && ro && ro.partsStatus !== 'received') {
+                    console.log('🔩 All parts received — auto-flipping parts_status to received');
+                    await setPartsStatus(filteredIndex, 'received');
+                    // setPartsStatus calls renderBoard() so no need to re-render or reopen modal
+                    return;
+                }
+
                 closePartsModal();
                 renderBoard();
                 setTimeout(() => openPartsModal(filteredIndex), 50);
@@ -6425,14 +6518,16 @@ Notes: ${notes}` : '',
             // Parts filter
             if (currentPartsFilter !== 'all') {
                 filtered = filtered.filter(ro => {
+                    // Parts status chip filters (RO-level parts_status field)
+                    if (currentPartsFilter === 'ps-sourcing')    return ro.partsStatus === 'sourcing';
+                    if (currentPartsFilter === 'ps-outstanding') return ro.partsStatus === 'outstanding' || (!ro.partsStatus && ro.hasOpenPartsRequest);
+                    if (currentPartsFilter === 'ps-received')    return ro.partsStatus === 'received';
+                    // Parts row-level filters (individual parts statuses)
                     if (!ro.partsJson) return false;
                     try {
                         const parts = JSON.parse(ro.partsJson);
                         if (currentPartsFilter === 'backordered') {
                             return parts.some(p => p.status === 'Backordered' || p.status === 'Lost');
-                        }
-                        if (currentPartsFilter === 'outstanding') {
-                            return parts.some(p => ['Ordered','In Transit','Backordered','Lost'].includes(p.status));
                         }
                     } catch(e) {}
                     return false;
@@ -6501,9 +6596,13 @@ Notes: ${notes}` : '',
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
-                        ${ro.hasOpenPartsRequest ? `
-                        <div class="parts-request-chip" onclick="openPartsRequestDetails(${index})" title="Parts requested — click to view details or mark ordered">
-                            🔩 ${t('PARTS REQUESTED — PENDING ORDER')}
+                        ${ro.partsStatus ? `
+                        <div class="parts-status-chip ${ro.partsStatus}" onclick="openPartsStatusModal(${index})" title="Parts status — click to update">
+                            ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : `✅ ${t('PARTS RECEIVED')}` }
+                        </div>
+                        ` : ro.hasOpenPartsRequest ? `
+                        <div class="parts-status-chip outstanding" onclick="openPartsStatusModal(${index})" title="Parts outstanding — click to update status">
+                            ⚠️ ${t('PARTS OUTSTANDING')}
                         </div>
                         ` : ''}
                         ` : ''}
@@ -6698,9 +6797,9 @@ Notes: ${notes}` : '',
                         <button class="request-parts-btn" onclick="openPartsRequestModal(${index})" title="Submit a parts request for this RO">
                             ${t('🔩 Request Parts')}
                         </button>
-                        ${ro.hasOpenPartsRequest ? `
-                        <button class="mark-ordered-btn" onclick="markPartsOrdered(${index})" title="Confirm parts have been ordered — clears the indicator">
-                            ${t('✅ Mark Parts Ordered')}
+                        ${(isAdmin() || hasRole('Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
+                        <button class="mark-ordered-btn" onclick="openPartsStatusModal(${index})" title="Update parts status for this RO">
+                            ${t('🔩 Set Parts Status')}
                         </button>
                         ` : ''}
                         ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? `
@@ -7211,6 +7310,11 @@ Notes: ${notes}` : '',
             'Insurance Claim': 'Reclamo de Seguro',
             'Customer Pay': 'Pago del Cliente',
             'PARTS REQUESTED — PENDING ORDER': 'PARTES SOLICITADAS — PEDIDO PENDIENTE',
+            'PART SOURCING':      'BUSCANDO PARTES',
+            'PARTS OUTSTANDING':  'PARTES PENDIENTES',
+            'PARTS RECEIVED':     'PARTES RECIBIDAS',
+            '🔩 Request Parts':   '🔩 Solicitar Partes',
+            '🔩 Set Parts Status': '🔩 Estado de Partes',
             // Info row labels
             'Type:': 'Tipo:',
             'RV:': 'RV:',
@@ -8067,6 +8171,7 @@ Notes: ${notes}` : '',
                 customerCommunicationNotes: row._comm_notes || '',
                 partsJson:                row._parts_json || '',
                 hasOpenPartsRequest:      !!row.has_open_parts_request,
+                partsStatus:              row.parts_status || null,
                 _supabaseId:              row.id,  // keep uuid for updates
             };
         }
@@ -9428,9 +9533,10 @@ Notes: ${notes}` : '',
                 });
                 if (prErr) throw prErr;
 
-                // 3. Set has_open_parts_request = true on the RO
+                // 3. Set has_open_parts_request = true and parts_status = 'outstanding' on the RO
                 const { error: updErr } = await getSB().from('repair_orders').update({
                     has_open_parts_request: true,
+                    parts_status: 'outstanding',
                     updated_at: new Date().toISOString(),
                 }).eq('id', ro._supabaseId);
                 if (updErr) throw updErr;
@@ -9495,6 +9601,7 @@ Notes: ${notes}` : '',
                 const origIdx = currentData.findIndex(d => d._supabaseId === ro._supabaseId);
                 if (origIdx !== -1) {
                     currentData[origIdx].hasOpenPartsRequest = true;
+                    currentData[origIdx].partsStatus = 'outstanding';
                     currentData[origIdx].roStatusNotes = (currentData[origIdx].roStatusNotes ? currentData[origIdx].roStatusNotes + '\n' : '') + noteText;
                 }
 
@@ -9550,12 +9657,12 @@ Notes: ${notes}` : '',
                         ${notesHtml}
                     </div>
                     <div style="margin-top:6px; margin-bottom:16px; font-size:0.75rem; color:var(--text-secondary);">
-                        Parts must be ordered before clearing this request.
+                        Update the parts status for this RO, or close to dismiss.
                     </div>
                     <div style="display:flex; gap:10px;">
-                        <button onclick="document.getElementById('partsRequestDetailsModal').remove(); markPartsOrdered(${filteredIndex});"
-                            style="flex:1; padding:12px; border-radius:8px; border:none; background:linear-gradient(135deg,#34c759,#28a745); color:white; font-weight:700; cursor:pointer; font-size:0.9rem;">
-                            ✅ Mark Parts Ordered
+                        <button onclick="document.getElementById('partsRequestDetailsModal').remove(); openPartsStatusModal(${filteredIndex});"
+                            style="flex:1; padding:12px; border-radius:8px; border:none; background:linear-gradient(135deg,#f59e0b,#d97706); color:white; font-weight:700; cursor:pointer; font-size:0.9rem;">
+                            🔩 Update Parts Status
                         </button>
                         <button onclick="document.getElementById('partsRequestDetailsModal').remove()"
                             style="flex:0 0 auto; padding:12px 18px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">
@@ -9612,6 +9719,118 @@ Notes: ${notes}` : '',
             } catch(err) {
                 console.error('Mark parts ordered error:', err);
                 alert('Error: ' + err.message);
+            }
+        }
+
+        // ── Parts Status Modal (GH#14) ────────────────────────────────────────
+        // Opens a modal for Manager/Admin to set Parts status: Sourcing / Outstanding / Received / Clear
+        function openPartsStatusModal(filteredIndex) {
+            if (!isAdmin() && !hasRole('Manager')) {
+                alert('Only Managers and Admins can change parts status.');
+                return;
+            }
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro) return;
+
+            document.getElementById('partsStatusModal')?.remove();
+            const modal = document.createElement('div');
+            modal.id = 'partsStatusModal';
+            modal.className = 'modal-overlay active';
+            const currentChip = ro.partsStatus
+                ? `<span class="parts-status-chip ${ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${ro.partsStatus === 'sourcing' ? '🔍 PART SOURCING' : ro.partsStatus === 'outstanding' ? '⚠️ PARTS OUTSTANDING' : '✅ PARTS RECEIVED'}</span>`
+                : ro.hasOpenPartsRequest ? `<span class="parts-status-chip outstanding" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">⚠️ PARTS OUTSTANDING</span>` : '<em style="color:var(--text-secondary); font-size:0.85rem;">None set</em>';
+
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width:460px;">
+                    <div class="modal-header">
+                        <h2 class="modal-title">🔩 Set Parts Status</h2>
+                        <button class="modal-close" onclick="document.getElementById('partsStatusModal').remove()">×</button>
+                    </div>
+                    <div style="padding-bottom:14px; margin-bottom:16px; border-bottom:1px solid var(--border-color); font-size:0.85rem; color:var(--text-secondary);">
+                        <strong style="color:var(--text-primary);">${ro.customerName}</strong> · ${ro.rv || ''}
+                        ${ro.roId ? `· <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.78rem;">${ro.roId}</span>` : ''}
+                    </div>
+                    <div style="margin-bottom:16px; font-size:0.82rem; color:var(--text-secondary);">
+                        Current: ${currentChip}
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+                        <button class="parts-status-modal-btn sourcing" onclick="setPartsStatus(${filteredIndex},'sourcing')">
+                            🔍 Part Sourcing<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Actively hunting for parts</span>
+                        </button>
+                        <button class="parts-status-modal-btn outstanding" onclick="setPartsStatus(${filteredIndex},'outstanding')">
+                            ⚠️ Parts Outstanding<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Ordered — awaiting delivery</span>
+                        </button>
+                        <button class="parts-status-modal-btn received" onclick="setPartsStatus(${filteredIndex},'received')">
+                            ✅ Parts Received<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">All parts have arrived</span>
+                        </button>
+                        <button class="parts-status-modal-btn clear" onclick="setPartsStatus(${filteredIndex},null)">
+                            ✕ Clear Status<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Remove chip from RO</span>
+                        </button>
+                    </div>
+                    <button onclick="document.getElementById('partsStatusModal').remove()" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">
+                        Cancel
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Set parts_status on an RO — used by openPartsStatusModal and auto-flip
+        async function setPartsStatus(filteredIndex, newStatus) {
+            if (!getSB()) { alert('Please connect to PRVS database first!'); return; }
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro || !ro._supabaseId) { alert('Error: RO not found.'); return; }
+
+            const oldStatus = ro.partsStatus || (ro.hasOpenPartsRequest ? 'outstanding' : null);
+            const userName = currentUser?.name || 'Unknown';
+            const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+
+            const labels = { sourcing: '🔍 PART SOURCING', outstanding: '⚠️ PARTS OUTSTANDING', received: '✅ PARTS RECEIVED' };
+            const noteText = newStatus
+                ? `[${ts} - ${userName}] Parts status set to: ${labels[newStatus]}`
+                : `[${ts} - ${userName}] Parts status cleared`;
+
+            try {
+                document.getElementById('partsStatusModal')?.remove();
+
+                // Update Supabase
+                const updatePayload = {
+                    parts_status: newStatus,
+                    updated_at: new Date().toISOString(),
+                };
+                // When clearing or setting received, also clear the legacy flag
+                if (!newStatus || newStatus === 'received') {
+                    updatePayload.has_open_parts_request = false;
+                }
+                const { error: updErr } = await getSB().from('repair_orders').update(updatePayload).eq('id', ro._supabaseId);
+                if (updErr) throw updErr;
+
+                // Write status note
+                const { error: noteErr } = await getSB().from('notes').insert({
+                    ro_id:      ro._supabaseId,
+                    type:       'ro_status',
+                    body:       noteText,
+                    created_at: new Date().toISOString(),
+                });
+                if (noteErr) throw noteErr;
+
+                // Audit log
+                await writeAuditLog(ro.roId, [{ field: 'partsStatus', oldValue: oldStatus || 'none', newValue: newStatus || 'cleared' }]);
+
+                // Update local data
+                const origIdx = currentData.findIndex(d => d._supabaseId === ro._supabaseId);
+                if (origIdx !== -1) {
+                    currentData[origIdx].partsStatus = newStatus;
+                    if (!newStatus || newStatus === 'received') currentData[origIdx].hasOpenPartsRequest = false;
+                    currentData[origIdx].roStatusNotes = (currentData[origIdx].roStatusNotes ? currentData[origIdx].roStatusNotes + '\n' : '') + noteText;
+                }
+
+                renderBoard();
+                console.log(`✅ Parts status set to: ${newStatus || 'cleared'} for ${ro.roId}`);
+
+            } catch(err) {
+                console.error('Set parts status error:', err);
+                alert('Error updating parts status: ' + err.message);
             }
         }
 
