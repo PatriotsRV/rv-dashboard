@@ -1,7 +1,13 @@
+
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.284
+    PRVS Dashboard v1.289
     Released: 2026-03-23
+    v1.289: Move Supplier Contact section to top of Add/Edit Part form
+    v1.288: Add Sourcing to individual part row status dropdown (neon orange, matches RO-level chip color)
+    v1.287: Add Wholesale and Retail Price columns to Manage Parts table
+    v1.286: Rename "Core Charge" label to "Freight Charge" in Parts form (UI label only; DB column core_charge unchanged)
+    v1.285: Parts chip states (GH#14) — four-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green), 📋 Parts Estimate (blue); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all four states; submitPartsRequest with For Estimate Only toggle; syncEstimateToggle global function; brandon@ solar@ bobby@ added to Manager role
     v1.284: Parts chip states (GH#14) — three-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all three states; submitPartsRequest now sets parts_status='outstanding'
     v1.283: Fix "Date RV Arrived on Lot" not saving — date_arrived was missing from updateROInSupabase() payload; field was read from Edit RO form but silently dropped before Supabase write
     v1.282: Duplicate RO Manager (Admin only) — getBaseROId()/findDuplicateGroups() detect ROs sharing a base PRVS hash; 🔗 Merge Dupes button appears in header with red badge count; modal lets admin pick master per group; executeDupeMerge() reassigns notes/parts/time_logs/insurance_scans/audit_log FKs, merges photo_library, then deletes duplicates; button auto-hides when no dupes remain
@@ -580,6 +586,13 @@
             color: #22c55e;
         }
         .parts-status-chip.received:hover { background: rgba(34, 197, 94, 0.25); }
+        .parts-status-chip.estimate {
+            border-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.13);
+            color: #3b82f6;
+            animation: chip-pulse 2.6s ease-in-out infinite;
+        }
+        .parts-status-chip.estimate:hover { background: rgba(59, 130, 246, 0.25); }
 
         .parts-status-modal-btn {
             flex: 1;
@@ -611,6 +624,12 @@
             color: #22c55e;
         }
         .parts-status-modal-btn.received:hover { background: rgba(34,197,94,0.28); }
+        .parts-status-modal-btn.estimate {
+            border-color: #3b82f6;
+            background: rgba(59,130,246,0.12);
+            color: #3b82f6;
+        }
+        .parts-status-modal-btn.estimate:hover { background: rgba(59,130,246,0.28); }
         .parts-status-modal-btn.clear {
             border-color: var(--border-color);
             background: transparent;
@@ -2563,7 +2582,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.284</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.289</span>
             </div>
         </header>
 
@@ -2634,6 +2653,7 @@
                             <button class="filter-btn" data-filter="ps-sourcing" data-type="parts" onclick="togglePartsFilter('ps-sourcing')" style="color:#ff6a00; border-color:rgba(255,106,0,0.4);">🔍 Part Sourcing</button>
                             <button class="filter-btn" data-filter="ps-outstanding" data-type="parts" onclick="togglePartsFilter('ps-outstanding')" style="color:#f59e0b; border-color:rgba(245,158,11,0.4);">⚠️ Parts Outstanding</button>
                             <button class="filter-btn" data-filter="ps-received" data-type="parts" onclick="togglePartsFilter('ps-received')" style="color:#22c55e; border-color:rgba(34,197,94,0.4);">✅ Parts Received</button>
+                            <button class="filter-btn" data-filter="ps-estimate" data-type="parts" onclick="togglePartsFilter('ps-estimate')" style="color:#3b82f6; border-color:rgba(59,130,246,0.4);">📋 Parts Estimate</button>
                             <button class="filter-btn" data-filter="backordered" data-type="parts" onclick="togglePartsFilter('backordered')">🔴 Backordered</button>
                         </div>
                     </div>
@@ -5579,11 +5599,12 @@ Notes: ${notes}` : '',
 
         let partsData = {}; // Cache: { roId: [parts array] }
 
-        const PART_STATUSES = ['Ordered','In Transit','Received','Installed','Backordered','Returned','Lost'];
+        const PART_STATUSES = ['Ordered','In Transit','Sourcing','Received','Installed','Backordered','Returned','Lost'];
 
         const PART_STATUS_COLORS = {
             'Ordered':     '#ffcc00',
             'In Transit':  '#ff9500',
+            'Sourcing':    '#ff6a00',
             'Received':    '#34c759',
             'Installed':   '#0a84ff',
             'Backordered': '#ff3b30',
@@ -5816,7 +5837,7 @@ Notes: ${notes}` : '',
             const parts = (roId && partsData[roId]) ? partsData[roId] : [];
 
             const renderPartsRows = (parts) => parts.length === 0
-                ? '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
+                ? '<tr><td colspan="9" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
                 : parts.map((p, i) => {
                     const color = PART_STATUS_COLORS[p.status] || '#9ca3af';
                     return `<tr style="border-bottom:1px solid #e2e8f0;">
@@ -5827,6 +5848,8 @@ Notes: ${notes}` : '',
                             <span style="padding:3px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}66;">${p.status}</span>
                         </td>
                         <td style="padding:10px 8px;text-align:center;color:#64748b;font-size:0.85rem;">${p.qty || 1}</td>
+                        <td style="padding:10px 8px;text-align:right;color:#1e293b;font-size:0.85rem;font-weight:600;">${p.wholesalePrice ? '$' + parseFloat(p.wholesalePrice).toFixed(2) : '—'}</td>
+                        <td style="padding:10px 8px;text-align:right;color:#16a34a;font-size:0.85rem;font-weight:600;">${p.retailPrice ? '$' + parseFloat(p.retailPrice).toFixed(2) : '—'}</td>
                         <td style="padding:10px 8px;text-align:center;">
                             ${p.status !== 'Received' && p.status !== 'Installed'
                                 ? `<button onclick="markPartReceived(${filteredIndex},${i})" style="padding:4px 10px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">✓ Received</button>`
@@ -5853,6 +5876,15 @@ Notes: ${notes}` : '',
                         <!-- Add Part Form (hidden by default) -->
                         <div id="addPartForm" style="display:none;background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #e2e8f0;">
                             <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:1rem;" id="addPartFormTitle">+ Add New Part</div>
+
+                            <!-- Section: Supplier Contact -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
 
                             <!-- Section: Core Info -->
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ff9500;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #fed7aa;">🔩 Core Info</div>
@@ -5897,17 +5929,8 @@ Notes: ${notes}` : '',
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Wholesale Price ($)</label><input type="number" id="pf_wholesalePrice" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Retail Price ($)</label><input type="number" id="pf_retailPrice" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Core Charge ($)</label><input type="number" id="pf_coreCharge" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Freight Charge ($)</label><input type="number" id="pf_coreCharge" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Install Labor Hrs</label><input type="number" id="pf_laborHours" min="0" step="0.25" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                            </div>
-
-                            <!-- Section: Supplier Contact -->
-                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
 
                             <!-- Section: Receipt -->
@@ -5935,6 +5958,8 @@ Notes: ${notes}` : '',
                                         <th style="text-align:left;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Supplier</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Status</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Qty</th>
+                                        <th style="text-align:right;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Wholesale</th>
+                                        <th style="text-align:right;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Retail</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Quick</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Actions</th>
                                     </tr>
@@ -6522,6 +6547,7 @@ Notes: ${notes}` : '',
                     if (currentPartsFilter === 'ps-sourcing')    return ro.partsStatus === 'sourcing';
                     if (currentPartsFilter === 'ps-outstanding') return ro.partsStatus === 'outstanding' || (!ro.partsStatus && ro.hasOpenPartsRequest);
                     if (currentPartsFilter === 'ps-received')    return ro.partsStatus === 'received';
+                    if (currentPartsFilter === 'ps-estimate')    return ro.partsStatus === 'estimate';
                     // Parts row-level filters (individual parts statuses)
                     if (!ro.partsJson) return false;
                     try {
@@ -6598,7 +6624,7 @@ Notes: ${notes}` : '',
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
                         <div class="parts-status-chip ${ro.partsStatus}" onclick="openPartsStatusModal(${index})" title="Parts status — click to update">
-                            ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : `✅ ${t('PARTS RECEIVED')}` }
+                            ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : ro.partsStatus === 'estimate' ? `📋 ${t('PARTS ESTIMATE')}` : `✅ ${t('PARTS RECEIVED')}` }
                         </div>
                         ` : ro.hasOpenPartsRequest ? `
                         <div class="parts-status-chip outstanding" onclick="openPartsStatusModal(${index})" title="Parts outstanding — click to update status">
@@ -7313,6 +7339,7 @@ Notes: ${notes}` : '',
             'PART SOURCING':      'BUSCANDO PARTES',
             'PARTS OUTSTANDING':  'PARTES PENDIENTES',
             'PARTS RECEIVED':     'PARTES RECIBIDAS',
+            'PARTS ESTIMATE':     'ESTIMACIÓN DE PARTES',
             '🔩 Request Parts':   '🔩 Solicitar Partes',
             '🔩 Set Parts Status': '🔩 Estado de Partes',
             // Info row labels
@@ -7475,7 +7502,7 @@ Notes: ${notes}` : '',
         
         // Admin access control
         const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
-        const MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'mauricio@patriotsrvservices.com', 'andrew@patriotsrvservices.com'];
+        const MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'mauricio@patriotsrvservices.com', 'andrew@patriotsrvservices.com', 'bobby@patriotsrvservices.com', 'solar@patriotsrvservices.com', 'brandon@patriotsrvservices.com'];
 
         // Services that schedule in DAYS (not hours)
         const DAY_BASED_SERVICES = ['Roof', 'Paint and Body', 'Solar', 'Vroom'];
@@ -9483,6 +9510,19 @@ Notes: ${notes}` : '',
                     </div>
                     <div id="partsPhotoCount" style="font-size:0.75rem; color:#ff9500; margin-bottom:12px; min-height:1em;"></div>
 
+                    <!-- Estimate-only toggle -->
+                    <label style="display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:10px; border:2px solid rgba(59,130,246,0.3); background:rgba(59,130,246,0.07); cursor:pointer; margin-bottom:14px; user-select:none;" onclick="var c=document.getElementById('estimateOnlyCheck'); c.checked=!c.checked; syncEstimateToggle();">
+                        <div style="position:relative; width:44px; height:24px; flex-shrink:0; pointer-events:none;">
+                            <input type="checkbox" id="estimateOnlyCheck" style="opacity:0; width:0; height:0; position:absolute;" onchange="syncEstimateToggle()">
+                            <span id="estimateOnlyTrack" style="position:absolute; inset:0; border-radius:12px; background:#4b5563; transition:background 0.2s;"></span>
+                            <span id="estimateOnlyThumb" style="position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:white; transition:transform 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+                        </div>
+                        <div style="pointer-events:none;">
+                            <div style="font-size:0.85rem; font-weight:700; color:#3b82f6; letter-spacing:0.02em;">📋 For Estimate Only</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">Parts pricing &amp; labor time needed — no order placed yet. Manager can convert to order once customer approves.</div>
+                        </div>
+                    </label>
+
                     <button id="partsRequestSubmitBtn" onclick="submitPartsRequest(${filteredIndex})"
                         style="width:100%; padding:12px; border-radius:8px; border:none; background:linear-gradient(135deg,#FF1493,#c0006e); color:white; font-weight:700; cursor:pointer; font-size:0.95rem; letter-spacing:0.02em; margin-bottom:12px;">
                         📤 Send Parts Request
@@ -9498,6 +9538,15 @@ Notes: ${notes}` : '',
         }
 
         // Voice dictation helper for parts request modal
+        function syncEstimateToggle() {
+            const chk   = document.getElementById('estimateOnlyCheck');
+            const track = document.getElementById('estimateOnlyTrack');
+            const thumb = document.getElementById('estimateOnlyThumb');
+            if (!chk || !track || !thumb) return;
+            track.style.background = chk.checked ? '#3b82f6' : '#4b5563';
+            thumb.style.transform  = chk.checked ? 'translateX(20px)' : 'translateX(0)';
+        }
+
         async function partsRequestDictate() {
             const text = await showVoiceNotesModal('Describe the parts you need:');
             if (text) {
@@ -9521,10 +9570,12 @@ Notes: ${notes}` : '',
                 const userName  = currentUser?.name  || 'Unknown Tech';
                 const userEmail = currentUser?.email || '';
                 const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
-                const noteText  = `[${ts} - ${userName}] 🔩 PARTS REQUESTED: ${description}`;
+                const isEstimateOnly = !!(document.getElementById('estimateOnlyCheck')?.checked);
+                const notePrefix = isEstimateOnly ? '📋 PARTS ESTIMATE (for estimate only):' : '🔩 PARTS REQUESTED:';
+                const noteText   = `[${ts} - ${userName}] ${notePrefix} ${description}`;
+                const newPartsStatus = isEstimateOnly ? 'estimate' : 'outstanding';
 
-                // 1. Write a single ro_status note (parts_request type not in constraint yet —
-                //    the 🔩 PARTS REQUESTED: prefix makes it queryable without a separate type)
+                // 1. Write a single ro_status note
                 const { error: prErr } = await getSB().from('notes').insert({
                     ro_id:      ro._supabaseId,
                     type:       'ro_status',
@@ -9533,10 +9584,10 @@ Notes: ${notes}` : '',
                 });
                 if (prErr) throw prErr;
 
-                // 3. Set has_open_parts_request = true and parts_status = 'outstanding' on the RO
+                // 3. Set has_open_parts_request = true and parts_status on the RO
                 const { error: updErr } = await getSB().from('repair_orders').update({
                     has_open_parts_request: true,
-                    parts_status: 'outstanding',
+                    parts_status: newPartsStatus,
                     updated_at: new Date().toISOString(),
                 }).eq('id', ro._supabaseId);
                 if (updErr) throw updErr;
@@ -9737,7 +9788,7 @@ Notes: ${notes}` : '',
             modal.id = 'partsStatusModal';
             modal.className = 'modal-overlay active';
             const currentChip = ro.partsStatus
-                ? `<span class="parts-status-chip ${ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${ro.partsStatus === 'sourcing' ? '🔍 PART SOURCING' : ro.partsStatus === 'outstanding' ? '⚠️ PARTS OUTSTANDING' : '✅ PARTS RECEIVED'}</span>`
+                ? `<span class="parts-status-chip ${ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${ro.partsStatus === 'sourcing' ? '🔍 PART SOURCING' : ro.partsStatus === 'outstanding' ? '⚠️ PARTS OUTSTANDING' : ro.partsStatus === 'estimate' ? '📋 PARTS ESTIMATE' : '✅ PARTS RECEIVED'}</span>`
                 : ro.hasOpenPartsRequest ? `<span class="parts-status-chip outstanding" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">⚠️ PARTS OUTSTANDING</span>` : '<em style="color:var(--text-secondary); font-size:0.85rem;">None set</em>';
 
             modal.innerHTML = `
@@ -9763,7 +9814,10 @@ Notes: ${notes}` : '',
                         <button class="parts-status-modal-btn received" onclick="setPartsStatus(${filteredIndex},'received')">
                             ✅ Parts Received<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">All parts have arrived</span>
                         </button>
-                        <button class="parts-status-modal-btn clear" onclick="setPartsStatus(${filteredIndex},null)">
+                        <button class="parts-status-modal-btn estimate" onclick="setPartsStatus(${filteredIndex},'estimate')">
+                            📋 Parts Estimate<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Pricing/labor needed, no order yet</span>
+                        </button>
+                        <button class="parts-status-modal-btn clear" onclick="setPartsStatus(${filteredIndex},null)" style="grid-column:1/-1;">
                             ✕ Clear Status<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Remove chip from RO</span>
                         </button>
                     </div>
@@ -9785,7 +9839,7 @@ Notes: ${notes}` : '',
             const userName = currentUser?.name || 'Unknown';
             const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 
-            const labels = { sourcing: '🔍 PART SOURCING', outstanding: '⚠️ PARTS OUTSTANDING', received: '✅ PARTS RECEIVED' };
+            const labels = { sourcing: '🔍 PART SOURCING', outstanding: '⚠️ PARTS OUTSTANDING', received: '✅ PARTS RECEIVED', estimate: '📋 PARTS ESTIMATE' };
             const noteText = newStatus
                 ? `[${ts} - ${userName}] Parts status set to: ${labels[newStatus]}`
                 : `[${ts} - ${userName}] Parts status cleared`;
