@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.286
+    PRVS Dashboard v1.287
     Released: 2026-03-23
+    v1.287: Add Wholesale and Retail Price columns to Manage Parts table
     v1.286: Rename "Core Charge" label to "Freight Charge" in Parts form (UI label only; DB column core_charge unchanged)
     v1.285: Parts chip states (GH#14) — four-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green), 📋 Parts Estimate (blue); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all four states; submitPartsRequest with For Estimate Only toggle; syncEstimateToggle global function; brandon@ solar@ bobby@ added to Manager role
     v1.284: Parts chip states (GH#14) — three-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all three states; submitPartsRequest now sets parts_status='outstanding'
@@ -2579,7 +2580,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.286</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.287</span>
             </div>
         </header>
 
@@ -5833,7 +5834,7 @@ Notes: ${notes}` : '',
             const parts = (roId && partsData[roId]) ? partsData[roId] : [];
 
             const renderPartsRows = (parts) => parts.length === 0
-                ? '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
+                ? '<tr><td colspan="9" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
                 : parts.map((p, i) => {
                     const color = PART_STATUS_COLORS[p.status] || '#9ca3af';
                     return `<tr style="border-bottom:1px solid #e2e8f0;">
@@ -5844,6 +5845,8 @@ Notes: ${notes}` : '',
                             <span style="padding:3px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}66;">${p.status}</span>
                         </td>
                         <td style="padding:10px 8px;text-align:center;color:#64748b;font-size:0.85rem;">${p.qty || 1}</td>
+                        <td style="padding:10px 8px;text-align:right;color:#1e293b;font-size:0.85rem;font-weight:600;">${p.wholesalePrice ? '$' + parseFloat(p.wholesalePrice).toFixed(2) : '—'}</td>
+                        <td style="padding:10px 8px;text-align:right;color:#16a34a;font-size:0.85rem;font-weight:600;">${p.retailPrice ? '$' + parseFloat(p.retailPrice).toFixed(2) : '—'}</td>
                         <td style="padding:10px 8px;text-align:center;">
                             ${p.status !== 'Received' && p.status !== 'Installed'
                                 ? `<button onclick="markPartReceived(${filteredIndex},${i})" style="padding:4px 10px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">✓ Received</button>`
@@ -5952,6 +5955,8 @@ Notes: ${notes}` : '',
                                         <th style="text-align:left;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Supplier</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Status</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Qty</th>
+                                        <th style="text-align:right;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Wholesale</th>
+                                        <th style="text-align:right;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Retail</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Quick</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Actions</th>
                                     </tr>
