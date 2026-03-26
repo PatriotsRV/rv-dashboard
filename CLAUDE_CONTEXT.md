@@ -55,12 +55,12 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | Priority | # | Task | Notes | Status |
 |---|---|---|---|---|
+| 🔴 | GH#10 | **Integrate Kenect messaging using the Kenect APIs** | Pull customer conversation threads into RO view; display Kenect messages in dashboard; integrate Kenect API credentials when available | ⏳ Open |
 | 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features | ⏳ Open |
 | 🟠 | GH#4 | **Twilio SMS v1.27** | Customer + tech notifications via SMS | ⏳ Open |
 | ✅ | GH#14 | **Parts chip states — Sourcing / Outstanding / Received / Estimate** | Four-state system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green), 📋 Parts Estimate (blue, pulsing). `parts_status` column on `repair_orders`. Auto-flip to Received when all parts marked received. Manager/Admin set status modal. For Estimate Only toggle in Request Parts modal. Filter buttons for all four states. bobby@, solar@, brandon@ added to MANAGER_EMAILS + Supabase. | ✅ Done v1.284–v1.285 |
 | 🟠 | GH#5 | **Work Assignment System** | Assign ROs to specific technicians | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
-| 🔴 | GH#10 | **Kenect API integration** | Pull customer conversation threads into RO view — blocked on Roland getting API credentials from Kenect support | ⏳ Roland action |
 | ✅ | GH#13 | **Pre-deploy backup system** | `scripts/backup.sh` — 6-version rolling snapshots to `.backups/` before every push | ✅ Done |
 | ✅ | GH#12 | **Spanish language toggle** | Full UI translation of presentation layer only — labels, buttons, modals, status text. DB stays English. `t()` function approach. Self-selectable toggle per user (localStorage). Globe icon in header. Both index.html (v1.277) and checkin.html (v1.27) done. | ✅ Done |
 | 🟡 | GH#11 | **Solar Battery Bank tile — add Watt Hours** | Show Wh alongside Ah in Quote section (Wh = Ah × system voltage); update PDF output too | ⏳ Open |
