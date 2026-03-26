@@ -55,7 +55,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | Priority | # | Task | Notes | Status |
 |---|---|---|---|---|
-| 🔴 | GH#10 | **Integrate Kenect messaging using the Kenect APIs** | Pull customer conversation threads into RO view; display Kenect messages in dashboard; integrate Kenect API credentials when available | ⏳ Open |
+| ✅ | GH#10 | **Integrate Kenect messaging using the Kenect APIs** | v1.290 — 💬 Messages button on each RO card (requires customerPhone); chat-style modal with inbound/outbound bubbles; send message + review request; Admin Settings: Location ID config, Test Connection, Load Locations; `kenect-proxy` Supabase Edge Function (needs `KENECT_API_KEY` secret + deploy). **Roland action: `supabase secrets set KENECT_API_KEY=xxx` then deploy Edge Function** | ✅ Done v1.290 — pending deploy |
+| 🔴 | — | **Deploy kenect-proxy Edge Function** | Run: `supabase functions deploy kenect-proxy` — then set secret: `supabase secrets set KENECT_API_KEY=your_key_here` (optionally also `KENECT_LOCATION_ID=xxx`) | ⏳ Roland action |
 | 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features | ⏳ Open |
 | 🟠 | GH#4 | **Twilio SMS v1.27** | Customer + tech notifications via SMS | ⏳ Open |
 | ✅ | GH#14 | **Parts chip states — Sourcing / Outstanding / Received / Estimate** | Four-state system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green), 📋 Parts Estimate (blue, pulsing). `parts_status` column on `repair_orders`. Auto-flip to Received when all parts marked received. Manager/Admin set status modal. For Estimate Only toggle in Request Parts modal. Filter buttons for all four states. bobby@, solar@, brandon@ added to MANAGER_EMAILS + Supabase. | ✅ Done v1.284–v1.285 |
@@ -90,7 +91,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.289** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system with photo attachments, photo lightbox viewer, email photos to customer, Spanish language toggle, video upload support, duplicate RO manager (Admin), Date RV Arrived on Lot save fix, four-state RO-level parts chip system (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Manager role expanded, Wholesale/Retail price columns in Manage Parts table, Freight Charge label (was Core Charge), Sourcing added to individual part row status dropdown, Supplier Contact section moved to top of Add/Edit Part form |
+| `index.html` | **v1.290** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system with photo attachments, photo lightbox viewer, email photos to customer, Spanish language toggle, video upload support, duplicate RO manager (Admin), Date RV Arrived on Lot save fix, four-state RO-level parts chip system (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Manager role expanded, Wholesale/Retail price columns in Manage Parts table, Freight Charge label (was Core Charge), Sourcing added to individual part row status dropdown, Supplier Contact section moved to top of Add/Edit Part form, **Kenect messaging integration (💬 button on RO cards, conversation modal, send/review)** |
+| `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
 | `checkin.html` | **v1.27** | Technician clock-in/out, offline-first IndexedDB queue, Spanish language toggle |
 | `analytics.html` | **v1.0** | Analytics/reporting view |
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
@@ -260,6 +262,21 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 supabase functions deploy roof-lookup
 ```
 
+### Supabase Edge Function — kenect-proxy (v1.290)
+Proxies all Kenect API calls from the dashboard. Code is committed to `supabase/functions/kenect-proxy/index.ts`. **Must be deployed via CLI:**
+
+```bash
+supabase link --project-ref axfejhudchdejoiwaetq   # if not already linked
+supabase secrets set KENECT_API_KEY=your_kenect_api_key_here
+# Optional (can also be set per-user in Admin Settings):
+supabase secrets set KENECT_LOCATION_ID=your_location_id
+supabase functions deploy kenect-proxy
+```
+
+After deploy, open Admin Settings in the dashboard → Kenect section → click **Test Connection**.
+
+**Kenect phone number format**: The dashboard normalizes `customerPhone` to E.164 (+1XXXXXXXXXX). If customers are stored as `555-1234` (7-digit), Kenect lookups will fail — full 10-digit numbers are required.
+
 ### Daily Backup
 - `.github/workflows/backup.yml` — 8 AM UTC (4 AM EST) daily + manual trigger
 - Exports all 11 tables via Supabase REST API (service role key)
@@ -388,3 +405,4 @@ supabase functions deploy roof-lookup
 | 2026-03-24 | 19 | v1.284 — Three-state parts chip system (GH#14): parts_status column, openPartsStatusModal, setPartsStatus, auto-flip on all parts received, filter buttons. Added bobby@/solar@ to MANAGER_EMAILS + Supabase. v1.285 attempt — Parts Estimate chip + For Estimate Only toggle built, but inline `</script>` inside modal.innerHTML template literal broke the page (SyntaxError: Unexpected end of input). Roland restored v1.284 backup via direct GitHub push, causing branch divergence. Session ended at context limit mid-recovery. |
 | 2026-03-24 | 20 | Recovered from git divergence (reset --hard origin/main). Re-applied all v1.285 changes: MANAGER_EMAILS (all 6 managers), syncEstimateToggle() global, submitPartsRequest estimate logic, estimate chip CSS, RO tile chip estimate case, openPartsStatusModal estimate button, ps-estimate filter + logic, Spanish translation. Committed and pushed v1.285. Created git tag v1.285 + release notes. Created ROLLBACK.md (emergency recovery guide). Discussed token usage / session pause causes. End of Session Checklist run. |
 | 2026-03-25 | 21 | Start-of-session checklist followed. v1.286 — Renamed Core Charge → Freight Charge (UI label only). v1.287 — Added Wholesale + Retail Price columns to Manage Parts table; git tag v1.287 created. v1.288 — Added Sourcing to individual part row status dropdown (neon orange). v1.289 — Moved Supplier Contact section to top of Add/Edit Part form. Clarified RO-level chip vs per-part-row status distinction. End of Session Checklist run. |
+| 2026-03-26 | 22 | Kenect API Swagger reviewed (pasted by Roland — Chrome MCP & WebFetch both blocked). GH#10 implemented: v1.290 — kenect-proxy Edge Function (test_credentials, get_locations, get_conversation, get_messages_by_phone, send_message, send_review_request); 💬 Messages button on each RO card with phone; chat-style conversation modal; send message + review request from dashboard; Admin Settings Kenect section (Location ID, Test Connection, Load Locations). Pending: Roland must deploy Edge Function + set KENECT_API_KEY secret. |
