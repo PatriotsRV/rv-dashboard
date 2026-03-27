@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.290
-    Released: 2026-03-26
+    PRVS Dashboard v1.291
+    Released: 2026-03-27
+    v1.291: Parking Spot field (GH#15 Phase 1) — 📍 lot location on every RO card; dropdown of all named lot positions (Bays #1–#14, MR, #15 Wash Bay, #17, Breeze Way N/S, Front Parking, RV Temp, Gates); shown in New RO + Edit RO forms; stored as parking_spot column in repair_orders; SQL migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS parking_spot TEXT
     v1.290: Kenect messaging integration (GH#10) — 💬 Messages button on each RO card; conversation modal with chat-style thread (inbound left, outbound right); send message from dashboard; review request button; Admin Settings: Kenect Location ID config + Test Connection; kenect-proxy Supabase Edge Function (Bearer auth, actions: test_credentials, get_locations, get_conversation, send_message, send_review_request)
     v1.289: Move Supplier Contact section to top of Add/Edit Part form
     v1.288: Add Sourcing to individual part row status dropdown (neon orange, matches RO-level chip color)
@@ -6621,6 +6622,7 @@ Notes: ${notes}` : '',
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || t('Unknown Customer')}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
+                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${ro.parkingSpot}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
@@ -8194,6 +8196,7 @@ Notes: ${notes}` : '',
                 promisedDate:             row.promised_date || '',
                 percentComplete:          row.pct_complete || 0,
                 dollarValue:              row.dollar_value || 0,
+                parkingSpot:              row.parking_spot || '',
                 status:                   row.status || 'Not On Lot',
                 urgency:                  row.urgency || '',
                 customerType:             row.customer_type || '',
@@ -8486,6 +8489,7 @@ Notes: ${notes}` : '',
                     promised_date:  formData.promisedDate || null,
                     pct_complete:   0,
                     dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                    parking_spot:   formData.parkingSpot || null,
                     status:         formData.status || 'Not On Lot',
                     urgency:        formData.urgency || null,
                     customer_type:  formData.customerType || null,
@@ -8541,6 +8545,7 @@ Notes: ${notes}` : '',
                 promised_date:  formData.promisedDate || null,
                 date_arrived:   formData.dateArrived || null,
                 dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                parking_spot:   formData.parkingSpot || null,
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -10728,6 +10733,7 @@ Notes: ${notes}` : '',
                 document.getElementById('editDollarValue').value = ro.dollarValue || '';
                 document.getElementById('editPromisedDate').value = ro.promisedDate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
+                document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';
                 document.getElementById('editRepairDescription').value = ro.repairDescription || '';
 
@@ -10935,6 +10941,7 @@ Notes: ${notes}` : '',
                         dollarValue: document.getElementById('editDollarValue').value,
                         promisedDate: document.getElementById('editPromisedDate').value,
                         dateArrived: document.getElementById('editDateArrived').value,
+                        parkingSpot: document.getElementById('editParkingSpot').value,
                         repairType: repairTypes.join(', '),
                         vin: document.getElementById('editVin').value.toUpperCase(),
                         repairDescription: document.getElementById('editRepairDescription').value,
@@ -11115,6 +11122,41 @@ Notes: ${notes}` : '',
                         <label class="form-label">Dollar Value</label>
                         <input type="number" class="form-input" name="dollarValue" id="new_dollarValue" min="0" step="0.01">
                         <div id="sug_new_dollarValue"></div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">📍 Parking Spot</label>
+                        <select class="form-select" name="parkingSpot" id="new_parkingSpot">
+                            <option value="">— Not assigned —</option>
+                            <optgroup label="Interior Bays (Upper)">
+                                <option value="Bay #9">Bay #9</option>
+                                <option value="Bay #10">Bay #10</option>
+                                <option value="Bay #11">Bay #11</option>
+                                <option value="Bay MR">Bay MR</option>
+                                <option value="Bay #12">Bay #12</option>
+                                <option value="Bay #13">Bay #13</option>
+                                <option value="Bay #14">Bay #14</option>
+                            </optgroup>
+                            <optgroup label="Interior Bays (Lower)">
+                                <option value="Bay #1">Bay #1</option>
+                                <option value="Bay #2">Bay #2</option>
+                                <option value="Bay #3">Bay #3</option>
+                                <option value="Bay #4">Bay #4</option>
+                                <option value="Breeze Way N">Breeze Way N</option>
+                                <option value="Office">Office</option>
+                                <option value="Breeze Way S">Breeze Way S</option>
+                                <option value="Bay #5">Bay #5</option>
+                                <option value="Bay #6">Bay #6</option>
+                                <option value="Bay #7">Bay #7</option>
+                                <option value="Bay #8">Bay #8</option>
+                            </optgroup>
+                            <optgroup label="Outdoor">
+                                <option value="Bay #17">Bay #17</option>
+                                <option value="Wash Bay #15">Wash Bay #15</option>
+                                <option value="Front Parking">Front Parking</option>
+                                <option value="RV Temp">RV Temp</option>
+                                <option value="Gates">Gates</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Status *</label>
@@ -11546,6 +11588,41 @@ Notes: ${notes}` : '',
                         <label class="form-label">RO Value ($)</label>
                         <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">📍 Parking Spot</label>
+                        <select class="form-select" id="editParkingSpot">
+                            <option value="">— Not assigned —</option>
+                            <optgroup label="Interior Bays (Upper)">
+                                <option value="Bay #9">Bay #9</option>
+                                <option value="Bay #10">Bay #10</option>
+                                <option value="Bay #11">Bay #11</option>
+                                <option value="Bay MR">Bay MR</option>
+                                <option value="Bay #12">Bay #12</option>
+                                <option value="Bay #13">Bay #13</option>
+                                <option value="Bay #14">Bay #14</option>
+                            </optgroup>
+                            <optgroup label="Interior Bays (Lower)">
+                                <option value="Bay #1">Bay #1</option>
+                                <option value="Bay #2">Bay #2</option>
+                                <option value="Bay #3">Bay #3</option>
+                                <option value="Bay #4">Bay #4</option>
+                                <option value="Breeze Way N">Breeze Way N</option>
+                                <option value="Office">Office</option>
+                                <option value="Breeze Way S">Breeze Way S</option>
+                                <option value="Bay #5">Bay #5</option>
+                                <option value="Bay #6">Bay #6</option>
+                                <option value="Bay #7">Bay #7</option>
+                                <option value="Bay #8">Bay #8</option>
+                            </optgroup>
+                            <optgroup label="Outdoor">
+                                <option value="Bay #17">Bay #17</option>
+                                <option value="Wash Bay #15">Wash Bay #15</option>
+                                <option value="Front Parking">Front Parking</option>
+                                <option value="RV Temp">RV Temp</option>
+                                <option value="Gates">Gates</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Promised Date</label>
