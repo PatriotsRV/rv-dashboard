@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.292
+    PRVS Dashboard v1.293
     Released: 2026-03-27
+    v1.293: QR Print Sheet Phase 2 (GH#15) — dual-sticker print window: 3"×3" windshield sticker (customer name, RV, RO#, parking spot chip) + 1"×1" key tag; both generated fresh via QRCode.js in print window; proper @media print CSS with dashed cut borders and physical inch sizing
     v1.292: Remap parking spot positions to hand-drawn lot designations — Rear Lot R1–R20, Interior Bays B1–B14, Wash Bay 17/18 + W1–W4, Front Lot F1–F12; replaces old Bay#/Breeze Way naming
     v1.291: Parking Spot field (GH#15 Phase 1) — 📍 lot location on every RO card; dropdown of all named lot positions; shown in New RO + Edit RO forms; stored as parking_spot column in repair_orders; SQL migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS parking_spot TEXT
     v1.290: Kenect messaging integration (GH#10) — 💬 Messages button on each RO card; conversation modal with chat-style thread (inbound left, outbound right); send message from dashboard; review request button; Admin Settings: Kenect Location ID config + Test Connection; kenect-proxy Supabase Edge Function (Bearer auth, actions: test_credentials, get_locations, get_conversation, send_message, send_review_request)
@@ -7054,95 +7055,109 @@ Notes: ${notes}` : '',
         }
 
         // Print QR label
+        // Phase 2 — dual-sticker QR print sheet (GH#15)
         function printQRLabel(index) {
             const ro = currentFilteredData[index];
             if (!ro) return;
-            
-            // Create printable label
+
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-            const canvas = document.getElementById(`qr-${index}`);
-            
-            // Open print window with just the QR code and customer name
-            const printWindow = window.open('', '_blank', 'width=400,height=600');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>QR Label - ${ro.customerName}</title>
-                    <style>
-                        body {
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            padding: 20px;
-                            font-family: Arial, sans-serif;
-                        }
-                        canvas {
-                            border: 2px solid black;
-                            margin: 20px;
-                        }
-                        .customer-name {
-                            font-size: 18px;
-                            font-weight: bold;
-                            text-align: center;
-                            margin-top: 10px;
-                        }
-                        .rv-make {
-                            font-size: 16px;
-                            color: #333;
-                            text-align: center;
-                            margin-top: 5px;
-                            font-weight: 600;
-                        }
-                        .ro-id {
-                            font-size: 14px;
-                            color: #666;
-                            text-align: center;
-                            margin-top: 5px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <h2>Scan to Check In/Out</h2>
-                    <canvas id="printQR" width="300" height="300"></canvas>
-                    <div class="customer-name">${ro.customerName}</div>
-                    <div class="rv-make">${ro.rv || 'RV Not Specified'}</div>
-                    <div class="ro-id">${roId}</div>
-                </body>
-                </html>
-            `);
-            
-            // Copy QR code to print window (wait for logo to load)
-            const printCanvas = printWindow.document.getElementById('printQR');
-            const printCtx = printCanvas.getContext('2d');
-            
-            const copyAndPrint = () => {
-                printCtx.drawImage(canvas, 0, 0, 300, 300);
-                printWindow.document.close();
-                printWindow.focus();
-                setTimeout(() => {
-                    printWindow.print();
-                }, 500);
-            };
-            
-            // Check if canvas is ready
-            if (canvas.dataset.ready === 'true') {
-                copyAndPrint();
-            } else {
-                // Wait for logo to load
-                const checkReady = setInterval(() => {
-                    if (canvas.dataset.ready === 'true') {
-                        clearInterval(checkReady);
-                        copyAndPrint();
-                    }
-                }, 100);
-                
-                // Timeout after 2 seconds
-                setTimeout(() => {
-                    clearInterval(checkReady);
-                    copyAndPrint(); // Print anyway
-                }, 2000);
-            }
+            const checkInURL = 'https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=' + encodeURIComponent(roId);
+            const customerName = (ro.customerName || 'Unknown').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const rvMake = (ro.rv || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const spotText = (ro.parkingSpot || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const roIdSafe = roId.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const urlJson = JSON.stringify(checkInURL);
+
+            const printWindow = window.open('', '_blank', 'width=750,height=700');
+            printWindow.document.write('<!DOCTYPE html><html><head>' +
+                '<title>QR Print Sheet \u2014 ' + customerName + '<\/title>' +
+                '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
+                '<style>' +
+                '* { box-sizing: border-box; margin: 0; padding: 0; }' +
+                'body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 24px; }' +
+                'h2 { text-align:center; font-size:14px; color:#555; margin-bottom:20px; font-weight:normal; }' +
+                '.sheet { display:flex; gap:40px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }' +
+                '.stickerbox { display:flex; flex-direction:column; align-items:center; gap:6px; }' +
+                '.cut-label { font-size:11px; color:#888; }' +
+
+                /* ── 3"×3" windshield sticker ── */
+                '.sticker-lg {' +
+                '  width:3in; height:3in;' +
+                '  border:2px dashed #aaa;' +
+                '  background:white;' +
+                '  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;' +
+                '  padding:6px;' +
+                '}' +
+                '#qr-lg { width:2.28in; height:2.28in; }' +
+                '#qr-lg img, #qr-lg canvas { width:100% !important; height:100% !important; }' +
+                '.name { font-size:11.5px; font-weight:bold; text-align:center; line-height:1.2; }' +
+                '.rv   { font-size:10px; color:#444; text-align:center; }' +
+                '.roid { font-size:9px;  color:#666; text-align:center; font-family:monospace; }' +
+                '.spot { font-size:10px; font-weight:bold; color:#854d0e; background:#fef9c3;' +
+                '        border:1px solid #fde047; border-radius:3px; padding:1px 7px; text-align:center; }' +
+
+                /* ── 1"×1" key tag ── */
+                '.sticker-sm {' +
+                '  width:1in; height:1in;' +
+                '  border:2px dashed #aaa;' +
+                '  background:white;' +
+                '  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;' +
+                '  padding:3px;' +
+                '}' +
+                '#qr-sm { width:0.72in; height:0.72in; }' +
+                '#qr-sm img, #qr-sm canvas { width:100% !important; height:100% !important; }' +
+                '.sm-ro { font-size:5.5px; color:#333; text-align:center; font-family:monospace;' +
+                '         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; }' +
+
+                /* print rules */
+                '@media print {' +
+                '  body { background:white; padding:0.3in; }' +
+                '  .print-btn { display:none !important; }' +
+                '}' +
+                '@page { size:auto; margin:0.4in; }' +
+
+                /* print button */
+                '.print-btn { display:block; margin:22px auto 0; padding:9px 28px;' +
+                '  background:#0A84FF; color:white; border:none; border-radius:8px;' +
+                '  font-size:13px; font-weight:bold; cursor:pointer; }' +
+                '<\/style><\/head><body>' +
+
+                '<h2>PRVS QR Print Sheet &mdash; ' + customerName + '<\/h2>' +
+                '<div class="sheet">' +
+
+                  /* large sticker */
+                  '<div class="stickerbox">' +
+                    '<div class="sticker-lg">' +
+                      '<div id="qr-lg"><\/div>' +
+                      '<div class="name">' + customerName + '<\/div>' +
+                      (rvMake ? '<div class="rv">' + rvMake + '<\/div>' : '') +
+                      '<div class="roid">' + roIdSafe + '<\/div>' +
+                      (spotText ? '<div class="spot">&#128205; ' + spotText + '<\/div>' : '') +
+                    '<\/div>' +
+                    '<div class="cut-label">&#9988; 3&Prime; &times; 3&Prime; &mdash; Windshield Sticker<\/div>' +
+                  '<\/div>' +
+
+                  /* small sticker */
+                  '<div class="stickerbox">' +
+                    '<div class="sticker-sm">' +
+                      '<div id="qr-sm"><\/div>' +
+                      '<div class="sm-ro">' + roIdSafe + '<\/div>' +
+                    '<\/div>' +
+                    '<div class="cut-label">&#9988; 1&Prime; &times; 1&Prime; &mdash; Key Tag<\/div>' +
+                  '<\/div>' +
+
+                '<\/div>' +
+                '<button class="print-btn" onclick="window.print()">&#128424; Print Sheet<\/button>' +
+
+                '<script>' +
+                '(function init(){' +
+                '  if(typeof QRCode==="undefined"){setTimeout(init,80);return;}' +
+                '  var url=' + urlJson + ';' +
+                '  new QRCode(document.getElementById("qr-lg"),{text:url,width:219,height:219,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});' +
+                '  new QRCode(document.getElementById("qr-sm"),{text:url,width:69,height:69,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});' +
+                '})();' +
+                '<\/script><\/body><\/html>');
+            printWindow.document.close();
         }
 
         function updateStats(data, filteredData) {
