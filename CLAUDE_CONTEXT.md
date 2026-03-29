@@ -26,8 +26,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - [ ] 5. Update the **Version History** table if version was bumped
 - [ ] 5a. If version was bumped: add a **GitHub Release TODO** to the Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
 - [ ] 6. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
-- [ ] 7. **Run `bash scripts/backup.sh`** before pushing — creates timestamped snapshot in `.backups/`, keeps last 6
-- [ ] 8. Commit and push CLAUDE_CONTEXT.md to GitHub
+- [ ] 7. **Update `PRVS_PROJECT_CONTEXT.md`** — sync the TODO list and "Recently Completed" section so Roland's Claude Project (iPhone) stays current
+- [ ] 8. **Run `bash scripts/backup.sh`** before pushing — creates timestamped snapshot in `.backups/`, keeps last 6
+- [ ] 9. Commit and push CLAUDE_CONTEXT.md and PRVS_PROJECT_CONTEXT.md to GitHub
 
 > ⚠️ If the session is about to end due to context limits, Claude should say:
 > *"Context is getting full — let me update CLAUDE_CONTEXT.md before we lose this session."*
