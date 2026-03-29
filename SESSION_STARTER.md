@@ -28,11 +28,15 @@ Tell me:
 STEP 3 — Follow the Session Protocol:
 CLAUDE_CONTEXT.md has a START OF SESSION CHECKLIST. Follow every step completely.
 
-STEP 4 — Ask before starting:
-After reading, ask: "Is there anything new to add or change before we start?"
+STEP 4 — Check for iPhone / mobile TODO updates:
+Ask Roland: "Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start."
+If Roland pastes or dictates mobile updates, merge them into the TODO list in CLAUDE_CONTEXT.md immediately — mark completed items ✅, add new items with correct priority, then confirm what changed.
+
+STEP 5 — Ask before starting:
+After reading and syncing any mobile updates, ask: "Is there anything else to add or change before we start?"
 Wait for Roland's answer before beginning any work.
 
-STEP 5 — End of session commitment:
+STEP 6 — End of session commitment:
 Before this session ends (context limits or Roland says stop), you MUST:
 1. Run: bash scripts/backup.sh
 2. Update CLAUDE_CONTEXT.md — TODO list, File Inventory, Session Log, Completed Work, Known Issues, Version History
@@ -78,6 +82,20 @@ Paste the block above, then add:
 Paste the block above, then add:
 > "Before we build anything new, review the current state of index.html and tell me if there are any issues, inconsistencies, or technical debt I should know about."
 
+**To sync iPhone TODO updates at session start (MOBILE SYNC):**
+At the start of a laptop session, paste this after the main block:
+> "Here are my iPhone updates since last session: [paste or speak your notes]"
+
+Claude will merge them into CLAUDE_CONTEXT.md before starting work — marking completed items, adding new items with the right priority.
+
+**On your iPhone (between laptop sessions):**
+Open your PRVS Dashboard Claude Project and say things like:
+> "Add to TODO: follow up with Kenect about direct API access — high priority"
+> "Mark as done: GH#15 Phase 2 QR print sheet"
+> "New idea for the dashboard: [describe it]"
+
+Keep those notes in the Project conversation. When you start a laptop session, copy/paste or summarize them into the session starter prompt under "iPhone updates."
+
 **If Claude seems confused or off-track mid-session (RESET):**
 > "Stop everything. Re-read CLAUDE_CONTEXT.md right now. Confirm the current index.html version and the full TODO list before you do anything else. Do not continue until you have confirmed both."
 
@@ -100,3 +118,4 @@ Paste the block above, then add:
 | Context file (GitHub fallback) | `PatriotsRV/rv-dashboard` → `CLAUDE_CONTEXT.md` on `main` |
 | Backup script | `bash scripts/backup.sh` (run before every push) |
 | Current version | See CLAUDE_CONTEXT.md → File Inventory |
+| Claude Project (mobile TODO) | "PRVS Dashboard" project in Claude app — use from iPhone to log TODO updates between laptop sessions |
