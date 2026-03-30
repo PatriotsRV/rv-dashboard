@@ -1,4 +1,4 @@
-# PRVS Dashboard — Claude Project Context
+# PRVS RO Dashboard — Claude Project Context
 > **This file lives in the Claude Project knowledge base.**
 > It is the mobile-accessible bridge between the Claude Project (iPhone) and the Cowork session (laptop).
 > Updated at the end of every Cowork session as part of the STOP checklist.

@@ -56,10 +56,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | Priority | # | Task | Notes | Status |
 |---|---|---|---|---|
-| ✅ | GH#10 | **Integrate Kenect messaging using the Kenect APIs** | v1.290 — 💬 Messages button on each RO card (requires customerPhone); chat-style modal with inbound/outbound bubbles; send message + review request; Admin Settings: Location ID config, Test Connection, Load Locations; `kenect-proxy` Supabase Edge Function (needs `KENECT_API_KEY` secret + deploy). **Roland action: `supabase secrets set KENECT_API_KEY=xxx` then deploy Edge Function** | ✅ Done v1.290 — pending deploy |
-| 🔴 | — | **Resolve Kenect integration approach** | Kenect's support team said to use Zapier instead of direct API. Kenect's Zapier integration supports: **Send Message**, **Send Review Request**, **Push Lead** (outbound only). The only Kenect→Zapier trigger is **Lead Push** — there is NO inbound message trigger, meaning customer replies cannot be surfaced in the dashboard via Zapier. The kenect-proxy Edge Function (v1.290) was built against the direct partner API. **Options**: (A) Push back on Kenect — ask for direct API access since Zapier can't support the conversation thread view; (B) Accept Zapier for send/review only and remove the conversation thread feature; (C) Use Zapier for outbound + store all messages in Supabase manually. Recommendation: push for direct API access — the Zapier integration runs on the same partner API endpoints internally. | ⏳ Decision needed — Roland |
-| 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features | ⏳ Open |
-| 🟠 | GH#4 | **Twilio SMS v1.27** | Customer + tech notifications via SMS | ⏳ Open |
+| ⚠️ | GH#10 | **Kenect messaging — ON HOLD** | v1.290 code committed but NOT deployed. Kenect will NOT provide direct API keys — only Zapier, which has no inbound message trigger (can't support conversation thread view). **Decision (2026-03-30): Pivoting away from Kenect to Twilio for SMS.** The `kenect-proxy` Edge Function and 💬 Messages UI remain in the codebase but are dormant until/unless Kenect reverses course. No deploy needed. | ⏳ On Hold — Twilio pivot |
+| 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features. **Fast-tracking as of 2026-03-30 after Kenect API access denied.** | ⏳ Open — Top Priority |
+| 🔴 | GH#4 | **Twilio SMS — plan + build** | Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. Scope TBD this session. | ⏳ Open |
 | ✅ | GH#14 | **Parts chip states — Sourcing / Outstanding / Received / Estimate** | Four-state system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green), 📋 Parts Estimate (blue, pulsing). `parts_status` column on `repair_orders`. Auto-flip to Received when all parts marked received. Manager/Admin set status modal. For Estimate Only toggle in Request Parts modal. Filter buttons for all four states. bobby@, solar@, brandon@ added to MANAGER_EMAILS + Supabase. | ✅ Done v1.284–v1.285 |
 | 🟠 | GH#5 | **Work Assignment System — expanded scope** | Full spec: (1) For Service-type ROs, Manager can expand the repair type into individual bulleted **Service Tasks** (sub-work-items within the RO). (2) Each Service Task gets its own status — replaces the current single RO Status with per-task status tracking. (3) Service Managers build out the work order for their specific service: create task list, set task details, assign each task to a specific technician. (4) Technicians see only their assigned tasks. (5) Overall RO status becomes a rollup of task completion. (6) **Manager sets RO Urgency** — lock urgency selector to Manager+Admin only (currently open to all users). (7) **Each Service Task has its own dollar value** set by the responsible Service Manager — task values roll up to the total RO dollar value (replaces/supplements current single `dollarValue` field). DB changes: new `service_tasks` table (ro_id, task_title, assigned_tech_email, status, sort_order, notes, dollar_value); RO total = SUM of task dollar_values. UI changes: RO card shows task checklist + per-task value + rolled-up total; Manager modal to add/edit/assign tasks and set value per task; urgency selector restricted to Manager+Admin. | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
@@ -251,6 +250,39 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `audit_log` | Field-level change audit trail |
 | `config` | App configuration key/value store |
 | `insurance_scans` | Insurance document scan data |
+| `staff` | ⏳ Pending migration — all PRVS personnel (name, email, role, service_silo). Replaces hardcoded TECH_EMAILS / MANAGER_EMAILS arrays. Migration: `supabase/migrations/staff_table.sql` |
+
+---
+
+## 👥 PRVS Staff Roster
+
+> Source of truth for personnel. Loaded into `staff` table via `supabase/migrations/staff_table.sql`.
+> Admin role (Roland) auto-grants Sr. Manager access — no staff row needed.
+
+| Name | Email | Role | Silo |
+|---|---|---|---|
+| Ryan Dillon | ryan@patriotsrvservices.com | Sr. Manager | — (cross-silo; acting manager for Roof + Paint & Body until dedicated hires) |
+| Mauricio Tellez | mauricio@patriotsrvservices.com | Manager | Repair |
+| Jason Rubin | jason@patriotsrvservices.com | Manager | Repair |
+| Andrew Page | andrew@patriotsrvservices.com | Manager | Vroom |
+| Riley Scott | riley@patriotsrvservices.com | Manager | Solar |
+| Bobby Thatcher | bobby@patriotsrvservices.com | Parts Manager | Parts & Insurance (office — NOT assigned to service WOs) |
+| Brandon Dillon | brandon@patriotsrvservices.com | Parts Manager | Parts & Insurance (office — NOT assigned to service WOs) |
+| Nik Polizzo | nik@patriotsrvservices.com | Tech | — |
+| Ignacio Ochoa | ignacio@patriotsrvservices.com | Tech | — |
+| Tipton Scott | tipton@patriotsrvservices.com | Tech | — |
+| Rod Wimbles | rod@patriotsrvservices.com | Tech | — |
+| Zak Wimbles | zak@patriotsrvservices.com | Tech | — |
+| Travis Wimbles | travis@patriotsrvservices.com | Tech | — |
+| Cooper Cihak | cooper@patriotsrvservices.com | Tech | — |
+| Rudy Juarez | rudy@patriotsrvservices.com | Tech | — |
+| Tommy Belew | tommy@patriotsrvservices.com | Tech | — |
+
+**Service Silos:** `repair` · `vroom` · `solar` · `roof` · `paint_body`
+**Dept Silos (non-service):** `parts_insurance` — Bobby + Brandon; excluded from WO assignment dropdowns.
+**Multi-silo per RO:** ✅ Confirmed — one RO can have multiple silos active simultaneously (e.g., Roof + Solar).
+**Task Templates:** Deferred to V1.5 — keep on TODO list.
+**Techs:** No silo assignment for now — assignable to any service task across any silo.
 
 ---
 

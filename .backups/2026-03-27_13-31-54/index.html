@@ -1,8 +1,13 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.286
-    Released: 2026-03-23
+    PRVS Dashboard v1.291
+    Released: 2026-03-27
+    v1.291: Parking Spot field (GH#15 Phase 1) — 📍 lot location on every RO card; dropdown of all named lot positions (Bays #1–#14, MR, #15 Wash Bay, #17, Breeze Way N/S, Front Parking, RV Temp, Gates); shown in New RO + Edit RO forms; stored as parking_spot column in repair_orders; SQL migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS parking_spot TEXT
+    v1.290: Kenect messaging integration (GH#10) — 💬 Messages button on each RO card; conversation modal with chat-style thread (inbound left, outbound right); send message from dashboard; review request button; Admin Settings: Kenect Location ID config + Test Connection; kenect-proxy Supabase Edge Function (Bearer auth, actions: test_credentials, get_locations, get_conversation, send_message, send_review_request)
+    v1.289: Move Supplier Contact section to top of Add/Edit Part form
+    v1.288: Add Sourcing to individual part row status dropdown (neon orange, matches RO-level chip color)
+    v1.287: Add Wholesale and Retail Price columns to Manage Parts table
     v1.286: Rename "Core Charge" label to "Freight Charge" in Parts form (UI label only; DB column core_charge unchanged)
     v1.285: Parts chip states (GH#14) — four-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green), 📋 Parts Estimate (blue); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all four states; submitPartsRequest with For Estimate Only toggle; syncEstimateToggle global function; brandon@ solar@ bobby@ added to Manager role
     v1.284: Parts chip states (GH#14) — three-state parts status system: 🔍 Part Sourcing (neon orange), ⚠️ Parts Outstanding (yellow), ✅ Parts Received (green); parts_status column on repair_orders; openPartsStatusModal for Manager/Admin; auto-flip to Received when all parts marked received; filter buttons for all three states; submitPartsRequest now sets parts_status='outstanding'
@@ -2579,7 +2584,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.286</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.289</span>
             </div>
         </header>
 
@@ -5596,11 +5601,12 @@ Notes: ${notes}` : '',
 
         let partsData = {}; // Cache: { roId: [parts array] }
 
-        const PART_STATUSES = ['Ordered','In Transit','Received','Installed','Backordered','Returned','Lost'];
+        const PART_STATUSES = ['Ordered','In Transit','Sourcing','Received','Installed','Backordered','Returned','Lost'];
 
         const PART_STATUS_COLORS = {
             'Ordered':     '#ffcc00',
             'In Transit':  '#ff9500',
+            'Sourcing':    '#ff6a00',
             'Received':    '#34c759',
             'Installed':   '#0a84ff',
             'Backordered': '#ff3b30',
@@ -5833,7 +5839,7 @@ Notes: ${notes}` : '',
             const parts = (roId && partsData[roId]) ? partsData[roId] : [];
 
             const renderPartsRows = (parts) => parts.length === 0
-                ? '<tr><td colspan="7" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
+                ? '<tr><td colspan="9" style="text-align:center;padding:20px;color:#94a3b8;">No parts yet. Click + Add Part to get started.</td></tr>'
                 : parts.map((p, i) => {
                     const color = PART_STATUS_COLORS[p.status] || '#9ca3af';
                     return `<tr style="border-bottom:1px solid #e2e8f0;">
@@ -5844,6 +5850,8 @@ Notes: ${notes}` : '',
                             <span style="padding:3px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;background:${color}22;color:${color};border:1px solid ${color}66;">${p.status}</span>
                         </td>
                         <td style="padding:10px 8px;text-align:center;color:#64748b;font-size:0.85rem;">${p.qty || 1}</td>
+                        <td style="padding:10px 8px;text-align:right;color:#1e293b;font-size:0.85rem;font-weight:600;">${p.wholesalePrice ? '$' + parseFloat(p.wholesalePrice).toFixed(2) : '—'}</td>
+                        <td style="padding:10px 8px;text-align:right;color:#16a34a;font-size:0.85rem;font-weight:600;">${p.retailPrice ? '$' + parseFloat(p.retailPrice).toFixed(2) : '—'}</td>
                         <td style="padding:10px 8px;text-align:center;">
                             ${p.status !== 'Received' && p.status !== 'Installed'
                                 ? `<button onclick="markPartReceived(${filteredIndex},${i})" style="padding:4px 10px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">✓ Received</button>`
@@ -5870,6 +5878,15 @@ Notes: ${notes}` : '',
                         <!-- Add Part Form (hidden by default) -->
                         <div id="addPartForm" style="display:none;background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #e2e8f0;">
                             <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:1rem;" id="addPartFormTitle">+ Add New Part</div>
+
+                            <!-- Section: Supplier Contact -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
 
                             <!-- Section: Core Info -->
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ff9500;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #fed7aa;">🔩 Core Info</div>
@@ -5918,15 +5935,6 @@ Notes: ${notes}` : '',
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Install Labor Hrs</label><input type="number" id="pf_laborHours" min="0" step="0.25" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
 
-                            <!-- Section: Supplier Contact -->
-                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                            </div>
-
                             <!-- Section: Receipt -->
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ef4444;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #fecaca;">✅ Receipt</div>
                             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
@@ -5952,6 +5960,8 @@ Notes: ${notes}` : '',
                                         <th style="text-align:left;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Supplier</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Status</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Qty</th>
+                                        <th style="text-align:right;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Wholesale</th>
+                                        <th style="text-align:right;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Retail</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Quick</th>
                                         <th style="text-align:center;padding:10px 8px;color:#475569;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Actions</th>
                                     </tr>
@@ -6612,6 +6622,7 @@ Notes: ${notes}` : '',
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || t('Unknown Customer')}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
+                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${ro.parkingSpot}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
@@ -6815,6 +6826,11 @@ Notes: ${notes}` : '',
                         <button class="request-parts-btn" onclick="openPartsRequestModal(${index})" title="Submit a parts request for this RO">
                             ${t('🔩 Request Parts')}
                         </button>
+                        ${ro.customerPhone ? `
+                        <button class="kenect-msg-btn" onclick="openKenectModal(${index})" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
+                            💬 ${t('Messages')}
+                        </button>
+                        ` : ''}
                         ${(isAdmin() || hasRole('Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
                         <button class="mark-ordered-btn" onclick="openPartsStatusModal(${index})" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}
@@ -8180,6 +8196,7 @@ Notes: ${notes}` : '',
                 promisedDate:             row.promised_date || '',
                 percentComplete:          row.pct_complete || 0,
                 dollarValue:              row.dollar_value || 0,
+                parkingSpot:              row.parking_spot || '',
                 status:                   row.status || 'Not On Lot',
                 urgency:                  row.urgency || '',
                 customerType:             row.customer_type || '',
@@ -8472,6 +8489,7 @@ Notes: ${notes}` : '',
                     promised_date:  formData.promisedDate || null,
                     pct_complete:   0,
                     dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                    parking_spot:   formData.parkingSpot || null,
                     status:         formData.status || 'Not On Lot',
                     urgency:        formData.urgency || null,
                     customer_type:  formData.customerType || null,
@@ -8527,6 +8545,7 @@ Notes: ${notes}` : '',
                 promised_date:  formData.promisedDate || null,
                 date_arrived:   formData.dateArrived || null,
                 dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                parking_spot:   formData.parkingSpot || null,
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -10199,6 +10218,266 @@ Notes: ${notes}` : '',
             });
         }
         
+        // ═══════════════════════════════════════════════════════════════
+        // KENECT MESSAGING INTEGRATION (GH#10)
+        // ═══════════════════════════════════════════════════════════════
+
+        const KENECT_PROXY_URL = `${SUPABASE_URL}/functions/v1/kenect-proxy`;
+
+        /** Normalise a phone number to E.164 (+1XXXXXXXXXX) for Kenect */
+        function normalisePhone(raw) {
+            if (!raw) return null;
+            const digits = raw.replace(/\D/g, '');
+            if (digits.length === 10) return `+1${digits}`;
+            if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+            return digits.length >= 7 ? digits : null;
+        }
+
+        /** Call the kenect-proxy Edge Function */
+        async function kenectCall(action, params = {}, payload = {}) {
+            const resp = await fetch(KENECT_PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'apikey': SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({ action, params, payload }),
+            });
+            const json = await resp.json();
+            return json;
+        }
+
+        // ── Open Kenect conversation modal ─────────────────────────────
+        async function openKenectModal(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+
+            const phone = normalisePhone(ro.customerPhone);
+            const displayPhone = ro.customerPhone || '(no phone)';
+            const customerName = ro.customerName || 'Customer';
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+
+            // Build and inject modal
+            const existing = document.getElementById('kenectModalOverlay');
+            if (existing) existing.remove();
+
+            const modalHTML = `
+            <div id="kenectModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:11000;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closeKenectModal(event)">
+                <div style="background:white;border-radius:16px;width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;" onclick="event.stopPropagation()">
+
+                    <!-- Header -->
+                    <div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                        <div>
+                            <div style="font-size:1.1rem;font-weight:700;">💬 ${customerName}</div>
+                            <div style="font-size:0.85rem;opacity:0.85;">${displayPhone}</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button id="kenectReviewBtn" onclick="sendKenectReview(${roIndex})" title="Send review request" style="padding:6px 12px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">⭐ Review</button>
+                            <button onclick="closeKenectModal()" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:1.2rem;cursor:pointer;padding:4px 10px;border-radius:6px;">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- Message thread -->
+                    <div id="kenectMessages" style="flex:1;overflow-y:auto;padding:16px;background:#f8fafc;display:flex;flex-direction:column;gap:10px;min-height:200px;">
+                        <div style="text-align:center;color:#94a3b8;font-size:0.9rem;padding:20px;">
+                            <div style="font-size:2rem;margin-bottom:8px;">💬</div>
+                            Loading conversation…
+                        </div>
+                    </div>
+
+                    <!-- Send bar -->
+                    <div style="padding:12px 16px;border-top:1px solid #e2e8f0;background:white;flex-shrink:0;">
+                        <div style="display:flex;gap:8px;align-items:flex-end;">
+                            <textarea id="kenectSendInput" placeholder="Type a message…" rows="2"
+                                style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:0.9rem;resize:none;font-family:inherit;line-height:1.4;"
+                                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendKenectMessage(${roIndex});}"></textarea>
+                            <button onclick="sendKenectMessage(${roIndex})" style="padding:10px 16px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:white;border:none;border-radius:10px;cursor:pointer;font-size:0.9rem;font-weight:600;height:42px;white-space:nowrap;">Send ➤</button>
+                        </div>
+                        <div id="kenectSendStatus" style="font-size:0.8rem;color:#64748b;margin-top:6px;display:none;"></div>
+                    </div>
+                </div>
+            </div>`;
+
+            const div = document.createElement('div');
+            div.innerHTML = modalHTML;
+            document.body.appendChild(div);
+
+            // Load conversation
+            if (phone) {
+                await refreshKenectMessages(phone, locationId);
+            } else {
+                document.getElementById('kenectMessages').innerHTML =
+                    '<div style="text-align:center;color:#ef4444;padding:20px;">⚠️ No valid phone number on this RO</div>';
+            }
+        }
+
+        /** Fetch and render the conversation thread */
+        async function refreshKenectMessages(phone, locationId) {
+            const container = document.getElementById('kenectMessages');
+            if (!container) return;
+
+            container.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:0.9rem;padding:20px;"><div style="font-size:2rem;margin-bottom:8px;">⏳</div>Loading…</div>';
+
+            try {
+                const result = await kenectCall('get_conversation', { phoneNumber: phone, locationId });
+
+                if (!result.ok) {
+                    // Fallback: try simpler endpoint
+                    const fallback = await kenectCall('get_messages_by_phone', { phoneNumber: phone, locationId });
+                    if (!fallback.ok) {
+                        container.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">❌ ${result.data?.error || 'Could not load conversation'}</div>`;
+                        return;
+                    }
+                    renderKenectMessages(container, fallback.data);
+                    return;
+                }
+                renderKenectMessages(container, result.data);
+            } catch (e) {
+                container.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">❌ Network error: ${e}</div>`;
+            }
+        }
+
+        /** Render message bubbles from Kenect API response */
+        function renderKenectMessages(container, data) {
+            // Handle various response shapes from Kenect
+            let messages = [];
+            if (Array.isArray(data)) {
+                messages = data;
+            } else if (data && Array.isArray(data.messages)) {
+                messages = data.messages;
+            } else if (data && Array.isArray(data.content)) {
+                messages = data.content;
+            } else if (data && data.conversation && Array.isArray(data.conversation.messages)) {
+                messages = data.conversation.messages;
+            }
+
+            if (messages.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">No messages yet</div>';
+                return;
+            }
+
+            // Sort oldest → newest
+            messages.sort((a, b) => {
+                const tA = a.createdAt || a.created_at || a.timestamp || a.id || 0;
+                const tB = b.createdAt || b.created_at || b.timestamp || b.id || 0;
+                return String(tA).localeCompare(String(tB));
+            });
+
+            container.innerHTML = messages.map(msg => {
+                const isOutbound = msg.outbound === true || msg.direction === 'outbound' || msg.type === 'outbound';
+                const body = msg.messageBody || msg.body || msg.text || msg.message || '(media)';
+                const rawTs = msg.createdAt || msg.created_at || msg.timestamp || msg.sentAt;
+                const ts = rawTs ? new Date(rawTs).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+
+                return `
+                <div style="display:flex;flex-direction:column;align-items:${isOutbound ? 'flex-end' : 'flex-start'};">
+                    <div style="
+                        max-width:75%;
+                        padding:10px 14px;
+                        border-radius:${isOutbound ? '16px 16px 4px 16px' : '16px 16px 16px 4px'};
+                        background:${isOutbound ? 'linear-gradient(135deg,#0ea5e9,#0284c7)' : '#e2e8f0'};
+                        color:${isOutbound ? 'white' : '#1e293b'};
+                        font-size:0.9rem;
+                        line-height:1.45;
+                        word-break:break-word;
+                    ">${body.replace(/\n/g, '<br>')}</div>
+                    ${ts ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;padding:0 4px;">${ts}${isOutbound ? ' · Sent' : ''}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        /** Send a message from the input box */
+        async function sendKenectMessage(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const phone = normalisePhone(ro.customerPhone);
+            if (!phone) { alert('No valid phone number on this RO'); return; }
+
+            const input = document.getElementById('kenectSendInput');
+            const statusEl = document.getElementById('kenectSendStatus');
+            const messageBody = (input?.value || '').trim();
+            if (!messageBody) return;
+
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+
+            input.disabled = true;
+            if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Sending…'; statusEl.style.color = '#64748b'; }
+
+            try {
+                const result = await kenectCall('send_message', {}, {
+                    contactPhone: phone,
+                    messageBody,
+                    locationId,
+                });
+
+                if (result.ok) {
+                    input.value = '';
+                    if (statusEl) { statusEl.textContent = '✓ Message sent'; statusEl.style.color = '#10b981'; }
+                    // Refresh the thread
+                    await refreshKenectMessages(phone, locationId);
+                    setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
+                } else {
+                    const errMsg = result.data?.error || result.data?.message || JSON.stringify(result.data);
+                    if (statusEl) { statusEl.textContent = `❌ ${errMsg}`; statusEl.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (statusEl) { statusEl.textContent = `❌ ${e}`; statusEl.style.color = '#ef4444'; }
+            } finally {
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        /** Send a review request to the customer */
+        async function sendKenectReview(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const phone = normalisePhone(ro.customerPhone);
+            if (!phone) { alert('No valid phone number on this RO'); return; }
+
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+            const btn = document.getElementById('kenectReviewBtn');
+            if (btn) btn.disabled = true;
+
+            try {
+                const result = await kenectCall('send_review_request', {}, {
+                    contactPhone: phone,
+                    locationId,
+                    name: ro.customerName || '',
+                });
+                if (result.ok) {
+                    alert(`✅ Review request sent to ${ro.customerName || phone}`);
+                } else {
+                    alert(`❌ Review request failed: ${result.data?.error || result.data?.message || JSON.stringify(result.data)}`);
+                }
+            } catch (e) {
+                alert(`❌ Error: ${e}`);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function closeKenectModal(event) {
+            if (event && event.target !== document.getElementById('kenectModalOverlay')) return;
+            const modal = document.getElementById('kenectModalOverlay');
+            if (modal) modal.closest('div').remove();
+        }
+        // Override to handle the close button click (no event target check needed)
+        window.closeKenectModal = function(event) {
+            const overlay = document.getElementById('kenectModalOverlay');
+            if (!overlay) return;
+            if (event && event.target && event.target !== overlay) return;
+            overlay.closest('div').remove();
+        };
+
+        // ═══════════════════════════════════════════════════════════════
+        // END KENECT
+        // ═══════════════════════════════════════════════════════════════
+
         function openAdminSettingsModal() {
             if (!isAdmin()) {
                 alert('Admin access required');
@@ -10259,6 +10538,23 @@ Notes: ${notes}` : '',
                         </button>
                         
                         <div style="border-top:1px solid #e2e8f0;margin:16px 0;padding-top:16px;">
+                            <div style="font-size:0.85rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">💬 Kenect Messaging</div>
+                            <p style="font-size:0.85rem;color:#64748b;margin:0 0 10px 0;">
+                                Set the Kenect Location ID for this account. The API key is stored securely as a Supabase Edge Function secret (<code>KENECT_API_KEY</code>).
+                            </p>
+                            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                                <input id="kenectLocationIdInput" type="text" placeholder="e.g. 12345" value="${localStorage.getItem('prvs_kenect_location_id') || ''}"
+                                    style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;" />
+                                <button onclick="saveKenectLocationId()" style="padding:10px 16px;background:#0ea5e9;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Save</button>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-bottom:4px;">
+                                <button onclick="testKenectCredentials()" style="flex:1;padding:10px;background:#f8fafc;border:2px solid #0ea5e9;color:#0284c7;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem;">🔍 Test Connection</button>
+                                <button onclick="loadKenectLocations()" style="flex:1;padding:10px;background:#f8fafc;border:2px solid #e2e8f0;color:#475569;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem;">📍 Load Locations</button>
+                            </div>
+                            <div id="kenectSettingsStatus" style="font-size:0.82rem;color:#64748b;margin-top:6px;min-height:18px;"></div>
+                        </div>
+
+                        <div style="border-top:1px solid #e2e8f0;margin:16px 0;padding-top:16px;">
                             <div style="font-size:0.85rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">🗄️ Database Tools</div>
                             <button onclick="openPhotoMigrationTool()" style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg,#10b981,#059669); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600; margin-bottom: 8px;">
                                 🖼️ Migrate Photos to Supabase Storage
@@ -10284,7 +10580,52 @@ Notes: ${notes}` : '',
                 modal.remove();
             }
         }
-        
+
+        function saveKenectLocationId() {
+            const val = (document.getElementById('kenectLocationIdInput')?.value || '').trim();
+            localStorage.setItem('prvs_kenect_location_id', val);
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = val ? `✅ Location ID saved: ${val}` : '✅ Location ID cleared'; s.style.color = '#10b981'; }
+        }
+
+        async function testKenectCredentials() {
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = '⏳ Testing connection…'; s.style.color = '#64748b'; }
+            try {
+                const result = await kenectCall('test_credentials');
+                if (result.ok) {
+                    if (s) { s.textContent = `✅ Connected — ${JSON.stringify(result.data).substring(0, 120)}`; s.style.color = '#10b981'; }
+                } else {
+                    if (s) { s.textContent = `❌ ${result.data?.error || result.data?.message || result.status}`; s.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (s) { s.textContent = `❌ ${e}`; s.style.color = '#ef4444'; }
+            }
+        }
+
+        async function loadKenectLocations() {
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = '⏳ Loading locations…'; s.style.color = '#64748b'; }
+            try {
+                const result = await kenectCall('get_locations');
+                if (result.ok) {
+                    const locs = Array.isArray(result.data) ? result.data :
+                                 Array.isArray(result.data?.content) ? result.data.content :
+                                 Array.isArray(result.data?.locations) ? result.data.locations : [];
+                    if (locs.length === 0) {
+                        if (s) { s.textContent = '⚠️ No locations returned'; s.style.color = '#f59e0b'; }
+                        return;
+                    }
+                    const lines = locs.map(l => `${l.id || l.locationId || l.partnerLocationId} — ${l.name || l.locationName || ''}`).join('\n');
+                    if (s) { s.textContent = `📍 ${locs.length} location(s):\n${lines}`; s.style.color = '#0284c7'; s.style.whiteSpace = 'pre'; }
+                } else {
+                    if (s) { s.textContent = `❌ ${result.data?.error || result.data?.message || result.status}`; s.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (s) { s.textContent = `❌ ${e}`; s.style.color = '#ef4444'; }
+            }
+        }
+
         function generatePresetCode() {
             return `const viewPresets = ${JSON.stringify(viewPresets, null, 12)};`;
         }
@@ -10392,6 +10733,7 @@ Notes: ${notes}` : '',
                 document.getElementById('editDollarValue').value = ro.dollarValue || '';
                 document.getElementById('editPromisedDate').value = ro.promisedDate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
+                document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';
                 document.getElementById('editRepairDescription').value = ro.repairDescription || '';
 
@@ -10599,6 +10941,7 @@ Notes: ${notes}` : '',
                         dollarValue: document.getElementById('editDollarValue').value,
                         promisedDate: document.getElementById('editPromisedDate').value,
                         dateArrived: document.getElementById('editDateArrived').value,
+                        parkingSpot: document.getElementById('editParkingSpot').value,
                         repairType: repairTypes.join(', '),
                         vin: document.getElementById('editVin').value.toUpperCase(),
                         repairDescription: document.getElementById('editRepairDescription').value,
@@ -10779,6 +11122,41 @@ Notes: ${notes}` : '',
                         <label class="form-label">Dollar Value</label>
                         <input type="number" class="form-input" name="dollarValue" id="new_dollarValue" min="0" step="0.01">
                         <div id="sug_new_dollarValue"></div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">📍 Parking Spot</label>
+                        <select class="form-select" name="parkingSpot" id="new_parkingSpot">
+                            <option value="">— Not assigned —</option>
+                            <optgroup label="Interior Bays (Upper)">
+                                <option value="Bay #9">Bay #9</option>
+                                <option value="Bay #10">Bay #10</option>
+                                <option value="Bay #11">Bay #11</option>
+                                <option value="Bay MR">Bay MR</option>
+                                <option value="Bay #12">Bay #12</option>
+                                <option value="Bay #13">Bay #13</option>
+                                <option value="Bay #14">Bay #14</option>
+                            </optgroup>
+                            <optgroup label="Interior Bays (Lower)">
+                                <option value="Bay #1">Bay #1</option>
+                                <option value="Bay #2">Bay #2</option>
+                                <option value="Bay #3">Bay #3</option>
+                                <option value="Bay #4">Bay #4</option>
+                                <option value="Breeze Way N">Breeze Way N</option>
+                                <option value="Office">Office</option>
+                                <option value="Breeze Way S">Breeze Way S</option>
+                                <option value="Bay #5">Bay #5</option>
+                                <option value="Bay #6">Bay #6</option>
+                                <option value="Bay #7">Bay #7</option>
+                                <option value="Bay #8">Bay #8</option>
+                            </optgroup>
+                            <optgroup label="Outdoor">
+                                <option value="Bay #17">Bay #17</option>
+                                <option value="Wash Bay #15">Wash Bay #15</option>
+                                <option value="Front Parking">Front Parking</option>
+                                <option value="RV Temp">RV Temp</option>
+                                <option value="Gates">Gates</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Status *</label>
@@ -11210,6 +11588,41 @@ Notes: ${notes}` : '',
                         <label class="form-label">RO Value ($)</label>
                         <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">📍 Parking Spot</label>
+                        <select class="form-select" id="editParkingSpot">
+                            <option value="">— Not assigned —</option>
+                            <optgroup label="Interior Bays (Upper)">
+                                <option value="Bay #9">Bay #9</option>
+                                <option value="Bay #10">Bay #10</option>
+                                <option value="Bay #11">Bay #11</option>
+                                <option value="Bay MR">Bay MR</option>
+                                <option value="Bay #12">Bay #12</option>
+                                <option value="Bay #13">Bay #13</option>
+                                <option value="Bay #14">Bay #14</option>
+                            </optgroup>
+                            <optgroup label="Interior Bays (Lower)">
+                                <option value="Bay #1">Bay #1</option>
+                                <option value="Bay #2">Bay #2</option>
+                                <option value="Bay #3">Bay #3</option>
+                                <option value="Bay #4">Bay #4</option>
+                                <option value="Breeze Way N">Breeze Way N</option>
+                                <option value="Office">Office</option>
+                                <option value="Breeze Way S">Breeze Way S</option>
+                                <option value="Bay #5">Bay #5</option>
+                                <option value="Bay #6">Bay #6</option>
+                                <option value="Bay #7">Bay #7</option>
+                                <option value="Bay #8">Bay #8</option>
+                            </optgroup>
+                            <optgroup label="Outdoor">
+                                <option value="Bay #17">Bay #17</option>
+                                <option value="Wash Bay #15">Wash Bay #15</option>
+                                <option value="Front Parking">Front Parking</option>
+                                <option value="RV Temp">RV Temp</option>
+                                <option value="Gates">Gates</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Promised Date</label>

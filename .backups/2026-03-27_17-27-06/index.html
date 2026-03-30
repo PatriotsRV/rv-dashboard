@@ -1,8 +1,14 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.288
-    Released: 2026-03-23
+    PRVS Dashboard v1.294
+    Released: 2026-03-27
+    v1.294: QR scan now opens main RO tile (GH#15) — QR codes link to index.html?ro= instead of checkin.html; deep-link handler in renderBoard() reads ?ro= URL param, scrolls to matching tile, and pulses a 3× blue highlight ring; 🚪 Tech Check In button still available on the tile for techs; QR modal title updated accordingly
+    v1.293: QR Print Sheet Phase 2 (GH#15) — dual-sticker print window: 3"×3" windshield sticker (customer name, RV, RO#, parking spot chip) + 1"×1" key tag; both generated fresh via QRCode.js in print window; proper @media print CSS with dashed cut borders and physical inch sizing
+    v1.292: Remap parking spot positions to hand-drawn lot designations — Rear Lot R1–R20, Interior Bays B1–B14, Wash Bay 17/18 + W1–W4, Front Lot F1–F12; replaces old Bay#/Breeze Way naming
+    v1.291: Parking Spot field (GH#15 Phase 1) — 📍 lot location on every RO card; dropdown of all named lot positions; shown in New RO + Edit RO forms; stored as parking_spot column in repair_orders; SQL migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS parking_spot TEXT
+    v1.290: Kenect messaging integration (GH#10) — 💬 Messages button on each RO card; conversation modal with chat-style thread (inbound left, outbound right); send message from dashboard; review request button; Admin Settings: Kenect Location ID config + Test Connection; kenect-proxy Supabase Edge Function (Bearer auth, actions: test_credentials, get_locations, get_conversation, send_message, send_review_request)
+    v1.289: Move Supplier Contact section to top of Add/Edit Part form
     v1.288: Add Sourcing to individual part row status dropdown (neon orange, matches RO-level chip color)
     v1.287: Add Wholesale and Retail Price columns to Manage Parts table
     v1.286: Rename "Core Charge" label to "Freight Charge" in Parts form (UI label only; DB column core_charge unchanged)
@@ -2581,7 +2587,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.288</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.289</span>
             </div>
         </header>
 
@@ -5876,6 +5882,15 @@ Notes: ${notes}` : '',
                         <div id="addPartForm" style="display:none;background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #e2e8f0;">
                             <div style="font-weight:700;color:#1e293b;margin-bottom:14px;font-size:1rem;" id="addPartFormTitle">+ Add New Part</div>
 
+                            <!-- Section: Supplier Contact -->
+                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                            </div>
+
                             <!-- Section: Core Info -->
                             <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ff9500;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #fed7aa;">🔩 Core Info</div>
                             <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
@@ -5921,15 +5936,6 @@ Notes: ${notes}` : '',
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Retail Price ($)</label><input type="number" id="pf_retailPrice" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Freight Charge ($)</label><input type="number" id="pf_coreCharge" min="0" step="0.01" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Install Labor Hrs</label><input type="number" id="pf_laborHours" min="0" step="0.25" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                            </div>
-
-                            <!-- Section: Supplier Contact -->
-                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8b5cf6;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #ddd6fe;">🏢 Supplier Contact</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Supplier</label><input type="text" id="pf_supplier" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Sales Associate</label><input type="text" id="pf_salesAssocName" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Phone</label><input type="tel" id="pf_salesAssocPhone" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Assoc. Email</label><input type="email" id="pf_salesAssocEmail" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
 
                             <!-- Section: Receipt -->
@@ -6203,6 +6209,49 @@ Notes: ${notes}` : '',
             if (input) input.value = '';
             if (clearBtn) clearBtn.style.display = 'none';
             renderBoard();
+        }
+
+        // Deep-link: scroll to + highlight an RO tile when ?ro= is in the URL
+        // Fires once on the first renderBoard() that contains the target RO, then clears.
+        let _deepLinkRoId = new URLSearchParams(window.location.search).get('ro');
+
+        function handleDeepLink() {
+            if (!_deepLinkRoId) return;
+            const target = _deepLinkRoId;
+
+            // Find the RO card whose roId matches the URL param
+            const idx = currentFilteredData.findIndex(ro => {
+                const id = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
+                return id === target;
+            });
+            if (idx === -1) return;          // not in current filter view — wait for next render
+
+            const card = document.querySelector(`[data-ro-index="${idx}"]`);
+            if (!card) return;
+
+            // Clear the flag so we don't re-highlight on every subsequent renderBoard()
+            _deepLinkRoId = null;
+
+            // Scroll the card into view
+            setTimeout(() => {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Pulse a blue highlight ring 3× to draw the eye
+                let pulses = 0;
+                const pulse = () => {
+                    card.style.transition = 'box-shadow 0.35s ease, outline 0.35s ease';
+                    card.style.outline = '3px solid #0A84FF';
+                    card.style.boxShadow = '0 0 0 6px rgba(10,132,255,0.35), 0 0 40px rgba(10,132,255,0.2)';
+                    setTimeout(() => {
+                        card.style.outline = '';
+                        card.style.boxShadow = '';
+                        pulses++;
+                        if (pulses < 3) setTimeout(pulse, 450);
+                        else card.style.transition = '';
+                    }, 400);
+                };
+                setTimeout(pulse, 300); // small delay to let scroll settle
+            }, 80);
         }
 
         // Initialize
@@ -6619,6 +6668,7 @@ Notes: ${notes}` : '',
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${ro.customerName || t('Unknown Customer')}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
+                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${ro.parkingSpot}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
@@ -6822,6 +6872,11 @@ Notes: ${notes}` : '',
                         <button class="request-parts-btn" onclick="openPartsRequestModal(${index})" title="Submit a parts request for this RO">
                             ${t('🔩 Request Parts')}
                         </button>
+                        ${ro.customerPhone ? `
+                        <button class="kenect-msg-btn" onclick="openKenectModal(${index})" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
+                            💬 ${t('Messages')}
+                        </button>
+                        ` : ''}
                         ${(isAdmin() || hasRole('Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
                         <button class="mark-ordered-btn" onclick="openPartsStatusModal(${index})" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}
@@ -6846,6 +6901,9 @@ Notes: ${notes}` : '',
             if (accessToken) {
                 setTimeout(() => loadAllDriveImages(), 100);
             }
+
+            // Deep-link: scroll to and highlight the target RO if ?ro= is in the URL
+            if (_deepLinkRoId) handleDeepLink();
         }
 
         // Generate QR codes for all ROs
@@ -6876,8 +6934,8 @@ Notes: ${notes}` : '',
             // Create unique RO ID from customer name + date
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
             
-            // Shorter URL format for better scannability
-            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
+            // Shorter URL — scans open the RO tile in the main dashboard
+            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(roId)}`;
             
             console.log('=== QR Code Debug ===');
             console.log('RO ID:', roId);
@@ -6969,13 +7027,13 @@ Notes: ${notes}` : '',
             if (!ro) return;
             
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}&customer=${encodeURIComponent(ro.customerName)}`;
+            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(roId)}`;
             
             // Create modal overlay
             const modalHTML = `
                 <div id="qrModalOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="closeQRModal(event)">
                     <div style="background: white; border-radius: 16px; padding: 40px; max-width: 500px; width: 100%; text-align: center;" onclick="event.stopPropagation()">
-                        <h2 style="margin-bottom: 20px; color: #1e293b; font-family: 'Barlow Condensed', sans-serif;">QR Code - Check In/Out</h2>
+                        <h2 style="margin-bottom: 20px; color: #1e293b; font-family: 'Barlow Condensed', sans-serif;">QR Code — Scan to Open RO</h2>
                         <div style="background: white; padding: 20px; border-radius: 12px; display: inline-block; border: 2px solid #e2e8f0;">
                             <canvas id="qrModalCanvas" width="300" height="300"></canvas>
                         </div>
@@ -6983,7 +7041,7 @@ Notes: ${notes}` : '',
                         <div style="margin-top: 8px; font-size: 1rem; font-weight: 600; color: #475569;">${ro.rv || 'RV Not Specified'}</div>
                         <div style="margin-top: 8px; font-size: 0.9rem; color: #64748b; font-family: 'JetBrains Mono', monospace;">${roId}</div>
                         <div style="margin-top: 20px; padding: 12px; background: #f1f5f9; border-radius: 8px; font-size: 0.85rem; color: #475569;">
-                            Scan this QR code to check in/out of this repair order
+                            Scan to open this RO on the dashboard — use 🚪 Tech Check In from there
                         </div>
                         <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: center;">
                             <button onclick="printQRLabel(${index}); closeQRModal();" style="padding: 12px 24px; background: #0A84FF; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem;">
@@ -7044,95 +7102,109 @@ Notes: ${notes}` : '',
         }
 
         // Print QR label
+        // Phase 2 — dual-sticker QR print sheet (GH#15)
         function printQRLabel(index) {
             const ro = currentFilteredData[index];
             if (!ro) return;
-            
-            // Create printable label
+
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-            const canvas = document.getElementById(`qr-${index}`);
-            
-            // Open print window with just the QR code and customer name
-            const printWindow = window.open('', '_blank', 'width=400,height=600');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>QR Label - ${ro.customerName}</title>
-                    <style>
-                        body {
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            padding: 20px;
-                            font-family: Arial, sans-serif;
-                        }
-                        canvas {
-                            border: 2px solid black;
-                            margin: 20px;
-                        }
-                        .customer-name {
-                            font-size: 18px;
-                            font-weight: bold;
-                            text-align: center;
-                            margin-top: 10px;
-                        }
-                        .rv-make {
-                            font-size: 16px;
-                            color: #333;
-                            text-align: center;
-                            margin-top: 5px;
-                            font-weight: 600;
-                        }
-                        .ro-id {
-                            font-size: 14px;
-                            color: #666;
-                            text-align: center;
-                            margin-top: 5px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <h2>Scan to Check In/Out</h2>
-                    <canvas id="printQR" width="300" height="300"></canvas>
-                    <div class="customer-name">${ro.customerName}</div>
-                    <div class="rv-make">${ro.rv || 'RV Not Specified'}</div>
-                    <div class="ro-id">${roId}</div>
-                </body>
-                </html>
-            `);
-            
-            // Copy QR code to print window (wait for logo to load)
-            const printCanvas = printWindow.document.getElementById('printQR');
-            const printCtx = printCanvas.getContext('2d');
-            
-            const copyAndPrint = () => {
-                printCtx.drawImage(canvas, 0, 0, 300, 300);
-                printWindow.document.close();
-                printWindow.focus();
-                setTimeout(() => {
-                    printWindow.print();
-                }, 500);
-            };
-            
-            // Check if canvas is ready
-            if (canvas.dataset.ready === 'true') {
-                copyAndPrint();
-            } else {
-                // Wait for logo to load
-                const checkReady = setInterval(() => {
-                    if (canvas.dataset.ready === 'true') {
-                        clearInterval(checkReady);
-                        copyAndPrint();
-                    }
-                }, 100);
-                
-                // Timeout after 2 seconds
-                setTimeout(() => {
-                    clearInterval(checkReady);
-                    copyAndPrint(); // Print anyway
-                }, 2000);
-            }
+            const checkInURL = 'https://patriotsrv.github.io/rv-dashboard/?ro=' + encodeURIComponent(roId);
+            const customerName = (ro.customerName || 'Unknown').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const rvMake = (ro.rv || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const spotText = (ro.parkingSpot || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const roIdSafe = roId.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const urlJson = JSON.stringify(checkInURL);
+
+            const printWindow = window.open('', '_blank', 'width=750,height=700');
+            printWindow.document.write('<!DOCTYPE html><html><head>' +
+                '<title>QR Print Sheet \u2014 ' + customerName + '<\/title>' +
+                '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
+                '<style>' +
+                '* { box-sizing: border-box; margin: 0; padding: 0; }' +
+                'body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 24px; }' +
+                'h2 { text-align:center; font-size:14px; color:#555; margin-bottom:20px; font-weight:normal; }' +
+                '.sheet { display:flex; gap:40px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }' +
+                '.stickerbox { display:flex; flex-direction:column; align-items:center; gap:6px; }' +
+                '.cut-label { font-size:11px; color:#888; }' +
+
+                /* ── 3"×3" windshield sticker ── */
+                '.sticker-lg {' +
+                '  width:3in; height:3in;' +
+                '  border:2px dashed #aaa;' +
+                '  background:white;' +
+                '  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;' +
+                '  padding:6px;' +
+                '}' +
+                '#qr-lg { width:2.28in; height:2.28in; }' +
+                '#qr-lg img, #qr-lg canvas { width:100% !important; height:100% !important; }' +
+                '.name { font-size:11.5px; font-weight:bold; text-align:center; line-height:1.2; }' +
+                '.rv   { font-size:10px; color:#444; text-align:center; }' +
+                '.roid { font-size:9px;  color:#666; text-align:center; font-family:monospace; }' +
+                '.spot { font-size:10px; font-weight:bold; color:#854d0e; background:#fef9c3;' +
+                '        border:1px solid #fde047; border-radius:3px; padding:1px 7px; text-align:center; }' +
+
+                /* ── 1"×1" key tag ── */
+                '.sticker-sm {' +
+                '  width:1in; height:1in;' +
+                '  border:2px dashed #aaa;' +
+                '  background:white;' +
+                '  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;' +
+                '  padding:3px;' +
+                '}' +
+                '#qr-sm { width:0.72in; height:0.72in; }' +
+                '#qr-sm img, #qr-sm canvas { width:100% !important; height:100% !important; }' +
+                '.sm-ro { font-size:5.5px; color:#333; text-align:center; font-family:monospace;' +
+                '         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; }' +
+
+                /* print rules */
+                '@media print {' +
+                '  body { background:white; padding:0.3in; }' +
+                '  .print-btn { display:none !important; }' +
+                '}' +
+                '@page { size:auto; margin:0.4in; }' +
+
+                /* print button */
+                '.print-btn { display:block; margin:22px auto 0; padding:9px 28px;' +
+                '  background:#0A84FF; color:white; border:none; border-radius:8px;' +
+                '  font-size:13px; font-weight:bold; cursor:pointer; }' +
+                '<\/style><\/head><body>' +
+
+                '<h2>PRVS QR Print Sheet &mdash; ' + customerName + '<\/h2>' +
+                '<div class="sheet">' +
+
+                  /* large sticker */
+                  '<div class="stickerbox">' +
+                    '<div class="sticker-lg">' +
+                      '<div id="qr-lg"><\/div>' +
+                      '<div class="name">' + customerName + '<\/div>' +
+                      (rvMake ? '<div class="rv">' + rvMake + '<\/div>' : '') +
+                      '<div class="roid">' + roIdSafe + '<\/div>' +
+                      (spotText ? '<div class="spot">&#128205; ' + spotText + '<\/div>' : '') +
+                    '<\/div>' +
+                    '<div class="cut-label">&#9988; 3&Prime; &times; 3&Prime; &mdash; Windshield Sticker<\/div>' +
+                  '<\/div>' +
+
+                  /* small sticker */
+                  '<div class="stickerbox">' +
+                    '<div class="sticker-sm">' +
+                      '<div id="qr-sm"><\/div>' +
+                      '<div class="sm-ro">' + roIdSafe + '<\/div>' +
+                    '<\/div>' +
+                    '<div class="cut-label">&#9988; 1&Prime; &times; 1&Prime; &mdash; Key Tag<\/div>' +
+                  '<\/div>' +
+
+                '<\/div>' +
+                '<button class="print-btn" onclick="window.print()">&#128424; Print Sheet<\/button>' +
+
+                '<script>' +
+                '(function init(){' +
+                '  if(typeof QRCode==="undefined"){setTimeout(init,80);return;}' +
+                '  var url=' + urlJson + ';' +
+                '  new QRCode(document.getElementById("qr-lg"),{text:url,width:219,height:219,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});' +
+                '  new QRCode(document.getElementById("qr-sm"),{text:url,width:69,height:69,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});' +
+                '})();' +
+                '<\/script><\/body><\/html>');
+            printWindow.document.close();
         }
 
         function updateStats(data, filteredData) {
@@ -8187,6 +8259,7 @@ Notes: ${notes}` : '',
                 promisedDate:             row.promised_date || '',
                 percentComplete:          row.pct_complete || 0,
                 dollarValue:              row.dollar_value || 0,
+                parkingSpot:              row.parking_spot || '',
                 status:                   row.status || 'Not On Lot',
                 urgency:                  row.urgency || '',
                 customerType:             row.customer_type || '',
@@ -8479,6 +8552,7 @@ Notes: ${notes}` : '',
                     promised_date:  formData.promisedDate || null,
                     pct_complete:   0,
                     dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                    parking_spot:   formData.parkingSpot || null,
                     status:         formData.status || 'Not On Lot',
                     urgency:        formData.urgency || null,
                     customer_type:  formData.customerType || null,
@@ -8534,6 +8608,7 @@ Notes: ${notes}` : '',
                 promised_date:  formData.promisedDate || null,
                 date_arrived:   formData.dateArrived || null,
                 dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
+                parking_spot:   formData.parkingSpot || null,
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -10206,6 +10281,266 @@ Notes: ${notes}` : '',
             });
         }
         
+        // ═══════════════════════════════════════════════════════════════
+        // KENECT MESSAGING INTEGRATION (GH#10)
+        // ═══════════════════════════════════════════════════════════════
+
+        const KENECT_PROXY_URL = `${SUPABASE_URL}/functions/v1/kenect-proxy`;
+
+        /** Normalise a phone number to E.164 (+1XXXXXXXXXX) for Kenect */
+        function normalisePhone(raw) {
+            if (!raw) return null;
+            const digits = raw.replace(/\D/g, '');
+            if (digits.length === 10) return `+1${digits}`;
+            if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+            return digits.length >= 7 ? digits : null;
+        }
+
+        /** Call the kenect-proxy Edge Function */
+        async function kenectCall(action, params = {}, payload = {}) {
+            const resp = await fetch(KENECT_PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'apikey': SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({ action, params, payload }),
+            });
+            const json = await resp.json();
+            return json;
+        }
+
+        // ── Open Kenect conversation modal ─────────────────────────────
+        async function openKenectModal(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+
+            const phone = normalisePhone(ro.customerPhone);
+            const displayPhone = ro.customerPhone || '(no phone)';
+            const customerName = ro.customerName || 'Customer';
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+
+            // Build and inject modal
+            const existing = document.getElementById('kenectModalOverlay');
+            if (existing) existing.remove();
+
+            const modalHTML = `
+            <div id="kenectModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:11000;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closeKenectModal(event)">
+                <div style="background:white;border-radius:16px;width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;" onclick="event.stopPropagation()">
+
+                    <!-- Header -->
+                    <div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                        <div>
+                            <div style="font-size:1.1rem;font-weight:700;">💬 ${customerName}</div>
+                            <div style="font-size:0.85rem;opacity:0.85;">${displayPhone}</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button id="kenectReviewBtn" onclick="sendKenectReview(${roIndex})" title="Send review request" style="padding:6px 12px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">⭐ Review</button>
+                            <button onclick="closeKenectModal()" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:1.2rem;cursor:pointer;padding:4px 10px;border-radius:6px;">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- Message thread -->
+                    <div id="kenectMessages" style="flex:1;overflow-y:auto;padding:16px;background:#f8fafc;display:flex;flex-direction:column;gap:10px;min-height:200px;">
+                        <div style="text-align:center;color:#94a3b8;font-size:0.9rem;padding:20px;">
+                            <div style="font-size:2rem;margin-bottom:8px;">💬</div>
+                            Loading conversation…
+                        </div>
+                    </div>
+
+                    <!-- Send bar -->
+                    <div style="padding:12px 16px;border-top:1px solid #e2e8f0;background:white;flex-shrink:0;">
+                        <div style="display:flex;gap:8px;align-items:flex-end;">
+                            <textarea id="kenectSendInput" placeholder="Type a message…" rows="2"
+                                style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:0.9rem;resize:none;font-family:inherit;line-height:1.4;"
+                                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendKenectMessage(${roIndex});}"></textarea>
+                            <button onclick="sendKenectMessage(${roIndex})" style="padding:10px 16px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:white;border:none;border-radius:10px;cursor:pointer;font-size:0.9rem;font-weight:600;height:42px;white-space:nowrap;">Send ➤</button>
+                        </div>
+                        <div id="kenectSendStatus" style="font-size:0.8rem;color:#64748b;margin-top:6px;display:none;"></div>
+                    </div>
+                </div>
+            </div>`;
+
+            const div = document.createElement('div');
+            div.innerHTML = modalHTML;
+            document.body.appendChild(div);
+
+            // Load conversation
+            if (phone) {
+                await refreshKenectMessages(phone, locationId);
+            } else {
+                document.getElementById('kenectMessages').innerHTML =
+                    '<div style="text-align:center;color:#ef4444;padding:20px;">⚠️ No valid phone number on this RO</div>';
+            }
+        }
+
+        /** Fetch and render the conversation thread */
+        async function refreshKenectMessages(phone, locationId) {
+            const container = document.getElementById('kenectMessages');
+            if (!container) return;
+
+            container.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:0.9rem;padding:20px;"><div style="font-size:2rem;margin-bottom:8px;">⏳</div>Loading…</div>';
+
+            try {
+                const result = await kenectCall('get_conversation', { phoneNumber: phone, locationId });
+
+                if (!result.ok) {
+                    // Fallback: try simpler endpoint
+                    const fallback = await kenectCall('get_messages_by_phone', { phoneNumber: phone, locationId });
+                    if (!fallback.ok) {
+                        container.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">❌ ${result.data?.error || 'Could not load conversation'}</div>`;
+                        return;
+                    }
+                    renderKenectMessages(container, fallback.data);
+                    return;
+                }
+                renderKenectMessages(container, result.data);
+            } catch (e) {
+                container.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">❌ Network error: ${e}</div>`;
+            }
+        }
+
+        /** Render message bubbles from Kenect API response */
+        function renderKenectMessages(container, data) {
+            // Handle various response shapes from Kenect
+            let messages = [];
+            if (Array.isArray(data)) {
+                messages = data;
+            } else if (data && Array.isArray(data.messages)) {
+                messages = data.messages;
+            } else if (data && Array.isArray(data.content)) {
+                messages = data.content;
+            } else if (data && data.conversation && Array.isArray(data.conversation.messages)) {
+                messages = data.conversation.messages;
+            }
+
+            if (messages.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">No messages yet</div>';
+                return;
+            }
+
+            // Sort oldest → newest
+            messages.sort((a, b) => {
+                const tA = a.createdAt || a.created_at || a.timestamp || a.id || 0;
+                const tB = b.createdAt || b.created_at || b.timestamp || b.id || 0;
+                return String(tA).localeCompare(String(tB));
+            });
+
+            container.innerHTML = messages.map(msg => {
+                const isOutbound = msg.outbound === true || msg.direction === 'outbound' || msg.type === 'outbound';
+                const body = msg.messageBody || msg.body || msg.text || msg.message || '(media)';
+                const rawTs = msg.createdAt || msg.created_at || msg.timestamp || msg.sentAt;
+                const ts = rawTs ? new Date(rawTs).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+
+                return `
+                <div style="display:flex;flex-direction:column;align-items:${isOutbound ? 'flex-end' : 'flex-start'};">
+                    <div style="
+                        max-width:75%;
+                        padding:10px 14px;
+                        border-radius:${isOutbound ? '16px 16px 4px 16px' : '16px 16px 16px 4px'};
+                        background:${isOutbound ? 'linear-gradient(135deg,#0ea5e9,#0284c7)' : '#e2e8f0'};
+                        color:${isOutbound ? 'white' : '#1e293b'};
+                        font-size:0.9rem;
+                        line-height:1.45;
+                        word-break:break-word;
+                    ">${body.replace(/\n/g, '<br>')}</div>
+                    ${ts ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;padding:0 4px;">${ts}${isOutbound ? ' · Sent' : ''}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        /** Send a message from the input box */
+        async function sendKenectMessage(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const phone = normalisePhone(ro.customerPhone);
+            if (!phone) { alert('No valid phone number on this RO'); return; }
+
+            const input = document.getElementById('kenectSendInput');
+            const statusEl = document.getElementById('kenectSendStatus');
+            const messageBody = (input?.value || '').trim();
+            if (!messageBody) return;
+
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+
+            input.disabled = true;
+            if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Sending…'; statusEl.style.color = '#64748b'; }
+
+            try {
+                const result = await kenectCall('send_message', {}, {
+                    contactPhone: phone,
+                    messageBody,
+                    locationId,
+                });
+
+                if (result.ok) {
+                    input.value = '';
+                    if (statusEl) { statusEl.textContent = '✓ Message sent'; statusEl.style.color = '#10b981'; }
+                    // Refresh the thread
+                    await refreshKenectMessages(phone, locationId);
+                    setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
+                } else {
+                    const errMsg = result.data?.error || result.data?.message || JSON.stringify(result.data);
+                    if (statusEl) { statusEl.textContent = `❌ ${errMsg}`; statusEl.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (statusEl) { statusEl.textContent = `❌ ${e}`; statusEl.style.color = '#ef4444'; }
+            } finally {
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        /** Send a review request to the customer */
+        async function sendKenectReview(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const phone = normalisePhone(ro.customerPhone);
+            if (!phone) { alert('No valid phone number on this RO'); return; }
+
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+            const btn = document.getElementById('kenectReviewBtn');
+            if (btn) btn.disabled = true;
+
+            try {
+                const result = await kenectCall('send_review_request', {}, {
+                    contactPhone: phone,
+                    locationId,
+                    name: ro.customerName || '',
+                });
+                if (result.ok) {
+                    alert(`✅ Review request sent to ${ro.customerName || phone}`);
+                } else {
+                    alert(`❌ Review request failed: ${result.data?.error || result.data?.message || JSON.stringify(result.data)}`);
+                }
+            } catch (e) {
+                alert(`❌ Error: ${e}`);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function closeKenectModal(event) {
+            if (event && event.target !== document.getElementById('kenectModalOverlay')) return;
+            const modal = document.getElementById('kenectModalOverlay');
+            if (modal) modal.closest('div').remove();
+        }
+        // Override to handle the close button click (no event target check needed)
+        window.closeKenectModal = function(event) {
+            const overlay = document.getElementById('kenectModalOverlay');
+            if (!overlay) return;
+            if (event && event.target && event.target !== overlay) return;
+            overlay.closest('div').remove();
+        };
+
+        // ═══════════════════════════════════════════════════════════════
+        // END KENECT
+        // ═══════════════════════════════════════════════════════════════
+
         function openAdminSettingsModal() {
             if (!isAdmin()) {
                 alert('Admin access required');
@@ -10266,6 +10601,23 @@ Notes: ${notes}` : '',
                         </button>
                         
                         <div style="border-top:1px solid #e2e8f0;margin:16px 0;padding-top:16px;">
+                            <div style="font-size:0.85rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">💬 Kenect Messaging</div>
+                            <p style="font-size:0.85rem;color:#64748b;margin:0 0 10px 0;">
+                                Set the Kenect Location ID for this account. The API key is stored securely as a Supabase Edge Function secret (<code>KENECT_API_KEY</code>).
+                            </p>
+                            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                                <input id="kenectLocationIdInput" type="text" placeholder="e.g. 12345" value="${localStorage.getItem('prvs_kenect_location_id') || ''}"
+                                    style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;" />
+                                <button onclick="saveKenectLocationId()" style="padding:10px 16px;background:#0ea5e9;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Save</button>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-bottom:4px;">
+                                <button onclick="testKenectCredentials()" style="flex:1;padding:10px;background:#f8fafc;border:2px solid #0ea5e9;color:#0284c7;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem;">🔍 Test Connection</button>
+                                <button onclick="loadKenectLocations()" style="flex:1;padding:10px;background:#f8fafc;border:2px solid #e2e8f0;color:#475569;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem;">📍 Load Locations</button>
+                            </div>
+                            <div id="kenectSettingsStatus" style="font-size:0.82rem;color:#64748b;margin-top:6px;min-height:18px;"></div>
+                        </div>
+
+                        <div style="border-top:1px solid #e2e8f0;margin:16px 0;padding-top:16px;">
                             <div style="font-size:0.85rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">🗄️ Database Tools</div>
                             <button onclick="openPhotoMigrationTool()" style="width: 100%; padding: 12px 24px; background: linear-gradient(135deg,#10b981,#059669); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600; margin-bottom: 8px;">
                                 🖼️ Migrate Photos to Supabase Storage
@@ -10291,7 +10643,52 @@ Notes: ${notes}` : '',
                 modal.remove();
             }
         }
-        
+
+        function saveKenectLocationId() {
+            const val = (document.getElementById('kenectLocationIdInput')?.value || '').trim();
+            localStorage.setItem('prvs_kenect_location_id', val);
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = val ? `✅ Location ID saved: ${val}` : '✅ Location ID cleared'; s.style.color = '#10b981'; }
+        }
+
+        async function testKenectCredentials() {
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = '⏳ Testing connection…'; s.style.color = '#64748b'; }
+            try {
+                const result = await kenectCall('test_credentials');
+                if (result.ok) {
+                    if (s) { s.textContent = `✅ Connected — ${JSON.stringify(result.data).substring(0, 120)}`; s.style.color = '#10b981'; }
+                } else {
+                    if (s) { s.textContent = `❌ ${result.data?.error || result.data?.message || result.status}`; s.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (s) { s.textContent = `❌ ${e}`; s.style.color = '#ef4444'; }
+            }
+        }
+
+        async function loadKenectLocations() {
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = '⏳ Loading locations…'; s.style.color = '#64748b'; }
+            try {
+                const result = await kenectCall('get_locations');
+                if (result.ok) {
+                    const locs = Array.isArray(result.data) ? result.data :
+                                 Array.isArray(result.data?.content) ? result.data.content :
+                                 Array.isArray(result.data?.locations) ? result.data.locations : [];
+                    if (locs.length === 0) {
+                        if (s) { s.textContent = '⚠️ No locations returned'; s.style.color = '#f59e0b'; }
+                        return;
+                    }
+                    const lines = locs.map(l => `${l.id || l.locationId || l.partnerLocationId} — ${l.name || l.locationName || ''}`).join('\n');
+                    if (s) { s.textContent = `📍 ${locs.length} location(s):\n${lines}`; s.style.color = '#0284c7'; s.style.whiteSpace = 'pre'; }
+                } else {
+                    if (s) { s.textContent = `❌ ${result.data?.error || result.data?.message || result.status}`; s.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (s) { s.textContent = `❌ ${e}`; s.style.color = '#ef4444'; }
+            }
+        }
+
         function generatePresetCode() {
             return `const viewPresets = ${JSON.stringify(viewPresets, null, 12)};`;
         }
@@ -10399,6 +10796,7 @@ Notes: ${notes}` : '',
                 document.getElementById('editDollarValue').value = ro.dollarValue || '';
                 document.getElementById('editPromisedDate').value = ro.promisedDate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
+                document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';
                 document.getElementById('editRepairDescription').value = ro.repairDescription || '';
 
@@ -10606,6 +11004,7 @@ Notes: ${notes}` : '',
                         dollarValue: document.getElementById('editDollarValue').value,
                         promisedDate: document.getElementById('editPromisedDate').value,
                         dateArrived: document.getElementById('editDateArrived').value,
+                        parkingSpot: document.getElementById('editParkingSpot').value,
                         repairType: repairTypes.join(', '),
                         vin: document.getElementById('editVin').value.toUpperCase(),
                         repairDescription: document.getElementById('editRepairDescription').value,
@@ -10786,6 +11185,72 @@ Notes: ${notes}` : '',
                         <label class="form-label">Dollar Value</label>
                         <input type="number" class="form-input" name="dollarValue" id="new_dollarValue" min="0" step="0.01">
                         <div id="sug_new_dollarValue"></div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">📍 Parking Spot</label>
+                        <select class="form-select" name="parkingSpot" id="new_parkingSpot">
+                            <option value="">— Not assigned —</option>
+                            <optgroup label="Rear Lot (R)">
+                                <option value="R1">R1</option>
+                                <option value="R2">R2</option>
+                                <option value="R3">R3</option>
+                                <option value="R4">R4</option>
+                                <option value="R5">R5</option>
+                                <option value="R6">R6</option>
+                                <option value="R7">R7</option>
+                                <option value="R8">R8</option>
+                                <option value="R9">R9</option>
+                                <option value="R10">R10</option>
+                                <option value="R11">R11</option>
+                                <option value="R12">R12</option>
+                                <option value="R13">R13</option>
+                                <option value="R14">R14</option>
+                                <option value="R15">R15</option>
+                                <option value="R16">R16</option>
+                                <option value="R17">R17</option>
+                                <option value="R18">R18</option>
+                                <option value="R19">R19</option>
+                                <option value="R20">R20</option>
+                            </optgroup>
+                            <optgroup label="Interior Bays (B)">
+                                <option value="B1">B1</option>
+                                <option value="B2">B2</option>
+                                <option value="B3">B3</option>
+                                <option value="B4">B4</option>
+                                <option value="B5">B5</option>
+                                <option value="B6">B6</option>
+                                <option value="B7">B7</option>
+                                <option value="B8">B8</option>
+                                <option value="B9">B9</option>
+                                <option value="B10">B10</option>
+                                <option value="B11">B11</option>
+                                <option value="B12">B12</option>
+                                <option value="B13">B13</option>
+                                <option value="B14">B14</option>
+                            </optgroup>
+                            <optgroup label="Wash (W)">
+                                <option value="Wash Bay 17">Wash Bay 17</option>
+                                <option value="Wash Bay 18">Wash Bay 18</option>
+                                <option value="W1">W1</option>
+                                <option value="W2">W2</option>
+                                <option value="W3">W3</option>
+                                <option value="W4">W4</option>
+                            </optgroup>
+                            <optgroup label="Front Lot (F)">
+                                <option value="F1">F1</option>
+                                <option value="F2">F2</option>
+                                <option value="F3">F3</option>
+                                <option value="F4">F4</option>
+                                <option value="F5">F5</option>
+                                <option value="F6">F6</option>
+                                <option value="F7">F7</option>
+                                <option value="F8">F8</option>
+                                <option value="F9">F9</option>
+                                <option value="F10">F10</option>
+                                <option value="F11">F11</option>
+                                <option value="F12">F12</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Status *</label>
@@ -11217,6 +11682,72 @@ Notes: ${notes}` : '',
                         <label class="form-label">RO Value ($)</label>
                         <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">📍 Parking Spot</label>
+                        <select class="form-select" id="editParkingSpot">
+                            <option value="">— Not assigned —</option>
+                            <optgroup label="Rear Lot (R)">
+                                <option value="R1">R1</option>
+                                <option value="R2">R2</option>
+                                <option value="R3">R3</option>
+                                <option value="R4">R4</option>
+                                <option value="R5">R5</option>
+                                <option value="R6">R6</option>
+                                <option value="R7">R7</option>
+                                <option value="R8">R8</option>
+                                <option value="R9">R9</option>
+                                <option value="R10">R10</option>
+                                <option value="R11">R11</option>
+                                <option value="R12">R12</option>
+                                <option value="R13">R13</option>
+                                <option value="R14">R14</option>
+                                <option value="R15">R15</option>
+                                <option value="R16">R16</option>
+                                <option value="R17">R17</option>
+                                <option value="R18">R18</option>
+                                <option value="R19">R19</option>
+                                <option value="R20">R20</option>
+                            </optgroup>
+                            <optgroup label="Interior Bays (B)">
+                                <option value="B1">B1</option>
+                                <option value="B2">B2</option>
+                                <option value="B3">B3</option>
+                                <option value="B4">B4</option>
+                                <option value="B5">B5</option>
+                                <option value="B6">B6</option>
+                                <option value="B7">B7</option>
+                                <option value="B8">B8</option>
+                                <option value="B9">B9</option>
+                                <option value="B10">B10</option>
+                                <option value="B11">B11</option>
+                                <option value="B12">B12</option>
+                                <option value="B13">B13</option>
+                                <option value="B14">B14</option>
+                            </optgroup>
+                            <optgroup label="Wash (W)">
+                                <option value="Wash Bay 17">Wash Bay 17</option>
+                                <option value="Wash Bay 18">Wash Bay 18</option>
+                                <option value="W1">W1</option>
+                                <option value="W2">W2</option>
+                                <option value="W3">W3</option>
+                                <option value="W4">W4</option>
+                            </optgroup>
+                            <optgroup label="Front Lot (F)">
+                                <option value="F1">F1</option>
+                                <option value="F2">F2</option>
+                                <option value="F3">F3</option>
+                                <option value="F4">F4</option>
+                                <option value="F5">F5</option>
+                                <option value="F6">F6</option>
+                                <option value="F7">F7</option>
+                                <option value="F8">F8</option>
+                                <option value="F9">F9</option>
+                                <option value="F10">F10</option>
+                                <option value="F11">F11</option>
+                                <option value="F12">F12</option>
+                            </optgroup>
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Promised Date</label>
