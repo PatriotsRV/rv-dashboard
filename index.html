@@ -11294,11 +11294,11 @@ Notes: ${notes}` : '',
                 </div>`;
             document.body.appendChild(overlay);
 
-            if (!ro.supabaseId) {
+            if (!ro._supabaseId) {
                 document.getElementById('woModalBody').innerHTML = '<p style="color:#ef4444;text-align:center;padding:20px;">RO not found in database.</p>';
                 return;
             }
-            const { orders, tasks } = await loadWorkOrdersForRO(ro.supabaseId);
+            const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
             renderWorkOrderView(roIndex, ro, orders, tasks);
         }
 
@@ -11385,7 +11385,7 @@ Notes: ${notes}` : '',
             if (!canManageSilo(silo)) { alert('You do not have permission to manage this silo.'); return; }
 
             const siloInfo = SERVICE_SILOS.find(s => s.key === silo);
-            const cached = _workOrderCache[ro.supabaseId] || { orders: [], tasks: [] };
+            const cached = _workOrderCache[ro._supabaseId] || { orders: [], tasks: [] };
             const existingWO = cached.orders.find(o => o.service_silo === silo) || null;
             const existingTasks = existingWO
                 ? cached.tasks.filter(t => t.work_order_id === existingWO.id).sort((a,b) => a.sort_order - b.sort_order)
@@ -11406,7 +11406,7 @@ Notes: ${notes}` : '',
 
             body.innerHTML = `
                 <div style="margin-bottom:14px;">
-                    <button onclick="renderWorkOrderView(${roIndex},currentData[${roIndex}],_workOrderCache[currentData[${roIndex}].supabaseId]?.orders||[],_workOrderCache[currentData[${roIndex}].supabaseId]?.tasks||[])"
+                    <button onclick="renderWorkOrderView(${roIndex},currentData[${roIndex}],_workOrderCache[currentData[${roIndex}]._supabaseId]?.orders||[],_workOrderCache[currentData[${roIndex}]._supabaseId]?.tasks||[])"
                         style="background:none;border:none;color:#2d5a8e;cursor:pointer;font-size:0.9rem;padding:0;font-weight:600;">← Back</button>
                 </div>
                 <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border-radius:10px;padding:12px 16px;margin-bottom:14px;">
@@ -11501,7 +11501,7 @@ Notes: ${notes}` : '',
                     if (error) throw error;
                 } else {
                     const { data, error } = await sb.from('service_work_orders').insert({
-                        ro_id: ro.supabaseId, service_silo: silo,
+                        ro_id: ro._supabaseId, service_silo: silo,
                         status, dollar_value: dollar, notes, created_by: userEmail
                     }).select().single();
                     if (error) throw error;
@@ -11532,7 +11532,7 @@ Notes: ${notes}` : '',
                     } else {
                         await sb.from('service_tasks').insert({
                             ...payload, work_order_id: workOrderId,
-                            ro_id: ro.supabaseId, created_by: userEmail
+                            ro_id: ro._supabaseId, created_by: userEmail
                         });
                     }
                     sortOrder++;
@@ -11544,10 +11544,10 @@ Notes: ${notes}` : '',
                 }
 
                 // Roll up total dollar value → repair_orders.dollar_value
-                await computeAndSaveWORollup(ro.supabaseId, roIndex);
+                await computeAndSaveWORollup(ro._supabaseId, roIndex);
 
                 // Refresh view
-                const { orders, tasks } = await loadWorkOrdersForRO(ro.supabaseId);
+                const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
                 renderWorkOrderView(roIndex, ro, orders, tasks);
 
             } catch (err) {
@@ -11567,7 +11567,7 @@ Notes: ${notes}` : '',
                     status: newStatus, updated_at: new Date().toISOString()
                 }).eq('id', taskId);
                 if (error) throw error;
-                const { orders, tasks } = await loadWorkOrdersForRO(ro.supabaseId);
+                const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
                 renderWorkOrderView(roIndex, ro, orders, tasks);
             } catch (err) {
                 console.error('❌ updateTaskStatusWO:', err);
