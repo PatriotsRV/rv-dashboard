@@ -224,6 +224,13 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - `gh` CLI is NOT available in the sandbox; use `git` directly from `/sessions/.../mnt/rv-dashboard/`
 - The workspace folder IS the git repo — `git push origin main` works directly
 
+### Work Order System — `_staffCache` Timing (v1.295)
+- `loadStaff()` is called after `loadDataFromSupabase()` + `loadTimeLogsFromSupabase()` in the auth listener — it runs async and does NOT block the initial render.
+- `canManageSilo()` and `isSrManagerOrAdmin()` both fall back gracefully if `_staffCache` is empty (only SR_MANAGER_EMAILS and ADMIN_EMAILS hardcoded lists apply until the cache loads). In practice the staff table loads in <1s so this is never visible.
+- `buildWOTaskRowHtml()` uses `Date.now()` in the row element ID to ensure uniqueness — this prevents duplicate IDs when multiple tasks are added rapidly. Safe for the current use case.
+- The `depends_on` column exists in `service_tasks` but is not surfaced in the UI yet — reserved for V1.5 task dependency system (Solar before Roof use case).
+- `MANAGER_EMAILS` now uses `riley@patriotsrvservices.com` (Solar Manager). The old `solar@patriotsrvservices.com` generic email was removed from this array — confirm that address is no longer in use before deprovisioning it in Supabase `user_roles`.
+
 ---
 
 ## 🏗 Tech Stack
@@ -388,6 +395,7 @@ After deploy, open Admin Settings in the dashboard → Kenect section → click 
 - ✅ **Parking Spot lot remap (v1.292)** — All positions renamed from original whiteboard names to Roland's handwritten R/B/W/F system: R1–R20 (Rear Lot), B1–B14 (Interior Bays), Wash Bay 17, Wash Bay 18, W1–W4 (Wash), F1–F12 (Front Lot).
 - ✅ **QR Print Sheet Phase 2 (v1.293, GH#15)** — `printQRLabel()` rebuilt as dual-sticker print window. 3"×3" windshield sticker: full QR code at 2.28", customer name, RV make, RO#, yellow parking spot chip. 1"×1" key tag: compact QR + RO#. Both generated fresh via QRCode.js in print window (no canvas-copy). `@media print` CSS with physical `in` units and dashed cut borders. Print button hidden on print.
 - ✅ **QR scan → main RO tile deep link (v1.294, GH#15)** — QR codes now link to `/?ro={roId}` (main dashboard) instead of `checkin.html`. `handleDeepLink()` reads `?ro=` URL param, finds matching RO in `currentFilteredData`, scrolls to tile and pulses 3× blue highlight ring. `_deepLinkRoId` one-shot flag prevents re-triggering on subsequent `renderBoard()` calls. `openCheckIn()` (🚪 Tech Check In button) still goes to `checkin.html`.
+- ✅ **Work Assignment System Phase 1 (v1.295, GH#5)** — `staff` table seeded (14 personnel: Ryan sr_manager, Mauricio+Jason repair managers, Andrew vroom, Riley solar, Bobby+Brandon parts_manager, 9 techs). `service_work_orders` + `service_tasks` tables + `is_silo_manager()` Supabase RLS function. `dollar_value` column added to `repair_orders`. `SERVICE_SILOS`, `WO_STATUS_LABELS`, `TASK_STATUS_LABELS`, `TASK_STATUS_COLORS`, `SR_MANAGER_EMAILS` constants. `MANAGER_EMAILS` updated (added jason@, riley@; removed solar@). `_staffCache`, `_workOrderCache` globals. `loadStaff()`, `isSrManagerOrAdmin()`, `canManageSilo()`, `getStaffTechs()`, `getStaffName()`, `loadWorkOrdersForRO()`, `openWorkOrderModal()`, `renderWorkOrderView()`, `openBuildWOForm()`, `buildWOTaskRowHtml()`, `addWOTaskRow()`, `submitWOForm()`, `updateTaskStatusWO()`, `computeAndSaveWORollup()` functions. 🔧 Work Orders button on every RO card. 5-silo Work Order modal. DB-level + JS-level silo access control. Dollar rollup triggers `renderBoard()`. `PRVS_WorkOrders_TrainingGuide.pdf` created.
 
 ---
 

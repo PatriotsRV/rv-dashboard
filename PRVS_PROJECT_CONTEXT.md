@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.294 |
+| **Current Version** | v1.295 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -25,33 +25,35 @@
 > Use this list from your iPhone to log updates between laptop sessions.
 
 ### 🔴 Blocking
-- **Resolve Kenect integration approach** — Kenect told us to use Zapier, but Zapier has NO inbound message trigger (can't show customer replies in dashboard). Options: (A) Push back and request direct API access — recommended; (B) Accept Zapier for send/review only; (C) Zapier outbound + store messages in Supabase. ⏳ Decision needed — Roland
+- **GH#1 — Start Twilio number port** — Port existing number — blocks all SMS. **Fast-tracking after Kenect denied API access (2026-03-30).** ⏳ Open — Top Priority
+- **GH#4 — Twilio SMS** — Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. ⏳ Open
 
-- **GH#1 — Start Twilio number port** — Port existing number — blocks all SMS features ⏳ Open
+### ⚠️ On Hold
+- **GH#10 — Kenect messaging** — Kenect will NOT give direct API keys (Zapier only, no inbound trigger). v1.290 code in repo but NOT deployed. Pivoting to Twilio. ⏳ On Hold
 
 ### 🟠 High Priority
-- **GH#4 — Twilio SMS** — Customer + tech notifications via SMS (blocked on port) ⏳ Open
-- **GH#5 — Work Assignment System** — Service Tasks per RO, per-task dollar value, Manager sets urgency, `service_tasks` DB table ⏳ Open
+- **GH#5 Phase 2 — Work Assignment System** — Phase 1 shipped v1.295 (staff table, 5-silo WO builder, task CRUD, access control, dollar rollup). Phase 2 remaining: lock urgency to Manager+Admin, Tech "My Tasks" view across all ROs, task dependency system (V1.5). ⏳ Open
 - **GH#6 — Employee Time Clock** — Full time clock feature in dashboard ⏳ Open
-- **GH#15 Phase 3 — Interactive Virtual Lot Map** — Dashboard view mirroring physical whiteboard; cells show customer + repair type; Manager assigns/moves RVs; color-coded by urgency ⏳ Open
+- **GH#15 Phase 3 — Interactive Virtual Lot Map** — Dashboard view mirroring physical whiteboard ⏳ Open
 
 ### 🟡 Medium Priority / Roland Actions
-- **GitHub Releases v1.283–v1.294** — Create releases at github.com/PatriotsRV/rv-dashboard/releases/new (tags already exist) ⏳ Roland action
+- **GitHub Releases v1.283–v1.295** — Create releases at github.com/PatriotsRV/rv-dashboard/releases/new (all tags exist) ⏳ Roland action
+- **Provide Roof + Paint & Body manager** — Ryan covers both silos until dedicated hires. Add name/email when ready. ⏳ Roland action
+- **Create parts@patriotsrvservices.com** — Email group for parts request notifications ⏳ Roland action
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah in Quote section ⏳ Open
 - **GH#9 — Parts form autocomplete** — Suggest part names/suppliers from history ⏳ Open
 - **GH#2 — Layout customization** — Drag/resize tiles ⏳ Open
 - **GH#3 — Parts field layout review** — UX improvements ⏳ Open
 - **GH#8 — Switchblade tile view** — Compact tile layout mode ⏳ Open
-- **Create parts@patriotsrvservices.com** — Email group for parts request notifications ⏳ Roland action
 
 ---
 
 ## ✅ Recently Completed (last 5 sessions)
-- ✅ **v1.290** — Kenect messaging integration (💬 button, conversation modal, send/review, kenect-proxy Edge Function)
 - ✅ **v1.291/v1.292** — Parking Spot field (📍 chip on RO card, R/B/W/F lot positions, SQL migration)
 - ✅ **v1.293** — Dual-sticker QR Print Sheet (3"×3" windshield + 1"×1" key tag)
 - ✅ **v1.294** — QR scan opens main dashboard RO tile with deep-link blue highlight
-- ✅ **SESSION_STARTER.md** — Updated with iPhone/mobile TODO sync workflow
+- ✅ **v1.295 (2026-03-30)** — GH#5 Work Assignment System Phase 1: `staff` table (14 personnel seeded), `service_work_orders` + `service_tasks` DB tables, 🔧 Work Orders button on every RO card, 5-silo modal (Repair/Vroom/Solar/Roof/Paint&Body), Build/Edit WO form, task CRUD with tech assignment, silo-level access control (canManageSilo/isSrManagerOrAdmin), dollar value rollup to RO card. PRVS_WorkOrders_TrainingGuide.pdf created for team training.
+- ✅ **Kenect decision (2026-03-30)** — Confirmed no direct API access. Kenect code ON HOLD. Twilio fast-tracked.
 
 ---
 
