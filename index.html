@@ -11401,7 +11401,7 @@ Notes: ${notes}` : '',
                 techs.map(t => `<option value="${t.email}">${t.name}</option>`).join('');
 
             const taskRowsHtml = existingTasks.length > 0
-                ? existingTasks.map((task, i) => buildWOTaskRowHtml(i, task, techOptions)).join('')
+                ? existingTasks.map((task, i) => buildWOTaskRowHtml(i, task, techOptions, silo)).join('')
                 : '<div id="woNoTasks" style="color:#94a3b8;font-size:0.85rem;font-style:italic;padding:8px 0;">No tasks yet — click "+ Add Task" to add one.</div>';
 
             body.innerHTML = `
@@ -11416,18 +11416,18 @@ Notes: ${notes}` : '',
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
                     <div>
                         <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Status</label>
-                        <select id="woFormStatus" class="form-select" style="width:100%;">
+                        <select id="woFormStatus" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">
                             ${Object.entries(WO_STATUS_LABELS).map(([k,v]) => `<option value="${k}" ${(existingWO?.status||'not_started')===k?'selected':''}>${v}</option>`).join('')}
                         </select>
                     </div>
                     <div>
                         <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Dollar Value ($)</label>
-                        <input id="woFormDollar" type="number" min="0" step="0.01" class="form-input" style="width:100%;" placeholder="0.00" value="${existingWO?.dollar_value||''}">
+                        <input id="woFormDollar" type="number" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="0.00" value="${existingWO?.dollar_value||''}">
                     </div>
                 </div>
                 <div style="margin-bottom:14px;">
                     <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Notes</label>
-                    <textarea id="woFormNotes" class="form-input" rows="2" style="width:100%;resize:vertical;" placeholder="Work order notes...">${existingWO?.notes||''}</textarea>
+                    <textarea id="woFormNotes" rows="2" style="width:100%;resize:vertical;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="Work order notes...">${existingWO?.notes||''}</textarea>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                     <span style="font-size:0.9rem;font-weight:700;color:#1e3a5f;">Tasks</span>
@@ -11440,13 +11440,15 @@ Notes: ${notes}` : '',
                 </button>`;
         }
 
-        function buildWOTaskRowHtml(index, task, techOptions) {
+        function buildWOTaskRowHtml(index, task, techOptions, silo) {
             const uid = 'wot_' + Date.now() + '_' + index;
             const selectedTech = task?.assigned_tech_email || '';
             const techOpts = techOptions.replace(`value="${selectedTech}"`, `value="${selectedTech}" selected`);
+            const siloInfo = silo ? SERVICE_SILOS.find(s => s.key === silo) : null;
+            const siloBadge = siloInfo ? `<span style="font-size:0.72rem;font-weight:600;background:#e0edff;color:#1e3a5f;border-radius:12px;padding:2px 8px;margin-left:8px;">${siloInfo.emoji} ${siloInfo.label}</span>` : '';
             return `<div id="${uid}" class="wo-task-form-row" data-task-id="${task?.id||''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:0.8rem;font-weight:700;color:#475569;">Task ${index+1}</span>
+                    <span style="font-size:0.8rem;font-weight:700;color:#475569;">Task ${index+1}${siloBadge}</span>
                     <button onclick="document.getElementById('${uid}').remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85rem;">✕ Remove</button>
                 </div>
                 <input type="text" placeholder="Task title *" value="${task?.task_title||''}" class="wo-task-title" style="width:100%;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" required>
@@ -11475,12 +11477,12 @@ Notes: ${notes}` : '',
             const techOptions = '<option value="">— Unassigned —</option>' +
                 techs.map(t => `<option value="${t.email}">${t.name}</option>`).join('');
             const count = container.querySelectorAll('.wo-task-form-row').length;
-            container.insertAdjacentHTML('beforeend', buildWOTaskRowHtml(count, null, techOptions));
+            container.insertAdjacentHTML('beforeend', buildWOTaskRowHtml(count, null, techOptions, silo));
         }
 
         async function submitWOForm(roIndex, silo, existingWOId) {
             const ro = currentData[roIndex];
-            if (!ro?.supabaseId) return;
+            if (!ro?._supabaseId) return;
             const sb = getSB();
             if (!sb || !supabaseSession) { alert('Session expired — please refresh.'); return; }
 
