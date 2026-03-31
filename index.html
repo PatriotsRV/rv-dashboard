@@ -11268,9 +11268,12 @@ Notes: ${notes}` : '',
             }
         }
 
-        async function openWorkOrderModal(roIndex) {
-            const ro = currentData[roIndex];
+        async function openWorkOrderModal(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
             if (!ro) return;
+            // Resolve to the true currentData index (filtered view may differ from currentData order)
+            const roIndex = currentData.findIndex(d => d._supabaseId && d._supabaseId === ro._supabaseId);
+            if (roIndex === -1 && ro._supabaseId) return; // shouldn't happen
 
             const existing = document.getElementById('workOrderOverlay');
             if (existing) existing.remove();
