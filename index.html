@@ -11449,16 +11449,16 @@ Notes: ${notes}` : '',
                     <span style="font-size:0.8rem;font-weight:700;color:#475569;">Task ${index+1}</span>
                     <button onclick="document.getElementById('${uid}').remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85rem;">✕ Remove</button>
                 </div>
-                <input type="text" placeholder="Task title *" value="${task?.task_title||''}" class="form-input wo-task-title" style="width:100%;margin-bottom:6px;" required>
-                <textarea placeholder="Description (optional)" class="form-input wo-task-desc" rows="2" style="width:100%;resize:vertical;margin-bottom:6px;">${task?.description||''}</textarea>
+                <input type="text" placeholder="Task title *" value="${task?.task_title||''}" class="wo-task-title" style="width:100%;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" required>
+                <textarea placeholder="Description (optional)" class="wo-task-desc" rows="2" style="width:100%;resize:vertical;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;">${task?.description||''}</textarea>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                     <div>
                         <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Assigned Tech</label>
-                        <select class="form-select wo-task-tech" style="width:100%;">${techOpts}</select>
+                        <select class="wo-task-tech" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">${techOpts}</select>
                     </div>
                     <div>
                         <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Status</label>
-                        <select class="form-select wo-task-status" style="width:100%;">
+                        <select class="wo-task-status" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">
                             ${TASK_STATUSES.map(s => `<option value="${s}" ${(task?.status||'not_started')===s?'selected':''}>${TASK_STATUS_LABELS[s]}</option>`).join('')}
                         </select>
                     </div>
