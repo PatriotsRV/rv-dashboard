@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.295
-    Released: 2026-03-27
+    PRVS Dashboard v1.296
+    Released: 2026-03-30
+    v1.296: Work Orders bug-fix pass (Session 27) — (1) ro.supabaseId → ro._supabaseId in 7 places (modal was always showing "RO not found"); (2) submitWOForm guard fix (save was silently no-op); (3) WO task form inputs dark-theme fix (status, dollar, notes, task title/desc/tech/status all switched to white bg + dark text); (4) silo badge on each task row header; (5) openWorkOrderModal now resolves filteredIndex → currentData index via _supabaseId (wrong RO was opening when board was filtered/sorted)
     v1.295: GH#5 Work Assignment System — staff table, service_work_orders + service_tasks DB; SERVICE_SILOS constants; SR_MANAGER_EMAILS; updated MANAGER_EMAILS (added jason@, riley@); 🔧 Work Orders button on every RO card; Work Order modal with all 5 silos (Repair/Vroom/Solar/Roof/Paint&Body); silo-level access control (canManageSilo/isSrManagerOrAdmin); Build/Edit WO form with status, dollar value, notes; task list (add/remove/edit/reorder); tech assignment dropdown from staff table; task status updates (techs update own tasks, managers update any); dollar value rollup → repair_orders.dollar_value + card refresh
     v1.294: QR scan now opens main RO tile (GH#15) — QR codes link to index.html?ro= instead of checkin.html; deep-link handler in renderBoard() reads ?ro= URL param, scrolls to matching tile, and pulses a 3× blue highlight ring; 🚪 Tech Check In button still available on the tile for techs; QR modal title updated accordingly
     v1.293: QR Print Sheet Phase 2 (GH#15) — dual-sticker print window: 3"×3" windshield sticker (customer name, RV, RO#, parking spot chip) + 1"×1" key tag; both generated fresh via QRCode.js in print window; proper @media print CSS with dashed cut borders and physical inch sizing

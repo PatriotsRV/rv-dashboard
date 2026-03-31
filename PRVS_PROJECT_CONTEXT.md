@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.295 |
+| **Current Version** | v1.296 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -33,11 +33,12 @@
 
 ### 🟠 High Priority
 - **GH#5 Phase 2 — Work Assignment System** — Phase 1 shipped v1.295 (staff table, 5-silo WO builder, task CRUD, access control, dollar rollup). Phase 2 remaining: lock urgency to Manager+Admin, Tech "My Tasks" view across all ROs, task dependency system (V1.5). ⏳ Open
+- **GH#5c — Polish Work Orders UI** — General UX polish pass after initial rollout: visual refinements, edge cases, mobile layout, status badges, remaining bugs. ⏳ Open
 - **GH#6 — Employee Time Clock** — Full time clock feature in dashboard ⏳ Open
 - **GH#15 Phase 3 — Interactive Virtual Lot Map** — Dashboard view mirroring physical whiteboard ⏳ Open
 
 ### 🟡 Medium Priority / Roland Actions
-- **GitHub Releases v1.283–v1.295** — Create releases at github.com/PatriotsRV/rv-dashboard/releases/new (all tags exist) ⏳ Roland action
+- **GitHub Releases v1.283–v1.296** — Create releases at github.com/PatriotsRV/rv-dashboard/releases/new (all tags exist) ⏳ Roland action
 - **Provide Roof + Paint & Body manager** — Ryan covers both silos until dedicated hires. Add name/email when ready. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts request notifications ⏳ Roland action
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah in Quote section ⏳ Open
@@ -49,11 +50,10 @@
 ---
 
 ## ✅ Recently Completed (last 5 sessions)
-- ✅ **v1.291/v1.292** — Parking Spot field (📍 chip on RO card, R/B/W/F lot positions, SQL migration)
-- ✅ **v1.293** — Dual-sticker QR Print Sheet (3"×3" windshield + 1"×1" key tag)
 - ✅ **v1.294** — QR scan opens main dashboard RO tile with deep-link blue highlight
-- ✅ **v1.295 (2026-03-30)** — GH#5 Work Assignment System Phase 1: `staff` table (14 personnel seeded), `service_work_orders` + `service_tasks` DB tables, 🔧 Work Orders button on every RO card, 5-silo modal (Repair/Vroom/Solar/Roof/Paint&Body), Build/Edit WO form, task CRUD with tech assignment, silo-level access control (canManageSilo/isSrManagerOrAdmin), dollar value rollup to RO card. PRVS_WorkOrders_TrainingGuide.pdf created for team training.
-- ✅ **Kenect decision (2026-03-30)** — Confirmed no direct API access. Kenect code ON HOLD. Twilio fast-tracked.
+- ✅ **v1.295 (2026-03-30)** — GH#5 Work Assignment System Phase 1: `staff` table (14 personnel seeded), `service_work_orders` + `service_tasks` DB tables, 🔧 Work Orders button on every RO card, 5-silo modal, Build/Edit WO form, task CRUD, silo access control, dollar rollup. Training PDF created.
+- ✅ **Kenect decision (2026-03-30)** — Confirmed no direct API access. Kenect ON HOLD. Twilio fast-tracked.
+- ✅ **v1.296 (2026-03-30)** — Work Orders bug-fix pass: 5 fixes — `_supabaseId` mismatch (modal "RO not found"), silent save guard, dark-theme form inputs unreadable, silo badge on task rows, wrong RO opened when board filtered. Roland added to `staff` table as sr_manager (SQL) to fix RLS on WO inserts.
 
 ---
 
@@ -98,4 +98,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-03-27 — Session 25 — v1.294*
+*Last updated: 2026-03-30 — Session 27 — v1.296*
