@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.296
+    PRVS Dashboard v1.297
     Released: 2026-03-30
+    v1.297: Fix photo library crash on ROs with null/corrupt photo_library entries — filter library.photos to string-only before rendering renderPhotosTab(); same guard applied to library.docs; fixes "url.includes is not a function" TypeError that silently blocked openPhotoLibrary() on affected ROs. Also fixes header version badge (was stuck at v1.294).
     v1.296: Work Orders bug-fix pass (Session 27) — (1) ro.supabaseId → ro._supabaseId in 7 places (modal was always showing "RO not found"); (2) submitWOForm guard fix (save was silently no-op); (3) WO task form inputs dark-theme fix (status, dollar, notes, task title/desc/tech/status all switched to white bg + dark text); (4) silo badge on each task row header; (5) openWorkOrderModal now resolves filteredIndex → currentData index via _supabaseId (wrong RO was opening when board was filtered/sorted)
     v1.295: GH#5 Work Assignment System — staff table, service_work_orders + service_tasks DB; SERVICE_SILOS constants; SR_MANAGER_EMAILS; updated MANAGER_EMAILS (added jason@, riley@); 🔧 Work Orders button on every RO card; Work Order modal with all 5 silos (Repair/Vroom/Solar/Roof/Paint&Body); silo-level access control (canManageSilo/isSrManagerOrAdmin); Build/Edit WO form with status, dollar value, notes; task list (add/remove/edit/reorder); tech assignment dropdown from staff table; task status updates (techs update own tasks, managers update any); dollar value rollup → repair_orders.dollar_value + card refresh
     v1.294: QR scan now opens main RO tile (GH#15) — QR codes link to index.html?ro= instead of checkin.html; deep-link handler in renderBoard() reads ?ro= URL param, scrolls to matching tile, and pulses a 3× blue highlight ring; 🚪 Tech Check In button still available on the tile for techs; QR modal title updated accordingly
@@ -2674,7 +2675,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.294</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.297</span>
             </div>
         </header>
 
@@ -3714,6 +3715,9 @@
             if (!ro) return;
 
             const library = parseLibrary(ro.photoLibrary || '');
+            // Sanitize: filter out any null/undefined/non-string entries that would crash url.includes()
+            library.photos = library.photos.filter(url => typeof url === 'string' && url.length > 0);
+            library.docs   = library.docs.filter(doc => doc && typeof doc === 'object');
             const mainUrl = ro.rvPhotoUrl || '';
             window._libPhotos = library.photos;
             window._libMainUrl = mainUrl;
