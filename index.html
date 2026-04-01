@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.299
+    PRVS Dashboard v1.300
     Released: 2026-03-30
+    v1.300: Add Kevin McHenry (kevin@patriotsrvservices.com) to SR_MANAGER_EMAILS — Sr. Manager access for Work Orders, silo management, urgency, and scheduling.
     v1.299: Fix editField apostrophe/quote crash — remove raw text from onclick attributes for repairDescription, roStatusNotes, customerCommunicationNotes; editField() now reads current value directly from currentFilteredData[index][fieldName] instead of receiving it as an HTML-embedded parameter; eliminates SyntaxError: Invalid or unexpected token on any RO whose description/notes contain apostrophes, quotes, newlines, or backticks.
     v1.298: Improve video upload size error handling — pre-flight 500 MB check before hitting Supabase; friendly error message with file size shown when bucket limit exceeded; both pre-check and Supabase error path give actionable guidance instead of raw API error.
     v1.297: Fix photo library crash on ROs with null/corrupt photo_library entries — filter library.photos to string-only before rendering renderPhotosTab(); same guard applied to library.docs; fixes "url.includes is not a function" TypeError that silently blocked openPhotoLibrary() on affected ROs. Also fixes header version badge (was stuck at v1.294).
@@ -2677,7 +2678,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.299</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.300</span>
             </div>
         </header>
 
@@ -7691,7 +7692,7 @@ Notes: ${notes}` : '',
             'bobby@patriotsrvservices.com',
             'brandon@patriotsrvservices.com',
         ];
-        const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com'];
+        const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com'];
 
         // GH#5 — Service silo definitions
         const SERVICE_SILOS = [
