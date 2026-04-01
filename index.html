@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.297
+    PRVS Dashboard v1.298
     Released: 2026-03-30
+    v1.298: Improve video upload size error handling — pre-flight 500 MB check before hitting Supabase; friendly error message with file size shown when bucket limit exceeded; both pre-check and Supabase error path give actionable guidance instead of raw API error.
     v1.297: Fix photo library crash on ROs with null/corrupt photo_library entries — filter library.photos to string-only before rendering renderPhotosTab(); same guard applied to library.docs; fixes "url.includes is not a function" TypeError that silently blocked openPhotoLibrary() on affected ROs. Also fixes header version badge (was stuck at v1.294).
     v1.296: Work Orders bug-fix pass (Session 27) — (1) ro.supabaseId → ro._supabaseId in 7 places (modal was always showing "RO not found"); (2) submitWOForm guard fix (save was silently no-op); (3) WO task form inputs dark-theme fix (status, dollar, notes, task title/desc/tech/status all switched to white bg + dark text); (4) silo badge on each task row header; (5) openWorkOrderModal now resolves filteredIndex → currentData index via _supabaseId (wrong RO was opening when board was filtered/sorted)
     v1.295: GH#5 Work Assignment System — staff table, service_work_orders + service_tasks DB; SERVICE_SILOS constants; SR_MANAGER_EMAILS; updated MANAGER_EMAILS (added jason@, riley@); 🔧 Work Orders button on every RO card; Work Order modal with all 5 silos (Repair/Vroom/Solar/Roof/Paint&Body); silo-level access control (canManageSilo/isSrManagerOrAdmin); Build/Edit WO form with status, dollar value, notes; task list (add/remove/edit/reorder); tech assignment dropdown from staff table; task status updates (techs update own tasks, managers update any); dollar value rollup → repair_orders.dollar_value + card refresh
@@ -2675,7 +2676,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.297</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.298</span>
             </div>
         </header>
 
@@ -4048,6 +4049,13 @@
         async function uploadToSupabaseStorage(file, roId, options = {}) {
             console.log('Uploading to Supabase Storage...');
 
+            // Pre-flight size check — warn before hitting Supabase (500 MB soft limit matches bucket config)
+            const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
+            if (file.size > MAX_BYTES) {
+                const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+                throw new Error(`File too large (${sizeMB} MB). Maximum upload size is 500 MB. Please compress the video before uploading.`);
+            }
+
             const ext = file.name.split('.').pop() || 'jpg';
             const folder = roId || 'general';
             const filename = `${folder}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -4065,7 +4073,12 @@
 
             if (error) {
                 console.error('Supabase Storage upload error:', error);
-                throw new Error('Upload failed: ' + error.message);
+                const msg = error.message || '';
+                if (msg.toLowerCase().includes('maximum allowed size') || msg.toLowerCase().includes('exceeded')) {
+                    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+                    throw new Error(`Upload failed: This file is too large (${sizeMB} MB). Videos must be under the bucket size limit. Ask your admin to increase the rv-media bucket limit in Supabase Storage settings, or compress the video before uploading.`);
+                }
+                throw new Error('Upload failed: ' + msg);
             }
 
             // Get public URL
