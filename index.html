@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.298
+    PRVS Dashboard v1.299
     Released: 2026-03-30
+    v1.299: Fix editField apostrophe/quote crash — remove raw text from onclick attributes for repairDescription, roStatusNotes, customerCommunicationNotes; editField() now reads current value directly from currentFilteredData[index][fieldName] instead of receiving it as an HTML-embedded parameter; eliminates SyntaxError: Invalid or unexpected token on any RO whose description/notes contain apostrophes, quotes, newlines, or backticks.
     v1.298: Improve video upload size error handling — pre-flight 500 MB check before hitting Supabase; friendly error message with file size shown when bucket limit exceeded; both pre-check and Supabase error path give actionable guidance instead of raw API error.
     v1.297: Fix photo library crash on ROs with null/corrupt photo_library entries — filter library.photos to string-only before rendering renderPhotosTab(); same guard applied to library.docs; fixes "url.includes is not a function" TypeError that silently blocked openPhotoLibrary() on affected ROs. Also fixes header version badge (was stuck at v1.294).
     v1.296: Work Orders bug-fix pass (Session 27) — (1) ro.supabaseId → ro._supabaseId in 7 places (modal was always showing "RO not found"); (2) submitWOForm guard fix (save was silently no-op); (3) WO task form inputs dark-theme fix (status, dollar, notes, task title/desc/tech/status all switched to white bg + dark text); (4) silo badge on each task row header; (5) openWorkOrderModal now resolves filteredIndex → currentData index via _supabaseId (wrong RO was opening when board was filtered/sorted)
@@ -2676,7 +2677,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.298</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.299</span>
             </div>
         </header>
 
@@ -3321,7 +3322,7 @@
         }
 
         // Edit field inline
-        async function editField(index, fieldName, currentValue) {
+        async function editField(index, fieldName) {
             if (!getSB()) {
                 alert('Please connect to PRVS database first!');
                 return;
@@ -3337,12 +3338,13 @@
             const field = fieldMapping[fieldName];
             if (!field) return;
 
-            // Decode HTML entities and newlines in current value
-            const decodedValue = currentValue.replace(/&quot;/g, '"').replace(/\\n/g, '\n');
+            // Read current value directly from data — never embed raw text in onclick attributes
+            // (apostrophes, quotes, newlines, backticks all break inline JS string literals)
+            const ro = currentFilteredData[index];
+            if (!ro) { alert('Error: Could not find the repair order.'); return; }
+            const decodedValue = ro[fieldName] || '';
 
             try {
-                const ro = currentFilteredData[index];
-                if (!ro) { alert('Error: Could not find the repair order.'); return; }
 
                 // Find original index in currentData
                 const originalIndex = currentData.findIndex(item =>
@@ -6888,7 +6890,7 @@ Notes: ${notes}` : '',
                         ` : ''}
                         
                         ${shouldShow('repairDescription') ? `
-                        <div class="note-item editable-field" onclick="editField(${index}, 'repairDescription', '${ro.repairDescription ? ro.repairDescription.replace(/'/g, "\\'").replace(/"/g, '&quot;') : ''}')"> 
+                        <div class="note-item editable-field" onclick="editField(${index}, 'repairDescription')">
                             <div class="note-header">
                                 <span class="note-icon">🔩</span>
                                 <span class="note-title">${t('Repair Description')}</span>
@@ -6920,7 +6922,7 @@ Notes: ${notes}` : '',
                         ${shouldShow('roStatusNotes') || shouldShow('customerCommNotes') ? `
                         <div class="notes-section">
                             ${shouldShow('roStatusNotes') ? `
-                            <div class="note-item editable-field" onclick="editField(${index}, 'roStatusNotes', '${ro.roStatusNotes ? ro.roStatusNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
+                            <div class="note-item editable-field" onclick="editField(${index}, 'roStatusNotes')">
                                 <div class="note-header">
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">${t('RO Status')}</span>
@@ -6929,7 +6931,7 @@ Notes: ${notes}` : '',
                             </div>
                             ` : ''}
                             ${shouldShow('customerCommNotes') ? `
-                            <div class="note-item editable-field" onclick="editField(${index}, 'customerCommunicationNotes', '${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, '\\n') : ''}')">
+                            <div class="note-item editable-field" onclick="editField(${index}, 'customerCommunicationNotes')">
                                 <div class="note-header">
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">${t('Customer Comm')}</span>
