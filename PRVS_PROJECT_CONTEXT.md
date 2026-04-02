@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.296 |
+| **Current Version** | v1.300 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -37,10 +37,15 @@
 - **GH#6 — Employee Time Clock** — Full time clock feature in dashboard ⏳ Open
 - **GH#15 Phase 3 — Interactive Virtual Lot Map** — Dashboard view mirroring physical whiteboard ⏳ Open
 
+### 🟠 High Priority (continued)
+- **Fix checkin.html Supabase auth for time_logs** — checkin.html inserts as anon role on iPhone (no Supabase session before insert fires). Currently using anon INSERT/UPDATE policy as workaround. Proper fix: gate insert on session confirmation in checkin.html. ⏳ Open
+
 ### 🟡 Medium Priority / Roland Actions
-- **GitHub Releases v1.283–v1.296** — Create releases at github.com/PatriotsRV/rv-dashboard/releases/new (all tags exist) ⏳ Roland action
+- **GitHub Releases v1.283–v1.300** — Create releases at github.com/PatriotsRV/rv-dashboard/releases/new (all tags exist) ⏳ Roland action
+- **Supabase: Maximize log retention** — Settings → Logs in Supabase dashboard ⏳ Roland action
+- **Confirm Kevin McHenry login + Sr. Manager access** — Kevin added to SR_MANAGER_EMAILS (v1.300) and has sr_manager role in Supabase; verify he can log in ⏳ Roland action
 - **Provide Roof + Paint & Body manager** — Ryan covers both silos until dedicated hires. Add name/email when ready. ⏳ Roland action
-- **Create parts@patriotsrvservices.com** — Email group for parts request notifications ⏳ Roland action
+- **Create parts@patriotsrvservices.com** — Email group for parts request notifications (may already be done) ⏳ Roland action
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah in Quote section ⏳ Open
 - **GH#9 — Parts form autocomplete** — Suggest part names/suppliers from history ⏳ Open
 - **GH#2 — Layout customization** — Drag/resize tiles ⏳ Open
@@ -50,10 +55,13 @@
 ---
 
 ## ✅ Recently Completed (last 5 sessions)
-- ✅ **v1.294** — QR scan opens main dashboard RO tile with deep-link blue highlight
-- ✅ **v1.295 (2026-03-30)** — GH#5 Work Assignment System Phase 1: `staff` table (14 personnel seeded), `service_work_orders` + `service_tasks` DB tables, 🔧 Work Orders button on every RO card, 5-silo modal, Build/Edit WO form, task CRUD, silo access control, dollar rollup. Training PDF created.
-- ✅ **Kenect decision (2026-03-30)** — Confirmed no direct API access. Kenect ON HOLD. Twilio fast-tracked.
 - ✅ **v1.296 (2026-03-30)** — Work Orders bug-fix pass: 5 fixes — `_supabaseId` mismatch (modal "RO not found"), silent save guard, dark-theme form inputs unreadable, silo badge on task rows, wrong RO opened when board filtered. Roland added to `staff` table as sr_manager (SQL) to fix RLS on WO inserts.
+- ✅ **Manager Role Training Guide PDF (2026-04-02)** — 16 responsibilities across 5 phases, navy/red/gold branding, Quick Reference Checklist final page.
+- ✅ **v1.297 (2026-04-02)** — Fix photo library crash on null entries — `url.includes is not a function` when photo_library array contained null/corrupt entries. Fixed by filtering after parseLibrary().
+- ✅ **v1.298 (2026-04-02)** — Fix video upload size error messaging — pre-flight 500 MB check + user-friendly Supabase error catch.
+- ✅ **v1.299 (2026-04-02)** — Fix editField apostrophe/quote crash — removed currentValue from function signature; reads directly from currentFilteredData.
+- ✅ **v1.300 (2026-04-02)** — Add Kevin McHenry (kevin@) to SR_MANAGER_EMAILS.
+- ✅ **Supabase Pro security pass (2026-04-02)** — Security Advisor 60→31 warnings; removed anon write policies (except time_logs workaround); fixed function search_path; enabled password strength + length requirements.
 
 ---
 
@@ -98,4 +106,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-03-30 — Session 27 — v1.296*
+*Last updated: 2026-04-02 — Session 28 — v1.300*
