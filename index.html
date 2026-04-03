@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.300
-    Released: 2026-03-30
+    PRVS Dashboard v1.301
+    Released: 2026-04-03
+    v1.301: Fix parts request RLS error for techs with expired sessions — add supabaseSession guard at top of submitPartsRequest(); if session is null, alert "Session expired — please refresh and try again" instead of hitting the notes table as anon and getting blocked by RLS.
     v1.300: Add Kevin McHenry (kevin@patriotsrvservices.com) to SR_MANAGER_EMAILS — Sr. Manager access for Work Orders, silo management, urgency, and scheduling.
     v1.299: Fix editField apostrophe/quote crash — remove raw text from onclick attributes for repairDescription, roStatusNotes, customerCommunicationNotes; editField() now reads current value directly from currentFilteredData[index][fieldName] instead of receiving it as an HTML-embedded parameter; eliminates SyntaxError: Invalid or unexpected token on any RO whose description/notes contain apostrophes, quotes, newlines, or backticks.
     v1.298: Improve video upload size error handling — pre-flight 500 MB check before hitting Supabase; friendly error message with file size shown when bucket limit exceeded; both pre-check and Supabase error path give actionable guidance instead of raw API error.
@@ -2678,7 +2679,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.300</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.301</span>
             </div>
         </header>
 
@@ -9789,6 +9790,8 @@ Notes: ${notes}` : '',
 
         // Submit the parts request
         async function submitPartsRequest(filteredIndex) {
+            if (!getSB() || !supabaseSession) { alert('Session expired — please refresh the page and try again.'); return; }
+
             const description = (document.getElementById('partsRequestText')?.value || '').trim();
             if (!description) { alert('Please describe the parts needed before sending.'); return; }
 
