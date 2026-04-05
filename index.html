@@ -11717,8 +11717,11 @@ function toggleWOTasks(tasksId, chevId) {
         }
 
         async function saveWOTemplate(silo) {
+          try {
+            console.log('[Template] saveWOTemplate called, silo=', silo);
             const container = document.getElementById('woTaskRows');
             const rows = container ? container.querySelectorAll('.wo-task-form-row') : [];
+            console.log('[Template] found', rows.length, 'task rows');
             const tasks = [];
             rows.forEach((row, i) => {
                 const title = row.querySelector('.wo-task-title')?.value.trim();
@@ -11730,10 +11733,12 @@ function toggleWOTasks(tasksId, chevId) {
                     sort_order: i
                 });
             });
+            console.log('[Template] collected', tasks.length, 'tasks');
             if (tasks.length === 0) { alert('Add at least one task before saving as a template.'); return; }
             window._pendingTemplateTasks = tasks;
             const sb = getSB();
-            if (!sb || !supabaseSession) return;
+            console.log('[Template] sb=', !!sb, 'session=', !!supabaseSession);
+            if (!sb || !supabaseSession) { alert('Session error — please refresh and try again.'); return; }
             const siloInfo = SERVICE_SILOS.find(s => s.key === silo) || { emoji: '\u{1F4CB}', label: silo };
             const { data: existing } = await sb.from('wo_task_templates').select('id,template_name').eq('service_silo', silo).order('template_name');
             const existingOpts = (existing && existing.length > 0)
