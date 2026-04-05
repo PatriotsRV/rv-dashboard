@@ -2693,7 +2693,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.301</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.303</span>
             </div>
         </header>
 
@@ -6753,6 +6753,11 @@ Notes: ${notes}` : '',
                     .update({ priority: i + 1 })
                     .eq('id', _workListData[i].id);
             }
+        }
+
+        function _initWorkListBtn() {
+            const btn = document.getElementById('workListBtn');
+            if (btn && canSeeWorkList()) btn.style.display = '';
         }
 
         function renderWorkList() {
