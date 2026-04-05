@@ -7697,12 +7697,39 @@ Notes: ${notes}` : '',
 
         // GH#5 — Service silo definitions
         const SERVICE_SILOS = [
-            { key: 'repair',     label: 'Repair',      emoji: '🔧' },
-            { key: 'vroom',      label: 'Vroom',        emoji: '✨' },
-            { key: 'solar',      label: 'Solar',        emoji: '☀️' },
-            { key: 'roof',       label: 'Roof',         emoji: '🏠' },
-            { key: 'paint_body', label: 'Paint & Body', emoji: '🎨' },
+            { key: 'repair',     label: 'Repair',       emoji: '🔧' },
+            { key: 'vroom',      label: 'Vroom',         emoji: '✨' },
+            { key: 'solar',      label: 'Solar',         emoji: '☀️' },
+            { key: 'roof',       label: 'Roof',          emoji: '🏠' },
+            { key: 'paint_body', label: 'Paint & Body',  emoji: '🎨' },
+            { key: 'chassis',    label: 'Chassis',       emoji: '🔩' },
+            { key: 'detailing',  label: 'Detailing',     emoji: '🧽' },
+            { key: 'truetopper', label: 'TrueTopper',    emoji: '🏕️' },
         ];
+        // Maps RO repairType text → SERVICE_SILOS key (case-insensitive match)
+        const REPAIR_TYPE_TO_SILO = {
+            'repairs':        'repair',
+            'repair':         'repair',
+            'vroom':          'vroom',
+            'solar':          'solar',
+            'roof':           'roof',
+            'paint and body': 'paint_body',
+            'paint & body':   'paint_body',
+            'chassis':        'chassis',
+            'detailing':      'detailing',
+            'truetopper':     'truetopper',
+        };
+        // Maps SERVICE_SILOS key → canonical repairType label (for syncing back to RO)
+        const SILO_TO_REPAIR_TYPE = {
+            'repair':     'Repairs',
+            'vroom':      'Vroom',
+            'solar':      'Solar',
+            'roof':       'Roof',
+            'paint_body': 'Paint and Body',
+            'chassis':    'Chassis',
+            'detailing':  'Detailing',
+            'truetopper': 'TrueTopper',
+        };
         const WO_STATUS_LABELS = {
             not_started:                '⬜ Not Started',
             in_progress:                '🔄 In Progress',
@@ -11326,7 +11353,7 @@ Notes: ${notes}` : '',
                 return;
             }
             const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
-            renderWorkOrderView(roIndex, ro, orders, tasks);
+            renderWorkOrderView(roIndex, currentData[roIndex], orders, tasks);
         }
 
         function renderWorkOrderView(roIndex, ro, orders, tasks) {
@@ -11335,6 +11362,11 @@ Notes: ${notes}` : '',
 
             const totalValue = orders.reduce((sum, o) => sum + (parseFloat(o.dollar_value) || 0), 0);
             const userEmail = (supabaseSession?.user?.email || currentUser?.email || '').toLowerCase();
+            // Filter silos to those matching this RO's repairType tags
+            const roTypes = (ro.repairType || '').split(',').map(t => t.trim().toLowerCase());
+            const activeSiloKeys = roTypes.map(t => REPAIR_TYPE_TO_SILO[t]).filter(Boolean);
+            const activeSilos = SERVICE_SILOS.filter(s => activeSiloKeys.includes(s.key));
+            const addableSilos = SERVICE_SILOS.filter(s => !activeSiloKeys.includes(s.key));
             let html = '';
 
             if (totalValue > 0) {
@@ -11344,7 +11376,10 @@ Notes: ${notes}` : '',
                 </div>`;
             }
 
-            for (const silo of SERVICE_SILOS) {
+            if (activeSilos.length === 0) {
+                html += `<div style="text-align:center;padding:24px;color:#94a3b8;font-size:0.9rem;">No services assigned to this RO yet.<br>Use "+ Add Service" below to get started.</div>`;
+            }
+            for (const silo of activeSilos) {
                 const wo = orders.find(o => o.service_silo === silo.key);
                 const siloTasks = wo ? tasks.filter(t => t.work_order_id === wo.id).sort((a,b) => a.sort_order - b.sort_order) : [];
                 const canManage = canManageSilo(silo.key);
@@ -11395,8 +11430,14 @@ Notes: ${notes}` : '',
                 html += `</div>`;
             }
 
-            if (orders.length === 0) {
-                html += `<div style="text-align:center;padding:24px;color:#94a3b8;font-size:0.9rem;">No work orders built yet.<br>Managers can click "+ Build" on any service above.</div>`;
+            // + Add Service button — shown to managers when addable silos remain
+            if (addableSilos.length > 0 && isSrManagerOrAdmin()) {
+                html += `<div style="margin-top:14px;text-align:center;">
+                    <button onclick="openAddServicePicker(${roIndex})"
+                        style="background:none;border:2px dashed #2d5a8e;color:#2d5a8e;border-radius:10px;padding:10px 24px;font-size:0.9rem;font-weight:700;cursor:pointer;width:100%;">
+                        + Add Service
+                    </button>
+                </div>`;
             }
             body.innerHTML = html;
         }
@@ -11404,6 +11445,52 @@ Notes: ${notes}` : '',
         function closeWorkOrderModal() {
             const el = document.getElementById('workOrderOverlay');
             if (el) el.remove();
+        }
+
+        function openAddServicePicker(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const roTypes = (ro.repairType || '').split(',').map(t => t.trim().toLowerCase());
+            const activeSiloKeys = roTypes.map(t => REPAIR_TYPE_TO_SILO[t]).filter(Boolean);
+            const addableSilos = SERVICE_SILOS.filter(s => !activeSiloKeys.includes(s.key));
+            if (addableSilos.length === 0) return;
+            const body = document.getElementById('woModalBody');
+            if (!body) return;
+            let html = `<div style="margin-bottom:14px;">
+                <button onclick="renderWorkOrderView(${roIndex},currentData[${roIndex}],_workOrderCache[currentData[${roIndex}]._supabaseId]?.orders||[],_workOrderCache[currentData[${roIndex}]._supabaseId]?.tasks||[])"
+                    style="background:none;border:none;color:#2d5a8e;cursor:pointer;font-size:0.9rem;padding:0;font-weight:600;">← Back</button>
+            </div>
+            <div style="font-size:1rem;font-weight:700;color:#1e3a5f;margin-bottom:14px;">Select a Service to Add</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">`;
+            for (const silo of addableSilos) {
+                html += `<button onclick="addServiceToRO(${roIndex},'${silo.key}')"
+                    style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:10px;padding:14px 16px;text-align:left;cursor:pointer;font-size:0.95rem;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:1.3rem;">${silo.emoji}</span> ${silo.label}
+                </button>`;
+            }
+            html += `</div>`;
+            body.innerHTML = html;
+        }
+
+        async function addServiceToRO(roIndex, siloKey) {
+            const ro = currentData[roIndex];
+            if (!ro?._supabaseId) return;
+            const sb = getSB();
+            if (!sb || !supabaseSession) { alert('Session expired — please refresh.'); return; }
+            // Add the new service label to repair_type on the RO
+            const newLabel = SILO_TO_REPAIR_TYPE[siloKey];
+            const existing = (ro.repairType || '').split(',').map(t => t.trim()).filter(Boolean);
+            if (!existing.map(t => t.toLowerCase()).includes(newLabel.toLowerCase())) {
+                existing.push(newLabel);
+                const newRepairType = existing.join(', ');
+                const { error } = await sb.from('repair_orders')
+                    .update({ repair_type: newRepairType })
+                    .eq('id', ro._supabaseId);
+                if (error) { alert('Failed to update service type: ' + error.message); return; }
+                currentData[roIndex].repairType = newRepairType;
+            }
+            // Open Build WO form for the new silo
+            openBuildWOForm(roIndex, siloKey);
         }
 
         async function openBuildWOForm(roIndex, silo) {
@@ -11577,7 +11664,7 @@ Notes: ${notes}` : '',
 
                 // Refresh view
                 const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
-                renderWorkOrderView(roIndex, ro, orders, tasks);
+                renderWorkOrderView(roIndex, currentData[roIndex], orders, tasks);
 
             } catch (err) {
                 console.error('❌ submitWOForm:', err);
@@ -11597,7 +11684,7 @@ Notes: ${notes}` : '',
                 }).eq('id', taskId);
                 if (error) throw error;
                 const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
-                renderWorkOrderView(roIndex, ro, orders, tasks);
+                renderWorkOrderView(roIndex, currentData[roIndex], orders, tasks);
             } catch (err) {
                 console.error('❌ updateTaskStatusWO:', err);
                 alert('Failed to update task status.');
