@@ -1,7 +1,13 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.27
-    Released: 2026-03-22
+    PRVS Tech Check-In v1.28
+    Released: 2026-04-05
+    v1.28: Fix Supabase auth for time_logs — signInWithIdToken() now called on Google sign-in,
+           establishes authenticated Supabase session so clock-in/out inserts use 'authenticated'
+           role (not anon). getSession() restores session on reload (30-day persistence).
+           generateNonce() added (hex SHA-256, matches index.html pattern). onAuthStateChange
+           listener keeps supabaseSession in sync. clockIn() guards against online insert without
+           session. Anon INSERT/UPDATE policies on time_logs can now be safely removed.
     v1.27: Spanish language toggle — globe button, TRANSLATIONS_ES dictionary, t() helper, full UI translation (check-in/out flow, auto clock-out modal, clock-out summary, offline banner, dictation button)
     v1.26: Supabase backend (replaces Google Sheets); offline-first IndexedDB queue; auto clock-out; one RO at a time
 -->
@@ -189,7 +195,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.27</div>
+    <div class="version">v1.28</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -253,6 +259,7 @@ const TRANSLATIONS_ES = {
     'Loading...': 'Cargando...',
     'Loading RO...': 'Cargando OR...',
     'Please select a service type before clocking in.': 'Por favor selecciona un tipo de servicio.',
+    'Signed in as': 'Sesión iniciada como',
 };
 
 function getLang() { return localStorage.getItem('prvs_lang') || 'en'; }
@@ -260,7 +267,6 @@ function getLang() { return localStorage.getItem('prvs_lang') || 'en'; }
 function setLang(lang) {
     localStorage.setItem('prvs_lang', lang);
     translateStaticUI();
-    // Re-render if app is already loaded
     if (currentUser && roData) render();
     const btn = document.getElementById('langToggleBtn');
     if (btn) btn.textContent = lang === 'es' ? '🌐 EN' : '🌐 ES';
@@ -283,25 +289,46 @@ function translateStaticUI() {
     if (btn) btn.textContent = getLang() === 'es' ? '🌐 EN' : '🌐 ES';
 }
 
-// ── State ─────────────────────────────────────────────────────
+// ── Supabase Client ───────────────────────────────────────────
 let _sb = null;
 function getSB() {
-    if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    if (!_sb) {
+        _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+            auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+            }
+        });
+    }
     return _sb;
 }
 
-let currentUser     = null;
-let roData          = null;         // RO from Supabase
-let activeSession   = null;         // current open time_log row
-let timerInterval   = null;
-let isOnline        = navigator.onLine;
-let recognition     = null;
-let isRecording     = false;
-let selectedService = null; // single selection only
-let roServiceTypes = []; // service types for this RO
+// ── Nonce Generation (hex SHA-256, matches index.html pattern) ─
+async function generateNonce() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const rawNonce = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    const msgBuffer = new TextEncoder().encode(rawNonce);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashedNonce = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return { rawNonce, hashedNonce };
+}
+
+// ── State ─────────────────────────────────────────────────────
+let supabaseSession  = null;        // active Supabase session — REQUIRED for DB writes
+let currentUser      = null;
+let roData           = null;
+let activeSession    = null;
+let timerInterval    = null;
+let isOnline         = navigator.onLine;
+let recognition      = null;
+let isRecording      = false;
+let selectedService  = null;
+let roServiceTypes   = [];
 
 const urlParams  = new URLSearchParams(window.location.search);
-const roIdParam  = urlParams.get('ro');   // PRVS-XXXX-XXXX string
+const roIdParam  = urlParams.get('ro');
 
 // ── IndexedDB Offline Queue ───────────────────────────────────
 const IDB_NAME    = 'prvs_checkin';
@@ -390,8 +417,8 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('📦 PRVS Tech Check-In v1.27 - Released 2026-03-22');
-    translateStaticUI(); // Apply saved language to static DOM elements
+    console.log('📦 PRVS Tech Check-In v1.28 - Released 2026-04-05');
+    translateStaticUI();
 
     if (!roIdParam) {
         showError('No RO specified. Please scan a valid QR code or use the Check-In button on the dashboard.');
@@ -400,36 +427,61 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await openIDB();
 
-    // ── Check for stored identity first (30-day persistence) ──
-    const storedIdentity = localStorage.getItem('prvs_user_identity') 
-                        || localStorage.getItem('prvs_checkin_user');
-    if (storedIdentity) {
-        try {
-            const stored = JSON.parse(storedIdentity);
-            const savedAt = stored.savedAt || Date.now();
-            const daysSince = (Date.now() - savedAt) / 86400000;
-            if (daysSince < 30 && stored.email) {
-                currentUser = { email: stored.email, name: stored.name };
-                console.log('✅ Auto sign-in from stored identity:', currentUser.name);
-                await loadAndRender();
-                return;
-            }
-        } catch(e) { console.warn('Identity parse error:', e); }
+    // ── Auth state listener — keeps supabaseSession in sync ──
+    getSB().auth.onAuthStateChange((event, session) => {
+        supabaseSession = session;
+        console.log('🔐 Auth state change:', event, session?.user?.email || 'signed out');
+    });
+
+    // ── Step 1: Try to restore existing Supabase session ─────
+    try {
+        const { data: { session } } = await getSB().auth.getSession();
+        if (session) {
+            supabaseSession = session;
+            currentUser = {
+                email: session.user.email,
+                name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+            };
+            console.log('✅ Supabase session restored:', currentUser.name);
+            await loadAndRender();
+            return;
+        }
+    } catch(e) {
+        console.warn('Session restore failed:', e);
     }
 
-    // No stored identity — show sign-in
+    // ── Step 2: Offline fallback — use cached identity ───────
+    if (!isOnline) {
+        const storedIdentity = localStorage.getItem('prvs_user_identity')
+                            || localStorage.getItem('prvs_checkin_user');
+        if (storedIdentity) {
+            try {
+                const stored = JSON.parse(storedIdentity);
+                if (stored.email) {
+                    currentUser = { email: stored.email, name: stored.name };
+                    console.log('📵 Offline — using cached identity:', currentUser.name);
+                    await loadAndRender();
+                    return;
+                }
+            } catch(e) { console.warn('Identity parse error:', e); }
+        }
+    }
+
+    // ── Step 3: No session, online — show sign-in ────────────
     showSignIn();
 });
 
 // ── Google Sign-In ────────────────────────────────────────────
-function showSignIn() {
+async function showSignIn() {
+    const { rawNonce, hashedNonce } = await generateNonce();
+    localStorage.setItem('prvs_raw_nonce', rawNonce);
+
     document.getElementById('app').innerHTML = `
         <div class="signin-container">
             <p>${t('Sign in with your Patriots RV Google account to check in or out.')}</p>
             <div id="googleSignInBtn"></div>
         </div>`;
 
-    // Wait for GSI to load
     const tryInit = setInterval(() => {
         if (typeof google !== 'undefined' && google.accounts) {
             clearInterval(tryInit);
@@ -437,6 +489,8 @@ function showSignIn() {
                 client_id: GOOGLE_CLIENT_ID,
                 callback: handleSignIn,
                 auto_select: true,
+                nonce: hashedNonce,
+                params: { nonce: hashedNonce },
             });
             google.accounts.id.renderButton(
                 document.getElementById('googleSignInBtn'),
@@ -449,24 +503,43 @@ function showSignIn() {
 
 async function handleSignIn(response) {
     try {
-        // Decode JWT to get user info
-        const payload = JSON.parse(atob(response.credential.split('.')[1]));
-        currentUser = { email: payload.email, name: payload.name, id: payload.sub };
-        console.log('✅ Signed in as:', currentUser.name);
+        const rawNonce = localStorage.getItem('prvs_raw_nonce') || '';
 
-        // Store identity with timestamp for 30-day persistence
-        const identityRecord = { email: currentUser.email, name: currentUser.name, savedAt: Date.now() };
-        localStorage.setItem('prvs_user_identity', JSON.stringify(identityRecord));
+        document.getElementById('app').innerHTML = '<div class="loading">🔐 Signing in...</div>';
+
+        const { data, error } = await getSB().auth.signInWithIdToken({
+            provider: 'google',
+            token: response.credential,
+            nonce: rawNonce,
+        });
+
+        if (error) throw error;
+
+        supabaseSession = data.session;
+        currentUser = {
+            email: supabaseSession.user.email,
+            name: supabaseSession.user.user_metadata?.full_name || supabaseSession.user.email.split('@')[0],
+        };
+
+        console.log('✅ Signed in + Supabase session established:', currentUser.name);
+
+        localStorage.setItem('prvs_user_identity', JSON.stringify({
+            email: currentUser.email, name: currentUser.name, savedAt: Date.now()
+        }));
         localStorage.setItem('prvs_checkin_user', JSON.stringify(currentUser));
+        localStorage.removeItem('prvs_raw_nonce');
 
         await loadAndRender();
+
     } catch(e) {
-        // Try cached user for offline
-        const cached = localStorage.getItem('prvs_checkin_user');
-        if (cached) {
-            currentUser = JSON.parse(cached);
+        console.error('Sign-in error:', e);
+        try {
+            const payload = JSON.parse(atob(response.credential.split('.')[1]));
+            currentUser = { email: payload.email, name: payload.name };
+            console.warn('⚠️ Supabase session NOT established — clock-in will be blocked online. Error:', e.message);
+            localStorage.removeItem('prvs_raw_nonce');
             await loadAndRender();
-        } else {
+        } catch(e2) {
             showError('Sign-in failed. Please try again.');
         }
     }
@@ -478,12 +551,10 @@ async function loadAndRender() {
 
     if (isOnline) {
         try {
-            // Load RO data — support both PRVS-XXXX-XXXX and legacy RO-Name-Date formats
             let ro = null;
             let roErr = null;
 
             if (roIdParam.startsWith('PRVS-')) {
-                // New format — direct lookup
                 const result = await getSB()
                     .from('repair_orders')
                     .select('*')
@@ -492,10 +563,7 @@ async function loadAndRender() {
                 ro = result.data;
                 roErr = result.error;
             } else {
-                // Legacy format — try to extract customer name and find by name
-                // Format: RO-FirstName-LastName-YYYY-MM-DD
                 const parts = roIdParam.replace('RO-', '').split('-');
-                const datePart = parts.slice(-3).join('-'); // YYYY-MM-DD
                 const namePart = parts.slice(0, -3).join(' ');
                 console.warn('Legacy RO ID format detected:', roIdParam, '— searching by name:', namePart);
                 const result = await getSB()
@@ -513,7 +581,6 @@ async function loadAndRender() {
             if (!ro) throw new Error('RO not found: ' + roIdParam);
             roData = ro;
 
-            // Check for any active session for this user (any RO)
             const { data: activeLogs } = await getSB()
                 .from('time_logs')
                 .select('*')
@@ -524,17 +591,11 @@ async function loadAndRender() {
 
             const anyActiveSession = activeLogs?.[0] || null;
 
-            // If active session is on a DIFFERENT RO — prompt and auto clock-out
             if (anyActiveSession && anyActiveSession.ro_id !== roData.id) {
                 try {
                     await autoClockOut(anyActiveSession);
-                    // Show banner on next render
-                    if (window._autoClockoutMsg) {
-                        // Will be picked up by render()
-                    }
                 } catch(e) {
                     if (e.message === 'CANCELLED') {
-                        // Tech cancelled — go back
                         showError('Clock-in cancelled. You are still clocked in to the previous RO.');
                         return;
                     }
@@ -542,7 +603,6 @@ async function loadAndRender() {
                 }
             }
 
-            // Check for active session on THIS RO
             const { data: thisLogs } = await getSB()
                 .from('time_logs')
                 .select('*')
@@ -577,7 +637,6 @@ function loadFromCache() {
 }
 
 async function autoClockOut(session) {
-    // Look up the previous RO name for the prompt
     let prevROName = 'previous RO';
     if (isOnline) {
         const { data: prevRO } = await getSB()
@@ -588,16 +647,10 @@ async function autoClockOut(session) {
         if (prevRO) prevROName = `${prevRO.customer_name} (${prevRO.ro_id})`;
     }
 
-    // Ask tech how long ago they finished
     const answer = await showFinishedTimePrompt(prevROName, session.clock_in);
-    if (answer === null) {
-        // Tech cancelled — don't proceed to new RO
-        throw new Error('CANCELLED');
-    }
+    if (answer === null) throw new Error('CANCELLED');
 
-    // answer is minutes ago they actually finished
     const now = new Date();
-    // Cap adjustment so clock_out never goes before clock_in
     const maxAdjustMinutes = Math.floor((now - new Date(session.clock_in)) / 60000);
     const adjustMinutes = Math.min(answer, maxAdjustMinutes);
     const clockOutTime = new Date(now.getTime() - (adjustMinutes * 60 * 1000));
@@ -618,8 +671,6 @@ async function autoClockOut(session) {
         await queueOfflineAction({ type: 'clock_out', logId: session.id, data: updateData });
     }
     localStorage.removeItem('prvs_session_' + roIdParam + '_' + currentUser.email);
-
-    // Flag so render() can show a banner
     window._autoClockoutMsg = `Auto clocked out of ${prevROName} — adjusted by ${answer} min.`;
 }
 
@@ -673,10 +724,7 @@ function showFinishedTimePrompt(prevROName, clockInTime) {
 
         document.getElementById('confirmAutoClockout').addEventListener('click', () => {
             const val = parseInt(document.getElementById('finishedMins').value);
-            if (isNaN(val) || val < 0) {
-                alert('Please enter how many minutes ago you finished.');
-                return;
-            }
+            if (isNaN(val) || val < 0) { alert('Please enter how many minutes ago you finished.'); return; }
             overlay.remove();
             resolve(val);
         });
@@ -692,18 +740,16 @@ function showFinishedTimePrompt(prevROName, clockInTime) {
 function render() {
     if (!roData) { showError('Could not load RO data.'); return; }
 
-    // Cache RO for offline
     localStorage.setItem('prvs_ro_' + roIdParam, JSON.stringify(roData));
 
     const isClockedIn = !!activeSession;
 
-    // Only show service types on this RO, auto-select if just one
-        roServiceTypes = roData.repair_type
-            ? roData.repair_type.split(',').map(s => s.trim()).filter(s => ALL_SERVICE_TYPES.includes(s))
-            : ALL_SERVICE_TYPES.slice();
-        if (!selectedService && roServiceTypes.length === 1) {
-            selectedService = roServiceTypes[0];
-        }
+    roServiceTypes = roData.repair_type
+        ? roData.repair_type.split(',').map(s => s.trim()).filter(s => ALL_SERVICE_TYPES.includes(s))
+        : ALL_SERVICE_TYPES.slice();
+    if (!selectedService && roServiceTypes.length === 1) {
+        selectedService = roServiceTypes[0];
+    }
 
     document.getElementById('app').innerHTML = `
         <div id="syncBanner" class="sync-banner" style="display:none;"></div>
@@ -791,7 +837,6 @@ function render() {
     `;
 
     updateSyncBanner();
-    // Clear one-time auto clock-out message
     window._autoClockoutMsg = null;
 
     if (isClockedIn) {
@@ -814,17 +859,24 @@ async function clockIn() {
         return;
     }
 
+    // Guard: online clock-in requires an authenticated Supabase session.
+    // Without this, the insert hits anon role and fails RLS.
+    if (isOnline && !supabaseSession) {
+        alert('Your session is not ready yet. Please sign out and sign back in.');
+        return;
+    }
+
     const now = new Date().toISOString();
     const notes = document.getElementById('workNotes')?.value || '';
 
     const logData = {
-        ro_id:         roData.id,
-        tech_email:    currentUser.email,
-        tech_name:     currentUser.name,
-        clock_in:      now,
-        clock_out:     null,
-        service_type:  selectedService,
-        work_notes:    notes,
+        ro_id:            roData.id,
+        tech_email:       currentUser.email,
+        tech_name:        currentUser.name,
+        clock_in:         now,
+        clock_out:        null,
+        service_type:     selectedService,
+        work_notes:       notes,
         duration_seconds: 0,
     };
 
@@ -835,17 +887,14 @@ async function clockIn() {
             activeSession = data;
             console.log('✅ Clocked in:', activeSession.id);
         } else {
-            // Store locally with temp ID
             const tempId = 'offline_' + Date.now();
             activeSession = { ...logData, id: tempId, _offline: true };
             await queueOfflineAction({ type: 'clock_in', data: logData, tempId });
             console.log('📵 Clock-in queued for sync');
         }
 
-        // Cache session locally
         localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
 
-        // Update RO status to In Progress if not already
         if (isOnline && roData.status !== 'In Progress') {
             await getSB().from('repair_orders').update({
                 status: 'In Progress',
@@ -889,7 +938,6 @@ async function clockOut() {
             console.log('📵 Clock-out queued for sync');
         }
 
-        // Clear local session
         localStorage.removeItem('prvs_session_' + roIdParam + '_' + currentUser.email);
         activeSession = null;
 
@@ -1004,14 +1052,16 @@ function toggleDictation() {
     recognition.start();
 }
 
-
 // ── Sign Out ──────────────────────────────────────────────────
-function signOut() {
+async function signOut() {
     localStorage.removeItem('prvs_user_identity');
     localStorage.removeItem('prvs_checkin_user');
+    localStorage.removeItem('prvs_raw_nonce');
     currentUser = null;
     activeSession = null;
+    supabaseSession = null;
     if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
+    try { await getSB().auth.signOut(); } catch(e) { /* ignore */ }
     showSignIn();
 }
 
