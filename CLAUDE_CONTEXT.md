@@ -10,11 +10,11 @@
 > **Storage strategy:** CLAUDE_CONTEXT.md lives **locally** in the `PRVS RO Dashboard` Cowork workspace folder (primary). GitHub is a **backup only**, pushed at end of session. Always read from local. Always write to local first.
 
 ### 🟢 START OF SESSION — Roland's command:
-> *"Read CLAUDE_CONTEXT.md from the workspace folder before doing anything else. Confirm the current index.html version, read the Active TODO List out loud to me grouped by priority, and flag any blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask me: 'Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start.' If I provide mobile updates, merge them into the TODO list immediately — mark completed items ✅, add new items with the correct priority — and confirm what changed before continuing. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
+> *"Read CLAUDE_CONTEXT.md and CLAUDE_CONTEXT_HISTORY.md from the workspace folder before doing anything else. Confirm the current index.html version, read the Active TODO List out loud to me grouped by priority, and flag any blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask me: 'Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start.' If I provide mobile updates, merge them into the TODO list immediately — mark completed items ✅, add new items with the correct priority — and confirm what changed before continuing. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
 
 Claude must complete all of these before doing any work:
 
-- [ ] 1. Read this file from the local workspace folder (not GitHub)
+- [ ] 1. Read CLAUDE_CONTEXT.md AND CLAUDE_CONTEXT_HISTORY.md from the local workspace folder (not GitHub)
 - [ ] 2. Confirm the current `index.html` version matches the File Inventory table below
 - [ ] 3. Read and acknowledge the **Active TODO List** section aloud to Roland, grouped by priority
 - [ ] 4. Flag any 🔴 blocking items and any pending Roland-action items
