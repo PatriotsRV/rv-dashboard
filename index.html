@@ -6996,6 +6996,7 @@ Notes: ${notes}` : '',
                         <button class="work-order-btn" onclick="openWorkOrderModal(${index})">
                             🔧 ${t('Work Orders')}
                         </button>
+                        ${canSeeWorkList() ? `<button onclick="addToWorkList(${index})" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
                         ${ro.customerPhone ? `
                         <button class="kenect-msg-btn" onclick="openKenectModal(${index})" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
                             💬 ${t('Messages')}
