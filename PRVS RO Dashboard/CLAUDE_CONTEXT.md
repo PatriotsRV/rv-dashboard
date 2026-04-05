@@ -42,8 +42,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - [ ] 2. Update the **Active TODO List** — mark completed items ✅, add any new items discovered
 - [ ] 3. Update the **File Inventory** table with new version numbers
 - [ ] 4. Add a row to the **Session Log** table
-- [ ] 5. Add new items to **Completed Work**
-- [ ] 6. Update the **Version History** table if version was bumped
+- [ ] 5. Add new items to **Completed Work** in `CLAUDE_CONTEXT_HISTORY.md`
+- [ ] 6. Update the **Version History** table in `CLAUDE_CONTEXT_HISTORY.md` if version was bumped
 - [ ] 6a. If version was bumped: add a **GitHub Release TODO** to the Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
 - [ ] 7. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
 - [ ] 8. **Update `PRVS_PROJECT_CONTEXT.md`** — sync the TODO list and "Recently Completed" section so Roland's Claude Project (iPhone) stays current
@@ -79,8 +79,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | ⚠️ | GH#10 | **Kenect messaging — ON HOLD** | v1.290 code committed but NOT deployed. Kenect will NOT provide direct API keys — only Zapier, which has no inbound message trigger (can't support conversation thread view). **Decision (2026-03-30): Pivoting away from Kenect to Twilio for SMS.** The `kenect-proxy` Edge Function and 💬 Messages UI remain in the codebase but are dormant until/unless Kenect reverses course. No deploy needed. | ⏳ On Hold — Twilio pivot |
 | 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features. **Fast-tracking as of 2026-03-30 after Kenect API access denied.** | ⏳ Open — Top Priority |
 | 🔴 | GH#4 | **Twilio SMS — plan + build** | Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. Scope TBD this session. | ⏳ Open |
-| 🟠 | GH#5c | **Polish Work Orders UI** | **Session 30 progress (4 commits):** (1) WO modal now shows only services on the RO, not all silos. (2) `+ Add Service` button for Sr Managers (any silo) and Managers (own silo only). (3) WO form labels updated: "Create/Edit {emoji} {label} MASTER Work Order", "Work Order Master Status", "Total Dollar Value ($)", "Overall WO Notes", "+ Add Task or Step to WO". (4) Collapse/expand ▶/▼ chevron on each silo task card — tasks hidden by default, `toggleWOTasks()` shows/hides. SERVICE_SILOS expanded to 8 silos (added chassis 🔩, detailing 🧽, truetopper 🏕️). REPAIR_TYPE_TO_SILO + SILO_TO_REPAIR_TYPE bidirectional mappings added. Remaining: mobile layout, status badge improvements, any rollout bugs. | 🔄 In Progress |
-| 🟡 | GH#5b | **Task Templates (V1.5)** | Pre-built task lists per service silo — manager clicks "Apply Template" to populate tasks for standard jobs | ⏳ Deferred |
+| 🟠 | GH#5c | **Polish Work Orders UI** | **Session 30:** (1) WO modal filters to active services only. (2) `+ Add Service` button. (3) Form label polish. (4) Chevron collapse/expand per silo. 8 silos. **Session 30 (cont):** (5) ⏱️ Est. Hours field on each task (est_hours NUMERIC(5,2) on service_tasks — `ALTER TABLE` run). Rolls up to silo header as `⏱️ ~Xh`. (6) WO Task Templates (GH#5b folded in) — managers Save as Template / Load Template per silo with Replace or Merge choice. Two new Supabase tables: `wo_task_templates` + `wo_template_tasks`. (7) Template overlay z-index fixed (raised to 100000). (8) Outside-click dismissal disabled on New RO modal + WO modal — prevents tech data loss. Remaining: mobile layout polish, any rollout bugs. | 🔄 In Progress |
+| ✅ | GH#5b | **Task Templates (V1.5)** | Folded into GH#5c Session 30 — Save as Template / Load Template / Overwrite per silo, Replace or Merge. Complete. | ✅ Done — Session 30 |
 | 🟠 | GH#16 | **Manager RO Work List** | Each manager can create a personal Work List of ROs they plan to work on. Select ROs from the dashboard, add to their Current Work List, arrange in priority order. Single-line items showing core RO data points (TBD by Roland). Living list — managers can reorder/add/remove at any time. Visible to all Sr Managers and Admins. Essentially a prioritized queue per manager. | ⏳ Open |
 | 🟠 | GH#17 | **Customer Check-In Page** | Front desk workstation page for customers dropping off their RV. Captures customer contact info + RO work description. Output creates a new RO that managers then enrich with photos, service selections, WO tasks, etc. Branded with PRVS logo + mission statement. Includes digital **Repair Authorization Form (RAF)** with e-signature. Living form — Roland will add fields before go-live. Runs on a dedicated front desk workstation. | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
@@ -96,6 +96,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | — | **GitHub Release v1.301** | checkin.html v1.28 Supabase auth fix. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.301` | ⏳ Roland action |
 | 🟡 | — | **Supabase: Maximize log retention** | Settings → Logs — set retention to maximum available on Pro plan (7 days for all log types) | ⏳ Roland action |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
+| 🟡 | — | **Test out Claude dispatch** | Test Claude dispatch workflow | ⏳ Open |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -105,7 +106,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.301** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder (added chassis/detailing/truetopper), RO-service filtering, + Add Service, form label polish, ▶/▼ chevron task collapse** |
+| `index.html` | **v1.301+** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock** _(version string not bumped this session — increment to v1.302 at next release)_ |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
@@ -176,6 +177,19 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - Removed all anon write policies from 9 tables. Fixed `has_role`/`is_silo_manager` mutable search_path. Disabled new user signups.
 - ✅ Anon INSERT/UPDATE on `time_logs` removed 2026-04-05 (checkin.html v1.28 now uses authenticated sessions).
 
+### WO Task Templates (Session 30)
+- `window._pendingTemplateTasks` — global used to pass task array from `saveWOTemplate()` to `commitSaveTemplate()`. Avoids embedding complex JSON in onclick attributes.
+- Template overlays must use `z-index:100000` — WO modal is z-index:11000; anything lower renders behind it.
+- `saveWOTemplate()` wraps body in `try { ... } catch(err) { ... }` — if the catch block is ever removed (e.g. debug cleanup), JS fails with "Missing catch or finally after try" and breaks the entire page.
+
+### Modal Outside-Click Lock (Session 30)
+- **New RO modal (`modalOverlay`)** and **Work Order modal (`workOrderOverlay`)** no longer close on outside click — the backdrop click handlers were removed to prevent data loss when techs accidentally click outside.
+- View-only modals (photo lightbox, QR, dupe manager) still close on outside click — intentional, no data at risk.
+- Close via ✕ button only on form modals.
+
+### osascript / Python Patch Pattern (Session 30)
+- For any file edit involving JS template literals, emoji, backticks, `${}`, or `\n`: write the Python patch to sandbox via `Write` tool → base64-encode with `Bash` → `osascript: do shell script "echo '...' | base64 -d > /tmp/patch.py && python3 /tmp/patch.py"`. Never use AppleScript inline string concatenation for complex JS content.
+
 ### CLAUDE_CONTEXT.md Storage (Session 29)
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
 - GitHub MCP tool has ~21KB content parameter limit — CLAUDE_CONTEXT.md is kept under this limit. CLAUDE_CONTEXT_HISTORY.md is local-primary; GitHub backup is best-effort.
@@ -209,7 +223,11 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `audit_log` | Field-level change audit trail |
 | `config` | App configuration key/value store |
 | `insurance_scans` | Insurance document scan data |
-| `staff` | ⏳ Pending migration — all PRVS personnel (name, email, role, service_silo). Replaces hardcoded TECH_EMAILS / MANAGER_EMAILS arrays. Migration: `supabase/migrations/staff_table.sql` |
+| `staff` | All PRVS personnel (name, email, role, service_silo). Migration: `supabase/migrations/staff_table.sql` |
+| `service_work_orders` | One WO record per RO-silo combination |
+| `service_tasks` | Individual task/step rows per WO. Includes `est_hours NUMERIC(5,2)` (added Session 30 via ALTER TABLE) |
+| `wo_task_templates` | Saved WO task list templates per service silo (id, service_silo, template_name, created_by, updated_at) |
+| `wo_template_tasks` | Individual task rows belonging to a template (template_id FK, task_title, description, est_hours, sort_order) |
 
 ---
 
@@ -242,7 +260,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 **Service Silos:** `repair` · `vroom` · `solar` · `roof` · `paint_body`
 **Dept Silos (non-service):** `parts_insurance` — Bobby + Brandon; excluded from WO assignment dropdowns.
 **Multi-silo per RO:** ✅ Confirmed — one RO can have multiple silos active simultaneously (e.g., Roof + Solar).
-**Task Templates:** Deferred to V1.5 — keep on TODO list.
+**Task Templates:** ✅ Completed Session 30 — Save as Template / Load Template / Overwrite per silo, Replace or Merge choice on load.
 **Techs:** No silo assignment for now — assignable to any service task across any silo.
 
 ---
