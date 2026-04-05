@@ -11566,9 +11566,13 @@ function toggleWOTasks(tasksId, chevId) {
                     <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Notes</label>
                     <textarea id="woFormNotes" rows="2" style="width:100%;resize:vertical;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="Overall work order notes...">${existingWO?.notes||''}</textarea>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
                     <span style="font-size:0.9rem;font-weight:700;color:#1e3a5f;">Tasks</span>
-                    <button onclick="addWOTaskRow('${silo}')" style="background:#2d5a8e;color:white;border:none;border-radius:6px;padding:6px 12px;font-size:0.82rem;font-weight:600;cursor:pointer;">+ Add Task or Step to WO</button>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button onclick="loadWOTemplate(${roIndex},'${silo}')" style="background:#475569;color:white;border:none;border-radius:6px;padding:5px 10px;font-size:0.78rem;font-weight:600;cursor:pointer;">&#128203; Load Template</button>
+                        <button onclick="saveWOTemplate('${silo}')" style="background:#475569;color:white;border:none;border-radius:6px;padding:5px 10px;font-size:0.78rem;font-weight:600;cursor:pointer;">&#128190; Save as Template</button>
+                        <button onclick="addWOTaskRow('${silo}')" style="background:#2d5a8e;color:white;border:none;border-radius:6px;padding:6px 12px;font-size:0.82rem;font-weight:600;cursor:pointer;">+ Add Task or Step to WO</button>
+                    </div>
                 </div>
                 <div id="woTaskRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">${taskRowsHtml}</div>
                 <button id="woSaveBtn" onclick="submitWOForm(${roIndex},'${silo}','${existingWO?.id||''}')"
@@ -11619,6 +11623,188 @@ function toggleWOTasks(tasksId, chevId) {
                 techs.map(t => `<option value="${t.email}">${t.name}</option>`).join('');
             const count = container.querySelectorAll('.wo-task-form-row').length;
             container.insertAdjacentHTML('beforeend', buildWOTaskRowHtml(count, null, techOptions, silo));
+        }
+
+        async function loadWOTemplate(roIndex, silo) {
+            const sb = getSB();
+            if (!sb || !supabaseSession) return;
+            const { data: templates, error } = await sb
+                .from('wo_task_templates')
+                .select('*')
+                .eq('service_silo', silo)
+                .order('template_name');
+            if (error) { alert('Error loading templates: ' + error.message); return; }
+            const siloInfo = SERVICE_SILOS.find(s => s.key === silo) || { emoji: '\u{1F4CB}', label: silo };
+            let listHtml = '';
+            if (!templates || templates.length === 0) {
+                listHtml = '<div style="color:#94a3b8;font-style:italic;padding:16px;text-align:center;">' +
+                    'No templates saved for ' + siloInfo.emoji + ' ' + siloInfo.label + ' yet.<br><br>' +
+                    'Build a WO and click "&#128190; Save as Template" to create one.</div>';
+            } else {
+                listHtml = templates.map(t =>
+                    '<div onclick="selectWOTemplate(\'' + t.id + '\',' + roIndex + ',\'' + silo + '\')" ' +
+                    'style="padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;margin-bottom:8px;background:white;" ' +
+                    'onmouseover="this.style.borderColor=\'#2d5a8e\'" onmouseout="this.style.borderColor=\'#e2e8f0\'">' +
+                        '<div style="font-weight:700;color:#1e3a5f;font-size:0.9rem;">' + t.template_name + '</div>' +
+                        (t.description ? '<div style="font-size:0.78rem;color:#64748b;margin-top:3px;">' + t.description + '</div>' : '') +
+                        '<div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;">Updated ' + new Date(t.updated_at).toLocaleDateString() + '</div>' +
+                    '</div>'
+                ).join('');
+            }
+            const overlay = document.createElement('div');
+            overlay.id = 'woTemplateOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+            overlay.innerHTML =
+                '<div style="background:white;border-radius:14px;padding:20px;width:100%;max-width:420px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+                        '<span style="font-size:1rem;font-weight:700;color:#1e3a5f;">&#128203; ' + siloInfo.emoji + ' ' + siloInfo.label + ' Templates</span>' +
+                        '<button onclick="document.getElementById(\'woTemplateOverlay\').remove()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:1.1rem;">&#10005;</button>' +
+                    '</div>' +
+                    listHtml +
+                '</div>';
+            document.body.appendChild(overlay);
+        }
+
+        function selectWOTemplate(templateId, roIndex, silo) {
+            const container = document.getElementById('woTaskRows');
+            const existingCount = container ? container.querySelectorAll('.wo-task-form-row').length : 0;
+            document.getElementById('woTemplateOverlay')?.remove();
+            if (existingCount > 0) {
+                const overlay = document.createElement('div');
+                overlay.id = 'woTemplateOverlay';
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+                overlay.innerHTML =
+                    '<div style="background:white;border-radius:14px;padding:24px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">' +
+                        '<div style="font-size:1rem;font-weight:700;color:#1e3a5f;margin-bottom:8px;">Load Template</div>' +
+                        '<div style="font-size:0.85rem;color:#64748b;margin-bottom:18px;">You already have ' + existingCount + ' task' + (existingCount !== 1 ? 's' : '') + '. How should the template be applied?</div>' +
+                        '<div style="display:flex;flex-direction:column;gap:10px;">' +
+                            '<button onclick="applyWOTemplate(\'' + templateId + '\',' + roIndex + ',\'' + silo + '\',\'replace\')" style="padding:11px;background:#dc2626;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;">&#128260; Replace All Tasks</button>' +
+                            '<button onclick="applyWOTemplate(\'' + templateId + '\',' + roIndex + ',\'' + silo + '\',\'merge\')" style="padding:11px;background:#2d5a8e;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;">&#10133; Add to Existing Tasks</button>' +
+                            '<button onclick="document.getElementById(\'woTemplateOverlay\').remove()" style="padding:11px;background:none;border:1.5px solid #cbd5e1;color:#64748b;border-radius:8px;font-weight:600;cursor:pointer;">Cancel</button>' +
+                        '</div>' +
+                    '</div>';
+                document.body.appendChild(overlay);
+            } else {
+                applyWOTemplate(templateId, roIndex, silo, 'replace');
+            }
+        }
+
+        async function applyWOTemplate(templateId, roIndex, silo, mode) {
+            document.getElementById('woTemplateOverlay')?.remove();
+            const sb = getSB();
+            if (!sb) return;
+            const { data: tasks, error } = await sb
+                .from('wo_template_tasks')
+                .select('*')
+                .eq('template_id', templateId)
+                .order('sort_order');
+            if (error) { alert('Error loading template tasks: ' + error.message); return; }
+            if (!tasks || tasks.length === 0) { alert('This template has no tasks saved.'); return; }
+            const container = document.getElementById('woTaskRows');
+            if (!container) return;
+            const techs = getStaffTechs();
+            const techOptions = '<option value="">— Unassigned —</option>' +
+                techs.map(t => `<option value="${t.email}">${t.name}</option>`).join('');
+            if (mode === 'replace') {
+                container.innerHTML = '';
+                document.getElementById('woNoTasks')?.remove();
+            }
+            const startIdx = mode === 'replace' ? 0 : container.querySelectorAll('.wo-task-form-row').length;
+            tasks.forEach((task, i) => {
+                document.getElementById('woNoTasks')?.remove();
+                container.insertAdjacentHTML('beforeend', buildWOTaskRowHtml(startIdx + i, task, techOptions, silo));
+            });
+        }
+
+        async function saveWOTemplate(silo) {
+            const container = document.getElementById('woTaskRows');
+            const rows = container ? container.querySelectorAll('.wo-task-form-row') : [];
+            const tasks = [];
+            rows.forEach((row, i) => {
+                const title = row.querySelector('.wo-task-title')?.value.trim();
+                if (!title) return;
+                tasks.push({
+                    task_title: title,
+                    description: row.querySelector('.wo-task-desc')?.value.trim() || null,
+                    est_hours: parseFloat(row.querySelector('.wo-task-est-hours')?.value) || null,
+                    sort_order: i
+                });
+            });
+            if (tasks.length === 0) { alert('Add at least one task before saving as a template.'); return; }
+            window._pendingTemplateTasks = tasks;
+            const sb = getSB();
+            if (!sb || !supabaseSession) return;
+            const siloInfo = SERVICE_SILOS.find(s => s.key === silo) || { emoji: '\u{1F4CB}', label: silo };
+            const { data: existing } = await sb.from('wo_task_templates').select('id,template_name').eq('service_silo', silo).order('template_name');
+            const existingOpts = (existing && existing.length > 0)
+                ? existing.map(t => `<option value="${t.id}">${t.template_name}</option>`).join('') : '';
+            const overlay = document.createElement('div');
+            overlay.id = 'woTemplateOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+            overlay.innerHTML =
+                '<div style="background:white;border-radius:14px;padding:20px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+                        '<span style="font-size:1rem;font-weight:700;color:#1e3a5f;">&#128190; Save as Template</span>' +
+                        '<button onclick="document.getElementById(\'woTemplateOverlay\').remove()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:1.1rem;">&#10005;</button>' +
+                    '</div>' +
+                    '<div style="font-size:0.8rem;color:#64748b;margin-bottom:14px;">' + siloInfo.emoji + ' ' + siloInfo.label + ' &middot; ' + tasks.length + ' task' + (tasks.length !== 1 ? 's' : '') + '</div>' +
+                    '<label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">New Template Name</label>' +
+                    '<input id="woTmplNameInput" type="text" placeholder="e.g. 26ft Roof Replacement" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;box-sizing:border-box;margin-bottom:12px;">' +
+                    '<button onclick="commitSaveTemplate(\'' + silo + '\',null)" style="width:100%;padding:11px;background:#1e3a5f;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;' + (existingOpts ? 'margin-bottom:14px;' : '') + '">&#128190; Save as New Template</button>' +
+                    (existingOpts ?
+                        '<div style="border-top:1px solid #e2e8f0;padding-top:14px;">' +
+                            '<label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:6px;">&#8212; or overwrite an existing template &#8212;</label>' +
+                            '<select id="woTmplOverwriteSel" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;margin-bottom:10px;box-sizing:border-box;">' +
+                                '<option value="">Select template to overwrite&hellip;</option>' + existingOpts +
+                            '</select>' +
+                            '<button onclick="commitSaveTemplate(\'' + silo + '\',document.getElementById(\'woTmplOverwriteSel\').value||null)" style="width:100%;padding:11px;background:#d97706;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;">&#128260; Overwrite Selected Template</button>' +
+                        '</div>'
+                    : '') +
+                '</div>';
+            document.body.appendChild(overlay);
+            document.getElementById('woTmplNameInput')?.focus();
+        }
+
+        async function commitSaveTemplate(silo, overwriteId) {
+            const sb = getSB();
+            if (!sb || !supabaseSession) return;
+            const userEmail = supabaseSession.user.email;
+            const tasks = window._pendingTemplateTasks || [];
+            if (tasks.length === 0) return;
+            const nameInput = document.getElementById('woTmplNameInput');
+            const name = nameInput ? nameInput.value.trim() : '';
+            if (!overwriteId && !name) {
+                if (nameInput) { nameInput.style.borderColor = '#dc2626'; nameInput.focus(); }
+                return;
+            }
+            try {
+                let templateId = overwriteId;
+                if (overwriteId) {
+                    const { error } = await sb.from('wo_task_templates')
+                        .update({ updated_at: new Date().toISOString() }).eq('id', overwriteId);
+                    if (error) throw error;
+                    await sb.from('wo_template_tasks').delete().eq('template_id', overwriteId);
+                } else {
+                    const { data, error } = await sb.from('wo_task_templates').insert({
+                        service_silo: silo, template_name: name,
+                        created_by: userEmail, updated_at: new Date().toISOString()
+                    }).select().single();
+                    if (error) throw error;
+                    templateId = data.id;
+                }
+                const taskRows = tasks.map(t => ({ ...t, template_id: templateId }));
+                const { error: taskErr } = await sb.from('wo_template_tasks').insert(taskRows);
+                if (taskErr) throw taskErr;
+                document.getElementById('woTemplateOverlay')?.remove();
+                window._pendingTemplateTasks = null;
+                const flash = document.createElement('div');
+                flash.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:white;padding:12px 22px;border-radius:10px;font-weight:700;z-index:9999;font-size:0.9rem;box-shadow:0 4px 20px rgba(0,0,0,0.25);';
+                flash.textContent = overwriteId ? '\u2705 Template updated!' : '\u2705 Template saved!';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 2500);
+            } catch(err) {
+                alert('Error saving template: ' + err.message);
+            }
         }
 
         async function submitWOForm(roIndex, silo, existingWOId) {
