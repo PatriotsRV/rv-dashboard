@@ -11366,7 +11366,7 @@ Notes: ${notes}` : '',
             const roTypes = (ro.repairType || '').split(',').map(t => t.trim().toLowerCase());
             const activeSiloKeys = roTypes.map(t => REPAIR_TYPE_TO_SILO[t]).filter(Boolean);
             const activeSilos = SERVICE_SILOS.filter(s => activeSiloKeys.includes(s.key));
-            const addableSilos = SERVICE_SILOS.filter(s => !activeSiloKeys.includes(s.key));
+            const addableSilos = SERVICE_SILOS.filter(s => !activeSiloKeys.includes(s.key) && canManageSilo(s.key));
             let html = '';
 
             if (totalValue > 0) {
@@ -11431,7 +11431,7 @@ Notes: ${notes}` : '',
             }
 
             // + Add Service button — shown to managers when addable silos remain
-            if (addableSilos.length > 0 && isSrManagerOrAdmin()) {
+            if (addableSilos.some(s => canManageSilo(s.key))) {
                 html += `<div style="margin-top:14px;text-align:center;">
                     <button onclick="openAddServicePicker(${roIndex})"
                         style="background:none;border:2px dashed #2d5a8e;color:#2d5a8e;border-radius:10px;padding:10px 24px;font-size:0.9rem;font-weight:700;cursor:pointer;width:100%;">
@@ -11452,7 +11452,7 @@ Notes: ${notes}` : '',
             if (!ro) return;
             const roTypes = (ro.repairType || '').split(',').map(t => t.trim().toLowerCase());
             const activeSiloKeys = roTypes.map(t => REPAIR_TYPE_TO_SILO[t]).filter(Boolean);
-            const addableSilos = SERVICE_SILOS.filter(s => !activeSiloKeys.includes(s.key));
+            const addableSilos = SERVICE_SILOS.filter(s => !activeSiloKeys.includes(s.key) && canManageSilo(s.key));
             if (addableSilos.length === 0) return;
             const body = document.getElementById('woModalBody');
             if (!body) return;
