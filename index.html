@@ -11764,6 +11764,10 @@ function toggleWOTasks(tasksId, chevId) {
                 '</div>';
             document.body.appendChild(overlay);
             document.getElementById('woTmplNameInput')?.focus();
+          } catch(err) {
+            console.error('[Template] saveWOTemplate error:', err);
+            alert('Error preparing template: ' + (err.message || err));
+          }
         }
 
         async function commitSaveTemplate(silo, overwriteId) {
