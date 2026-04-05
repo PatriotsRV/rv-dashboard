@@ -2680,6 +2680,7 @@
                         <span id="connectionStatus">🔗 Connect to PRVS</span>
                     </button>
                     <button class="new-ro-btn" id="newROBtn" style="width: 100%;">+ New RO</button>
+                    <button id="workListBtn" onclick="toggleWorkListPanel()" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:700;display:none;">f4cb My Work List</button>
                 </div>
             </div>
             <div class="header-meta">
@@ -6647,6 +6648,165 @@ Notes: ${notes}` : '',
         function isSrOrAdmin() {
             const email = supabaseSession?.user?.email || '';
             return SR_MANAGER_EMAILS.includes(email) || ADMIN_EMAILS.includes(email);
+        }
+
+        // ============================================================
+        // GH#16 — Manager Work List
+        // ============================================================
+        let _workListOpen = false;
+        let _workListData = [];
+        let _workListViewEmail = null;
+
+        function toggleWorkListPanel() {
+            _workListOpen = !_workListOpen;
+            const panel = document.getElementById('workListPanel');
+            const backdrop = document.getElementById('workListBackdrop');
+            if (!panel) return;
+            if (_workListOpen) {
+                panel.style.right = '0';
+                backdrop.style.display = 'block';
+                _populateManagerPicker();
+                loadWorkList(null);
+            } else {
+                panel.style.right = '-370px';
+                backdrop.style.display = 'none';
+            }
+        }
+
+        function _populateManagerPicker() {
+            const bar = document.getElementById('workListManagerBar');
+            const sel = document.getElementById('workListManagerSelect');
+            if (!bar || !sel) return;
+            if (!isSrOrAdmin()) { bar.style.display = 'none'; return; }
+            bar.style.display = 'block';
+            const all = [...(SR_MANAGER_EMAILS || []), ...(MANAGER_EMAILS || [])];
+            const myEmail = supabaseSession?.user?.email || '';
+            sel.innerHTML = '<option value="">— My List —</option>' +
+                all.filter(e => e !== myEmail).map(e => `<option value="${e}">${e}</option>`).join('');
+            sel.value = _workListViewEmail || '';
+        }
+
+        async function loadWorkList(viewEmail) {
+            _workListViewEmail = viewEmail || null;
+            const myEmail = supabaseSession?.user?.email || '';
+            const targetEmail = _workListViewEmail || myEmail;
+            const subtitle = document.getElementById('workListSubtitle');
+            if (subtitle) subtitle.textContent = _workListViewEmail ? `Viewing: ${_workListViewEmail}` : '';
+            try {
+                const { data, error } = await supabaseClient
+                    .from('manager_work_lists')
+                    .select('*')
+                    .eq('manager_email', targetEmail)
+                    .order('priority', { ascending: true });
+                if (error) throw error;
+                _workListData = data || [];
+                renderWorkList();
+            } catch (err) {
+                console.error('[WorkList] load error:', err);
+                const body = document.getElementById('workListBody');
+                if (body) body.innerHTML = '<p style="color:#ef4444;padding:12px;">Error loading list.</p>';
+            }
+        }
+
+        async function addToWorkList(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const myEmail = supabaseSession?.user?.email || '';
+            const roId = String(ro.id || ro.roNumber || roIndex);
+            const roName = `${ro.customerName || 'Unknown'} — ${ro.roNumber || ''}`.trim();
+            if (_workListData.some(item => item.ro_id === roId)) {
+                alert('This RO is already on your Work List.');
+                return;
+            }
+            const priority = _workListData.length > 0 ? Math.max(..._workListData.map(d => d.priority)) + 1 : 1;
+            try {
+                const { error } = await supabaseClient
+                    .from('manager_work_lists')
+                    .insert({ manager_email: myEmail, ro_id: roId, ro_name: roName, priority });
+                if (error) throw error;
+                if (!_workListOpen) toggleWorkListPanel();
+                else if (!_workListViewEmail) await loadWorkList(null);
+            } catch (err) {
+                console.error('[WorkList] add error:', err);
+                alert('Error adding to Work List: ' + (err.message || err));
+            }
+        }
+
+        async function removeFromWorkList(itemId) {
+            try {
+                const { error } = await supabaseClient
+                    .from('manager_work_lists')
+                    .delete()
+                    .eq('id', itemId);
+                if (error) throw error;
+                _workListData = _workListData.filter(d => d.id !== itemId);
+                renderWorkList();
+            } catch (err) {
+                console.error('[WorkList] remove error:', err);
+                alert('Error removing item: ' + (err.message || err));
+            }
+        }
+
+        async function _saveWorkListOrder() {
+            for (let i = 0; i < _workListData.length; i++) {
+                await supabaseClient.from('manager_work_lists')
+                    .update({ priority: i + 1 })
+                    .eq('id', _workListData[i].id);
+            }
+        }
+
+        function renderWorkList() {
+            const body = document.getElementById('workListBody');
+            if (!body) return;
+            if (_workListData.length === 0) {
+                body.innerHTML = '<p style="color:#6b7280;padding:16px;text-align:center;font-size:0.9rem;">No ROs on your list yet.<br><br>Use “f4cb Add to My List” on any RO card.</p>';
+                return;
+            }
+            body.innerHTML = _workListData.map((item, idx) => `
+                <div class="wl-row" draggable="true" data-idx="${idx}" data-id="${item.id}"
+                     style="background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:grab;display:flex;align-items:center;gap:8px;">
+                    <span style="color:#6b7280;font-size:0.8rem;min-width:20px;font-weight:700;">${idx + 1}.</span>
+                    <span onclick="scrollToROInBoard('${item.ro_id}')" style="flex:1;color:white;font-size:0.85rem;cursor:pointer;line-height:1.3;" title="Click to scroll to this RO">${item.ro_name}</span>
+                    <button onclick="removeFromWorkList(${item.id})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;" title="Remove from list">×</button>
+                </div>
+            `).join('');
+            // Drag-and-drop reorder
+            const rows = body.querySelectorAll('.wl-row');
+            let dragSrcIdx = null;
+            rows.forEach(row => {
+                row.addEventListener('dragstart', () => { dragSrcIdx = parseInt(row.dataset.idx); row.style.opacity = '0.4'; });
+                row.addEventListener('dragend', () => { row.style.opacity = '1'; });
+                row.addEventListener('dragover', e => { e.preventDefault(); row.style.borderColor = '#3b82f6'; });
+                row.addEventListener('dragleave', () => { row.style.borderColor = '#334155'; });
+                row.addEventListener('drop', e => {
+                    e.preventDefault();
+                    row.style.borderColor = '#334155';
+                    const destIdx = parseInt(row.dataset.idx);
+                    if (dragSrcIdx === null || dragSrcIdx === destIdx) return;
+                    const moved = _workListData.splice(dragSrcIdx, 1)[0];
+                    _workListData.splice(destIdx, 0, moved);
+                    renderWorkList();
+                    _saveWorkListOrder();
+                });
+            });
+        }
+
+        function scrollToROInBoard(roId) {
+            const cards = document.querySelectorAll('.ro-card[data-ro-index]');
+            for (const card of cards) {
+                const idx = parseInt(card.dataset.roIndex);
+                const ro = currentData[idx];
+                if (ro && String(ro.id || ro.roNumber || idx) === String(roId)) {
+                    toggleWorkListPanel();
+                    setTimeout(() => {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        card.style.outline = '3px solid #3b82f6';
+                        setTimeout(() => { card.style.outline = ''; }, 2500);
+                    }, 350);
+                    return;
+                }
+            }
+            alert('RO not visible in current view — it may be filtered out.');
         }
 
         function renderBoard() {
@@ -12797,5 +12957,23 @@ function toggleWOTasks(tasksId, chevId) {
             }
         }, 10000);
     </script>
+
+<!-- GH#16 Manager Work List Sidebar -->
+<div id="workListBackdrop" onclick="toggleWorkListPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:11999;"></div>
+<div id="workListPanel" style="position:fixed;top:0;right:-370px;width:360px;height:100vh;background:#111827;border-left:2px solid #1e3a5f;z-index:12000;display:flex;flex-direction:column;transition:right 0.3s ease;box-shadow:-6px 0 24px rgba(0,0,0,0.6);">
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0;">
+        <div>
+            <div style="color:white;font-size:1.1rem;font-weight:700;">f4cb My Work List</div>
+            <div id="workListSubtitle" style="color:#93c5fd;font-size:0.75rem;margin-top:3px;"></div>
+        </div>
+        <button onclick="toggleWorkListPanel()" style="background:none;border:none;color:rgba(255,255,255,0.8);font-size:1.5rem;cursor:pointer;line-height:1;margin-top:-2px;">×</button>
+    </div>
+    <div id="workListManagerBar" style="display:none;padding:10px 14px;background:#0f172a;border-bottom:1px solid #1e3a5f;flex-shrink:0;">
+        <label style="color:#93c5fd;font-size:0.75rem;display:block;margin-bottom:5px;">View another manager's list:</label>
+        <select id="workListManagerSelect" onchange="loadWorkList(this.value || null)" style="width:100%;padding:7px 10px;background:#1e293b;color:white;border:1px solid #334155;border-radius:6px;font-size:0.85rem;"></select>
+    </div>
+    <div id="workListBody" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
+    <div style="padding:10px 14px;background:#0f172a;border-top:1px solid #1e3a5f;color:#6b7280;font-size:0.72rem;text-align:center;flex-shrink:0;">Drag rows to reprioritize · Click an RO to scroll to it</div>
+</div>
 </body>
 </html>
