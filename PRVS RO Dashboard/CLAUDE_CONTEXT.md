@@ -81,7 +81,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🔴 | GH#4 | **Twilio SMS — plan + build** | Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. Scope TBD this session. | ⏳ Open |
 | 🟠 | GH#5c | **Polish Work Orders UI** | **Session 30:** (1) WO modal filters to active services only. (2) `+ Add Service` button. (3) Form label polish. (4) Chevron collapse/expand per silo. 8 silos. **Session 30 (cont):** (5) ⏱️ Est. Hours field on each task (est_hours NUMERIC(5,2) on service_tasks — `ALTER TABLE` run). Rolls up to silo header as `⏱️ ~Xh`. (6) WO Task Templates (GH#5b folded in) — managers Save as Template / Load Template per silo with Replace or Merge choice. Two new Supabase tables: `wo_task_templates` + `wo_template_tasks`. (7) Template overlay z-index fixed (raised to 100000). (8) Outside-click dismissal disabled on New RO modal + WO modal — prevents tech data loss. Remaining: mobile layout polish, any rollout bugs. | 🔄 In Progress |
 | ✅ | GH#5b | **Task Templates (V1.5)** | Folded into GH#5c Session 30 — Save as Template / Load Template / Overwrite per silo, Replace or Merge. Complete. | ✅ Done — Session 30 |
-| 🟠 | GH#16 | **Manager RO Work List** | Each manager can create a personal Work List of ROs they plan to work on. Select ROs from the dashboard, add to their Current Work List, arrange in priority order. Single-line items showing core RO data points (TBD by Roland). Living list — managers can reorder/add/remove at any time. Visible to all Sr Managers and Admins. Essentially a prioritized queue per manager. | ⏳ Open |
+| ✅ | GH#16 | **Manager RO Work List** | Each manager can create a personal Work List of ROs they plan to work on. Select ROs from the dashboard, add to their Current Work List, arrange in priority order. Single-line items showing core RO data points (TBD by Roland). Living list — managers can reorder/add/remove at any time. Visible to all Sr Managers and Admins. Essentially a prioritized queue per manager. | ✅ Done — Session 31 |
 | 🟠 | GH#17 | **Customer Check-In Page** | Front desk workstation page for customers dropping off their RV. Captures customer contact info + RO work description. Output creates a new RO that managers then enrich with photos, service selections, WO tasks, etc. Branded with PRVS logo + mission statement. Includes digital **Repair Authorization Form (RAF)** with e-signature. Living form — Roland will add fields before go-live. Runs on a dedicated front desk workstation. | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
 | 🟡 | GH#11 | **Solar Battery Bank tile — add Watt Hours** | Show Wh alongside Ah in Quote section (Wh = Ah × system voltage); update PDF output too | ⏳ Open |
@@ -94,6 +94,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
 | 🟡 | — | **GitHub Releases v1.283–v1.300** | Backlog of unpublished releases. Go to github.com/PatriotsRV/rv-dashboard/releases/new for each tag. v1.285 has notes in `.github/releases/v1.285-notes.md`. | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.301** | checkin.html v1.28 Supabase auth fix. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.301` | ⏳ Roland action |
+| 🟡 | — | **GitHub Release v1.303** | GH#16 Manager RO Work List complete. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.303` | ⏳ Roland action |
 | 🟡 | — | **Supabase: Maximize log retention** | Settings → Logs — set retention to maximum available on Pro plan (7 days for all log types) | ⏳ Roland action |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
 | 🟡 | — | **Test out Claude dispatch** | Test Claude dispatch workflow | ⏳ Open |
@@ -106,7 +107,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.301+** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock** _(version string not bumped this session — increment to v1.302 at next release)_ |
+| `index.html` | **v1.303** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager can view other managers' lists** |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
@@ -190,6 +191,13 @@ Claude must complete ALL of these before the session ends (context limit, user s
 ### osascript / Python Patch Pattern (Session 30)
 - For any file edit involving JS template literals, emoji, backticks, `${}`, or `\n`: write the Python patch to sandbox via `Write` tool → base64-encode with `Bash` → `osascript: do shell script "echo '...' | base64 -d > /tmp/patch.py && python3 /tmp/patch.py"`. Never use AppleScript inline string concatenation for complex JS content.
 
+### GH#16 Manager Work List (Session 31)
+- `manager_work_lists` table was created in a prior session with wrong schema (had `ro_supabase_id` NOT NULL instead of `ro_id`). Fixed by DROP + CREATE TABLE with correct columns.
+- Supabase JS client name in this codebase is **`getSB()`** — NOT `supabaseClient`. All Supabase calls in worklist functions use `getSB().from(...)`.
+- `addToWorkList` receives **`ro._supabaseId`** (UUID) as argument and uses `currentData.find()` to look up the RO — never pass array index from a sorted display list to a function that reads `currentData[]` (arrays differ after sort).
+- Python Unicode escape `\u0001f4cb` is wrong for 📋 emoji (U+1F4CB). Use HTML entity `&#128203;` or Python `\U0001F4CB` (capital U, 8 hex digits). All emoji in patches should use HTML entities.
+- `_initWorkListBtn()` must be both **defined** (function body) and **called** after staff cache loads. Check both when debugging button visibility.
+
 ### CLAUDE_CONTEXT.md Storage (Session 29)
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
 - GitHub MCP tool has ~21KB content parameter limit — CLAUDE_CONTEXT.md is kept under this limit. CLAUDE_CONTEXT_HISTORY.md is local-primary; GitHub backup is best-effort.
@@ -228,6 +236,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `service_tasks` | Individual task/step rows per WO. Includes `est_hours NUMERIC(5,2)` (added Session 30 via ALTER TABLE) |
 | `wo_task_templates` | Saved WO task list templates per service silo (id, service_silo, template_name, created_by, updated_at) |
 | `wo_template_tasks` | Individual task rows belonging to a template (template_id FK, task_title, description, est_hours, sort_order) |
+| `manager_work_lists` | Manager personal RO work lists (id, manager_email, ro_id [UUID], ro_name, priority, created_at). RLS: each user manages own rows; Sr Managers/Admins can SELECT all rows. |
 
 ---
 
