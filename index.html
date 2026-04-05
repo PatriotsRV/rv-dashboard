@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.301
+    PRVS Dashboard v1.302
     Released: 2026-04-03
+    v1.302: GH#5c WO polish — est_hours per task (rolls up to silo header); WO Task Templates (save/load/overwrite/merge per silo); template overlay z-index fix (100000); form modal outside-click lock on New RO + WO modal (prevents tech data loss)
     v1.301: Fix parts request RLS error for techs with expired sessions — add supabaseSession guard at top of submitPartsRequest(); if session is null, alert "Session expired — please refresh and try again" instead of hitting the notes table as anon and getting blocked by RLS.
     v1.300: Add Kevin McHenry (kevin@patriotsrvservices.com) to SR_MANAGER_EMAILS — Sr. Manager access for Work Orders, silo management, urgency, and scheduling.
     v1.299: Fix editField apostrophe/quote crash — remove raw text from onclick attributes for repairDescription, roStatusNotes, customerCommunicationNotes; editField() now reads current value directly from currentFilteredData[index][fieldName] instead of receiving it as an HTML-embedded parameter; eliminates SyntaxError: Invalid or unexpected token on any RO whose description/notes contain apostrophes, quotes, newlines, or backticks.
