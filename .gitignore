@@ -1,0 +1,21 @@
+# macOS system files
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+
+# Local backups — kept on disk, not in GitHub
+.backups/
+
+# Sensitive config — contains API keys and tokens, never commit
+claude_desktop_config.json
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
