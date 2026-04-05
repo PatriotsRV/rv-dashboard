@@ -79,8 +79,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | ⚠️ | GH#10 | **Kenect messaging — ON HOLD** | v1.290 code committed but NOT deployed. Kenect will NOT provide direct API keys — only Zapier, which has no inbound message trigger. **Decision (2026-03-30): Pivoting to Twilio for SMS.** `kenect-proxy` + 💬 Messages UI remain dormant. | ⏳ On Hold |
 | 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features. **Fast-tracking as of 2026-03-30 after Kenect API access denied.** | ⏳ Open — Top Priority |
 | 🔴 | GH#4 | **Twilio SMS — plan + build** | Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. Scope TBD this session. | ⏳ Open |
-| 🟠 | GH#5c | **Polish Work Orders UI** | General UX polish pass: visual refinements, edge cases, mobile layout, status badge improvements, any bugs from initial rollout | ⏳ Open |
-| 🟡 | GH#5b | **Task Templates (V1.5)** | Pre-built task lists per service silo — manager clicks "Apply Template" to populate tasks for standard jobs | ⏳ Deferred |
+| 🟠 | GH#5c | **Polish Work Orders UI** | **Session 30:** WO modal filters to active services only; + Add Service btn; form label polish; chevron collapse/expand; 8 silos. **Session 30 (cont):** ⏱️ Est. Hours per task (`est_hours NUMERIC(5,2)` on `service_tasks`); rolls up to silo header. WO Task Templates — Save/Load/Overwrite per silo, Replace or Merge on load. Two new tables: `wo_task_templates` + `wo_template_tasks`. Template overlay z-index fixed (100000). Outside-click lock on New RO + WO modals. Remaining: mobile polish, rollout bugs. | 🔄 In Progress |
+| ✅ | GH#5b | **Task Templates (V1.5)** | Folded into GH#5c Session 30 — Save/Load/Overwrite per silo, Replace or Merge. Complete. | ✅ Done — Session 30 |
 | 🟠 | GH#16 | **Manager RO Work List** | Each manager can create a personal Work List of ROs they plan to work on. Select ROs from the dashboard, add to their Current Work List, arrange in priority order. Single-line items showing core RO data points (TBD by Roland). Living list — managers can reorder/add/remove at any time. Visible to all Sr Managers and Admins. Essentially a prioritized queue per manager. | ⏳ Open |
 | 🟠 | GH#17 | **Customer Check-In Page** | Front desk workstation page for customers dropping off their RV. Captures customer contact info + RO work description. Output creates a new RO that managers then enrich with photos, service selections, WO tasks, etc. Branded with PRVS logo + mission statement. Includes digital **Repair Authorization Form (RAF)** with e-signature. Living form — Roland will add fields before go-live. Runs on a dedicated front desk workstation. | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
@@ -105,7 +105,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.300** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5 Phase 1) — 5-silo WO builder, task management, silo access control, dollar value rollup** |
+| `index.html` | **v1.300** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock** _(version not bumped this session — bump to v1.302 at next release)_ |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy. Requires `KENECT_API_KEY` Supabase secret. NOT deployed. |
@@ -166,11 +166,23 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - Roland Shepard must be in `staff` table as `sr_manager` (NULL silo) for WO RLS to work. Future admins needing WO access also need a `staff` row.
 - `_staffCache` loads async after initial render — `canManageSilo()` falls back to hardcoded email lists until cache loads (<1s in practice).
 
+### WO Task Templates (Session 30)
+- `window._pendingTemplateTasks` stores task array between saveWOTemplate() and commitSaveTemplate() — avoids complex JSON in onclick attributes.
+- Template overlays need z-index:100000 (WO modal is 11000 — lower values render behind it).
+- saveWOTemplate() must keep its try/catch — removing it causes "Missing catch or finally after try" and breaks the whole page.
+
+### Modal Outside-Click Lock (Session 30)
+- New RO modal (modalOverlay) and WO modal (workOrderOverlay) no longer close on outside click — backdrop handlers removed to prevent tech data loss.
+- View-only modals (photo lightbox, QR, dupe manager) still close on outside click — intentional.
+
+### CLAUDE_CONTEXT.md Storage (Session 29)
+- Local-primary: read/write from Cowork workspace folder. GitHub push at end of session only.
+
 ### Supabase Pro Security (Session 28)
 - Removed all anon write policies from 9 tables. Fixed `has_role`/`is_silo_manager` mutable search_path. Disabled new user signups.
 - ✅ Anon INSERT/UPDATE on `time_logs` removed 2026-04-05 (checkin.html v1.28 now uses authenticated sessions).
 
-### CLAUDE_CONTEXT.md Storage (Session 29)
+
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
 - GitHub MCP tool has ~21KB content parameter limit — CLAUDE_CONTEXT.md kept under this limit. CLAUDE_CONTEXT_HISTORY.md is local-primary; GitHub backup is best-effort.
 
