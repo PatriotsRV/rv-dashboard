@@ -2680,7 +2680,7 @@
                         <span id="connectionStatus">🔗 Connect to PRVS</span>
                     </button>
                     <button class="new-ro-btn" id="newROBtn" style="width: 100%;">+ New RO</button>
-                    <button id="workListBtn" onclick="toggleWorkListPanel()" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:700;display:none;">f4cb My Work List</button>
+                    <button id="workListBtn" onclick="toggleWorkListPanel()" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:700;display:none;">&#128203; My Work List</button>
                 </div>
             </div>
             <div class="header-meta">
@@ -6764,7 +6764,7 @@ Notes: ${notes}` : '',
             const body = document.getElementById('workListBody');
             if (!body) return;
             if (_workListData.length === 0) {
-                body.innerHTML = '<p style="color:#6b7280;padding:16px;text-align:center;font-size:0.9rem;">No ROs on your list yet.<br><br>Use “f4cb Add to My List” on any RO card.</p>';
+                body.innerHTML = '<p style="color:#6b7280;padding:16px;text-align:center;font-size:0.9rem;">No ROs on your list yet.<br><br>Use “&#128203; Add to My List” on any RO card.</p>';
                 return;
             }
             body.innerHTML = _workListData.map((item, idx) => `
@@ -12968,7 +12968,7 @@ function toggleWOTasks(tasksId, chevId) {
 <div id="workListPanel" style="position:fixed;top:0;right:-370px;width:360px;height:100vh;background:#111827;border-left:2px solid #1e3a5f;z-index:12000;display:flex;flex-direction:column;transition:right 0.3s ease;box-shadow:-6px 0 24px rgba(0,0,0,0.6);">
     <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0;">
         <div>
-            <div style="color:white;font-size:1.1rem;font-weight:700;">f4cb My Work List</div>
+            <div style="color:white;font-size:1.1rem;font-weight:700;">&#128203; My Work List</div>
             <div id="workListSubtitle" style="color:#93c5fd;font-size:0.75rem;margin-top:3px;"></div>
         </div>
         <button onclick="toggleWorkListPanel()" style="background:none;border:none;color:rgba(255,255,255,0.8);font-size:1.5rem;cursor:pointer;line-height:1;margin-top:-2px;">×</button>
