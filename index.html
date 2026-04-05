@@ -6708,12 +6708,12 @@ Notes: ${notes}` : '',
             }
         }
 
-        async function addToWorkList(roIndex) {
-            const ro = currentData[roIndex];
-            if (!ro) return;
+        async function addToWorkList(supabaseId) {
+            const ro = currentData.find(r => r._supabaseId === supabaseId);
+            if (!ro) { alert('Could not find RO data. Try refreshing.'); return; }
             const myEmail = supabaseSession?.user?.email || '';
-            const roId = String(ro.id || ro.roNumber || roIndex);
-            const roName = `${ro.customerName || 'Unknown'} — ${ro.roNumber || ''}`.trim();
+            const roId = supabaseId;
+            const roName = (ro.customerName || 'Unknown') + ' — ' + (ro.roNumber || '');
             if (_workListData.some(item => item.ro_id === roId)) {
                 alert('This RO is already on your Work List.');
                 return;
@@ -6801,7 +6801,7 @@ Notes: ${notes}` : '',
             for (const card of cards) {
                 const idx = parseInt(card.dataset.roIndex);
                 const ro = currentData[idx];
-                if (ro && String(ro.id || ro.roNumber || idx) === String(roId)) {
+                if (ro && ro._supabaseId === roId) {
                     toggleWorkListPanel();
                     setTimeout(() => {
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -7172,7 +7172,7 @@ Notes: ${notes}` : '',
                         <button class="work-order-btn" onclick="openWorkOrderModal(${index})">
                             🔧 ${t('Work Orders')}
                         </button>
-                        ${canSeeWorkList() ? `<button onclick="addToWorkList(${index})" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
+                        ${canSeeWorkList() ? `<button onclick="addToWorkList('${ro._supabaseId}')" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
                         ${ro.customerPhone ? `
                         <button class="kenect-msg-btn" onclick="openKenectModal(${index})" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
                             💬 ${t('Messages')}
