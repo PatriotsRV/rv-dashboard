@@ -6638,6 +6638,17 @@ Notes: ${notes}` : '',
             return '#FF1493'; // Neon pink (hottest)
         }
 
+        function canSeeWorkList() {
+            const email = supabaseSession?.user?.email || '';
+            return SR_MANAGER_EMAILS.includes(email) ||
+                   ADMIN_EMAILS.includes(email) ||
+                   MANAGER_EMAILS.includes(email);
+        }
+        function isSrOrAdmin() {
+            const email = supabaseSession?.user?.email || '';
+            return SR_MANAGER_EMAILS.includes(email) || ADMIN_EMAILS.includes(email);
+        }
+
         function renderBoard() {
             const grid = document.getElementById('boardGrid');
             
