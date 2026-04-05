@@ -1,3 +1,4 @@
+
 # PRVS Dashboard — Claude Context Document
 
 > **This is Claude's memory across sessions.** Claude has no memory between sessions.
@@ -7,32 +8,49 @@
 
 ## ⚡ SESSION PROTOCOL — READ THIS FIRST
 
-### 🟢 START OF SESSION CHECKLIST
+> **Storage strategy:** CLAUDE_CONTEXT.md lives **locally** in the `PRVS RO Dashboard` Cowork workspace folder (primary). GitHub is a **backup only**, pushed at end of session. Always read from local. Always write to local first.
+
+### 🟢 START OF SESSION — Roland's command:
+> *"Read CLAUDE_CONTEXT.md from the workspace folder before doing anything else. Confirm the current index.html version, read the Active TODO List out loud to me grouped by priority, and flag any blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask me: 'Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start.' If I provide mobile updates, merge them into the TODO list immediately — mark completed items ✅, add new items with the correct priority — and confirm what changed before continuing. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
+
 Claude must complete all of these before doing any work:
 
-- [ ] 1. Read this entire file top to bottom
+- [ ] 1. Read this file from the local workspace folder (not GitHub)
 - [ ] 2. Confirm the current `index.html` version matches the File Inventory table below
-- [ ] 3. Read and acknowledge the **Active TODO List** section aloud to Roland
-- [ ] 4. Ask Roland: *"Is there anything new to add or change from the TODO list before we start?"*
-- [ ] 5. Only then begin work — starting with the highest-priority TODO item unless Roland redirects
+- [ ] 3. Read and acknowledge the **Active TODO List** section aloud to Roland, grouped by priority
+- [ ] 4. Flag any 🔴 blocking items and any pending Roland-action items
+- [ ] 5. Ask Roland for iPhone updates — merge any provided before starting work
+- [ ] 6. Ask: *"Is there anything else to add or change before we start?"* and wait
+- [ ] 7. Only then begin work — starting with highest-priority TODO item unless Roland redirects
 
-### 🔴 END OF SESSION CHECKLIST
+### ⏸ PAUSE / CHECKPOINT — Roland's command:
+> *"Pause here. I need to check the current TODO list and make updates from my iPhone before we continue."*
+
+If Roland pauses mid-session:
+- [ ] 1. Stop working immediately
+- [ ] 2. Display the current Active TODO List (full table with all rows)
+- [ ] 3. Ask: *"What updates from your iPhone? Paste them here and I'll merge them in."*
+- [ ] 4. Merge any iPhone updates into the TODO list (mark ✅ completed, add new items with priority)
+- [ ] 5. Ask: *"Ready to continue? Anything else to change?"* and wait
+- [ ] 6. Continue work from where we left off
+
+### 🔴 END OF SESSION — CRITICAL CHECKLIST
 Claude must complete ALL of these before the session ends (context limit, user stops, etc.):
 
-- [ ] 1. Update the **Active TODO List** — mark completed items ✅, add any new items discovered
-- [ ] 2. Update the **File Inventory** table with new version numbers
-- [ ] 3. Add a row to the **Session Log** table
-- [ ] 4. Add new items to **Completed Work**
-- [ ] 5. Update the **Version History** table if version was bumped
-- [ ] 5a. If version was bumped: add a **GitHub Release TODO** to the Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
-- [ ] 6. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
-- [ ] 7. **Update `PRVS_PROJECT_CONTEXT.md`** — sync the TODO list and "Recently Completed" section so Roland's Claude Project (iPhone) stays current
-- [ ] 8. **Run `bash scripts/backup.sh`** before pushing — creates timestamped snapshot in `.backups/`, keeps last 6
-- [ ] 9. Commit and push CLAUDE_CONTEXT.md and PRVS_PROJECT_CONTEXT.md to GitHub
+- [ ] 1. **Update the Active TODO List** — mark completed items ✅, add any new items discovered, update priorities
+- [ ] 2. **Update the File Inventory table** with new version numbers
+- [ ] 3. **Add a row to Session Log** (date, session #, summary)
+- [ ] 4. **Add new items to Completed Work** section
+- [ ] 5. **Update Version History table** if a version was bumped (which file, new version #, summary)
+- [ ] 5a. **If version was bumped**: add a GitHub Release TODO to Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
+- [ ] 6. **Update Known Issues & Gotchas** — add any bugs, quirks, or design decisions discovered this session
+- [ ] 7. **Update PRVS_PROJECT_CONTEXT.md** — sync the Active TODO List and "Recently Completed" section so Roland's iPhone Claude Project stays current
+- [ ] 8. **Run `bash scripts/backup.sh`** — creates timestamped snapshot in `.backups/`, keeps last 6
+- [ ] 9. **Commit and push CLAUDE_CONTEXT.md + PRVS_PROJECT_CONTEXT.md** to GitHub — use the message: "docs: end of session [#N] — [summary]"
 
-> ⚠️ If the session is about to end due to context limits, Claude should say:
+> ⚠️ If context is getting long:
 > *"Context is getting long — I need to wrap up. Let me complete the End of Session checklist now."*
-> Then complete the checklist immediately without waiting for Roland to ask.
+> Then complete checklist immediately without waiting for Roland to ask.
 
 ---
 
