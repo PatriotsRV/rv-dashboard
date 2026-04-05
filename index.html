@@ -6015,11 +6015,11 @@ Notes: ${notes}` : '',
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Qty</label><input type="number" id="pf_qty" value="1" min="1" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
                             <div style="display:grid;grid-template-columns:1fr 3fr;gap:10px;margin-bottom:16px;">
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Status</label>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Work Order Master Status</label>
                                     <select id="pf_status" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
                                         ${PART_STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
                                     </select></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Notes</label><input type="text" id="pf_notes" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Overall WO Notes</label><input type="text" id="pf_notes" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
 
                             <!-- Section: Order Info -->
@@ -11516,7 +11516,7 @@ Notes: ${notes}` : '',
 
             const taskRowsHtml = existingTasks.length > 0
                 ? existingTasks.map((task, i) => buildWOTaskRowHtml(i, task, techOptions, silo)).join('')
-                : '<div id="woNoTasks" style="color:#94a3b8;font-size:0.85rem;font-style:italic;padding:8px 0;">No tasks yet — click "+ Add Task" to add one.</div>';
+                : '<div id="woNoTasks" style="color:#94a3b8;font-size:0.85rem;font-style:italic;padding:8px 0;">No tasks yet — click "+ Add Task or Step to WO" to add one.</div>';
 
             body.innerHTML = `
                 <div style="margin-bottom:14px;">
@@ -11524,7 +11524,7 @@ Notes: ${notes}` : '',
                         style="background:none;border:none;color:#2d5a8e;cursor:pointer;font-size:0.9rem;padding:0;font-weight:600;">← Back</button>
                 </div>
                 <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border-radius:10px;padding:12px 16px;margin-bottom:14px;">
-                    <div style="font-size:1rem;font-weight:700;">${siloInfo.emoji} ${siloInfo.label} Work Order</div>
+                    <div style="font-size:1rem;font-weight:700;">${existingWO ? "Edit" : "Create"} ${siloInfo.emoji} ${siloInfo.label} MASTER Work Order</div>
                     <div style="font-size:0.82rem;opacity:0.8;">${ro.customerName} — ${ro.roId}</div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
@@ -11535,17 +11535,17 @@ Notes: ${notes}` : '',
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Dollar Value ($)</label>
+                        <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Total Dollar Value ($)</label>
                         <input id="woFormDollar" type="number" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="0.00" value="${existingWO?.dollar_value||''}">
                     </div>
                 </div>
                 <div style="margin-bottom:14px;">
                     <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Notes</label>
-                    <textarea id="woFormNotes" rows="2" style="width:100%;resize:vertical;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="Work order notes...">${existingWO?.notes||''}</textarea>
+                    <textarea id="woFormNotes" rows="2" style="width:100%;resize:vertical;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="Overall work order notes...">${existingWO?.notes||''}</textarea>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                     <span style="font-size:0.9rem;font-weight:700;color:#1e3a5f;">Tasks</span>
-                    <button onclick="addWOTaskRow('${silo}')" style="background:#2d5a8e;color:white;border:none;border-radius:6px;padding:6px 12px;font-size:0.82rem;font-weight:600;cursor:pointer;">+ Add Task</button>
+                    <button onclick="addWOTaskRow('${silo}')" style="background:#2d5a8e;color:white;border:none;border-radius:6px;padding:6px 12px;font-size:0.82rem;font-weight:600;cursor:pointer;">+ Add Task or Step to WO</button>
                 </div>
                 <div id="woTaskRows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">${taskRowsHtml}</div>
                 <button id="woSaveBtn" onclick="submitWOForm(${roIndex},'${silo}','${existingWO?.id||''}')"
