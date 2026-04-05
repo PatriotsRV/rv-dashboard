@@ -11653,7 +11653,7 @@ function toggleWOTasks(tasksId, chevId) {
             }
             const overlay = document.createElement('div');
             overlay.id = 'woTemplateOverlay';
-            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
             overlay.innerHTML =
                 '<div style="background:white;border-radius:14px;padding:20px;width:100%;max-width:420px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
@@ -11672,7 +11672,7 @@ function toggleWOTasks(tasksId, chevId) {
             if (existingCount > 0) {
                 const overlay = document.createElement('div');
                 overlay.id = 'woTemplateOverlay';
-                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
                 overlay.innerHTML =
                     '<div style="background:white;border-radius:14px;padding:24px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">' +
                         '<div style="font-size:1rem;font-weight:700;color:#1e3a5f;margin-bottom:8px;">Load Template</div>' +
@@ -11718,10 +11718,8 @@ function toggleWOTasks(tasksId, chevId) {
 
         async function saveWOTemplate(silo) {
           try {
-            console.log('[Template] saveWOTemplate called, silo=', silo);
             const container = document.getElementById('woTaskRows');
             const rows = container ? container.querySelectorAll('.wo-task-form-row') : [];
-            console.log('[Template] found', rows.length, 'task rows');
             const tasks = [];
             rows.forEach((row, i) => {
                 const title = row.querySelector('.wo-task-title')?.value.trim();
@@ -11733,19 +11731,17 @@ function toggleWOTasks(tasksId, chevId) {
                     sort_order: i
                 });
             });
-            console.log('[Template] collected', tasks.length, 'tasks');
             if (tasks.length === 0) { alert('Add at least one task before saving as a template.'); return; }
             window._pendingTemplateTasks = tasks;
             const sb = getSB();
-            console.log('[Template] sb=', !!sb, 'session=', !!supabaseSession);
-            if (!sb || !supabaseSession) { alert('Session error — please refresh and try again.'); return; }
+            if (!sb || !supabaseSession) return;
             const siloInfo = SERVICE_SILOS.find(s => s.key === silo) || { emoji: '\u{1F4CB}', label: silo };
             const { data: existing } = await sb.from('wo_task_templates').select('id,template_name').eq('service_silo', silo).order('template_name');
             const existingOpts = (existing && existing.length > 0)
                 ? existing.map(t => `<option value="${t.id}">${t.template_name}</option>`).join('') : '';
             const overlay = document.createElement('div');
             overlay.id = 'woTemplateOverlay';
-            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
             overlay.innerHTML =
                 '<div style="background:white;border-radius:14px;padding:20px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
                     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
