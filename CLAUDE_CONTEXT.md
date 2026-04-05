@@ -1,4 +1,3 @@
-
 # PRVS Dashboard — Claude Context Document
 
 > **This is Claude's memory across sessions.** Claude has no memory between sessions.
@@ -24,46 +23,50 @@ Claude must complete all of these before doing any work:
 - [ ] 7. Only then begin work — starting with highest-priority TODO item unless Roland redirects
 
 ### ⏸ PAUSE / CHECKPOINT — Roland's command:
-> *"Pause here. I need to check the current TODO list and make updates from my iPhone before we continue."*
+> *"Pause what you're doing and save progress now. Run bash scripts/backup.sh, then update CLAUDE_CONTEXT.md with everything completed so far this session — TODO list, session log, any new gotchas — and save it to the workspace folder. Then push to GitHub as a backup. Confirm the push with the commit hash. Then tell me exactly where we are and what's next before continuing."*
 
-If Roland pauses mid-session:
-- [ ] 1. Stop working immediately
-- [ ] 2. Display the current Active TODO List (full table with all rows)
-- [ ] 3. Ask: *"What updates from your iPhone? Paste them here and I'll merge them in."*
-- [ ] 4. Merge any iPhone updates into the TODO list (mark ✅ completed, add new items with priority)
-- [ ] 5. Ask: *"Ready to continue? Anything else to change?"* and wait
-- [ ] 6. Continue work from where we left off
+Claude must:
 
-### 🔴 END OF SESSION — CRITICAL CHECKLIST
+- [ ] 1. Run `bash scripts/backup.sh` from the repo root
+- [ ] 2. Update CLAUDE_CONTEXT.md with all progress so far (TODO list, session log, gotchas)
+- [ ] 3. Save CLAUDE_CONTEXT.md to the local workspace folder
+- [ ] 4. Push CLAUDE_CONTEXT.md to GitHub as a backup — confirm with commit hash
+- [ ] 5. Report: exactly where we are and what's next
+
+### 🔴 END OF SESSION — Roland's command:
+> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, Completed Work, Known Issues, and Version History as needed. Save CLAUDE_CONTEXT.md to the workspace folder, then push to GitHub as a backup. Do not end the session until the push is confirmed with a commit hash."*
+
 Claude must complete ALL of these before the session ends (context limit, user stops, etc.):
 
-- [ ] 1. **Update the Active TODO List** — mark completed items ✅, add any new items discovered, update priorities
-- [ ] 2. **Update the File Inventory table** with new version numbers
-- [ ] 3. **Add a row to Session Log** (date, session #, summary)
-- [ ] 4. **Add new items to Completed Work** section
-- [ ] 5. **Update Version History table** if a version was bumped (which file, new version #, summary)
-- [ ] 5a. **If version was bumped**: add a GitHub Release TODO to Active TODO List for Roland to publish at github.com/PatriotsRV/rv-dashboard/releases/new
-- [ ] 6. **Update Known Issues & Gotchas** — add any bugs, quirks, or design decisions discovered this session
-- [ ] 7. **Update PRVS_PROJECT_CONTEXT.md** — sync the Active TODO List and "Recently Completed" section so Roland's iPhone Claude Project stays current
-- [ ] 8. **Run `bash scripts/backup.sh`** — creates timestamped snapshot in `.backups/`, keeps last 6
-- [ ] 9. **Commit and push CLAUDE_CONTEXT.md + PRVS_PROJECT_CONTEXT.md** to GitHub — use the message: "docs: end of session [#N] — [summary]"
+- [ ] 1. Run `bash scripts/backup.sh` from the repo root
+- [ ] 2. Update the **Active TODO List** — mark completed items ✅, add any new items discovered
+- [ ] 3. Update the **File Inventory** table with new version numbers
+- [ ] 4. Add a row to the **Session Log** table
+- [ ] 5. Add new items to **Completed Work** in CLAUDE_CONTEXT_HISTORY.md
+- [ ] 6. Update the **Version History** table in CLAUDE_CONTEXT_HISTORY.md if version was bumped
+- [ ] 6a. If version was bumped: add a **GitHub Release TODO** to the Active TODO List
+- [ ] 7. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
+- [ ] 8. **Update `PRVS_PROJECT_CONTEXT.md`** — sync TODO list and "Recently Completed" for Roland's iPhone
+- [ ] 9. **Save CLAUDE_CONTEXT.md and CLAUDE_CONTEXT_HISTORY.md to the local workspace folder** (primary)
+- [ ] 10. **Push both files to GitHub** (backup) — confirm with commit hash
 
-> ⚠️ If context is getting long:
-> *"Context is getting long — I need to wrap up. Let me complete the End of Session checklist now."*
-> Then complete checklist immediately without waiting for Roland to ask.
+> ⚠️ If the session is about to end due to context limits, Claude should say:
+> *"Context is getting full — let me update CLAUDE_CONTEXT.md before we lose this session."*
+> Then complete the End of Session Checklist immediately without waiting for Roland to ask.
 
 ---
 
-## 🔑 ENVIRONMENT & SECRETS
+## 🗂 Project Identity
 
-```
-Supabase URL:      https://fmkiahyqdnkijahaabha.supabase.co
-Supabase Anon Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZta2lhaHlxZG5raWphaGFhYmhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc2NTk5NTQsImV4cCI6MjA1MzIzNTk1NH0.MmmFMkxvxJMxPE1Jk4_Kb3JJ_wd7oj-lMkAHLMHEsxo
-Google Client ID:  591742920934-s1u7ks1g7p8ajekqk5p0trvjn5vkn4kb.apps.googleusercontent.com
-GitHub Repo:       https://github.com/PatriotsRV/rv-dashboard
-Live URL:          https://patriotsrv.github.io/rv-dashboard/
-Check-in URL:      https://patriotsrv.github.io/rv-dashboard/checkin.html
-```
+| Field | Value |
+|---|---|
+| **Project** | Patriots RV Services (PRVS) Dashboard |
+| **Owner** | Roland Shepard — roland@patriotsrvservices.com |
+| **GitHub Org** | PatriotsRV |
+| **Repo** | rv-dashboard |
+| **Branch** | main |
+| **Deployment** | GitHub Pages — https://patriotsrv.github.io/rv-dashboard/ |
+| **Supabase Project Ref** | axfejhudchdejoiwaetq |
 
 ---
 
@@ -71,167 +74,150 @@ Check-in URL:      https://patriotsrv.github.io/rv-dashboard/checkin.html
 
 > This is the canonical task list. Update it every session. Priorities: 🔴 Blocking · 🟠 High · 🟡 Medium · 🔵 Low
 
-| Status | GH# | Item | Notes | Priority |
-|--------|-----|------|-------|----------|
-| ⏳ | GH#1 | **Start Twilio number port** | Port 207-900-9974 from Comcast. Go to twilio.com → Phone Numbers → Port Number. Need: Comcast account #, PIN, service address. 2–4 week process. | 🔴 Blocking |
-| ⏳ | GH#4 | **Twilio SMS plan + build** | Plan out Twilio SMS flow with Roland before building. Topics: triggers (status changes?), message content, opt-out handling, cost per message (~$0.0079). Blocked on GH#1. | 🔴 Blocking |
-| ⏳ | GH#5 | **Phase 2: Work Assignment System** | Urgency lock (🔴🟡🟢) on RO cards. "My Tasks" filtered view per tech. Assignment modal from manager view. | 🟠 High |
-| ⏳ | GH#16 | **Manager RO Work List** | Dedicated manager view: list of all open ROs, sortable/filterable by tech, status, urgency. Separate from the main board. | 🟠 High |
-| ⏳ | GH#17 | **Customer Check-In Page** | Redesign checkin.html: customer-facing, digital RAF with e-signature. Replace current tech check-in flow or run parallel. | 🟠 High |
-| ⏳ | GH#18 | **Parts Ordered Email Notification** | Auto-send email to customer when RO status changes to "Parts Ordered". Use existing email infrastructure. | 🟡 Medium |
-| ⏳ | GH#19 | **Enhancement Request Button** | Button on RO card for techs to flag enhancement requests (upsell opportunities). Notify manager. | 🟡 Medium |
-| ⏳ | Roland | **Publish GitHub Releases v1.283–v1.300** | Backlog of unpublished releases. Go to github.com/PatriotsRV/rv-dashboard/releases/new for each. | 🔵 Low |
-| ⏳ | Roland | **Publish GitHub Release v1.301** | Covers: GH#16-19 added to TODO, checkin.html v1.28 Supabase auth fix. Go to github.com/PatriotsRV/rv-dashboard/releases/new | 🔵 Low |
-| ✅ | — | **Fix checkin.html Supabase auth for time_logs** | Fixed in v1.28/v1.301. `signInWithIdToken()` now called on sign-in; `getSession()` restores session on reload; `onAuthStateChange` keeps session in sync; `clockIn()` guards online insert. ✅ Anon INSERT/UPDATE policies removed 2026-04-05. | ✅ Done v1.28 |
-| ✅ | — | **Remove anon policies on time_logs in Supabase** | Now that checkin.html v1.28 properly establishes an authenticated session, the temporary anon INSERT/UPDATE policies on `time_logs` can be safely deleted. Go to Supabase dashboard → Table Editor → time_logs → RLS Policies → delete "Anon can insert time_logs" and "Anon can update time_logs". | ✅ Done 2026-04-05 |
-| ✅ | GH#15 | **Supabase Pro security cleanup** | Removed anon write policies on 9 tables. Fixed mutable search_path on `has_role` + `is_silo_manager`. Enabled leaked password protection + secure password change. Disabled new user signups. Temp restored anon INSERT/UPDATE on time_logs for checkin.html (now fixed in v1.28). | ✅ Done v1.300 |
-| ✅ | GH#14 | **Supabase performance optimization** | Added 12 indexes on high-query columns. Wrapped RPC functions in SECURITY DEFINER. Analyzed slow query patterns. | ✅ Done v1.300 |
-| ✅ | GH#13 | **Maximize Supabase log retention** | Roland action: Settings → Logs in Supabase dashboard. | ✅ Done |
-| ✅ | GH#11 | **RO Notes (internal)** | Notes field on each RO, visible only to staff, not on customer PDF. | ✅ Done v1.291 |
-| ✅ | GH#12 | **Spanish toggle** | Full ES translation for index.html + checkin.html. Toggle button saves to localStorage. | ✅ Done v1.277 |
-| ✅ | GH#10 | **Kenect messaging integration** | Messages button on RO cards. Chat modal. Send message + review request. Admin Settings section. | ✅ Done v1.290 |
-| ✅ | GH#9 | **Multi-location / silo support** | Locations table, silo_id on ROs/users, manager role, filtered views. | ✅ Done v1.285 |
-| ✅ | GH#8 | **Kenect phone number import** | Import customer phone numbers from Kenect into Supabase. | ✅ Done |
-| ✅ | GH#7 | **Customer PDF — RO detail export** | PDF generation from RO data, customer-facing format. | ✅ Done v1.282 |
-| ✅ | GH#6 | **Admin panel** | Role management, user list, location config. | ✅ Done v1.281 |
-| ✅ | GH#3 | **Phase 1: Basic work assignment** | Assign tech to RO. Tech sees assigned ROs. | ✅ Done v1.270 |
-| ✅ | GH#2 | **Email notifications** | Status-change emails via Supabase Edge Function. | ✅ Done v1.265 |
+| Priority | # | Task | Notes | Status |
+|---|---|---|---|---|
+| ⚠️ | GH#10 | **Kenect messaging — ON HOLD** | v1.290 code committed but NOT deployed. Kenect will NOT provide direct API keys — only Zapier, which has no inbound message trigger. **Decision (2026-03-30): Pivoting to Twilio for SMS.** `kenect-proxy` + 💬 Messages UI remain dormant. | ⏳ On Hold |
+| 🔴 | GH#1 | **Start Twilio number port** | Port existing number — blocks all SMS features. **Fast-tracking as of 2026-03-30 after Kenect API access denied.** | ⏳ Open — Top Priority |
+| 🔴 | GH#4 | **Twilio SMS — plan + build** | Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. Scope TBD this session. | ⏳ Open |
+| 🟠 | GH#5c | **Polish Work Orders UI** | General UX polish pass: visual refinements, edge cases, mobile layout, status badge improvements, any bugs from initial rollout | ⏳ Open |
+| 🟡 | GH#5b | **Task Templates (V1.5)** | Pre-built task lists per service silo — manager clicks "Apply Template" to populate tasks for standard jobs | ⏳ Deferred |
+| 🟠 | GH#16 | **Manager RO Work List** | Each manager can create a personal Work List of ROs they plan to work on. Select ROs from the dashboard, add to their Current Work List, arrange in priority order. Single-line items showing core RO data points (TBD by Roland). Living list — managers can reorder/add/remove at any time. Visible to all Sr Managers and Admins. Essentially a prioritized queue per manager. | ⏳ Open |
+| 🟠 | GH#17 | **Customer Check-In Page** | Front desk workstation page for customers dropping off their RV. Captures customer contact info + RO work description. Output creates a new RO that managers then enrich with photos, service selections, WO tasks, etc. Branded with PRVS logo + mission statement. Includes digital **Repair Authorization Form (RAF)** with e-signature. Living form — Roland will add fields before go-live. Runs on a dedicated front desk workstation. | ⏳ Open |
+| 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
+| 🟡 | GH#11 | **Solar Battery Bank tile — add Watt Hours** | Show Wh alongside Ah in Quote section (Wh = Ah × system voltage); update PDF output too | ⏳ Open |
+| 🟡 | GH#9 | **Parts form autocomplete** | Suggest part names, suppliers, part numbers from existing `parts` table history | ⏳ Open |
+| 🟡 | GH#2 | **Regular view layout customization** | Drag/resize tiles | ⏳ Open |
+| 🟡 | GH#3 | **Parts field layout review** | UX improvements to parts section | ⏳ Open |
+| 🟡 | GH#18 | **Parts Ordered Email Notification** | Auto-email notification sent to the person who requested/ordered parts for an RO as soon as the Parts Manager marks the parts as ordered. | ⏳ Open |
+| 🟡 | GH#19 | **Enhancement Request Button** | Dashboard button allowing any PRVS worker to submit suggestions/feature requests. Includes voice dictation + text input. Stores requests for Roland to review. | ⏳ Open |
+| 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
+| 🟡 | — | **GitHub Releases v1.283–v1.300** | Backlog of unpublished releases. Go to github.com/PatriotsRV/rv-dashboard/releases/new for each tag. v1.285 has notes in `.github/releases/v1.285-notes.md`. | ⏳ Roland action |
+| 🟡 | — | **GitHub Release v1.301** | checkin.html v1.28 Supabase auth fix. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.301` | ⏳ Roland action |
+| 🟡 | — | **Supabase: Maximize log retention** | Settings → Logs — set retention to maximum available on Pro plan | ⏳ Roland action |
+| 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
+| 🔵 | — | **Supabase PITR** | Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo). Deferred — existing GitHub Actions daily backup sufficient for now. | ⏳ Down the road |
+
+> Completed items archived in CLAUDE_CONTEXT_HISTORY.md
 
 ---
 
-## 📁 FILE INVENTORY
+## 📁 File Inventory
 
-| File | Version | Purpose |
-|------|---------|---------|
-| `index.html` | v1.300 | Main RO dashboard — board view, RO management, admin panel, Kenect integration, Spanish toggle, multi-location |
-| `checkin.html` | v1.28 | Tech clock-in/out — Google Sign-In with Supabase auth (`signInWithIdToken`), session persistence (`getSession` + `onAuthStateChange`), offline IndexedDB queue |
-| `CLAUDE_CONTEXT.md` | Session 29 | This file — Claude's memory across sessions |
-| `PRVS_PROJECT_CONTEXT.md` | Session 29 | Roland's iPhone Claude Project context — synced each session |
-| `scripts/backup.sh` | v1.0 | Backup script — timestamped snapshots in `.backups/`, keeps last 6 |
-| `supabase/functions/email-notifications/` | v1.5 | Edge Function — status change emails, parts ordered notification |
-| `supabase/functions/kenect-proxy/` | v1.0 | Edge Function — Kenect API proxy (test_credentials, get_messages, send_message, send_review_request) |
-
----
-
-## 🔧 KNOWN ISSUES & GOTCHAS
-
-### Auth & Sessions
-- **checkin.html required `signInWithIdToken()`** — Google Sign-In alone does NOT create a Supabase session. You must call `supabase.auth.signInWithIdToken({ provider: 'google', token: credential, nonce: rawNonce })` after receiving the Google credential. Without this, all DB operations fire as anon role. Fixed in v1.28.
-- **Nonce must be hex SHA-256** — Use `crypto.subtle.digest('SHA-256', ...)` with hex encoding (not base64). Raw nonce stored in localStorage, hashed nonce passed to Google GIS `initialize()` + `params` (Chrome 145 compat). Raw nonce passed to `signInWithIdToken()`.
-- **`persistSession: true` + `autoRefreshToken: true`** — Required on `createClient()` for 30-day session persistence. Without these, sessions don't survive page reloads.
-- **Session restore on reload** — Call `getSB().auth.getSession()` on DOMContentLoaded. If session exists, skip sign-in entirely. Also set up `onAuthStateChange` listener to keep `supabaseSession` in sync.
-- ✅ **Anon INSERT/UPDATE policies on `time_logs` removed** — deleted "Anon can insert time_logs" + "Anon can update time_logs" on 2026-04-05. Only anon SELECT and authenticated_full_access remain.
-
-### RLS & Supabase Security
-- **`has_role` and `is_silo_manager` functions** — Must use `SET search_path = public, pg_catalog` (SECURITY DEFINER) to prevent search_path injection attacks. If you recreate these functions, include the search_path setting.
-- **Anon key is public** — The Supabase anon key is intentionally in client-side code. RLS policies are the security layer. Never put the service role key in client code.
-- **New user signups disabled** — Supabase Auth → Settings → "Enable new user signups" is OFF. New users must be added manually by an admin.
-
-### GitHub & Deployment
-- **GitHub Pages deploys automatically** — Any push to `main` deploys within ~60 seconds. No build step needed.
-- **Large file pushes (CLAUDE_CONTEXT.md ~78KB)** — Use `mcp__github__create_or_update_file` directly with full content as string. Do NOT use a subagent for this — agents replace content with placeholder text. Always read the file locally first, pass full string content directly in the tool call.
-- **SHA required for file updates** — Get current SHA from `mcp__github__get_file_contents` response before updating. If SHA is wrong, GitHub API returns 409 conflict.
-
-### Kenect Integration
-- **Kenect Edge Function not yet deployed** — `kenect-proxy` function code is in the repo but Roland must deploy it via Supabase CLI and set `KENECT_API_KEY` secret.
-- **Kenect messages button** — Only appears on RO cards when `customerPhone` exists in the RO record.
-
-### Multi-location / Silos
-- **`silo_id` is required on new ROs** — If creating ROs programmatically, always include `silo_id`. RLS policies filter by silo.
-- **Manager role** — Users with `is_silo_manager = true` see all ROs in their silo. Regular techs see only assigned ROs.
-
-### Email Notifications
-- **Edge Function v1.5** — Handles status-change emails. Parts Ordered email (GH#18) not yet built — that's a future TODO.
-- **`parts@patriotsrvservices.com`** — Roland needs to create this email group for parts notifications.
+| File | Version | Description |
+|---|---|---|
+| `index.html` | **v1.300** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5 Phase 1) — 5-silo WO builder, task management, silo access control, dollar value rollup** |
+| `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
+| `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
+| `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy. Requires `KENECT_API_KEY` Supabase secret. NOT deployed. |
+| `checkin.html` | **v1.28** | Tech clock-in/out, offline-first IndexedDB queue, Spanish toggle. **v1.28:** Proper Supabase auth — `signInWithIdToken()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`. |
+| `analytics.html` | **v1.0** | Analytics/reporting view |
+| `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
+| `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
+| `supabase/functions/send-quote-email/index.ts` | **v1.4** | Edge Function — solar quote email + parts request email + photo share email |
+| `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files |
+| `CLAUDE_CONTEXT.md` | Session 29 | This file — active session memory (local-primary) |
+| `CLAUDE_CONTEXT_HISTORY.md` | Session 29 | Historical archive — completed work, version history, session log, completed TODOs |
+| `ROLLBACK.md` | — | Emergency rollback guide |
+| `SESSION_STARTER.md` | — | Copyable session kickoff prompt for Roland |
+| `.github/workflows/backup.yml` | — | Daily Supabase backup → private backup repo |
 
 ---
 
-## 📊 VERSION HISTORY
+## ⚠️ Known Issues & Gotchas
 
-| Version | Date | Summary |
-|---------|------|---------|
-| index v1.300 / checkin v1.27 | 2026-03-29 | Supabase Pro security + performance cleanup (GH#14, GH#15). 12 indexes, RPC SECURITY DEFINER, anon write policy removal (9 tables), leaked password protection, signups disabled. Temp restored anon INSERT/UPDATE on time_logs. |
-| checkin v1.28 / v1.301 | 2026-04-05 | Fix Supabase auth in checkin.html: `signInWithIdToken()` was never called — all clock-in/out DB ops hit anon role. Added `generateNonce()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`, proper `signOut()`. |
-| index v1.291 | 2026-03-15 | RO Notes (GH#11) — internal staff notes on RO cards, not on customer PDF. |
-| index v1.290 | 2026-03-10 | Kenect messaging integration (GH#10) — Messages button, chat modal, send/review request. |
-| index v1.285 | 2026-03-01 | Multi-location silo support (GH#9) — Locations table, silo_id, manager role, filtered views. |
-| index v1.282 | 2026-02-20 | Customer PDF export (GH#7). |
-| index v1.281 | 2026-02-15 | Admin panel (GH#6) — role management, user list, location config. |
-| index v1.277 | 2026-03-22 | Spanish toggle (GH#12) — full ES translation for index.html + checkin.html. |
-| index v1.270 | 2026-01-20 | Phase 1 work assignment (GH#3). |
-| index v1.265 | 2026-01-10 | Email notifications (GH#2). |
+> Key gotchas Claude must know. Full detail in CLAUDE_CONTEXT_HISTORY.md if needed.
 
----
+### Auth — CRITICAL
+- **`accessToken`** = Google OAuth token (~1hr). Only for Drive/Calendar API. NEVER guard Supabase ops with `!accessToken`.
+- **`getSB()`** = Supabase client. Always truthy even when session expired. Use `!getSB() || !supabaseSession` as upload guard.
+- **`supabaseSession`** = global, source of truth for auth state. Kept in sync via `onAuthStateChange` (`initSupabaseAuthListener()`).
+- **Nonce flow:** raw nonce = 16 random bytes as **hex** string. hashed = SHA-256 of raw, also **hex** (NOT base64 — base64 was v1.263 bug). Pass `hashedNonce` to `google.accounts.id.initialize()` AND `params: { nonce: hashedNonce }` (Chrome 145). Pass `rawNonce` to `signInWithIdToken()`.
+- **checkin.html v1.28:** uses default Supabase storage key (not `prvs_supabase_auth` like index.html) — separate session, intentional.
 
-## 📅 SESSION LOG
+### Supabase Patterns
+- Use `.maybeSingle()` (not `.single()`) when 0 rows is valid — `.single()` throws 406 on empty result.
+- `writeAuditLog(roId, [{ field, oldValue, newValue }])` — pass `oldValue` BEFORE mutating `currentData`. `roId` = PRVS string ID, not UUID.
+- RO ID generation: `appendToSupabase` uses optimistic insert loop with `generateROIdCandidates()` — on `23505` (duplicate key) advances to next candidate. Never revert to pre-SELECT pattern.
 
-| Date | Session # | Summary |
-|------|-----------|---------|
-| 2026-04-05 | 29 | Added GH#16-19 to TODO list (Cowork/iPhone session): Manager RO Work List, Customer Check-In Page, Parts Ordered Email Notification, Enhancement Request Button. Fixed checkin.html Supabase auth (v1.28/v1.301): `signInWithIdToken()` was never called — all DB ops were hitting anon role. Added `generateNonce()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`, proper `signOut()`. Roland action: remove anon INSERT/UPDATE policies on `time_logs` in Supabase now that proper auth is in place. |
-| 2026-03-29 | 28 | Supabase Pro security + performance cleanup. 12 indexes on high-query columns. Removed anon write policies from 9 tables. Fixed `has_role` + `is_silo_manager` mutable search_path. Enabled leaked password protection + secure password change. Disabled new user signups. Had to restore anon INSERT/UPDATE on time_logs after checkin.html clock-in broke (root cause: missing signInWithIdToken — fixed Session 29). |
-| 2026-03-22 | 27 | Spanish toggle complete (GH#12). Full ES translation for index.html + checkin.html. `TRANSLATIONS_ES` dict, `t()`, `translateStaticUI()`, `setupI18n()`. checkin.html v1.27. |
-| 2026-03-15 | 26 | RO Notes (GH#11). Internal notes field on RO cards. Not on customer PDF. |
-| 2026-03-10 | 25 | Kenect messaging integration (GH#10). Messages button, chat modal, Edge Function `kenect-proxy`. |
-| 2026-03-01 | 24 | Multi-location silo support (GH#9). Locations table, silo_id on ROs/users, manager role, filtered board views. |
-| 2026-02-20 | 23 | Customer PDF export (GH#7). PDF generation, customer-facing format. |
-| 2026-02-15 | 22 | Admin panel (GH#6). Role management, user list, location config. |
-| 2026-01-20 | 21 | Phase 1 work assignment (GH#3). Assign tech to RO, tech filtered view. |
-| 2026-01-10 | 20 | Email notifications (GH#2). Status-change emails via Supabase Edge Function. |
+### Parts Request System
+- `has_open_parts_request` boolean on `repair_orders` — requires SQL migration.
+- Notes stored as `type: 'ro_status'` with body prefixed `🔩 PARTS REQUESTED:` — NOT `type: 'parts_request'` (violates constraint).
+- `markPartsOrdered()` available to ALL roles.
 
----
+### Template Literal Parser Bomb
+- Never put `</script>` inside a template literal assigned to `.innerHTML` — HTML parser closes the outer script block. Move JS to named functions and wire via `onclick`/`onchange` attributes.
 
-## ✅ COMPLETED WORK
+### Spanish Toggle
+- `t(str)` — English string IS the key. Emoji must be INSIDE the `t()` call: `${t('🖨️ Print Label')}` not `🖨️ ${t('Print Label')}`. DB values stay English.
 
-### Session 29 — 2026-04-05
-- ✅ **Added GH#16–19 to Active TODO list** — Manager RO Work List, Customer Check-In Page, Parts Ordered Email Notification, Enhancement Request Button
-- ✅ **Fixed checkin.html Supabase auth (checkin v1.28 / v1.301)** — Root cause: `handleSignIn()` decoded Google JWT locally but never called `signInWithIdToken()` — every DB operation hit anon role. Fix: `generateNonce()` helper (hex SHA-256, same as index.html); nonce passed to GIS `initialize()` + `params` (Chrome 145 compat); `signInWithIdToken()` called with `rawNonce` in `handleSignIn()`; `supabaseSession` state var added; `getSB()` upgraded to `persistSession: true, autoRefreshToken: true`; `getSession()` called on `DOMContentLoaded` to restore 30-day session; offline identity fallback gated by `!isOnline`; `onAuthStateChange` listener; `clockIn()` guards online insert with `!supabaseSession`; `signOut()` calls `auth.signOut()`. Anon INSERT/UPDATE policies on `time_logs` removed 2026-04-05.
+### `isAdmin()` Timing Bug (v1.282b)
+- Post-load admin checks: use `isAdmin() || ADMIN_EMAILS.includes(supabaseSession?.user?.email)` — never `isAdmin()` alone. Root cause: `getUserInfo()` runs during `init()` with no token, sets `currentUser` to unknown email, blocking real session restore.
 
-### Session 28 — 2026-03-29
-- ✅ **Supabase Pro security cleanup (GH#15)** — Removed all anon write policies from 9 tables. Fixed `has_role` + `is_silo_manager` mutable search_path. Enabled leaked password protection + secure password change. Disabled new user signups. Restored anon INSERT/UPDATE on `time_logs` after checkin.html clock-in broke.
-- ✅ **Supabase performance optimization (GH#14)** — Added 12 indexes on high-query columns. Wrapped RPC functions in SECURITY DEFINER. Analyzed slow query patterns.
+### Kenect — ON HOLD
+- Zapier has no inbound message trigger → can't support conversation thread view. Direct partner API access still possible. `kenect-proxy` Edge Function committed but not deployed.
 
-### Session 27 — 2026-03-22
-- ✅ **Spanish toggle (GH#12)** — `TRANSLATIONS_ES` dict, `t()`, `translateStaticUI()`, `setupI18n()`, full `renderBoard()` + `updateStats()` translation for index.html. checkin.html v1.27 — full check-in/out flow translated.
+### Git & Deployment
+- `gh` CLI not available in sandbox — use `git` directly.
+- Workspace folder IS the git repo — `git push origin main` works.
+- Never push directly to GitHub during an active Claude session (causes branch divergence requiring `git reset --hard`).
+- Always run `bash scripts/backup.sh` before `git push`.
 
-### Session 26 — 2026-03-15
-- ✅ **RO Notes (GH#11)** — Internal notes field on RO cards, not on customer PDF.
+### Work Order System
+- Roland Shepard must be in `staff` table as `sr_manager` (NULL silo) for WO RLS to work. Future admins needing WO access also need a `staff` row.
+- `_staffCache` loads async after initial render — `canManageSilo()` falls back to hardcoded email lists until cache loads (<1s in practice).
 
-### Session 25 — 2026-03-10
-- ✅ **Kenect messaging integration (v1.290, GH#10)** — `kenect-proxy` Supabase Edge Function committed (actions: test_credentials, get_locations, get_conversation, get_messages_by_phone, send_message, send_review_request). 💬 Messages button on RO cards (only when customerPhone exists). Chat-style conversation modal with inbound (left) / outbound (right) bubbles. Send message + Send Review Request buttons. Admin Settings Kenect section: Location ID input, Test Connection, Load Locations. `kenectCall(action, params, payload)` helper POSTs to Edge Function with anon key auth. Pending: Roland must deploy Edge Function + set KENECT_API_KEY secret.
+### Supabase Pro Security (Session 28)
+- Removed all anon write policies from 9 tables. Fixed `has_role`/`is_silo_manager` mutable search_path. Disabled new user signups.
+- ✅ Anon INSERT/UPDATE on `time_logs` removed 2026-04-05 (checkin.html v1.28 now uses authenticated sessions).
 
-### Session 24 — 2026-03-01
-- ✅ **Multi-location silo support (GH#9)** — Locations table, silo_id on ROs/users, manager role, filtered board views.
-
-### Session 23 — 2026-02-20
-- ✅ **Customer PDF export (GH#7)** — PDF generation, customer-facing format.
-
-### Session 22 — 2026-02-15
-- ✅ **Admin panel (GH#6)** — Role management, user list, location config.
-
-### Session 21 — 2026-01-20
-- ✅ **Phase 1 work assignment (GH#3)** — Assign tech to RO, tech filtered view.
-
-### Session 20 — 2026-01-10
-- ✅ **Email notifications (GH#2)** — Status-change emails via Supabase Edge Function v1.5.
+### CLAUDE_CONTEXT.md Storage (Session 29)
+- **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
+- GitHub MCP tool has ~21KB content parameter limit — CLAUDE_CONTEXT.md kept under this limit. CLAUDE_CONTEXT_HISTORY.md is local-primary; GitHub backup is best-effort.
 
 ---
 
-## 🧠 DESIGN DECISIONS & ARCHITECTURE NOTES
+## 🏗 Tech Stack
 
-### Auth Architecture
-- **Google Sign-In → Supabase session** — The flow is: generate nonce → show Google button → receive credential → call `signInWithIdToken()` → get Supabase session → use session for all DB ops. The Google credential alone is NOT a Supabase session.
-- **Session persistence** — `persistSession: true` + `autoRefreshToken: true` on `createClient()`. Sessions last 30 days. `getSession()` on page load restores without re-auth.
-- **Offline support** — IndexedDB queue for clock-in/out when offline. `drainQueue()` fires on reconnect. Queue entries use whatever session was active when they were created (now properly authenticated).
+- **Frontend:** Vanilla JS (index/checkin/analytics); React 18.2.0 via CDN (solar.html)
+- **Auth:** Google Identity Services (GIS) → Supabase `signInWithIdToken`
+- **Database:** Supabase (PostgreSQL) with RLS
+- **Storage:** Supabase Storage (`rv-media` bucket)
+- **Email:** Supabase Edge Functions → Resend API
+- **Deployment:** GitHub Pages (auto-deploy on push to main)
+- **Backup:** GitHub Actions daily → private backup repo; `scripts/backup.sh` pre-deploy snapshots
 
-### Database Architecture
-- **RLS is the security layer** — All tables have RLS enabled. Policies control what each role (anon, authenticated, service_role) can read/write.
-- **Silo isolation** — `silo_id` on ROs and users. RLS policies filter by silo. Managers see all in their silo, techs see assigned only.
-- **`has_role(user_id, role_name)`** — SECURITY DEFINER function, `search_path = public, pg_catalog`. Used in RLS policies to check user roles without exposing the roles table directly.
+---
 
-### Email Architecture
-- **Supabase Edge Function** — `email-notifications` function handles status-change emails. Triggered by client after status update (not a DB trigger).
-- **Parts email (GH#18)** — Not yet built. Will hook into existing Edge Function when status changes to "Parts Ordered".
+## 🗄 Supabase Tables
 
-### Kenect Integration
-- **Proxy pattern** — Client calls `kenect-proxy` Edge Function (avoids CORS + keeps API key server-side). Function forwards to Kenect API.
-- **Phone number required** — Messages button only shows when RO has `customerPhone`. No phone = no Kenect.
+`repair_orders` · `parts` · `notes` · `audit_log` · `users` · `user_roles` · `time_logs` · `cashiered` · `config` · `insurance_scans` · `locations` · `staff` · `service_work_orders` · `service_tasks`
+
+---
+
+## 👥 PRVS Staff Roster
+
+> Source of truth for personnel. Loaded into `_staffCache` at session start.
+
+| Name | Role | Silo |
+|---|---|---|
+| Roland Shepard | sr_manager | NULL (all silos) |
+| Riley [Last] | manager | Solar |
+| [Parts Manager name] | parts_manager | NULL |
+| [Tech names × 10+] | tech | Various silos |
+
+> Full roster in `supabase/migrations/staff_table.sql` — 14 personnel seeded at v1.295.
+
+---
+
+## 🏛 Key Architecture Decisions
+
+- **No build step** — everything ships as vanilla HTML/JS/CSS. React only for solar.html via CDN. Keeps deployment friction zero.
+- **Supabase as backend** — Auth + DB + Storage + Edge Functions. No separate API server.
+- **RLS as security layer** — Row Level Security on all tables. Anon key is safe in client code because RLS enforces access.
+- **Offline-first checkin** — IndexedDB queue for clock-in/out. Drains on reconnect. Now uses authenticated sessions (v1.28).
+- **Optimistic RO ID insert** — No pre-SELECT. Try insert, catch `23505`, advance candidate. Eliminates race condition.
+- **Edge Functions for external APIs** — Kenect proxy, email send, AI roof lookup. Keeps API keys server-side.
+- **GitHub Pages = CDN** — Zero-config deployment, global CDN, custom domain optional. Free tier sufficient.
+- **CLAUDE_CONTEXT.md local-primary (Session 29)** — Read/write from Cowork workspace folder. GitHub push at end of session only. Avoids 21KB MCP tool limit for mid-session updates.
+
+---
