@@ -6693,7 +6693,7 @@ Notes: ${notes}` : '',
             const subtitle = document.getElementById('workListSubtitle');
             if (subtitle) subtitle.textContent = _workListViewEmail ? `Viewing: ${_workListViewEmail}` : '';
             try {
-                const { data, error } = await supabaseClient
+                const { data, error } = await getSB()
                     .from('manager_work_lists')
                     .select('*')
                     .eq('manager_email', targetEmail)
@@ -6720,7 +6720,7 @@ Notes: ${notes}` : '',
             }
             const priority = _workListData.length > 0 ? Math.max(..._workListData.map(d => d.priority)) + 1 : 1;
             try {
-                const { error } = await supabaseClient
+                const { error } = await getSB()
                     .from('manager_work_lists')
                     .insert({ manager_email: myEmail, ro_id: roId, ro_name: roName, priority });
                 if (error) throw error;
@@ -6734,7 +6734,7 @@ Notes: ${notes}` : '',
 
         async function removeFromWorkList(itemId) {
             try {
-                const { error } = await supabaseClient
+                const { error } = await getSB()
                     .from('manager_work_lists')
                     .delete()
                     .eq('id', itemId);
@@ -6749,7 +6749,7 @@ Notes: ${notes}` : '',
 
         async function _saveWorkListOrder() {
             for (let i = 0; i < _workListData.length; i++) {
-                await supabaseClient.from('manager_work_lists')
+                await getSB().from('manager_work_lists')
                     .update({ priority: i + 1 })
                     .eq('id', _workListData[i].id);
             }
