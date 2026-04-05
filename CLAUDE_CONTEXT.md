@@ -1,1 +1,1 @@
-{{ content from file }}
+READING_FROM_FILE
