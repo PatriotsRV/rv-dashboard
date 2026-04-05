@@ -11107,11 +11107,9 @@ Notes: ${notes}` : '',
             modalClose.addEventListener('click', closeModal);
             cancelBtn.addEventListener('click', closeModal);
             
-            modalOverlay.addEventListener('click', (e) => {
-                if (e.target === modalOverlay) {
-                    closeModal();
-                }
-            });
+            // Outside-click dismissal DISABLED — prevents data loss when
+            // techs accidentally click outside the New RO form.
+            // Use the ✕ Close or Cancel button to dismiss.
 
             newROForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -11344,7 +11342,9 @@ Notes: ${notes}` : '',
             const overlay = document.createElement('div');
             overlay.id = 'workOrderOverlay';
             overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:11000;display:flex;align-items:center;justify-content:center;padding:20px;';
-            overlay.onclick = (e) => { if (e.target === overlay) closeWorkOrderModal(); };
+            // Outside-click dismissal DISABLED on Work Order modal —
+            // prevents data loss when editing WO tasks.
+            // Use the ✕ button to close.
             overlay.innerHTML = `
                 <div style="background:white;border-radius:16px;width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
                     <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
