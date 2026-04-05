@@ -11284,6 +11284,7 @@ Notes: ${notes}` : '',
                 if (error) throw error;
                 _staffCache = data || [];
                 console.log('👥 Staff loaded:', _staffCache.length, 'members');
+                _initWorkListBtn();
             } catch (err) {
                 console.warn('⚠️ Could not load staff table:', err.message);
             }
