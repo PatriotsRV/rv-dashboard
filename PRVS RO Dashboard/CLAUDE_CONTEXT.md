@@ -92,6 +92,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#19 | **Enhancement Request Button** | Dashboard button allowing any PRVS worker to submit suggestions/feature requests for the RO Dashboard. Includes voice dictation capture (like Parts Request modal) + text input field. Stores requests for Roland to review. | ⏳ Open |
 | 🟡 | GH#20 | **Key Chain RO Identifier — QR print layout update** | Update `printQRLabel()` (v1.293) print sheet layout. The existing 1"×1" key-tag QR code stays as-is; add **RV Owner Name + RV Info (year, make, model)** alongside it so the combined key chain section fits within a **4.3" × 6.3" laminating pouch**. The 3"×3" windshield sticker also still prints on the same sheet. End result: receptionist prints → laminates the key chain section → attaches to key ring with the small QR + customer/RV info visible. | ⏳ Open |
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
+| 🟡 | — | **Update solar parts pricing** | Update all solar component pricing in solar.html using current Epoch and Victron catalog pricing | ⏳ Open |
 | 🟡 | — | **GitHub Releases v1.283–v1.300** | Backlog of unpublished releases. Go to github.com/PatriotsRV/rv-dashboard/releases/new for each tag. v1.285 has notes in `.github/releases/v1.285-notes.md`. | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.301** | checkin.html v1.28 Supabase auth fix. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.301` | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.303** | GH#16 Manager RO Work List complete. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.303` | ⏳ Roland action |
@@ -125,6 +126,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `RELEASE_NOTES_v1.265.md` | — | Release notes for v1.265 |
 | `RELEASE_NOTES_v1.266.md` | — | Release notes for v1.266 |
 | `.github/workflows/backup.yml` | — | Daily Supabase backup → private backup repo |
+| `docs/PRVS_Manager_Training_Guide.pdf` | **Session 33** | Manager Role Training Guide — 13 pages, 21 sections covering all manager abilities: check-in, planning, Work Orders (inc. Est. Hours + Task Templates), Parts Workflow (inc. Notify Requester + ETA auto-notification), Manager Work List, delivery, ongoing. Updated April 2026. Also saved as .docx for easy editing. |
+| `docs/PRVS_Manager_Training_Guide.docx` | **Session 33** | Word version of Manager Training Guide — same content as .pdf, fully editable in Word. |
 
 ---
 
@@ -199,6 +202,16 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - `addToWorkList` receives **`ro._supabaseId`** (UUID) as argument and uses `currentData.find()` to look up the RO — never pass array index from a sorted display list to a function that reads `currentData[]` (arrays differ after sort).
 - Python Unicode escape `\u0001f4cb` is wrong for 📋 emoji (U+1F4CB). Use HTML entity `&#128203;` or Python `\U0001F4CB` (capital U, 8 hex digits). All emoji in patches should use HTML entities.
 - `_initWorkListBtn()` must be both **defined** (function body) and **called** after staff cache loads. Check both when debugging button visibility.
+
+### Training Guide PDFs (Session 33)
+- **ReportLab Helvetica font does NOT support emoji** — any emoji character (🔧 🚗 📋 ✉️ etc.) renders as a solid black square. Always use plain text for PDF generation with ReportLab's built-in fonts.
+- Both PDF and DOCX versions of training guides are maintained in `docs/`. PDF for distribution, DOCX for editing.
+- Build scripts: `build_guide.py` (ReportLab PDF) and `build_guide_docx.py` (python-docx DOCX) in sandbox at `/sessions/sweet-relaxed-babbage/`. These are session-local only — not committed to the repo.
+
+### Nik Polizzo — Supabase Auth Issue (Session 33)
+- Nik was getting "Your session is not ready yet" on checkin.html. Root cause: Nik is not in Supabase `auth.users` table — `signInWithIdToken()` fails silently, `supabaseSession` stays null.
+- **Fix:** Supabase Dashboard → Authentication → Users → Add User → Invite user → `nik@patriotsrvservices.com`. OR temporarily enable signups (Sign In / Providers → Email → toggle on), have Nik sign in with Google, then disable.
+- **Also note:** Riley Scott registered as `rileyscott848@gmail.com` instead of `riley@patriotsrvservices.com`. Should re-register with work email.
 
 ### CLAUDE_CONTEXT.md Storage (Session 29)
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
