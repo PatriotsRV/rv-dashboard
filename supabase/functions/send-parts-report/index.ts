@@ -56,12 +56,12 @@ Deno.serve(async (req: Request) => {
     if (openROIds.length > 0) {
       const { data: openROPartsList } = await sb
         .from("parts")
-        .select("part_name, status, repair_order_id")
-        .in("repair_order_id", openROIds)
+        .select("part_name, status, ro_id")
+        .in("ro_id", openROIds)
         .not("status", "eq", "Received");
       for (const p of (openROPartsList || [])) {
-        if (!openROPartsMap[p.repair_order_id]) openROPartsMap[p.repair_order_id] = [];
-        openROPartsMap[p.repair_order_id].push(
+        if (!openROPartsMap[p.ro_id]) openROPartsMap[p.ro_id] = [];
+        openROPartsMap[p.ro_id].push(
           p.part_name + (p.status ? " (" + p.status + ")" : "")
         );
       }
