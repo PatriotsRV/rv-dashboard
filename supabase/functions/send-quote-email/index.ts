@@ -192,6 +192,165 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── PARTS ORDERED NOTIFICATION (GH#18) ────────────────────────────
+    if (type === "parts_ordered") {
+      const { to, cc, customerName, roId, rv, orderedParts, orderedBy } = body;
+      const parts: Array<{ name: string; partNumber?: string; eta?: string; status: string }> =
+        Array.isArray(orderedParts) ? orderedParts : [];
+
+      if (!to) {
+        return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const subject = `✅ Parts Ordered — ${customerName || "Customer"} (RO #${roId || "N/A"})`;
+
+      const partsRows = parts.length > 0
+        ? parts.map(p => `
+          <tr>
+            <td style="padding:8px 10px; border-bottom:1px solid #eee;">${p.name}</td>
+            <td style="padding:8px 10px; border-bottom:1px solid #eee; font-family:monospace; font-size:12px; color:#555;">${p.partNumber || "—"}</td>
+            <td style="padding:8px 10px; border-bottom:1px solid #eee; color:#22c55e; font-weight:600;">${p.status}</td>
+            <td style="padding:8px 10px; border-bottom:1px solid #eee; color:#555;">${p.eta || "TBD"}</td>
+          </tr>`).join("")
+        : `<tr><td colspan="4" style="padding:10px; color:#888; font-style:italic; text-align:center;">Parts details not available — please contact us for specifics.</td></tr>`;
+
+      const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="border-bottom: 3px solid #c8102e; padding-bottom: 16px; margin-bottom: 20px;">
+    <h1 style="color: #c8102e; margin: 0; font-size: 22px;">Patriots RV Services</h1>
+    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Parts Status Update</p>
+  </div>
+
+  <div style="background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: #16a34a; margin: 0 0 12px; font-size: 18px;">📦 Your Parts Have Been Ordered!</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <tr><td style="padding:4px 0; color:#666; width:120px;">Customer:</td><td style="padding:4px 0; font-weight:700;">${customerName || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">RO Number:</td><td style="padding:4px 0; font-family:monospace;">${roId || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Vehicle:</td><td style="padding:4px 0;">${rv || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Ordered by:</td><td style="padding:4px 0;">${orderedBy || "Parts Department"}</td></tr>
+    </table>
+  </div>
+
+  ${parts.length > 0 ? `
+  <div style="margin-bottom: 20px;">
+    <h3 style="margin: 0 0 10px; color: #333; font-size: 15px;">Parts Ordered:</h3>
+    <table style="width:100%; border-collapse:collapse; font-size:13px; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">
+      <thead>
+        <tr style="background:#f3f4f6;">
+          <th style="padding:8px 10px; text-align:left; font-weight:600; color:#374151; border-bottom:2px solid #e5e7eb;">Part Name</th>
+          <th style="padding:8px 10px; text-align:left; font-weight:600; color:#374151; border-bottom:2px solid #e5e7eb;">Part #</th>
+          <th style="padding:8px 10px; text-align:left; font-weight:600; color:#374151; border-bottom:2px solid #e5e7eb;">Status</th>
+          <th style="padding:8px 10px; text-align:left; font-weight:600; color:#374151; border-bottom:2px solid #e5e7eb;">ETA</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${partsRows}
+      </tbody>
+    </table>
+    <p style="margin: 8px 0 0; font-size: 12px; color: #888;">ETA is estimated and subject to supplier availability. We'll notify you if it changes.</p>
+  </div>` : ""}
+
+  <p style="font-size: 14px; color: #555;">We'll keep you updated as your parts arrive. If you have any questions, don't hesitate to reach out.</p>
+
+  <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">
+    <p style="margin: 0; color: #555; font-size: 13px;">
+      &#128205; 11399 US 380, Krum TX 76249<br>
+      &#128222; <a href="tel:9404885047" style="color:#c8102e;">(940) 488-5047</a><br>
+      &#127760; <a href="https://patriotsrvservices.com" style="color:#c8102e;">patriotsrvservices.com</a>
+    </p>
+    <p style="margin: 8px 0 0; color: #aaa; font-size: 10px;">This is an automated notification from the PRVS Dashboard.</p>
+  </div>
+</body>
+</html>`;
+
+      const textParts = parts.length > 0
+        ? parts.map(p => `  • ${p.name}${p.partNumber ? ` (${p.partNumber})` : ""} — ${p.status}${p.eta ? `, ETA: ${p.eta}` : ""}`).join("\n")
+        : "  (Contact us for part details)";
+
+      await transporter.sendMail({
+        from:    `"Patriots RV Services" <${gmailUser}>`,
+        replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
+        to,
+        cc:      cc || undefined,
+        subject,
+        text:    `Parts Ordered — ${customerName} (RO #${roId})\n\nGood news! Your parts have been ordered.\n\nCustomer: ${customerName}\nRO: ${roId}\nVehicle: ${rv || "N/A"}\nOrdered by: ${orderedBy || "Parts Department"}\n\nParts:\n${textParts}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
+        html:    htmlBody,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── PARTS ETA UPDATE NOTIFICATION (GH#18) ─────────────────────────
+    if (type === "parts_eta_update") {
+      const { to, cc, customerName, roId, rv, partName, eta, updatedBy } = body;
+
+      if (!to) {
+        return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const subject = `📅 Parts ETA Update — ${customerName || "Customer"} (RO #${roId || "N/A"})`;
+
+      const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="border-bottom: 3px solid #c8102e; padding-bottom: 16px; margin-bottom: 20px;">
+    <h1 style="color: #c8102e; margin: 0; font-size: 22px;">Patriots RV Services</h1>
+    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Parts ETA Update</p>
+  </div>
+
+  <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: #1d4ed8; margin: 0 0 12px; font-size: 18px;">📅 ETA Update for Your Part</h2>
+    <table style="width:100%; border-collapse:collapse; font-size:14px;">
+      <tr><td style="padding:4px 0; color:#666; width:120px;">Customer:</td><td style="padding:4px 0; font-weight:700;">${customerName || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">RO Number:</td><td style="padding:4px 0; font-family:monospace;">${roId || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Vehicle:</td><td style="padding:4px 0;">${rv || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Part:</td><td style="padding:4px 0; font-weight:700;">${partName || "N/A"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Expected ETA:</td><td style="padding:4px 0; font-size:16px; font-weight:700; color:#1d4ed8;">${eta || "TBD"}</td></tr>
+      <tr><td style="padding:4px 0; color:#666;">Updated by:</td><td style="padding:4px 0;">${updatedBy || "Parts Department"}</td></tr>
+    </table>
+  </div>
+
+  <p style="font-size: 14px; color: #555;">We'll continue to keep you updated on your parts status. If you have any questions, please reach out.</p>
+
+  <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">
+    <p style="margin: 0; color: #555; font-size: 13px;">
+      &#128205; 11399 US 380, Krum TX 76249<br>
+      &#128222; <a href="tel:9404885047" style="color:#c8102e;">(940) 488-5047</a><br>
+      &#127760; <a href="https://patriotsrvservices.com" style="color:#c8102e;">patriotsrvservices.com</a>
+    </p>
+    <p style="margin: 8px 0 0; color: #aaa; font-size: 10px;">This is an automated notification from the PRVS Dashboard.</p>
+  </div>
+</body>
+</html>`;
+
+      await transporter.sendMail({
+        from:    `"Patriots RV Services" <${gmailUser}>`,
+        replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
+        to,
+        cc:      cc || undefined,
+        subject,
+        text:    `Parts ETA Update — ${customerName} (RO #${roId})\n\nPart: ${partName}\nExpected ETA: ${eta}\nVehicle: ${rv || "N/A"}\nUpdated by: ${updatedBy || "Parts Department"}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
+        html:    htmlBody,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── SOLAR QUOTE EMAIL (original behaviour) ─────────────────────────
     const { to, customerName, quoteNumber, roNumber, grandTotal, body: emailBody, pdfBase64 } = body;
 
