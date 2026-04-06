@@ -88,13 +88,15 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#9 | **Parts form autocomplete** | Suggest part names, suppliers, part numbers from existing `parts` table history — both Manage Parts and Parts Request modal | ⏳ Open |
 | 🟡 | GH#2 | **Regular view layout customization** | Drag/resize tiles | ⏳ Open |
 | 🟡 | GH#3 | **Parts field layout review** | UX improvements to parts section | ⏳ Open |
-| 🟡 | GH#18 | **Parts Ordered Email Notification** | Auto-email notification sent to the person who requested/ordered parts for an RO as soon as the Parts Manager marks the parts as ordered. Closes the communication loop so requestors know their parts are on the way. Triggered from the Parts Manager's "order" action. | ⏳ Open |
+| 🟡 | GH#18 | **Parts Ordered Email Notification** | **Session 32 (partial):** Dashboard v1.304 — `requested_by_email` captured on `submitPartsRequest`, stored to DB + local data. `notifyPartsRequester()` manual trigger button in Parts Status modal. `notifyPartsEtaUpdate()` auto-fires on ETA set/change in `savePartForm`. `send-quote-email` v1.5 adds `parts_ordered` + `parts_eta_update` email types. `send-parts-report` Edge Function (4-section HTML email: open requests, ordered, overdue, received 24h). `parts-report.yml` GitHub Actions cron (Mon–Fri 13:00 + 20:00 UTC). **Roland action required: run `gh18_migration.sql` in Supabase SQL Editor.** **Roland action required: deploy `send-parts-report` via Supabase CLI.** | 🔄 In Progress — needs CLI deploy + migration |
 | 🟡 | GH#19 | **Enhancement Request Button** | Dashboard button allowing any PRVS worker to submit suggestions/feature requests for the RO Dashboard. Includes voice dictation capture (like Parts Request modal) + text input field. Stores requests for Roland to review. | ⏳ Open |
 | 🟡 | GH#20 | **Key Chain RO Identifier — QR print layout update** | Update `printQRLabel()` (v1.293) print sheet layout. The existing 1"×1" key-tag QR code stays as-is; add **RV Owner Name + RV Info (year, make, model)** alongside it so the combined key chain section fits within a **4.3" × 6.3" laminating pouch**. The 3"×3" windshield sticker also still prints on the same sheet. End result: receptionist prints → laminates the key chain section → attaches to key ring with the small QR + customer/RV info visible. | ⏳ Open |
 | 🟡 | GH#8 | **Switchblade tile view** | Compact tile layout mode | ⏳ Open |
 | 🟡 | — | **GitHub Releases v1.283–v1.300** | Backlog of unpublished releases. Go to github.com/PatriotsRV/rv-dashboard/releases/new for each tag. v1.285 has notes in `.github/releases/v1.285-notes.md`. | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.301** | checkin.html v1.28 Supabase auth fix. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.301` | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.303** | GH#16 Manager RO Work List complete. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.303` | ⏳ Roland action |
+| 🔴 | GH#18 | **Run gh18_migration.sql in Supabase** | SQL Editor → New query → paste `supabase/migrations/gh18_migration.sql` → Run. Adds `requested_by_email` on `repair_orders` and `updated_at` + trigger on `parts`. Nothing works until this runs. | ⏳ Roland action — BLOCKING |
+| 🔴 | GH#18 | **Deploy send-parts-report Edge Function** | `supabase functions deploy send-parts-report` from repo root. Needs Supabase CLI + `supabase link --project-ref axfejhudchdejoiwaetq`. Also verify `SUPABASE_SERVICE_ROLE_KEY` GitHub secret exists (backup.yml uses `SUPABASE_SERVICE_KEY` — different name). | ⏳ Roland action |
 | 🟡 | — | **Supabase: Maximize log retention** | Settings → Logs — set retention to maximum available on Pro plan (7 days for all log types) | ⏳ Roland action |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
 | 🟡 | — | **Test out Claude dispatch** | Test Claude dispatch workflow | ⏳ Open |
@@ -107,7 +109,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.303** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager can view other managers' lists** |
+| `index.html` | **v1.304** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager can view other managers' lists**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification** |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
@@ -115,7 +117,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `analytics.html` | **v1.0** | Analytics/reporting view |
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
-| `supabase/functions/send-quote-email/index.ts` | **v1.4** | Edge Function — solar quote email + parts request email + photo share email (types: 'solar_quote', 'parts_request', 'photo_share') |
+| `supabase/functions/send-quote-email/index.ts` | **v1.5** | Edge Function — solar quote email + parts request email + photo share email + parts ordered notification + ETA update notification (types: 'solar_quote', 'parts_request', 'photo_share', 'parts_ordered', 'parts_eta_update') |
+| `supabase/functions/send-parts-report/index.ts` | **v1.0** | Edge Function — GH#18 scheduled parts status report: 4 sections (open requests, ordered/in-transit, overdue, received 24h). Queries DB via service role, emails all sr_managers + managers + parts_managers. **Needs CLI deploy.** |
+| `.github/workflows/parts-report.yml` | — | GH#18 cron workflow — calls send-parts-report Mon–Fri at 13:00 UTC (8 AM CDT) + 20:00 UTC (3 PM CDT). Secrets needed: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY |
 | `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |
 | `ROLLBACK.md` | — | Emergency rollback guide — step-by-step restore instructions, version table, rollback commands |
@@ -307,6 +311,15 @@ supabase functions deploy kenect-proxy
 After deploy, open Admin Settings in the dashboard → Kenect section → click **Test Connection**.
 
 **Kenect phone number format**: The dashboard normalizes `customerPhone` to E.164 (+1XXXXXXXXXX). If customers are stored as `555-1234` (7-digit), Kenect lookups will fail — full 10-digit numbers are required.
+
+### GH#18 Parts Notifications (Session 32)
+- `requested_by_email` column on `repair_orders` — tracks who submitted the parts request. Set every time `submitPartsRequest()` is called (most recent requester).
+- `updated_at` column on `parts` — auto-stamp trigger `_prvs_set_updated_at()`. Both columns added via `gh18_migration.sql` (Roland must run in Supabase SQL Editor — NOT yet run as of session 32).
+- `notifyPartsRequester(filteredIndex)` — manual trigger from Parts Status modal. Shows confirm dialog with parts list preview. Only shown when `ro.requestedByEmail` is set. POSTs to `send-quote-email` with type `'parts_ordered'`.
+- `notifyPartsEtaUpdate(ro, partName, eta)` — non-blocking auto-fire from `savePartForm` when ETA is set/changed on edit, or when ETA is set on a newly-added part. Only fires if `requestedByEmail` is set on the RO.
+- `send-parts-report` Edge Function needs Supabase CLI deploy: `supabase functions deploy send-parts-report`. Uses SUPABASE_SERVICE_ROLE_KEY (built-in env var) + GMAIL_USER + GMAIL_APP_PASSWORD secrets.
+- `parts-report.yml` cron uses `SUPABASE_SERVICE_ROLE_KEY` GitHub secret (different name from backup.yml which uses `SUPABASE_SERVICE_KEY`). Check existing secrets in GitHub → Settings → Secrets before adding.
+- The `parts` table FK to `repair_orders` is via `repair_order_id` UUID column. The join in Supabase select is: `.select("..., repair_orders(ro_id, customer_name, rv)")`.
 
 ### Daily Backup
 - `.github/workflows/backup.yml` — 8 AM UTC (4 AM EST) daily + manual trigger
