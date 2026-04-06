@@ -1,8 +1,10 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.302
+    PRVS Dashboard v1.304
     Released: 2026-04-03
+    v1.304: GH#18 (partial) — Parts notifications: “Parts Ordered” + “ETA Updated” trigger emails to requester + info@; requested_by_email captured on submitPartsRequest; notifyPartsRequester/notifyPartsEtaUpdate added
+    v1.303: GH#16 Manager RO Work List — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager can view all lists
     v1.302: GH#5c WO polish — est_hours per task (rolls up to silo header); WO Task Templates (save/load/overwrite/merge per silo); template overlay z-index fix (100000); form modal outside-click lock on New RO + WO modal (prevents tech data loss)
     v1.301: Fix parts request RLS error for techs with expired sessions — add supabaseSession guard at top of submitPartsRequest(); if session is null, alert "Session expired — please refresh and try again" instead of hitting the notes table as anon and getting blocked by RLS.
     v1.300: Add Kevin McHenry (kevin@patriotsrvservices.com) to SR_MANAGER_EMAILS — Sr. Manager access for Work Orders, silo management, urgency, and scheduling.
@@ -2693,7 +2695,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.303</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.304</span>
             </div>
         </header>
 
@@ -6201,9 +6203,19 @@ Notes: ${notes}` : '',
 
                 if (isEdit) {
                     const existingPart = partsData[roId][parseInt(editIndex)];
+                    const _oldEta = (existingPart.eta || '').trim();
+                    const _newEta = (part.eta || '').trim();
                     part._supabaseId = existingPart._supabaseId;
                     partsData[roId][parseInt(editIndex)] = part;
                     await updatePartInSheet(part);
+                    // GH#18: Fire ETA notification if eta was set or changed
+                    if (_newEta && _newEta !== _oldEta) {
+                        const _etaRo = currentData.find(d => d.roId === roId);
+                        if (_etaRo?.requestedByEmail) {
+                            notifyPartsEtaUpdate(_etaRo, part.partName, _newEta)
+                                .catch(e => console.warn('ETA notify non-blocking fail:', e));
+                        }
+                    }
                 } else {
                     // Get RO _sb ID
                     const roRecord = currentData.find(d => d.roId === roId);
@@ -6212,6 +6224,11 @@ Notes: ${notes}` : '',
                     if (newPart) part._supabaseId = newPart.id;
                     if (!partsData[roId]) partsData[roId] = [];
                     partsData[roId].push(part);
+                    // GH#18: Fire ETA notification if eta is set on a newly-added part
+                    if (part.eta && roRecord?.requestedByEmail) {
+                        notifyPartsEtaUpdate(roRecord, part.partName, part.eta)
+                            .catch(e => console.warn('ETA notify non-blocking fail:', e));
+                    }
                 }
 
                 // Update partsJson in Sheet1
@@ -8647,6 +8664,7 @@ Notes: ${notes}` : '',
                 partsJson:                row._parts_json || '',
                 hasOpenPartsRequest:      !!row.has_open_parts_request,
                 partsStatus:              row.parts_status || null,
+                requestedByEmail:         row.requested_by_email || null,
                 _supabaseId:              row.id,  // keep uuid for updates
             };
         }
@@ -9907,6 +9925,73 @@ Notes: ${notes}` : '',
                 : '';
         }
 
+        // GH#18: Notify requester that parts have been ordered (manual trigger from Parts Status modal)
+        async function notifyPartsRequester(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro || !ro.requestedByEmail) {
+                alert('No requester email on file for this RO.\nParts must be requested via the dashboard “Request Parts” button to capture the requester.');
+                return;
+            }
+            const roPartsData = partsData[ro.roId] || [];
+            const orderedParts = roPartsData.filter(p => ['Ordered','In Transit','Backordered'].includes(p.status));
+            const partsPreview = orderedParts.length
+                ? '\n\nParts being ordered:\n' + orderedParts.map(p => '\u2022 ' + p.partName + (p.eta ? ' (ETA: ' + p.eta + ')' : '')).join('\n')
+                : '\n\n(No parts in Ordered/In Transit/Backordered status — sending general notification)';
+            if (!confirm('Send “Parts Ordered” notification to ' + ro.requestedByEmail + '?' + partsPreview)) return;
+            try {
+                const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type:         'parts_ordered',
+                        to:           ro.requestedByEmail,
+                        cc:           'info@patriotsrvservices.com',
+                        customerName: ro.customerName,
+                        roId:         ro.roId || '',
+                        rv:           ro.rv   || 'N/A',
+                        orderedParts: orderedParts.map(p => ({
+                            name:       p.partName,
+                            partNumber: p.partNumber || '',
+                            eta:        p.eta || '',
+                            status:     p.status,
+                        })),
+                        orderedBy: currentUser?.name || 'Parts Department',
+                    }),
+                });
+                if (!resp.ok) { const t = await resp.text(); throw new Error('HTTP ' + resp.status + ': ' + t); }
+                document.getElementById('partsStatusModal')?.remove();
+                alert('\u2705 Notification sent to ' + ro.requestedByEmail);
+            } catch(err) {
+                console.error('notifyPartsRequester error:', err);
+                alert('Error sending notification: ' + err.message);
+            }
+        }
+
+        // GH#18: Notify requester of ETA update on a specific part (auto-fires from savePartForm on ETA set/change)
+        async function notifyPartsEtaUpdate(ro, partName, eta) {
+            if (!ro?.requestedByEmail) return;
+            try {
+                await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type:         'parts_eta_update',
+                        to:           ro.requestedByEmail,
+                        cc:           'info@patriotsrvservices.com',
+                        customerName: ro.customerName,
+                        roId:         ro.roId || '',
+                        rv:           ro.rv   || 'N/A',
+                        partName,
+                        eta,
+                        updatedBy: currentUser?.name || 'Parts Department',
+                    }),
+                });
+                console.log('ETA notification sent to', ro.requestedByEmail, 'for part:', partName, 'ETA:', eta);
+            } catch(err) {
+                console.warn('ETA notification failed (non-blocking):', err);
+            }
+        }
+
         // Open the parts request submission modal
         function openPartsRequestModal(filteredIndex) {
             if (!getSB()) { alert('Please connect to PRVS database first!'); return; }
@@ -10040,6 +10125,7 @@ Notes: ${notes}` : '',
                 const { error: updErr } = await getSB().from('repair_orders').update({
                     has_open_parts_request: true,
                     parts_status: newPartsStatus,
+                    requested_by_email: userEmail || null,
                     updated_at: new Date().toISOString(),
                 }).eq('id', ro._supabaseId);
                 if (updErr) throw updErr;
@@ -10105,6 +10191,7 @@ Notes: ${notes}` : '',
                 if (origIdx !== -1) {
                     currentData[origIdx].hasOpenPartsRequest = true;
                     currentData[origIdx].partsStatus = 'outstanding';
+                    currentData[origIdx].requestedByEmail = userEmail || null;
                     currentData[origIdx].roStatusNotes = (currentData[origIdx].roStatusNotes ? currentData[origIdx].roStatusNotes + '\n' : '') + noteText;
                 }
 
@@ -10273,6 +10360,7 @@ Notes: ${notes}` : '',
                             ✕ Clear Status<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Remove chip from RO</span>
                         </button>
                     </div>
+                    ${ro.requestedByEmail ? `<button onclick="notifyPartsRequester(` + filteredIndex + `)" style="width:100%; padding:10px; border-radius:8px; border:1.5px solid rgba(34,197,94,0.5); background:rgba(34,197,94,0.09); color:#22c55e; cursor:pointer; font-size:0.85rem; font-weight:700; margin-bottom:10px;">&#128230; Notify Requester — Parts Ordered</button>` : ''}
                     <button onclick="document.getElementById('partsStatusModal').remove()" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">
                         Cancel
                     </button>
