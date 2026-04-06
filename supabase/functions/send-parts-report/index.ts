@@ -50,6 +50,23 @@ Deno.serve(async (req: Request) => {
       .order("updated_at", { ascending: false });
     if (e1) console.error("Error fetching open ROs:", e1);
 
+    // Fetch individual parts for open ROs so the report shows what parts are needed
+    const openROIds = (openROs || []).map((ro: any) => ro.id).filter(Boolean);
+    const openROPartsMap: Record<string, string[]> = {};
+    if (openROIds.length > 0) {
+      const { data: openROPartsList } = await sb
+        .from("parts")
+        .select("part_name, status, repair_order_id")
+        .in("repair_order_id", openROIds)
+        .not("status", "eq", "Received");
+      for (const p of (openROPartsList || [])) {
+        if (!openROPartsMap[p.repair_order_id]) openROPartsMap[p.repair_order_id] = [];
+        openROPartsMap[p.repair_order_id].push(
+          p.part_name + (p.status ? " (" + p.status + ")" : "")
+        );
+      }
+    }
+
     // ── 2. Parts: ordered but not yet received ──────────────────────────
     const { data: orderedParts, error: e2 } = await sb
       .from("parts")
@@ -118,18 +135,25 @@ Deno.serve(async (req: Request) => {
 
     // Section 1: Open Parts Requests
     const openROsRows = openROs?.length
-      ? openROs.map(ro => `
+      ? openROs.map((ro: any) => {
+          const roParts = openROPartsMap[ro.id] || [];
+          const partsHtml = roParts.length
+            ? roParts.map(p => `<div style="font-size:12px; color:#374151; line-height:1.7;">• ${p}</div>`).join("")
+            : `<span style="color:#aaa; font-style:italic; font-size:12px;">No parts logged yet</span>`;
+          return `
           <tr>
             <td style="${tdStyle} font-family:monospace;">${ro.ro_id || "—"}</td>
             <td style="${tdStyle} font-weight:600;">${ro.customer_name || "—"}</td>
             <td style="${tdStyle}">${ro.rv || "—"}</td>
+            <td style="${tdStyle}">${partsHtml}</td>
             <td style="${tdStyle}">
               <span style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">
                 ${ro.parts_status || "outstanding"}
               </span>
             </td>
             <td style="${tdStyle} color:#666; font-size:12px;">${ro.requested_by_email || "—"}</td>
-          </tr>`).join("")
+          </tr>`;
+        }).join("")
       : emptyRow("No open parts requests");
 
     // Section 2: Ordered, not received
@@ -221,7 +245,7 @@ Deno.serve(async (req: Request) => {
   <table style="width:100%; margin-bottom:4px;"><tbody>
     ${sectionHeader("🔩", "Open Parts Requests", openROs?.length || 0, "#fff3f8")}
   </tbody></table>
-  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Status", "Requester"])}
+  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}
 
   <!-- Section 2: Ordered / In Transit / Backordered -->
   <table style="width:100%; margin-bottom:4px;"><tbody>
