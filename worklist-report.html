@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.0
+    PRVS Active Work List Report v1.1
     Released: 2026-04-07
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
+    v1.1: Staff status tiles — red/green color-coded grid showing who is clocked in and what RO they're working on
 -->
 <html lang="en">
 <head>
@@ -205,6 +206,73 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* ── Staff status tiles ──────────────────────── */
+        .staff-section {
+            margin: 16px 16px 24px;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #111827;
+        }
+        .staff-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, #1a1a2e, #2d2347);
+            cursor: pointer; user-select: none;
+            transition: background 0.2s;
+        }
+        .staff-header:hover { background: linear-gradient(135deg, #22223a, #372d52); }
+        .staff-header-title { font-weight: 700; font-size: 0.95rem; color: white; }
+        .staff-header-stats { font-size: 0.75rem; color: #a78bfa; }
+        .staff-body { padding: 14px 16px; }
+        .staff-body.collapsed { display: none; }
+        .staff-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+        }
+        .staff-tile {
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            border: 1px solid transparent;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .staff-tile:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .tile-active {
+            background: linear-gradient(135deg, #052e16, #064e3b);
+            border-color: #16a34a;
+        }
+        .tile-inactive {
+            background: linear-gradient(135deg, #450a0a, #7f1d1d);
+            border-color: #dc2626;
+        }
+        .tile-name {
+            font-weight: 700; font-size: 0.88rem; color: white;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .tile-role {
+            font-size: 0.65rem; padding: 1px 7px; border-radius: 10px;
+            font-weight: 600; background: rgba(255,255,255,0.1); color: #cbd5e1;
+        }
+        .tile-status { font-size: 0.75rem; line-height: 1.4; }
+        .tile-active .tile-status { color: #86efac; }
+        .tile-inactive .tile-status { color: #fca5a5; }
+        .tile-ro-info {
+            font-size: 0.7rem; color: #a7f3d0; margin-top: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tile-duration {
+            font-size: 0.68rem; color: #6ee7b7; font-family: 'SF Mono', monospace;
+        }
+        .tile-status-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px;
+        }
+        .dot-green { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+        .dot-red { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+
         /* ── Responsive ─────────────────────────────── */
         @media (max-width: 768px) {
             .ro-rv { display: none; }
@@ -290,6 +358,9 @@ let currentUser = null;
 let _allWorkLists = [];   // all rows from manager_work_lists
 let _allTimeLogs = [];    // time_logs for relevant ROs
 let _allROs = [];         // repair_orders for relevant ROs
+let _allStaff = [];       // all active staff members
+let _allActiveClockIns = []; // currently active time_log entries (clock_out IS NULL)
+let _staffSectionOpen = true;
 let _refreshTimer = null;
 let _countdownSec = 180;
 
@@ -437,15 +508,35 @@ async function loadAllData() {
         if (wlErr) throw wlErr;
         _allWorkLists = workLists || [];
 
-        // 2. Collect unique RO UUIDs
+        // 2. Load all active staff (for tech tiles)
+        const { data: staff, error: stErr } = await getSB()
+            .from('staff')
+            .select('*')
+            .eq('active', true)
+            .order('name');
+        if (stErr) throw stErr;
+        _allStaff = staff || [];
+
+        // 3. Load ALL currently active clock-ins (clock_out IS NULL) — for tech tiles
+        const { data: activeClocks, error: acErr } = await getSB()
+            .from('time_logs')
+            .select('*, repair_orders(ro_id, customer_name, rv)')
+            .is('clock_out', null)
+            .order('clock_in', { ascending: false });
+        if (acErr) throw acErr;
+        _allActiveClockIns = activeClocks || [];
+
+        // 4. Collect unique RO UUIDs from work lists
         const roIds = [...new Set(_allWorkLists.map(w => w.ro_id).filter(Boolean))];
 
         if (roIds.length === 0) {
+            _allROs = [];
+            _allTimeLogs = [];
             renderReport();
             return;
         }
 
-        // 3. Load RO data for those UUIDs
+        // 5. Load RO data for those UUIDs
         const { data: ros, error: roErr } = await getSB()
             .from('repair_orders')
             .select('id, ro_id, customer_name, rv, repair_type, status, date_received, date_arrived, dollar_value, parking_spot')
@@ -453,7 +544,7 @@ async function loadAllData() {
         if (roErr) throw roErr;
         _allROs = ros || [];
 
-        // 4. Load time logs for those ROs
+        // 6. Load time logs for those ROs (for work list detail)
         const { data: logs, error: tlErr } = await getSB()
             .from('time_logs')
             .select('*')
@@ -503,7 +594,7 @@ function renderReport() {
     // Stats
     const totalManagers = managerOrder.length;
     const totalROs = new Set(_allWorkLists.map(w => w.ro_id)).size;
-    const activeTechs = new Set(_allTimeLogs.filter(l => !l.clock_out).map(l => l.tech_email)).size;
+    const activeTechs = new Set(_allTimeLogs.filter(l => !l.clock_out).map(l => l.user_id)).size;
     const totalHours = _allTimeLogs.reduce((sum, l) => {
         if (l.clock_in && l.clock_out) {
             return sum + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
@@ -581,6 +672,106 @@ function renderReport() {
             </div>
         `;
     }).join('');
+
+    // Append staff status tiles section
+    body.innerHTML += renderStaffTiles();
+}
+
+function renderStaffTiles() {
+    // Filter: everyone except admins
+    const adminEmails = ADMIN_EMAILS.map(e => e.toLowerCase());
+    const staffToShow = _allStaff.filter(s => !adminEmails.includes(s.email.toLowerCase()));
+
+    if (staffToShow.length === 0) return '';
+
+    // Build active clock-in lookup by user_id (email stored in user_id column)
+    const activeByEmail = {};
+    _allActiveClockIns.forEach(log => {
+        const email = (log.user_id || '').toLowerCase();
+        if (!activeByEmail[email]) activeByEmail[email] = [];
+        activeByEmail[email].push(log);
+    });
+
+    const activeCount = staffToShow.filter(s => activeByEmail[s.email.toLowerCase()]?.length > 0).length;
+    const inactiveCount = staffToShow.length - activeCount;
+
+    const roleLabels = {
+        sr_manager: 'Sr Manager',
+        manager: 'Manager',
+        parts_manager: 'Parts',
+        tech: 'Tech',
+    };
+
+    const tiles = staffToShow.map(staff => {
+        const email = staff.email.toLowerCase();
+        const activeLogs = activeByEmail[email] || [];
+        const isActive = activeLogs.length > 0;
+        const tileClass = isActive ? 'tile-active' : 'tile-inactive';
+        const dotClass = isActive ? 'dot-green' : 'dot-red';
+        const roleLabel = roleLabels[staff.role] || staff.role;
+
+        let statusHtml = '';
+        if (isActive) {
+            // Show each active clock-in (could be multiple — unlikely but handle it)
+            statusHtml = activeLogs.map(log => {
+                const ro = log.repair_orders;
+                const roLabel = ro ? `${ro.customer_name || 'Unknown'} (${ro.ro_id || ''})` : 'Unknown RO';
+                const rvLabel = ro?.rv || '';
+                const clockInTime = log.clock_in
+                    ? new Date(log.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                    : '';
+                const elapsed = log.clock_in
+                    ? ((Date.now() - new Date(log.clock_in).getTime()) / 3600000).toFixed(1) + 'h'
+                    : '';
+                return `
+                    <div class="tile-status"><span class="tile-status-dot ${dotClass}"></span>Clocked in${clockInTime ? ' at ' + clockInTime : ''}</div>
+                    <div class="tile-ro-info" title="${escHtml(roLabel + ' ' + rvLabel)}">${escHtml(roLabel)}</div>
+                    ${rvLabel ? `<div class="tile-ro-info" style="color:#6ee7b7;opacity:0.7;">${escHtml(rvLabel)}</div>` : ''}
+                    <div class="tile-duration">${elapsed} elapsed</div>
+                `;
+            }).join('');
+        } else {
+            statusHtml = `<div class="tile-status"><span class="tile-status-dot ${dotClass}"></span>Not clocked in</div>`;
+        }
+
+        return `
+            <div class="staff-tile ${tileClass}">
+                <div class="tile-name">
+                    ${escHtml(staff.name)}
+                    <span class="tile-role">${roleLabel}</span>
+                </div>
+                ${statusHtml}
+            </div>
+        `;
+    }).join('');
+
+    const collapseClass = _staffSectionOpen ? '' : 'collapsed';
+    const chevClass = _staffSectionOpen ? 'open' : '';
+
+    return `
+        <div class="staff-section">
+            <div class="staff-header" onclick="toggleStaffSection()">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="staff-header-title">&#128101; Staff Status</span>
+                    <span class="staff-header-stats">${activeCount} active &middot; ${inactiveCount} idle</span>
+                </div>
+                <span class="manager-chevron ${chevClass}" id="staffChev">&#9660;</span>
+            </div>
+            <div class="staff-body ${collapseClass}" id="staffBody">
+                <div class="staff-grid">
+                    ${tiles}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function toggleStaffSection() {
+    _staffSectionOpen = !_staffSectionOpen;
+    const body = document.getElementById('staffBody');
+    const chev = document.getElementById('staffChev');
+    if (body) body.classList.toggle('collapsed');
+    if (chev) chev.classList.toggle('open');
 }
 
 function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
@@ -605,7 +796,7 @@ function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
 
     // Time log summary
     const activeLogs = logs.filter(l => !l.clock_out);
-    const activeTechNames = [...new Set(activeLogs.map(l => l.tech_email?.split('@')[0] || 'Unknown'))];
+    const activeTechNames = [...new Set(activeLogs.map(l => l.user_id?.split('@')[0] || 'Unknown'))];
     const totalHours = logs.reduce((sum, l) => {
         if (l.clock_in && l.clock_out) return sum + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
         return sum;
@@ -627,7 +818,7 @@ function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
     let timeDetailHtml = '';
     if (logs.length > 0) {
         const rows = logs.slice(0, 50).map(l => {
-            const techName = (l.tech_email || '').split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const techName = l.tech_name || (l.user_id || '').split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const dateStr = l.clock_in ? new Date(l.clock_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
             const inTime = l.clock_in ? new Date(l.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
             const outTime = l.clock_out ? new Date(l.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
