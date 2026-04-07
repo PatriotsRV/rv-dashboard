@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<!--
+    PRVS Active Work List Report v1.0
+    Released: 2026-04-07
+    Admin-only report: all managers' work lists + time logs per RO
+    Auto-refreshes every 3 minutes
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRVS — Active Work List Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0b1121;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        /* ── Header ─────────────────────────────────── */
+        .header {
+            background: linear-gradient(135deg, #0f1a2e 0%, #1a2744 100%);
+            border-bottom: 2px solid #1e3a5f;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-left { display: flex; align-items: center; gap: 14px; }
+        .header-title { font-size: 1.15rem; font-weight: 700; color: white; }
+        .header-subtitle { font-size: 0.75rem; color: #64748b; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .refresh-bar {
+            display: flex; align-items: center; gap: 8px;
+            background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+            padding: 6px 12px; font-size: 0.75rem; color: #94a3b8;
+        }
+        .refresh-bar button {
+            background: #3b82f6; color: white; border: none; border-radius: 4px;
+            padding: 4px 10px; font-size: 0.72rem; cursor: pointer; font-weight: 600;
+        }
+        .refresh-bar button:hover { background: #2563eb; }
+        .badge-admin {
+            background: #7c3aed; color: white; padding: 3px 10px; border-radius: 12px;
+            font-size: 0.7rem; font-weight: 600;
+        }
+        .back-link {
+            color: #60a5fa; text-decoration: none; font-size: 0.8rem;
+        }
+        .back-link:hover { text-decoration: underline; }
+
+        /* ── Auth gate ──────────────────────────────── */
+        .auth-gate {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 80vh; gap: 20px;
+        }
+        .auth-gate h2 { color: #94a3b8; font-size: 1.1rem; font-weight: 500; }
+        #g_id_onload { margin-top: 12px; }
+
+        /* ── Stats bar ──────────────────────────────── */
+        .stats-bar {
+            display: flex; gap: 16px; padding: 12px 24px;
+            background: #0f172a; border-bottom: 1px solid #1e293b;
+            flex-wrap: wrap;
+        }
+        .stat-chip {
+            background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+            padding: 6px 14px; font-size: 0.78rem; color: #cbd5e1;
+        }
+        .stat-chip strong { color: white; margin-right: 4px; }
+
+        /* ── Manager accordion ──────────────────────── */
+        .manager-section {
+            margin: 12px 16px;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #111827;
+        }
+        .manager-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, #1e293b, #263548);
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        .manager-header:hover { background: linear-gradient(135deg, #243447, #2d4058); }
+        .manager-name { font-weight: 700; font-size: 0.95rem; color: white; }
+        .manager-role {
+            font-size: 0.7rem; color: #94a3b8; margin-left: 8px;
+            background: #334155; padding: 2px 8px; border-radius: 10px;
+        }
+        .manager-ro-count {
+            font-size: 0.75rem; color: #64748b;
+        }
+        .manager-chevron {
+            color: #64748b; font-size: 1.2rem; transition: transform 0.2s;
+        }
+        .manager-chevron.open { transform: rotate(180deg); }
+        .manager-body { display: none; }
+        .manager-body.open { display: block; }
+
+        /* ── Silo sub-header ────────────────────────── */
+        .silo-subheader {
+            padding: 8px 18px;
+            background: #0f172a;
+            border-top: 1px solid #1e293b;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .silo-subheader .silo-count {
+            background: #1e3a5f; color: #93c5fd; padding: 1px 8px;
+            border-radius: 10px; font-size: 0.68rem; font-weight: 600;
+        }
+
+        /* ── RO row ─────────────────────────────────── */
+        .ro-row {
+            border-top: 1px solid #1e293b;
+            transition: background 0.15s;
+        }
+        .ro-row:hover { background: #1a2236; }
+        .ro-row-main {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 18px;
+            cursor: pointer;
+            min-height: 42px;
+        }
+        .ro-priority {
+            color: #475569; font-size: 0.72rem; font-weight: 700;
+            min-width: 22px; text-align: center;
+        }
+        .ro-id {
+            color: #94a3b8; font-size: 0.75rem; min-width: 75px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+        }
+        .ro-customer {
+            color: white; font-size: 0.85rem; font-weight: 600;
+            flex: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ro-rv {
+            color: #64748b; font-size: 0.72rem; max-width: 180px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* ── KPI chips ──────────────────────────────── */
+        .kpi-chips { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+        .chip {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.7rem;
+            font-weight: 600; white-space: nowrap; border: 1px solid transparent;
+        }
+        .chip-days-green { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+        .chip-days-orange { background: #78350f; color: #fbbf24; border-color: #92400e; }
+        .chip-days-red { background: #7f1d1d; color: #fca5a5; border-color: #991b1b; }
+        .chip-dollar { background: #1e3a5f; color: #93c5fd; border-color: #1e40af; }
+        .chip-techs-active { background: #064e3b; color: #34d399; border-color: #065f46; }
+        .chip-techs-none { background: #1e293b; color: #64748b; border-color: #334155; }
+        .chip-hours { background: #312e81; color: #a5b4fc; border-color: #3730a3; }
+        .ro-expand {
+            color: #475569; font-size: 0.85rem; transition: transform 0.2s;
+            min-width: 18px; text-align: center;
+        }
+        .ro-expand.open { transform: rotate(180deg); }
+
+        /* ── Time log detail ────────────────────────── */
+        .time-detail { display: none; padding: 0 18px 10px 50px; }
+        .time-detail.open { display: block; }
+        .time-detail table {
+            width: 100%; border-collapse: collapse; font-size: 0.73rem;
+        }
+        .time-detail th {
+            text-align: left; color: #64748b; font-weight: 600;
+            padding: 4px 8px; border-bottom: 1px solid #1e293b;
+        }
+        .time-detail td {
+            padding: 4px 8px; color: #cbd5e1; border-bottom: 1px solid #0f172a;
+        }
+        .time-detail .active-row { background: #0a2e1a; }
+        .time-detail .active-badge {
+            background: #22c55e; color: #052e16; padding: 1px 6px;
+            border-radius: 8px; font-size: 0.65rem; font-weight: 700;
+        }
+
+        /* ── Empty / loading states ─────────────────── */
+        .loading-state, .empty-state {
+            text-align: center; padding: 40px 20px; color: #64748b;
+        }
+        .loading-state .spinner {
+            display: inline-block; width: 24px; height: 24px;
+            border: 3px solid #334155; border-top-color: #3b82f6;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Responsive ─────────────────────────────── */
+        @media (max-width: 768px) {
+            .ro-rv { display: none; }
+            .kpi-chips { gap: 4px; }
+            .manager-section { margin: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Auth gate (shown before login) -->
+<div id="authGate" class="auth-gate">
+    <div style="text-align:center;">
+        <div style="font-size:2rem;margin-bottom:8px;">&#128203;</div>
+        <h2>PRVS Active Work List Report</h2>
+        <p style="color:#475569;font-size:0.8rem;margin-top:6px;">Admin access required</p>
+    </div>
+    <div id="g_id_onload"></div>
+</div>
+
+<!-- Main app (hidden until auth) -->
+<div id="app" style="display:none;">
+    <div class="header">
+        <div class="header-left">
+            <div>
+                <div class="header-title">&#128203; Active Work List Report</div>
+                <div class="header-subtitle">All managers' queues &amp; time logs</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="refresh-bar">
+                <span id="refreshCountdown">Next refresh: 3:00</span>
+                <button onclick="loadAllData()">Refresh Now</button>
+            </div>
+            <span class="badge-admin" id="userBadge"></span>
+            <a href="index.html" class="back-link">&larr; Dashboard</a>
+        </div>
+    </div>
+
+    <div class="stats-bar" id="statsBar"></div>
+
+    <div id="reportBody">
+        <div class="loading-state" id="loadingState">
+            <div class="spinner"></div>
+            <div>Loading work lists...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Configuration ────────────────────────────────────────
+const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com'];
+const MANAGER_EMAILS = [
+    'ryan@patriotsrvservices.com',
+    'mauricio@patriotsrvservices.com',
+    'jason@patriotsrvservices.com',
+    'andrew@patriotsrvservices.com',
+    'riley@patriotsrvservices.com',
+    'bobby@patriotsrvservices.com',
+    'brandon@patriotsrvservices.com',
+];
+const SERVICE_SILOS = [
+    { key: 'repair',     label: 'Repair',       emoji: '&#128295;' },
+    { key: 'vroom',      label: 'Vroom',        emoji: '&#10024;' },
+    { key: 'solar',      label: 'Solar',        emoji: '&#9728;&#65039;' },
+    { key: 'roof',       label: 'Roof',         emoji: '&#127968;' },
+    { key: 'paint_body', label: 'Paint & Body', emoji: '&#127912;' },
+    { key: 'chassis',    label: 'Chassis',      emoji: '&#128297;' },
+    { key: 'detailing',  label: 'Detailing',    emoji: '&#129531;' },
+    { key: 'truetopper', label: 'TrueTopper',   emoji: '&#127957;&#65039;' },
+];
+const SILO_MAP = Object.fromEntries(SERVICE_SILOS.map(s => [s.key, s]));
+
+// ── State ────────────────────────────────────────────────
+let _sb = null;
+let supabaseSession = null;
+let currentUser = null;
+let _allWorkLists = [];   // all rows from manager_work_lists
+let _allTimeLogs = [];    // time_logs for relevant ROs
+let _allROs = [];         // repair_orders for relevant ROs
+let _refreshTimer = null;
+let _countdownSec = 180;
+
+function getSB() {
+    if (!_sb) {
+        _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_report_auth' }
+        });
+    }
+    return _sb;
+}
+
+// ── Auth ─────────────────────────────────────────────────
+async function initAuth() {
+    // Try restoring session
+    getSB().auth.onAuthStateChange((event, session) => {
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            supabaseSession = session;
+        } else if (event === 'SIGNED_OUT') {
+            supabaseSession = null;
+            currentUser = null;
+        }
+    });
+
+    const { data: { session } } = await getSB().auth.getSession();
+    if (session) {
+        supabaseSession = session;
+        currentUser = {
+            email: session.user.email,
+            name: session.user.user_metadata?.full_name || session.user.email,
+        };
+        if (isAdmin()) {
+            showApp();
+            return;
+        }
+    }
+
+    // Also check stored identity
+    const stored = localStorage.getItem('prvs_user_identity');
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            if (parsed.email && ADMIN_EMAILS.includes(parsed.email.toLowerCase())) {
+                currentUser = { email: parsed.email, name: parsed.name };
+                // Session might still be valid from index.html
+                if (supabaseSession) {
+                    showApp();
+                    return;
+                }
+            }
+        } catch(e) {}
+    }
+
+    // Show Google sign-in
+    showGoogleSignIn();
+}
+
+function isAdmin() {
+    const email = (currentUser?.email || '').toLowerCase();
+    return ADMIN_EMAILS.includes(email);
+}
+
+function showGoogleSignIn() {
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(nonce)).then(buf => {
+        const hashedNonce = Array.from(new Uint8Array(buf))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem('prvs_report_nonce', nonce);
+
+        google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            nonce: hashedNonce,
+            callback: handleGoogleSignIn,
+            auto_select: true,
+        });
+        google.accounts.id.prompt();
+        google.accounts.id.renderButton(document.getElementById('g_id_onload'), {
+            theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill'
+        });
+    });
+}
+
+async function handleGoogleSignIn(response) {
+    if (!response.credential) return;
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    currentUser = { email: payload.email, name: payload.name };
+
+    if (!isAdmin()) {
+        document.getElementById('authGate').innerHTML =
+            '<div style="text-align:center;padding:60px;"><h2 style="color:#ef4444;">Access Denied</h2><p style="color:#94a3b8;margin-top:8px;">This report is restricted to Admins only.</p></div>';
+        return;
+    }
+
+    // Exchange for Supabase session
+    try {
+        const rawNonce = localStorage.getItem('prvs_report_nonce');
+        const { data, error } = await getSB().auth.signInWithIdToken({
+            provider: 'google', token: response.credential, nonce: rawNonce,
+        });
+        if (!error && data.session) supabaseSession = data.session;
+        localStorage.removeItem('prvs_report_nonce');
+    } catch(e) { console.warn('Supabase auth exchange failed:', e); }
+
+    showApp();
+}
+
+function showApp() {
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    document.getElementById('userBadge').textContent = currentUser?.name || 'Admin';
+    loadAllData();
+    startAutoRefresh();
+}
+
+// ── Auto-refresh ─────────────────────────────────────────
+function startAutoRefresh() {
+    if (_refreshTimer) clearInterval(_refreshTimer);
+    _countdownSec = 180;
+    _refreshTimer = setInterval(() => {
+        _countdownSec--;
+        const m = Math.floor(_countdownSec / 60);
+        const s = _countdownSec % 60;
+        const el = document.getElementById('refreshCountdown');
+        if (el) el.textContent = `Next refresh: ${m}:${s.toString().padStart(2, '0')}`;
+        if (_countdownSec <= 0) {
+            _countdownSec = 180;
+            loadAllData();
+        }
+    }, 1000);
+}
+
+// ── Data Loading ─────────────────────────────────────────
+async function loadAllData() {
+    _countdownSec = 180;
+    const body = document.getElementById('reportBody');
+    body.innerHTML = '<div class="loading-state"><div class="spinner"></div><div>Loading work lists...</div></div>';
+
+    try {
+        // 1. Load ALL work list entries
+        const { data: workLists, error: wlErr } = await getSB()
+            .from('manager_work_lists')
+            .select('*')
+            .order('manager_email').order('priority', { ascending: true });
+        if (wlErr) throw wlErr;
+        _allWorkLists = workLists || [];
+
+        // 2. Collect unique RO UUIDs
+        const roIds = [...new Set(_allWorkLists.map(w => w.ro_id).filter(Boolean))];
+
+        if (roIds.length === 0) {
+            renderReport();
+            return;
+        }
+
+        // 3. Load RO data for those UUIDs
+        const { data: ros, error: roErr } = await getSB()
+            .from('repair_orders')
+            .select('id, ro_id, customer_name, rv, repair_type, status, date_in, dollar_value, parking_spot')
+            .in('id', roIds);
+        if (roErr) throw roErr;
+        _allROs = ros || [];
+
+        // 4. Load time logs for those ROs
+        const { data: logs, error: tlErr } = await getSB()
+            .from('time_logs')
+            .select('*')
+            .in('ro_id', roIds)
+            .order('clock_in', { ascending: false });
+        if (tlErr) throw tlErr;
+        _allTimeLogs = logs || [];
+
+        renderReport();
+    } catch (err) {
+        console.error('[Report] load error:', err);
+        body.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error loading data: ${err.message || err}</div>`;
+    }
+}
+
+// ── Render ───────────────────────────────────────────────
+function renderReport() {
+    const body = document.getElementById('reportBody');
+
+    // Group work list entries by manager
+    const byManager = {};
+    _allWorkLists.forEach(item => {
+        const email = item.manager_email;
+        if (!byManager[email]) byManager[email] = [];
+        byManager[email].push(item);
+    });
+
+    // Build RO lookup
+    const roLookup = Object.fromEntries(_allROs.map(r => [r.id, r]));
+
+    // Build time log lookup by RO UUID
+    const logsByRO = {};
+    _allTimeLogs.forEach(log => {
+        if (!logsByRO[log.ro_id]) logsByRO[log.ro_id] = [];
+        logsByRO[log.ro_id].push(log);
+    });
+
+    // Determine manager ordering: Sr Managers first, then regular managers
+    const managerOrder = Object.keys(byManager).sort((a, b) => {
+        const aIsSr = SR_MANAGER_EMAILS.includes(a) || ADMIN_EMAILS.includes(a);
+        const bIsSr = SR_MANAGER_EMAILS.includes(b) || ADMIN_EMAILS.includes(b);
+        if (aIsSr && !bIsSr) return -1;
+        if (!aIsSr && bIsSr) return 1;
+        return a.localeCompare(b);
+    });
+
+    // Stats
+    const totalManagers = managerOrder.length;
+    const totalROs = new Set(_allWorkLists.map(w => w.ro_id)).size;
+    const activeTechs = new Set(_allTimeLogs.filter(l => !l.clock_out).map(l => l.tech_email)).size;
+    const totalHours = _allTimeLogs.reduce((sum, l) => {
+        if (l.clock_in && l.clock_out) {
+            return sum + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
+        }
+        return sum;
+    }, 0);
+
+    document.getElementById('statsBar').innerHTML = `
+        <div class="stat-chip"><strong>${totalManagers}</strong> Managers</div>
+        <div class="stat-chip"><strong>${totalROs}</strong> Unique ROs</div>
+        <div class="stat-chip"><strong>${activeTechs}</strong> Techs Active Now</div>
+        <div class="stat-chip"><strong>${totalHours.toFixed(1)}h</strong> Total Logged</div>
+        <div class="stat-chip"><strong>${_allWorkLists.length}</strong> List Entries</div>
+    `;
+
+    if (managerOrder.length === 0) {
+        body.innerHTML = '<div class="empty-state">No managers have work list entries yet.</div>';
+        return;
+    }
+
+    // Render manager sections
+    body.innerHTML = managerOrder.map((email, mIdx) => {
+        const items = byManager[email];
+        const isSr = SR_MANAGER_EMAILS.includes(email) || ADMIN_EMAILS.includes(email);
+        const roleBadge = isSr ? 'Sr Manager' : 'Manager';
+        const displayName = email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const uniqueROs = new Set(items.map(i => i.ro_id)).size;
+
+        // For Sr Managers, group by silo
+        let innerHtml = '';
+        if (isSr) {
+            // Group by service_silo
+            const bySilo = {};
+            items.forEach(item => {
+                const silo = item.service_silo || '_unsorted';
+                if (!bySilo[silo]) bySilo[silo] = [];
+                bySilo[silo].push(item);
+            });
+
+            // Render silos in SERVICE_SILOS order, then _unsorted
+            const siloOrder = SERVICE_SILOS.map(s => s.key).filter(k => bySilo[k]);
+            if (bySilo['_unsorted']) siloOrder.push('_unsorted');
+
+            innerHtml = siloOrder.map(siloKey => {
+                const siloItems = bySilo[siloKey];
+                const silo = SILO_MAP[siloKey];
+                const siloLabel = silo ? `${silo.emoji} ${silo.label}` : 'Unsorted';
+                const siloCount = siloItems.length;
+
+                return `
+                    <div class="silo-subheader">
+                        <span>${siloLabel}</span>
+                        <span class="silo-count">${siloCount} RO${siloCount !== 1 ? 's' : ''}</span>
+                    </div>
+                    ${siloItems.map((item, idx) => renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey)).join('')}
+                `;
+            }).join('');
+        } else {
+            innerHtml = items.map((item, idx) => renderRORow(item, idx, roLookup, logsByRO, mIdx, 'flat')).join('');
+        }
+
+        return `
+            <div class="manager-section">
+                <div class="manager-header" onclick="toggleManager(${mIdx})">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="manager-name">${displayName}</span>
+                        <span class="manager-role">${roleBadge}</span>
+                        <span class="manager-ro-count">${uniqueROs} RO${uniqueROs !== 1 ? 's' : ''}</span>
+                    </div>
+                    <span class="manager-chevron" id="mChev${mIdx}">&#9660;</span>
+                </div>
+                <div class="manager-body open" id="mBody${mIdx}">
+                    ${innerHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
+    const ro = roLookup[item.ro_id] || {};
+    const logs = logsByRO[item.ro_id] || [];
+    const rowId = `ro_${mIdx}_${siloKey}_${idx}`;
+
+    // KPIs
+    const daysOnLot = ro.date_in ? Math.floor((Date.now() - new Date(ro.date_in).getTime()) / 86400000) : null;
+    let daysChip = '';
+    if (daysOnLot !== null) {
+        const cls = daysOnLot <= 30 ? 'chip-days-green' : daysOnLot <= 50 ? 'chip-days-orange' : 'chip-days-red';
+        daysChip = `<span class="chip ${cls}">${daysOnLot}d</span>`;
+    }
+
+    const dollarChip = ro.dollar_value
+        ? `<span class="chip chip-dollar">$${Number(ro.dollar_value).toLocaleString()}</span>`
+        : '';
+
+    // Time log summary
+    const activeLogs = logs.filter(l => !l.clock_out);
+    const activeTechNames = [...new Set(activeLogs.map(l => l.tech_email?.split('@')[0] || 'Unknown'))];
+    const totalHours = logs.reduce((sum, l) => {
+        if (l.clock_in && l.clock_out) return sum + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
+        return sum;
+    }, 0);
+
+    const techChip = activeTechNames.length > 0
+        ? `<span class="chip chip-techs-active">${activeTechNames.length} active</span>`
+        : `<span class="chip chip-techs-none">0 active</span>`;
+
+    const hoursChip = totalHours > 0
+        ? `<span class="chip chip-hours">${totalHours.toFixed(1)}h</span>`
+        : '';
+
+    const roNumber = ro.ro_id || item.ro_name?.split(' — ')[1] || '';
+    const customerName = ro.customer_name || item.ro_name?.split(' — ')[0] || 'Unknown';
+    const rv = ro.rv || '';
+
+    // Time detail table
+    let timeDetailHtml = '';
+    if (logs.length > 0) {
+        const rows = logs.slice(0, 50).map(l => {
+            const techName = (l.tech_email || '').split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const dateStr = l.clock_in ? new Date(l.clock_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+            const inTime = l.clock_in ? new Date(l.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+            const outTime = l.clock_out ? new Date(l.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+            const dur = l.clock_in && l.clock_out
+                ? ((new Date(l.clock_out) - new Date(l.clock_in)) / 3600000).toFixed(1) + 'h'
+                : '';
+            const isActive = !l.clock_out;
+            return `<tr class="${isActive ? 'active-row' : ''}">
+                <td>${techName}</td>
+                <td>${dateStr}</td>
+                <td>${inTime}</td>
+                <td>${isActive ? '<span class="active-badge">ACTIVE</span>' : outTime}</td>
+                <td>${isActive ? '' : dur}</td>
+            </tr>`;
+        }).join('');
+        timeDetailHtml = `
+            <table>
+                <thead><tr><th>Tech</th><th>Date</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    } else {
+        timeDetailHtml = '<div style="color:#475569;font-size:0.75rem;padding:6px 0;">No time entries logged</div>';
+    }
+
+    return `
+        <div class="ro-row">
+            <div class="ro-row-main" onclick="toggleRODetail('${rowId}')">
+                <span class="ro-priority">${idx + 1}</span>
+                <span class="ro-id">${roNumber}</span>
+                <span class="ro-customer">${escHtml(customerName)}</span>
+                <span class="ro-rv">${escHtml(rv)}</span>
+                <div class="kpi-chips">
+                    ${daysChip}
+                    ${dollarChip}
+                    ${techChip}
+                    ${hoursChip}
+                </div>
+                <span class="ro-expand" id="exp_${rowId}">&#9660;</span>
+            </div>
+            <div class="time-detail" id="det_${rowId}">
+                ${timeDetailHtml}
+            </div>
+        </div>
+    `;
+}
+
+// ── Interaction ──────────────────────────────────────────
+function toggleManager(mIdx) {
+    const body = document.getElementById('mBody' + mIdx);
+    const chev = document.getElementById('mChev' + mIdx);
+    if (!body) return;
+    const isOpen = body.classList.contains('open');
+    body.classList.toggle('open');
+    if (chev) chev.classList.toggle('open');
+}
+
+function toggleRODetail(rowId) {
+    const det = document.getElementById('det_' + rowId);
+    const exp = document.getElementById('exp_' + rowId);
+    if (!det) return;
+    det.classList.toggle('open');
+    if (exp) exp.classList.toggle('open');
+}
+
+function escHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str || '';
+    return d.innerHTML;
+}
+
+// ── Init ─────────────────────────────────────────────────
+window.addEventListener('load', () => {
+    // Wait for Google Identity Services to load
+    const checkGis = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts) {
+            clearInterval(checkGis);
+            initAuth();
+        }
+    }, 200);
+    // Timeout fallback
+    setTimeout(() => {
+        clearInterval(checkGis);
+        if (!currentUser) initAuth();
+    }, 5000);
+});
+</script>
+</body>
+</html>
