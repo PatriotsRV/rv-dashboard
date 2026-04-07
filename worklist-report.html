@@ -582,10 +582,18 @@ function renderReport() {
         logsByRO[log.ro_id].push(log);
     });
 
+    // Filter out Admins — only show Sr Managers, Managers, and Techs
+    const adminEmails = ADMIN_EMAILS.map(e => e.toLowerCase());
+    Object.keys(byManager).forEach(email => {
+        if (adminEmails.includes(email.toLowerCase()) && !SR_MANAGER_EMAILS.includes(email.toLowerCase())) {
+            delete byManager[email];
+        }
+    });
+
     // Determine manager ordering: Sr Managers first, then regular managers
     const managerOrder = Object.keys(byManager).sort((a, b) => {
-        const aIsSr = SR_MANAGER_EMAILS.includes(a) || ADMIN_EMAILS.includes(a);
-        const bIsSr = SR_MANAGER_EMAILS.includes(b) || ADMIN_EMAILS.includes(b);
+        const aIsSr = SR_MANAGER_EMAILS.includes(a);
+        const bIsSr = SR_MANAGER_EMAILS.includes(b);
         if (aIsSr && !bIsSr) return -1;
         if (!aIsSr && bIsSr) return 1;
         return a.localeCompare(b);
@@ -618,7 +626,7 @@ function renderReport() {
     // Render manager sections
     body.innerHTML = managerOrder.map((email, mIdx) => {
         const items = byManager[email];
-        const isSr = SR_MANAGER_EMAILS.includes(email) || ADMIN_EMAILS.includes(email);
+        const isSr = SR_MANAGER_EMAILS.includes(email);
         const roleBadge = isSr ? 'Sr Manager' : 'Manager';
         const displayName = email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         const uniqueROs = new Set(items.map(i => i.ro_id)).size;
