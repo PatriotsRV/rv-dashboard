@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.304
-    Released: 2026-04-03
+    PRVS Dashboard v1.305
+    Released: 2026-04-07
+    v1.305: GH#16 enhancement — Sr Manager silo-specific work lists; silo tabs in sidebar; silo picker on add; service_silo column on manager_work_lists
     v1.304: GH#18 (partial) — Parts notifications: “Parts Ordered” + “ETA Updated” trigger emails to requester + info@; requested_by_email captured on submitPartsRequest; notifyPartsRequester/notifyPartsEtaUpdate added
     v1.303: GH#16 Manager RO Work List — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager can view all lists
     v1.302: GH#5c WO polish — est_hours per task (rolls up to silo header); WO Task Templates (save/load/overwrite/merge per silo); template overlay z-index fix (100000); form modal outside-click lock on New RO + WO modal (prevents tech data loss)
@@ -6705,6 +6706,7 @@ Notes: ${notes}` : '',
 
         async function loadWorkList(viewEmail) {
             _workListViewEmail = viewEmail || null;
+            _workListActiveSilo = null; // reset silo filter when switching managers
             const myEmail = supabaseSession?.user?.email || '';
             const targetEmail = _workListViewEmail || myEmail;
             const subtitle = document.getElementById('workListSubtitle');
@@ -6717,6 +6719,7 @@ Notes: ${notes}` : '',
                     .order('priority', { ascending: true });
                 if (error) throw error;
                 _workListData = data || [];
+                _renderWorkListSiloTabs();
                 renderWorkList();
             } catch (err) {
                 console.error('[WorkList] load error:', err);
@@ -6731,15 +6734,94 @@ Notes: ${notes}` : '',
             const myEmail = supabaseSession?.user?.email || '';
             const roId = supabaseId;
             const roName = (ro.customerName || 'Unknown') + ' — ' + (ro.roNumber || '');
-            if (_workListData.some(item => item.ro_id === roId)) {
-                alert('This RO is already on your Work List.');
+
+            // For Sr Managers/Admins, show silo picker; otherwise add with service_silo = null
+            if (isSrOrAdmin()) {
+                _showSiloPickerForAdd(roId, roName);
+            } else {
+                _addToWorkListWithSilo(roId, roName, null);
+            }
+        }
+
+        function _showSiloPickerForAdd(roId, roName) {
+            // Identify which silos already have this RO
+            const existingSilos = new Set(_workListData.filter(item => item.ro_id === roId).map(item => item.service_silo));
+
+            // If ALL 8 silos already have this RO, nothing left to add
+            if (existingSilos.size >= SERVICE_SILOS.length) {
+                alert('This RO is already on your Work List in every silo.');
                 return;
             }
+
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.id = 'siloPickerModal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:12500;';
+
+            const inner = document.createElement('div');
+            inner.style.cssText = 'background:#1e293b;border:2px solid #3b82f6;border-radius:12px;padding:24px;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.8);';
+
+            const title = document.createElement('div');
+            title.style.cssText = 'color:white;font-size:1.1rem;font-weight:700;margin-bottom:16px;';
+            title.textContent = 'Select Service Silo';
+            inner.appendChild(title);
+
+            const desc = document.createElement('div');
+            desc.style.cssText = 'color:#cbd5e1;font-size:0.85rem;margin-bottom:16px;line-height:1.5;';
+            desc.textContent = 'Which silo should this RO be assigned to? You can add it to multiple silos.';
+            inner.appendChild(desc);
+
+            const btnContainer = document.createElement('div');
+            btnContainer.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px;';
+
+            SERVICE_SILOS.forEach(silo => {
+                const alreadyAdded = existingSilos.has(silo.key);
+                const btn = document.createElement('button');
+                if (alreadyAdded) {
+                    btn.style.cssText = 'padding:12px 14px;background:#1a2e1a;border:1px solid #22c55e;color:#6b7280;border-radius:6px;font-size:0.9rem;text-align:left;cursor:default;opacity:0.7;';
+                    btn.innerHTML = `<span style="font-size:1.2rem;margin-right:8px;">${silo.emoji}</span>${silo.label} <span style="color:#22c55e;font-size:0.75rem;margin-left:8px;">Already added</span>`;
+                } else {
+                    btn.style.cssText = 'padding:12px 14px;background:#0f172a;border:1px solid #334155;color:white;border-radius:6px;cursor:pointer;font-size:0.9rem;transition:all 0.2s;text-align:left;';
+                    btn.innerHTML = `<span style="font-size:1.2rem;margin-right:8px;">${silo.emoji}</span>${silo.label}`;
+                    btn.onmouseover = () => { btn.style.borderColor = '#3b82f6'; btn.style.background = '#1e2a47'; };
+                    btn.onmouseout = () => { btn.style.borderColor = '#334155'; btn.style.background = '#0f172a'; };
+                    btn.onclick = async () => {
+                        document.body.removeChild(modal);
+                        await _addToWorkListWithSilo(roId, roName, silo.key);
+                    };
+                }
+                btnContainer.appendChild(btn);
+            });
+            inner.appendChild(btnContainer);
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.style.cssText = 'width:100%;padding:10px 14px;background:#334155;border:none;color:white;border-radius:6px;cursor:pointer;font-size:0.85rem;';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.onclick = () => {
+                if (document.body.contains(modal)) {
+                    document.body.removeChild(modal);
+                }
+            };
+            inner.appendChild(cancelBtn);
+
+            modal.appendChild(inner);
+            document.body.appendChild(modal);
+        }
+
+        async function _addToWorkListWithSilo(roId, roName, serviceSilo) {
+            const myEmail = supabaseSession?.user?.email || '';
             const priority = _workListData.length > 0 ? Math.max(..._workListData.map(d => d.priority)) + 1 : 1;
             try {
+                const insertData = {
+                    manager_email: myEmail,
+                    ro_id: roId,
+                    ro_name: roName,
+                    priority,
+                    service_silo: serviceSilo  // null for regular managers, silo key for Sr Managers
+                };
                 const { error } = await getSB()
                     .from('manager_work_lists')
-                    .insert({ manager_email: myEmail, ro_id: roId, ro_name: roName, priority });
+                    .insert(insertData);
                 if (error) throw error;
                 if (!_workListOpen) toggleWorkListPanel();
                 else if (!_workListViewEmail) await loadWorkList(null);
@@ -6777,26 +6859,102 @@ Notes: ${notes}` : '',
             if (btn && canSeeWorkList()) btn.style.display = '';
         }
 
+        function _renderWorkListSiloTabs() {
+            const tabsContainer = document.getElementById('workListSiloTabs');
+            if (!tabsContainer) return;
+
+            // Show tabs for Sr Manager/Admin lists (always — even when empty, so the silo structure is clear)
+            const targetEmail = _workListViewEmail || supabaseSession?.user?.email || '';
+            const isSrManagerList = SR_MANAGER_EMAILS.includes(targetEmail) || ADMIN_EMAILS.includes(targetEmail);
+
+            if (!isSrManagerList) {
+                tabsContainer.style.display = 'none';
+                _workListActiveSilo = null; // reset silo filter when viewing regular manager
+                return;
+            }
+
+            tabsContainer.style.display = 'flex';
+
+            // Build tab buttons
+            const tabs = [
+                { key: 'all', label: 'All', emoji: '' },
+                ...SERVICE_SILOS
+            ];
+
+            tabsContainer.innerHTML = tabs.map(tab => {
+                const isActive = _workListActiveSilo === tab.key || (tab.key === 'all' && !_workListActiveSilo);
+                const activeStyle = isActive
+                    ? 'background:#3b82f6;color:white;border-color:#3b82f6;'
+                    : 'background:#0f172a;color:#93c5fd;border-color:#334155;';
+                const label = tab.key === 'all' ? 'All' : `${tab.emoji} ${tab.label}`;
+                return `<button
+                    class="wl-silo-tab"
+                    onclick="_setWorkListSilo('${tab.key}')"
+                    style="padding:8px 12px;border:1px solid #334155;border-radius:4px;background:#0f172a;color:#93c5fd;cursor:pointer;font-size:0.8rem;white-space:nowrap;flex-shrink:0;transition:all 0.2s;${activeStyle}"
+                    title="Filter by ${label}"
+                >${label}</button>`;
+            }).join('');
+        }
+
+        function _setWorkListSilo(siloKey) {
+            _workListActiveSilo = siloKey === 'all' ? null : siloKey;
+            renderWorkList();
+            _renderWorkListSiloTabs();
+        }
+
         function renderWorkList() {
             const body = document.getElementById('workListBody');
             if (!body) return;
-            if (_workListData.length === 0) {
-                body.innerHTML = '<p style="color:#6b7280;padding:16px;text-align:center;font-size:0.9rem;">No ROs on your list yet.<br><br>Use “&#128203; Add to My List” on any RO card.</p>';
+
+            // Filter items by active silo (if any)
+            let filteredData = _workListData;
+            if (_workListActiveSilo && _workListActiveSilo !== 'all') {
+                filteredData = _workListData.filter(item => item.service_silo === _workListActiveSilo);
+            }
+
+            // Empty state with context-aware message
+            if (filteredData.length === 0) {
+                let msg = 'No ROs on your list yet.';
+                if (_workListActiveSilo && _workListActiveSilo !== 'all') {
+                    const silo = SERVICE_SILOS.find(s => s.key === _workListActiveSilo);
+                    if (silo) msg = `No ROs in ${silo.emoji} ${silo.label} queue`;
+                }
+                body.innerHTML = `<p style=”color:#6b7280;padding:16px;text-align:center;font-size:0.9rem;”>${msg}<br><br>Use “&#128203; Add to My List” on any RO card.</p>`;
                 return;
             }
-            body.innerHTML = _workListData.map((item, idx) => `
-                <div class="wl-row" draggable="true" data-idx="${idx}" data-id="${item.id}"
-                     style="background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:grab;display:flex;align-items:center;gap:8px;">
-                    <span style="color:#6b7280;font-size:0.8rem;min-width:20px;font-weight:700;">${idx + 1}.</span>
-                    <span onclick="scrollToROInBoard('${item.ro_id}')" style="flex:1;color:white;font-size:0.85rem;cursor:pointer;line-height:1.3;" title="Click to scroll to this RO">${item.ro_name}</span>
-                    <button onclick="removeFromWorkList(${item.id})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;" title="Remove from list">×</button>
+
+            // Build rows from filtered data
+            body.innerHTML = filteredData.map((item, displayIdx) => {
+                // Get silo tag if applicable
+                let siloTag = '';
+                if (item.service_silo) {
+                    const silo = SERVICE_SILOS.find(s => s.key === item.service_silo);
+                    if (silo) {
+                        siloTag = `<span style=”display:inline-block;background:#0f172a;border:1px solid #334155;color:#93c5fd;padding:2px 6px;border-radius:4px;font-size:0.7rem;margin-right:6px;white-space:nowrap;”>${silo.emoji} ${silo.label}</span>`;
+                    }
+                }
+
+                return `
+                <div class=”wl-row” draggable=”true” data-idx=”${displayIdx}” data-id=”${item.id}” data-ro-id=”${item.ro_id}”
+                     style=”background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:grab;display:flex;align-items:center;gap:8px;”>
+                    <span style=”color:#6b7280;font-size:0.8rem;min-width:20px;font-weight:700;”>${displayIdx + 1}.</span>
+                    ${siloTag}
+                    <span onclick=”scrollToROInBoard('${item.ro_id}')” style=”flex:1;color:white;font-size:0.85rem;cursor:pointer;line-height:1.3;” title=”Click to scroll to this RO”>${item.ro_name}</span>
+                    <button onclick=”removeFromWorkList(${item.id})” style=”background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;” title=”Remove from list”>×</button>
                 </div>
-            `).join('');
-            // Drag-and-drop reorder
+            `}).join('');
+
+            // Drag-and-drop reorder (within filtered view)
             const rows = body.querySelectorAll('.wl-row');
             let dragSrcIdx = null;
+            let dragSrcId = null;
+
             rows.forEach(row => {
-                row.addEventListener('dragstart', () => { dragSrcIdx = parseInt(row.dataset.idx); row.style.opacity = '0.4'; });
+                row.addEventListener('dragstart', () => {
+                    dragSrcIdx = parseInt(row.dataset.idx);
+                    dragSrcId = row.dataset.id;
+                    row.style.opacity = '0.4';
+                });
                 row.addEventListener('dragend', () => { row.style.opacity = '1'; });
                 row.addEventListener('dragover', e => { e.preventDefault(); row.style.borderColor = '#3b82f6'; });
                 row.addEventListener('dragleave', () => { row.style.borderColor = '#334155'; });
@@ -6805,10 +6963,27 @@ Notes: ${notes}` : '',
                     row.style.borderColor = '#334155';
                     const destIdx = parseInt(row.dataset.idx);
                     if (dragSrcIdx === null || dragSrcIdx === destIdx) return;
-                    const moved = _workListData.splice(dragSrcIdx, 1)[0];
-                    _workListData.splice(destIdx, 0, moved);
-                    renderWorkList();
-                    _saveWorkListOrder();
+
+                    // Find original indices in _workListData
+                    const filteredIndices = _workListData
+                        .map((item, idx) => ({
+                            idx,
+                            matches: _workListActiveSilo && _workListActiveSilo !== 'all'
+                                ? item.service_silo === _workListActiveSilo
+                                : true
+                        }))
+                        .filter(x => x.matches)
+                        .map(x => x.idx);
+
+                    const srcOriginalIdx = filteredIndices[dragSrcIdx];
+                    const destOriginalIdx = filteredIndices[destIdx];
+
+                    if (srcOriginalIdx !== undefined && destOriginalIdx !== undefined) {
+                        const moved = _workListData.splice(srcOriginalIdx, 1)[0];
+                        _workListData.splice(destOriginalIdx, 0, moved);
+                        renderWorkList();
+                        _saveWorkListOrder();
+                    }
                 });
             });
         }
@@ -13065,6 +13240,7 @@ function toggleWOTasks(tasksId, chevId) {
         <label style="color:#93c5fd;font-size:0.75rem;display:block;margin-bottom:5px;">View another manager's list:</label>
         <select id="workListManagerSelect" onchange="loadWorkList(this.value || null)" style="width:100%;padding:7px 10px;background:#1e293b;color:white;border:1px solid #334155;border-radius:6px;font-size:0.85rem;"></select>
     </div>
+    <div id="workListSiloTabs" style="display:none;padding:8px 14px;background:#0f172a;border-bottom:1px solid #1e3a5f;flex-shrink:0;overflow-x:auto;overflow-y:hidden;gap:6px;flex-wrap:wrap;align-items:center;"></div>
     <div id="workListBody" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
     <div style="padding:10px 14px;background:#0f172a;border-top:1px solid #1e3a5f;color:#6b7280;font-size:0.72rem;text-align:center;flex-shrink:0;">Drag rows to reprioritize · Click an RO to scroll to it</div>
 </div>

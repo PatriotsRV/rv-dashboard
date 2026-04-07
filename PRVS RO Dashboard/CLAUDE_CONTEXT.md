@@ -99,6 +99,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | — | **Supabase: Maximize log retention** | Settings → Logs — set retention to maximum available on Pro plan (7 days for all log types) | ⏳ Roland action |
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
 | 🟡 | — | **Test out Claude dispatch** | Test Claude dispatch workflow | ⏳ Open |
+| 🟡 | GH#21 | **checkin.html Auth Persistence Fix** | Supabase client created with no auth options — no `persistSession`, `autoRefreshToken`, or `storageKey`. Authenticated session lost on every page reload (falls back to anon key). Fix: add `SB_AUTH_OPTIONS` matching index.html + `getSession()` restore on load. | ⏳ Open |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -208,10 +209,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - Both PDF and DOCX versions of training guides are maintained in `docs/`. PDF for distribution, DOCX for editing.
 - Build scripts: `build_guide.py` (ReportLab PDF) and `build_guide_docx.py` (python-docx DOCX) in sandbox at `/sessions/sweet-relaxed-babbage/`. These are session-local only — not committed to the repo.
 
-### Nik Polizzo — Supabase Auth Issue (Session 33)
-- Nik was getting "Your session is not ready yet" on checkin.html. Root cause: Nik is not in Supabase `auth.users` table — `signInWithIdToken()` fails silently, `supabaseSession` stays null.
-- **Fix:** Supabase Dashboard → Authentication → Users → Add User → Invite user → `nik@patriotsrvservices.com`. OR temporarily enable signups (Sign In / Providers → Email → toggle on), have Nik sign in with Google, then disable.
-- **Also note:** Riley Scott registered as `rileyscott848@gmail.com` instead of `riley@patriotsrvservices.com`. Should re-register with work email.
+### Nik Polizzo — Supabase Auth Issue (Session 33) — ✅ RESOLVED
+- ~~Nik was getting "Your session is not ready yet" on checkin.html.~~ Fixed — resolved by Roland (Session 34).
+- **Still open:** Riley Scott registered as `rileyscott848@gmail.com` instead of `riley@patriotsrvservices.com`. Should re-register with work email.
 
 ### CLAUDE_CONTEXT.md Storage (Session 29)
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
