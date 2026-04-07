@@ -214,7 +214,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 ### Nik Polizzo — Supabase Auth Issue (Session 33) — ✅ RESOLVED
 - ~~Nik was getting "Your session is not ready yet" on checkin.html.~~ Fixed — resolved by Roland (Session 34).
-- **Still open:** Riley Scott registered as `rileyscott848@gmail.com` instead of `riley@patriotsrvservices.com`. Should re-register with work email.
+- Riley Scott's work email is `solar@patriotsrvservices.com` (not `riley@`). Updated in MANAGER_EMAILS Session 35.
 
 ### GH#16 Sr Manager Silo Work Lists (Session 34)
 - `service_silo TEXT` column on `manager_work_lists` — nullable. NULL for regular managers, silo key string for Sr Managers. **Migration must be run manually in Supabase SQL Editor.**
@@ -286,7 +286,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | Mauricio Tellez | mauricio@patriotsrvservices.com | Manager | Repair |
 | Jason Rubin | jason@patriotsrvservices.com | Manager | Repair |
 | Andrew Page | andrew@patriotsrvservices.com | Manager | Vroom |
-| Riley Scott | riley@patriotsrvservices.com | Manager | Solar |
+| Riley Scott | solar@patriotsrvservices.com | Manager | Solar |
 | Bobby Thatcher | bobby@patriotsrvservices.com | Parts Manager | Parts & Insurance (office — NOT assigned to service WOs) |
 | Brandon Dillon | brandon@patriotsrvservices.com | Parts Manager | Parts & Insurance (office — NOT assigned to service WOs) |
 | Nik Polizzo | nik@patriotsrvservices.com | Tech | — |
