@@ -448,7 +448,7 @@ async function loadAllData() {
         // 3. Load RO data for those UUIDs
         const { data: ros, error: roErr } = await getSB()
             .from('repair_orders')
-            .select('id, ro_id, customer_name, rv, repair_type, status, date_in, dollar_value, parking_spot')
+            .select('id, ro_id, customer_name, rv, repair_type, status, date_received, date_arrived, dollar_value, parking_spot')
             .in('id', roIds);
         if (roErr) throw roErr;
         _allROs = ros || [];
@@ -589,7 +589,10 @@ function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
     const rowId = `ro_${mIdx}_${siloKey}_${idx}`;
 
     // KPIs
-    const daysOnLot = ro.date_in ? Math.floor((Date.now() - new Date(ro.date_in).getTime()) / 86400000) : null;
+    // Match dashboard logic: use date_arrived if set, otherwise date_received; skip if Not On Lot with no arrival
+    const startDate = ro.date_arrived || ro.date_received;
+    const daysOnLot = (ro.status === 'Not On Lot' && !ro.date_arrived) ? null
+        : startDate ? Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000) : null;
     let daysChip = '';
     if (daysOnLot !== null) {
         const cls = daysOnLot <= 30 ? 'chip-days-green' : daysOnLot <= 50 ? 'chip-days-orange' : 'chip-days-red';
