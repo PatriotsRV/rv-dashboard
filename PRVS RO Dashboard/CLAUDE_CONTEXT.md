@@ -102,6 +102,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#21 | **checkin.html Auth Persistence Fix** | Supabase client created with no auth options — no `persistSession`, `autoRefreshToken`, or `storageKey`. Authenticated session lost on every page reload (falls back to anon key). Fix: add `SB_AUTH_OPTIONS` matching index.html + `getSession()` restore on load. | ⏳ Open |
 | 🟡 | — | **Run SQL migration: service_silo column** | `ALTER TABLE manager_work_lists ADD COLUMN IF NOT EXISTS service_silo TEXT;` — needed for GH#16 silo work lists (v1.305). Run in Supabase SQL Editor. | ⏳ Roland action |
 | 🟡 | — | **GitHub Release v1.305** | GH#16 Sr Manager silo work lists + Work List Report page. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.305` | ⏳ Roland action |
+| 🟡 | — | **Batch-invite remaining techs in Supabase Auth** | Zak Wombles hit "Your session is not ready yet" on checkin.html (Session 36) — same root cause as Nik (Session 33): no Supabase auth.users row. Zak fixed. Remaining techs likely still missing: ignacio@, tipton@, rod@, travis@, cooper@, rudy@, tommy@. Check Supabase → Auth → Users and invite any missing. | ⏳ Roland action |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -212,8 +213,10 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - Both PDF and DOCX versions of training guides are maintained in `docs/`. PDF for distribution, DOCX for editing.
 - Build scripts: `build_guide.py` (ReportLab PDF) and `build_guide_docx.py` (python-docx DOCX) in sandbox at `/sessions/sweet-relaxed-babbage/`. These are session-local only — not committed to the repo.
 
-### Nik Polizzo — Supabase Auth Issue (Session 33) — ✅ RESOLVED
-- ~~Nik was getting "Your session is not ready yet" on checkin.html.~~ Fixed — resolved by Roland (Session 34).
+### Supabase Auth — New User Onboarding
+- **New signups are disabled** (Session 28 security cleanup). Any new PRVS employee must be **invited** via Supabase → Authentication → Users → Invite User before they can use checkin.html or index.html.
+- Symptom if missing: Google sign-in succeeds (name shows at bottom of page) but `signInWithIdToken()` fails silently → `supabaseSession` stays null → "Your session is not ready yet. Please sign out and sign back in."
+- Hit by: Nik Polizzo (Session 33, fixed Session 34), Zak Wombles (Session 36, fixed). Remaining techs may still need invites.
 - Riley Scott's work email is `solar@patriotsrvservices.com` (not `riley@`). Updated in MANAGER_EMAILS Session 35.
 
 ### GH#16 Sr Manager Silo Work Lists (Session 34)
