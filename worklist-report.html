@@ -602,7 +602,7 @@ function renderReport() {
     // Stats
     const totalManagers = managerOrder.length;
     const totalROs = new Set(_allWorkLists.map(w => w.ro_id)).size;
-    const activeTechs = new Set(_allTimeLogs.filter(l => !l.clock_out).map(l => l.user_id)).size;
+    const activeTechs = new Set(_allTimeLogs.filter(l => !l.clock_out).map(l => l.tech_email)).size;
     const totalHours = _allTimeLogs.reduce((sum, l) => {
         if (l.clock_in && l.clock_out) {
             return sum + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
@@ -692,10 +692,10 @@ function renderStaffTiles() {
 
     if (staffToShow.length === 0) return '';
 
-    // Build active clock-in lookup by user_id (email stored in user_id column)
+    // Build active clock-in lookup by tech_email
     const activeByEmail = {};
     _allActiveClockIns.forEach(log => {
-        const email = (log.user_id || '').toLowerCase();
+        const email = (log.tech_email || '').toLowerCase();
         if (!activeByEmail[email]) activeByEmail[email] = [];
         activeByEmail[email].push(log);
     });
@@ -804,7 +804,7 @@ function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
 
     // Time log summary
     const activeLogs = logs.filter(l => !l.clock_out);
-    const activeTechNames = [...new Set(activeLogs.map(l => l.user_id?.split('@')[0] || 'Unknown'))];
+    const activeTechNames = [...new Set(activeLogs.map(l => l.tech_email?.split('@')[0] || 'Unknown'))];
     const totalHours = logs.reduce((sum, l) => {
         if (l.clock_in && l.clock_out) return sum + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
         return sum;
@@ -826,7 +826,7 @@ function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey) {
     let timeDetailHtml = '';
     if (logs.length > 0) {
         const rows = logs.slice(0, 50).map(l => {
-            const techName = l.tech_name || (l.user_id || '').split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            const techName = l.tech_name || (l.tech_email || '').split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const dateStr = l.clock_in ? new Date(l.clock_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
             const inTime = l.clock_in ? new Date(l.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
             const outTime = l.clock_out ? new Date(l.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
