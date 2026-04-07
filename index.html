@@ -2716,6 +2716,9 @@
                 <button id="analyticsBtn" onclick="window.open('analytics.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(22,163,74,0.15); color: #4ade80; border: 2px solid rgba(22,163,74,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(22,163,74,0.3)'" onmouseout="this.style.background='rgba(22,163,74,0.15)'">
                     📊 Analytics
                 </button>
+                <button id="workListReportBtn" onclick="window.open('worklist-report.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(124,58,237,0.15); color: #c4b5fd; border: 2px solid rgba(124,58,237,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.3)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
+                    &#128203; Work List Report
+                </button>
                 <button id="manageDupesBtn" onclick="openDuplicateManager()" style="display:none; padding: 10px 16px; background: rgba(239,68,68,0.15); color: #f87171; border: 2px solid rgba(239,68,68,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">
                     🔗 Merge Dupes <span id="dupesCount" style="background:#ef4444;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
                 </button>
@@ -8245,6 +8248,11 @@ Notes: ${notes}` : '',
             const analyticsBtn = document.getElementById('analyticsBtn');
             if (analyticsBtn) {
                 analyticsBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+            }
+            // Show/hide Work List Report button (Admin only)
+            const wlReportBtn = document.getElementById('workListReportBtn');
+            if (wlReportBtn) {
+                wlReportBtn.style.display = isAdmin() ? 'inline-block' : 'none';
             }
             // Show/hide Merge Dupes button (Admin only — visible only when duplicates exist)
             const manageDupesBtn = document.getElementById('manageDupesBtn');
