@@ -81,7 +81,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🔴 | GH#4 | **Twilio SMS — plan + build** | Customer + tech notifications via SMS. Elevated to 🔴 after Kenect pivot. Scope TBD this session. | ⏳ Open |
 | 🟠 | GH#5c | **Polish Work Orders UI** | **Session 30:** (1) WO modal filters to active services only. (2) `+ Add Service` button. (3) Form label polish. (4) Chevron collapse/expand per silo. 8 silos. **Session 30 (cont):** (5) ⏱️ Est. Hours field on each task (est_hours NUMERIC(5,2) on service_tasks — `ALTER TABLE` run). Rolls up to silo header as `⏱️ ~Xh`. (6) WO Task Templates (GH#5b folded in) — managers Save as Template / Load Template per silo with Replace or Merge choice. Two new Supabase tables: `wo_task_templates` + `wo_template_tasks`. (7) Template overlay z-index fixed (raised to 100000). (8) Outside-click dismissal disabled on New RO modal + WO modal — prevents tech data loss. Remaining: mobile layout polish, any rollout bugs. | 🔄 In Progress |
 | ✅ | GH#5b | **Task Templates (V1.5)** | Folded into GH#5c Session 30 — Save as Template / Load Template / Overwrite per silo, Replace or Merge. Complete. | ✅ Done — Session 30 |
-| ✅ | GH#16 | **Manager RO Work List** | Each manager can create a personal Work List of ROs they plan to work on. Select ROs from the dashboard, add to their Current Work List, arrange in priority order. Single-line items showing core RO data points (TBD by Roland). Living list — managers can reorder/add/remove at any time. Visible to all Sr Managers and Admins. Essentially a prioritized queue per manager. | ✅ Done — Session 31 |
+| ✅ | GH#16 | **Manager RO Work List** | **Session 31:** Base feature complete. **Session 34:** v1.305 — Sr Manager silo-specific work lists: silo tabs in sidebar, silo picker popup on add, `service_silo` column on `manager_work_lists`, same RO can be in multiple silo lists. Regular managers unchanged. | ✅ Enhanced — Session 34 |
 | 🟠 | GH#17 | **Customer Check-In Page** | Front desk workstation page for customers dropping off their RV. Captures customer contact info + RO work description. Output creates a new RO that managers then enrich with photos, service selections, WO tasks, etc. Branded with PRVS logo + mission statement. Includes digital **Repair Authorization Form (RAF)** with e-signature. Living form — Roland will add fields before go-live. Runs on a dedicated front desk workstation. | ⏳ Open |
 | 🟠 | GH#6 | **Employee Time Clock** | Full time clock feature in dashboard | ⏳ Open |
 | 🟡 | GH#11 | **Solar Battery Bank tile — add Watt Hours** | Show Wh alongside Ah in Quote section (Wh = Ah × system voltage); update PDF output too | ⏳ Open |
@@ -100,6 +100,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | — | **Create parts@patriotsrvservices.com** | Management email group for parts request notifications | ⏳ Roland action |
 | 🟡 | — | **Test out Claude dispatch** | Test Claude dispatch workflow | ⏳ Open |
 | 🟡 | GH#21 | **checkin.html Auth Persistence Fix** | Supabase client created with no auth options — no `persistSession`, `autoRefreshToken`, or `storageKey`. Authenticated session lost on every page reload (falls back to anon key). Fix: add `SB_AUTH_OPTIONS` matching index.html + `getSession()` restore on load. | ⏳ Open |
+| 🟡 | — | **Run SQL migration: service_silo column** | `ALTER TABLE manager_work_lists ADD COLUMN IF NOT EXISTS service_silo TEXT;` — needed for GH#16 silo work lists (v1.305). Run in Supabase SQL Editor. | ⏳ Roland action |
+| 🟡 | — | **GitHub Release v1.305** | GH#16 Sr Manager silo work lists + Work List Report page. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.305` | ⏳ Roland action |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -109,7 +111,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.304** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager can view other managers' lists**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification** |
+| `index.html` | **v1.305** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager silo-specific lists (v1.305), silo tabs + picker popup**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification**, **📋 Work List Report link (Admin only, v1.305)** |
+| `worklist-report.html` | **v1.1** | Admin-only Active Work List Report — all managers' work lists + time logs per RO. Manager accordion sections (Sr Managers grouped by silo). Condensed RO rows with KPI chips (Days on Lot color-coded, Dollar Value). Expandable time log detail per RO. Staff Status tiles (red/green clock-in grid). Auto-refresh every 3 min. Google SSO auth gate. |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
@@ -212,6 +215,21 @@ Claude must complete ALL of these before the session ends (context limit, user s
 ### Nik Polizzo — Supabase Auth Issue (Session 33) — ✅ RESOLVED
 - ~~Nik was getting "Your session is not ready yet" on checkin.html.~~ Fixed — resolved by Roland (Session 34).
 - **Still open:** Riley Scott registered as `rileyscott848@gmail.com` instead of `riley@patriotsrvservices.com`. Should re-register with work email.
+
+### GH#16 Sr Manager Silo Work Lists (Session 34)
+- `service_silo TEXT` column on `manager_work_lists` — nullable. NULL for regular managers, silo key string for Sr Managers. **Migration must be run manually in Supabase SQL Editor.**
+- `_workListActiveSilo` state var tracks which silo tab is selected in the sidebar panel.
+- `_showSiloPickerForAdd()` creates a modal overlay (z-index:12500) for Sr Managers to pick a silo. Shows already-added silos as disabled green buttons.
+- Same RO can be added to multiple silo lists — duplicate check is per-silo, not per-RO.
+- `_renderWorkListSiloTabs()` called from `loadWorkList()` after data loads. Tabs always shown for Sr Manager lists, hidden for regular managers.
+- `_workListActiveSilo` resets to null when switching managers via the picker dropdown.
+
+### worklist-report.html (Session 34)
+- Standalone admin-only report page at `/worklist-report.html`.
+- Uses its own Supabase auth with `storageKey: 'prvs_report_auth'` (separate from index.html's `prvs_supabase_auth`).
+- `repair_orders` column for date is `date_received` (NOT `date_in`). Days on lot uses `date_arrived || date_received` matching dashboard logic.
+- `time_logs` column for tech email is `user_id` (NOT `tech_email`). Tech display name in `tech_name` column.
+- Staff tiles exclude Admins; work list sections exclude Admins unless they're also in SR_MANAGER_EMAILS.
 
 ### CLAUDE_CONTEXT.md Storage (Session 29)
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
