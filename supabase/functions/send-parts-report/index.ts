@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
     // ── 2. Parts: ordered but not yet received ──────────────────────────
     const { data: orderedParts, error: e2 } = await sb
       .from("parts")
-      .select("id, part_name, part_number, eta, status, updated_at, repair_order_id, repair_orders(ro_id, customer_name, rv)")
+      .select("id, part_name, part_number, eta, status, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
       .in("status", ["Ordered", "In Transit", "Backordered"])
       .order("eta", { ascending: true, nullsFirst: false });
     if (e2) console.error("Error fetching ordered parts:", e2);
@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
     const todayStr = now.toISOString().split("T")[0];
     const { data: overdueParts, error: e3 } = await sb
       .from("parts")
-      .select("id, part_name, part_number, eta, status, updated_at, repair_order_id, repair_orders(ro_id, customer_name, rv)")
+      .select("id, part_name, part_number, eta, status, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
       .lt("eta", todayStr)
       .not("status", "eq", "Received")
       .order("eta", { ascending: true });
@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
     const yesterday = new Date(Date.now() - 86_400_000).toISOString();
     const { data: receivedParts, error: e4 } = await sb
       .from("parts")
-      .select("id, part_name, part_number, eta, status, updated_at, repair_order_id, repair_orders(ro_id, customer_name, rv)")
+      .select("id, part_name, part_number, eta, status, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
       .eq("status", "Received")
       .gte("updated_at", yesterday)
       .order("updated_at", { ascending: false });
