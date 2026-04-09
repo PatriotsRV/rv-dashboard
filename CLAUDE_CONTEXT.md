@@ -34,7 +34,7 @@ Claude must:
 - [ ] 5. Report: exactly where we are and what's next
 
 ### 🔴 END OF SESSION — Roland's command:
-> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, Completed Work, Known Issues, and Version History as needed. Save CLAUDE_CONTEXT.md to the workspace folder, then push to GitHub as a backup. Do not end the session until the push is confirmed with a commit hash."*
+> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, and Known Issues in CLAUDE_CONTEXT.md. Update Completed Work and Version History in CLAUDE_CONTEXT_HISTORY.md. Save both files to the workspace folder, then push both to GitHub as a backup. Do not end the session until the push is confirmed with a commit hash."*
 
 Claude must complete ALL of these before the session ends (context limit, user stops, etc.):
 
