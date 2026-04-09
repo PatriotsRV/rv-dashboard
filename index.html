@@ -10326,6 +10326,22 @@ Notes: ${notes}` : '',
                 });
                 if (prErr) throw prErr;
 
+                // 2b. Insert a part row so the request appears in the Parts modal
+                if (!isEstimateOnly) {
+                    try {
+                        await getSB().from('parts').insert({
+                            ro_id:       ro._supabaseId,
+                            part_name:   description,
+                            status:      'Sourcing',
+                            ordered_by:  userName,
+                            notes:       `Requested by ${userName} on ${ts}`,
+                            qty:         1,
+                        });
+                    } catch(partErr) {
+                        console.warn('Parts row insert failed (non-blocking):', partErr);
+                    }
+                }
+
                 // 3. Set has_open_parts_request = true and parts_status on the RO
                 const { error: updErr } = await getSB().from('repair_orders').update({
                     has_open_parts_request: true,
