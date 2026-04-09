@@ -6946,8 +6946,9 @@ Notes: ${notes}` : '',
                 return;
             }
 
-            // Build rows from filtered data
-            body.innerHTML = filteredData.map((item, displayIdx) => {
+            // Build rows from filtered data — use DOM construction to avoid inline onclick quoting issues
+            body.innerHTML = '';
+            filteredData.forEach((item, displayIdx) => {
                 // Get silo tag if applicable
                 let siloTag = '';
                 if (item.service_silo) {
@@ -6957,15 +6958,45 @@ Notes: ${notes}` : '',
                     }
                 }
 
-                return `
-                <div class=”wl-row” draggable=”true” data-idx=”${displayIdx}” data-id=”${item.id}” data-ro-id=”${item.ro_id}”
-                     style=”background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:grab;display:flex;align-items:center;gap:8px;”>
-                    <span style=”color:#6b7280;font-size:0.8rem;min-width:20px;font-weight:700;”>${displayIdx + 1}.</span>
-                    ${siloTag}
-                    <span onclick=”scrollToROInBoard('${item.ro_id}')” style=”flex:1;color:white;font-size:0.85rem;cursor:pointer;line-height:1.3;” title=”Click to scroll to this RO”>${item.ro_name}</span>
-                    <button onclick=”removeFromWorkList('${item.id}')” style=”background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;” title=”Remove from list”>×</button>
-                </div>
-            `}).join('');
+                const row = document.createElement('div');
+                row.className = 'wl-row';
+                row.draggable = true;
+                row.dataset.idx = displayIdx;
+                row.dataset.id = item.id;
+                row.dataset.roId = item.ro_id;
+                row.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:grab;display:flex;align-items:center;gap:8px;';
+
+                // Priority number
+                const numSpan = document.createElement('span');
+                numSpan.style.cssText = 'color:#6b7280;font-size:0.8rem;min-width:20px;font-weight:700;';
+                numSpan.textContent = (displayIdx + 1) + '.';
+                row.appendChild(numSpan);
+
+                // Silo tag (if any)
+                if (siloTag) {
+                    const siloEl = document.createElement('span');
+                    siloEl.innerHTML = siloTag;
+                    row.appendChild(siloEl.firstChild);
+                }
+
+                // RO name (clickable to scroll)
+                const nameSpan = document.createElement('span');
+                nameSpan.style.cssText = 'flex:1;color:white;font-size:0.85rem;cursor:pointer;line-height:1.3;';
+                nameSpan.title = 'Click to scroll to this RO';
+                nameSpan.textContent = item.ro_name;
+                nameSpan.addEventListener('click', () => scrollToROInBoard(item.ro_id));
+                row.appendChild(nameSpan);
+
+                // Remove button
+                const removeBtn = document.createElement('button');
+                removeBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;';
+                removeBtn.title = 'Remove from list';
+                removeBtn.textContent = '×';
+                removeBtn.addEventListener('click', () => removeFromWorkList(item.id));
+                row.appendChild(removeBtn);
+
+                body.appendChild(row);
+            });
 
             // Drag-and-drop reorder (within filtered view)
             const rows = body.querySelectorAll('.wl-row');
