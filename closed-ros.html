@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<!--
+    PRVS Closed RO Archive v1.0
+    Released: 2026-04-09
+    GH#22: View cashiered/closed ROs — search, filter, and reactivate
+    Accessible to all authenticated users; reactivation restricted to Managers + Admins
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRVS — Closed RO Archive</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Barlow Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0b1121;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        /* ── Header ─────────────────────────────────── */
+        .header {
+            background: linear-gradient(135deg, #0f1a2e 0%, #1a2744 100%);
+            border-bottom: 2px solid #1e3a5f;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-left { display: flex; align-items: center; gap: 14px; }
+        .header-title { font-size: 1.25rem; font-weight: 700; color: white; letter-spacing: 0.5px; }
+        .header-subtitle { font-size: 0.75rem; color: #64748b; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .badge-role {
+            padding: 3px 10px; border-radius: 12px;
+            font-size: 0.7rem; font-weight: 600;
+        }
+        .badge-admin { background: #7c3aed; color: white; }
+        .badge-manager { background: #2563eb; color: white; }
+        .badge-user { background: #334155; color: #94a3b8; }
+        .back-link {
+            color: #60a5fa; text-decoration: none; font-size: 0.85rem; font-weight: 600;
+        }
+        .back-link:hover { text-decoration: underline; }
+
+        /* ── Auth gate ──────────────────────────────── */
+        .auth-gate {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 80vh; gap: 20px;
+        }
+        .auth-gate h2 { color: #94a3b8; font-size: 1.1rem; font-weight: 500; }
+
+        /* ── Stats bar ──────────────────────────────── */
+        .stats-bar {
+            display: flex; gap: 16px; padding: 12px 24px;
+            background: #0f172a; border-bottom: 1px solid #1e293b;
+            flex-wrap: wrap; align-items: center;
+        }
+        .stat-chip {
+            background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+            padding: 6px 14px; font-size: 0.8rem; color: #cbd5e1;
+        }
+        .stat-chip strong { color: white; margin-right: 4px; }
+
+        /* ── Search / Filter bar ────────────────────── */
+        .search-bar {
+            display: flex; gap: 12px; padding: 14px 24px;
+            background: #111827; border-bottom: 1px solid #1e293b;
+            flex-wrap: wrap; align-items: center;
+        }
+        .search-input {
+            flex: 1; min-width: 200px; padding: 10px 14px;
+            background: #0f172a; color: white; border: 1px solid #334155;
+            border-radius: 8px; font-size: 0.95rem; font-family: 'Barlow Condensed', sans-serif;
+        }
+        .search-input::placeholder { color: #475569; }
+        .search-input:focus { outline: none; border-color: #3b82f6; }
+        .filter-select {
+            padding: 10px 14px; background: #0f172a; color: white;
+            border: 1px solid #334155; border-radius: 8px; font-size: 0.9rem;
+            font-family: 'Barlow Condensed', sans-serif; cursor: pointer;
+        }
+        .filter-select:focus { outline: none; border-color: #3b82f6; }
+
+        /* ── Card grid ──────────────────────────────── */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+            padding: 20px 24px;
+        }
+        .ro-card {
+            background: #111827;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .ro-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .ro-card-photo {
+            width: 100%; height: 180px;
+            object-fit: cover; background: #1e293b;
+            display: block;
+        }
+        .ro-card-photo-placeholder {
+            width: 100%; height: 180px;
+            background: linear-gradient(135deg, #1e293b, #263548);
+            display: flex; align-items: center; justify-content: center;
+            color: #475569; font-size: 3rem;
+        }
+        .ro-card-body { padding: 14px 18px; }
+        .ro-card-header {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .ro-card-customer {
+            font-size: 1.1rem; font-weight: 700; color: white;
+            line-height: 1.3;
+        }
+        .ro-card-id {
+            font-size: 0.75rem; color: #64748b;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            background: #1e293b; padding: 2px 8px; border-radius: 4px;
+            white-space: nowrap;
+        }
+        .ro-card-rv {
+            font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px;
+        }
+        .ro-card-meta {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+        }
+        .meta-chip {
+            padding: 3px 10px; border-radius: 6px; font-size: 0.72rem;
+            font-weight: 600; white-space: nowrap;
+        }
+        .chip-repair-type { background: #1e3a5f; color: #93c5fd; }
+        .chip-days { background: #312e81; color: #a5b4fc; }
+        .chip-dollar { background: #064e3b; color: #6ee7b7; }
+        .chip-date-closed { background: #78350f; color: #fbbf24; }
+        .ro-card-desc {
+            font-size: 0.82rem; color: #64748b; margin-top: 8px;
+            line-height: 1.4; max-height: 40px; overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ro-card-footer {
+            padding: 10px 18px; border-top: 1px solid #1e293b;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .ro-card-tech {
+            font-size: 0.78rem; color: #94a3b8;
+        }
+        .btn-reactivate {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white; border: none; border-radius: 8px;
+            padding: 8px 16px; font-size: 0.85rem; font-weight: 700;
+            cursor: pointer; font-family: 'Barlow Condensed', sans-serif;
+            letter-spacing: 0.5px; transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .btn-reactivate:hover {
+            transform: scale(1.03);
+            box-shadow: 0 4px 14px rgba(16,185,129,0.4);
+        }
+        .btn-reactivate:disabled {
+            opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none;
+        }
+
+        /* ── Detail modal ───────────────────────────── */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85); z-index: 10000;
+            display: none; align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-content {
+            background: #1a1a2e; border-radius: 16px; max-width: 650px; width: 100%;
+            max-height: 90vh; overflow-y: auto; border: 1px solid #334155;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #1e293b, #263548);
+            padding: 18px 24px; border-radius: 16px 16px 0 0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-header h2 { font-size: 1.15rem; color: white; }
+        .modal-close {
+            background: none; border: none; color: #94a3b8; font-size: 1.5rem;
+            cursor: pointer; line-height: 1;
+        }
+        .modal-close:hover { color: white; }
+        .modal-body { padding: 20px 24px; }
+        .detail-row {
+            display: flex; margin-bottom: 10px; font-size: 0.88rem;
+        }
+        .detail-label {
+            color: #64748b; min-width: 130px; font-weight: 600;
+        }
+        .detail-value { color: #e2e8f0; flex: 1; }
+
+        /* ── Loading / Empty ────────────────────────── */
+        .loading-state, .empty-state {
+            text-align: center; padding: 60px 20px; color: #64748b;
+        }
+        .spinner {
+            display: inline-block; width: 28px; height: 28px;
+            border: 3px solid #334155; border-top-color: #3b82f6;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Pagination ─────────────────────────────── */
+        .pagination-bar {
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 16px 24px;
+        }
+        .page-btn {
+            background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+            border-radius: 6px; padding: 6px 14px; font-size: 0.82rem;
+            cursor: pointer; font-family: 'Barlow Condensed', sans-serif; font-weight: 600;
+        }
+        .page-btn:hover { background: #263548; color: white; }
+        .page-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+        .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* ── Responsive ─────────────────────────────── */
+        @media (max-width: 768px) {
+            .card-grid { grid-template-columns: 1fr; padding: 12px; }
+            .header { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+            .search-bar { padding: 10px 14px; }
+            .stats-bar { padding: 10px 14px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Auth gate -->
+<div id="authGate" class="auth-gate">
+    <div style="text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:8px;">&#128451;</div>
+        <h2>Closed RO Archive</h2>
+        <p style="color:#475569;font-size:0.8rem;margin-top:6px;">Sign in with your PRVS account</p>
+    </div>
+    <div id="g_id_onload"></div>
+</div>
+
+<!-- Main app -->
+<div id="app" style="display:none;">
+    <div class="header">
+        <div class="header-left">
+            <div>
+                <div class="header-title">&#128451; Closed RO Archive</div>
+                <div class="header-subtitle">Cashiered &amp; completed repair orders</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="badge-role" id="userBadge"></span>
+            <a href="index.html" class="back-link">&larr; Dashboard</a>
+        </div>
+    </div>
+
+    <div class="stats-bar" id="statsBar"></div>
+
+    <div class="search-bar">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by customer name, RO ID, RV, VIN, or technician..." oninput="applyFilters()">
+        <select class="filter-select" id="filterRepairType" onchange="applyFilters()">
+            <option value="">All Repair Types</option>
+        </select>
+        <select class="filter-select" id="filterWeek" onchange="applyFilters()">
+            <option value="">All Weeks</option>
+        </select>
+        <select class="filter-select" id="sortBy" onchange="applyFilters()">
+            <option value="archived_at_desc">Newest Closed</option>
+            <option value="archived_at_asc">Oldest Closed</option>
+            <option value="customer_name_asc">Customer A-Z</option>
+            <option value="dollar_value_desc">Highest Value</option>
+            <option value="days_on_lot_desc">Most Days on Lot</option>
+        </select>
+    </div>
+
+    <div id="cardContainer">
+        <div class="loading-state" id="loadingState">
+            <div class="spinner"></div>
+            <p>Loading closed ROs...</p>
+        </div>
+    </div>
+
+    <div class="pagination-bar" id="paginationBar" style="display:none;"></div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeDetailModal()">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="detailModalTitle">RO Details</h2>
+            <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="detailModalBody"></div>
+    </div>
+</div>
+
+<!-- GH#19: Enhancement Request — Floating Genie Lamp + Modal -->
+<div id="erFloatingBtn" onclick="openERModal()" title="Make a Wish — Submit an Enhancement Request" style="position:fixed;bottom:24px;left:24px;z-index:9998;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706,#b45309);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(217,119,6,0.5);transition:transform 0.2s,box-shadow 0.2s;border:2px solid #fbbf24;" onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(217,119,6,0.7)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(217,119,6,0.5)'">
+    <span style="font-size:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">&#127948;</span>
+</div>
+<div id="erModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10050;display:none;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeERModal()">
+    <div style="background:#1a1a2e;border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;border:1px solid #fbbf24;box-shadow:0 0 40px rgba(251,191,36,0.2);">
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:18px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:28px;">&#127948;</span><div><h2 style="margin:0;font-size:1.2rem;color:#1a1a2e;font-family:'Barlow Condensed',sans-serif;font-weight:700;">Make a Wish</h2><p style="margin:0;font-size:0.75rem;color:#451a03;">Submit an Enhancement Request</p></div></div>
+            <button onclick="closeERModal()" style="background:none;border:none;color:#1a1a2e;font-size:1.5rem;cursor:pointer;font-weight:700;line-height:1;">&times;</button>
+        </div>
+        <div style="padding:20px 24px;">
+            <label style="display:block;color:#fbbf24;font-size:0.8rem;font-weight:600;margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">CATEGORY</label>
+            <select id="erCategory" style="width:100%;padding:10px 12px;background:#0f172a;color:white;border:1px solid #334155;border-radius:8px;font-size:0.95rem;margin-bottom:16px;font-family:'Barlow Condensed',sans-serif;">
+                <option value="RO Management" selected>RO Management</option><option value="Parts &amp; Ordering">Parts &amp; Ordering</option><option value="Work Orders">Work Orders</option><option value="Time Clock / Check-In">Time Clock / Check-In</option><option value="Calendar">Calendar</option><option value="Work List">Work List</option><option value="Notifications / Email">Notifications / Email</option><option value="General UI/UX">General UI/UX</option><option value="New Feature Idea">New Feature Idea</option><option value="Bug Report">Bug Report</option>
+            </select>
+            <label style="display:block;color:#fbbf24;font-size:0.8rem;font-weight:600;margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">DESCRIBE YOUR WISH</label>
+            <textarea id="erDescription" placeholder="What would you like to see improved or added?" style="width:100%;min-height:120px;padding:12px;background:#0f172a;color:white;border:1px solid #334155;border-radius:8px;font-size:0.95rem;resize:vertical;font-family:'Barlow Condensed',sans-serif;box-sizing:border-box;"></textarea>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                <button onclick="startERDictation()" style="background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:0.85rem;font-family:'Barlow Condensed',sans-serif;display:flex;align-items:center;gap:6px;"><span style="font-size:1.1rem;">&#127908;</span> Voice Dictation</button>
+                <span id="erDictationStatus" style="font-size:0.8rem;color:#6b7280;"></span>
+            </div>
+            <button onclick="submitEnhancementRequest()" style="width:100%;margin-top:20px;padding:14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;border:none;border-radius:10px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">&#10024; Submit Wish</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────
+const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com'];
+const MANAGER_EMAILS = [
+    'ryan@patriotsrvservices.com',
+    'mauricio@patriotsrvservices.com',
+    'jason@patriotsrvservices.com',
+    'andrew@patriotsrvservices.com',
+    'solar@patriotsrvservices.com',
+    'bobby@patriotsrvservices.com',
+    'brandon@patriotsrvservices.com',
+];
+
+const PAGE_SIZE = 24;
+
+// ── State ────────────────────────────────────────────────
+let _sb = null;
+let supabaseSession = null;
+let currentUser = null;
+let allCashiered = [];
+let filteredCashiered = [];
+let currentPage = 1;
+
+function getSB() {
+    if (!_sb) {
+        _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_closed_auth' }
+        });
+    }
+    return _sb;
+}
+
+// ── Auth ─────────────────────────────────────────────────
+async function initAuth() {
+    getSB().auth.onAuthStateChange((event, session) => {
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            supabaseSession = session;
+        } else if (event === 'SIGNED_OUT') {
+            supabaseSession = null;
+            currentUser = null;
+        }
+    });
+
+    const { data: { session } } = await getSB().auth.getSession();
+    if (session) {
+        supabaseSession = session;
+        currentUser = {
+            email: session.user.email,
+            name: session.user.user_metadata?.full_name || session.user.email,
+        };
+        showApp();
+        return;
+    }
+
+    // Check stored identity
+    const stored = localStorage.getItem('prvs_user_identity');
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            if (parsed.email) {
+                currentUser = parsed;
+                showApp();
+                return;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Show Google sign-in
+    initGoogleSignIn();
+}
+
+function initGoogleSignIn() {
+    if (typeof google === 'undefined' || !google.accounts) {
+        setTimeout(initGoogleSignIn, 200);
+        return;
+    }
+
+    // Generate nonce
+    const rawBytes = new Uint8Array(16);
+    crypto.getRandomValues(rawBytes);
+    const rawNonce = Array.from(rawBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    window._rawNonce = rawNonce;
+
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawNonce)).then(hash => {
+        const hashedNonce = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredential,
+            nonce: hashedNonce,
+        });
+
+        google.accounts.id.renderButton(
+            document.getElementById('g_id_onload'),
+            { theme: 'filled_blue', size: 'large', shape: 'pill', text: 'signin_with' }
+        );
+    });
+}
+
+async function handleGoogleCredential(response) {
+    try {
+        const { data, error } = await getSB().auth.signInWithIdToken({
+            provider: 'google',
+            token: response.credential,
+            nonce: window._rawNonce,
+        });
+        if (error) throw error;
+
+        supabaseSession = data.session;
+        currentUser = {
+            email: data.user.email,
+            name: data.user.user_metadata?.full_name || data.user.email,
+        };
+        localStorage.setItem('prvs_user_identity', JSON.stringify(currentUser));
+        showApp();
+    } catch (err) {
+        console.error('Auth error:', err);
+        alert('Sign-in failed: ' + (err.message || err));
+    }
+}
+
+function isAdmin() {
+    const email = (currentUser?.email || supabaseSession?.user?.email || '').toLowerCase();
+    return ADMIN_EMAILS.includes(email);
+}
+
+function isManagerOrAdmin() {
+    const email = (currentUser?.email || supabaseSession?.user?.email || '').toLowerCase();
+    return ADMIN_EMAILS.includes(email) || SR_MANAGER_EMAILS.includes(email) || MANAGER_EMAILS.includes(email);
+}
+
+function showApp() {
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    // Set role badge
+    const badge = document.getElementById('userBadge');
+    const name = currentUser?.name || currentUser?.email || '';
+    if (isAdmin()) {
+        badge.className = 'badge-role badge-admin';
+        badge.textContent = name + ' (Admin)';
+    } else if (isManagerOrAdmin()) {
+        badge.className = 'badge-role badge-manager';
+        badge.textContent = name + ' (Manager)';
+    } else {
+        badge.className = 'badge-role badge-user';
+        badge.textContent = name;
+    }
+
+    loadCashieredData();
+}
+
+// ── Data Loading ─────────────────────────────────────────
+async function loadCashieredData() {
+    document.getElementById('loadingState').style.display = 'block';
+
+    try {
+        const { data, error } = await getSB()
+            .from('cashiered')
+            .select('*')
+            .order('archived_at', { ascending: false });
+
+        if (error) throw error;
+        allCashiered = data || [];
+        populateFilters();
+        applyFilters();
+        renderStats();
+    } catch (err) {
+        console.error('Load error:', err);
+        document.getElementById('cardContainer').innerHTML =
+            '<div class="empty-state"><p>Error loading data: ' + (err.message || err) + '</p></div>';
+    }
+
+    document.getElementById('loadingState').style.display = 'none';
+}
+
+function populateFilters() {
+    // Repair types
+    const types = [...new Set(allCashiered.map(r => r.repair_type).filter(Boolean))].sort();
+    const typeSelect = document.getElementById('filterRepairType');
+    typeSelect.innerHTML = '<option value="">All Repair Types</option>';
+    types.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        typeSelect.appendChild(opt);
+    });
+
+    // Week labels
+    const weeks = [...new Set(allCashiered.map(r => r.week_label).filter(Boolean))].sort().reverse();
+    const weekSelect = document.getElementById('filterWeek');
+    weekSelect.innerHTML = '<option value="">All Weeks</option>';
+    weeks.forEach(w => {
+        const opt = document.createElement('option');
+        opt.value = w; opt.textContent = w;
+        weekSelect.appendChild(opt);
+    });
+}
+
+function renderStats() {
+    const total = allCashiered.length;
+    const totalValue = allCashiered.reduce((sum, r) => sum + (parseFloat(r.dollar_value) || 0), 0);
+    const avgDays = total > 0
+        ? Math.round(allCashiered.reduce((sum, r) => sum + (r.days_on_lot || 0), 0) / total)
+        : 0;
+
+    // Closed this week
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const thisWeek = allCashiered.filter(r => new Date(r.archived_at) >= weekStart).length;
+
+    document.getElementById('statsBar').innerHTML = `
+        <div class="stat-chip"><strong>${total}</strong> Total Closed</div>
+        <div class="stat-chip"><strong>${thisWeek}</strong> Closed This Week</div>
+        <div class="stat-chip"><strong>$${totalValue.toLocaleString()}</strong> Total Value</div>
+        <div class="stat-chip"><strong>${avgDays}</strong> Avg Days on Lot</div>
+        <div class="stat-chip"><strong>${filteredCashiered.length}</strong> Showing</div>
+    `;
+}
+
+// ── Filter + Sort ────────────────────────────────────────
+function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase().trim();
+    const repairType = document.getElementById('filterRepairType').value;
+    const weekLabel = document.getElementById('filterWeek').value;
+    const sortBy = document.getElementById('sortBy').value;
+
+    filteredCashiered = allCashiered.filter(r => {
+        if (repairType && r.repair_type !== repairType) return false;
+        if (weekLabel && r.week_label !== weekLabel) return false;
+        if (search) {
+            const haystack = [
+                r.customer_name, r.ro_id, r.rv, r.vin, r.technician,
+                r.description, r.repair_type, r.email, r.phone,
+            ].filter(Boolean).join(' ').toLowerCase();
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+
+    // Sort
+    filteredCashiered.sort((a, b) => {
+        switch (sortBy) {
+            case 'archived_at_asc':
+                return new Date(a.archived_at) - new Date(b.archived_at);
+            case 'customer_name_asc':
+                return (a.customer_name || '').localeCompare(b.customer_name || '');
+            case 'dollar_value_desc':
+                return (parseFloat(b.dollar_value) || 0) - (parseFloat(a.dollar_value) || 0);
+            case 'days_on_lot_desc':
+                return (b.days_on_lot || 0) - (a.days_on_lot || 0);
+            default: // archived_at_desc
+                return new Date(b.archived_at) - new Date(a.archived_at);
+        }
+    });
+
+    currentPage = 1;
+    renderCards();
+    renderStats();
+}
+
+// ── Card Rendering ───────────────────────────────────────
+function renderCards() {
+    const container = document.getElementById('cardContainer');
+    const totalPages = Math.ceil(filteredCashiered.length / PAGE_SIZE);
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageItems = filteredCashiered.slice(start, start + PAGE_SIZE);
+
+    if (filteredCashiered.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p style="font-size:1.2rem;">No closed ROs found</p><p style="margin-top:8px;font-size:0.85rem;">Try adjusting your search or filters</p></div>';
+        document.getElementById('paginationBar').style.display = 'none';
+        return;
+    }
+
+    const canReactivate = isManagerOrAdmin();
+
+    let html = '<div class="card-grid">';
+    pageItems.forEach(ro => {
+        const dateClosed = ro.date_closed
+            ? new Date(ro.date_closed + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : '—';
+        const dollarStr = ro.dollar_value ? '$' + parseFloat(ro.dollar_value).toLocaleString() : '';
+        const desc = ro.description
+            ? (ro.description.length > 80 ? ro.description.substring(0, 80) + '...' : ro.description)
+            : '';
+
+        html += `
+        <div class="ro-card">
+            ${ro.photo_url
+                ? `<img class="ro-card-photo" src="${escapeHtml(ro.photo_url)}" alt="RV Photo" loading="lazy" onerror="this.outerHTML='<div class=\\'ro-card-photo-placeholder\\'>&#128663;</div>'">`
+                : '<div class="ro-card-photo-placeholder">&#128663;</div>'
+            }
+            <div class="ro-card-body" onclick="openDetailModal('${ro.id}')" style="cursor:pointer;">
+                <div class="ro-card-header">
+                    <div class="ro-card-customer">${escapeHtml(ro.customer_name || 'Unknown')}</div>
+                    <div class="ro-card-id">${escapeHtml(ro.ro_id || '—')}</div>
+                </div>
+                <div class="ro-card-rv">${escapeHtml(ro.rv || 'No RV info')}</div>
+                ${desc ? `<div class="ro-card-desc">${escapeHtml(desc)}</div>` : ''}
+                <div class="ro-card-meta">
+                    ${ro.repair_type ? `<span class="meta-chip chip-repair-type">${escapeHtml(ro.repair_type)}</span>` : ''}
+                    <span class="meta-chip chip-date-closed">Closed ${dateClosed}</span>
+                    ${ro.days_on_lot ? `<span class="meta-chip chip-days">${ro.days_on_lot}d on lot</span>` : ''}
+                    ${dollarStr ? `<span class="meta-chip chip-dollar">${dollarStr}</span>` : ''}
+                </div>
+            </div>
+            <div class="ro-card-footer">
+                <div class="ro-card-tech">${ro.technician ? '&#128736; ' + escapeHtml(ro.technician) : ''}</div>
+                ${canReactivate
+                    ? `<button class="btn-reactivate" onclick="event.stopPropagation();reactivateRO('${ro.id}')">&#9654; Reactivate</button>`
+                    : ''
+                }
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Pagination
+    renderPagination(totalPages);
+}
+
+function renderPagination(totalPages) {
+    const bar = document.getElementById('paginationBar');
+    if (totalPages <= 1) {
+        bar.style.display = 'none';
+        return;
+    }
+    bar.style.display = 'flex';
+    let html = `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>&laquo; Prev</button>`;
+
+    // Show max 7 page buttons
+    let startP = Math.max(1, currentPage - 3);
+    let endP = Math.min(totalPages, startP + 6);
+    if (endP - startP < 6) startP = Math.max(1, endP - 6);
+
+    for (let p = startP; p <= endP; p++) {
+        html += `<button class="page-btn ${p === currentPage ? 'active' : ''}" onclick="goToPage(${p})">${p}</button>`;
+    }
+
+    html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next &raquo;</button>`;
+    bar.innerHTML = html;
+}
+
+function goToPage(p) {
+    const totalPages = Math.ceil(filteredCashiered.length / PAGE_SIZE);
+    if (p < 1 || p > totalPages) return;
+    currentPage = p;
+    renderCards();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Detail Modal ─────────────────────────────────────────
+function openDetailModal(id) {
+    const ro = allCashiered.find(r => r.id === id);
+    if (!ro) return;
+
+    document.getElementById('detailModalTitle').textContent = (ro.ro_id || 'RO') + ' — ' + (ro.customer_name || 'Unknown');
+
+    const fields = [
+        ['RO ID', ro.ro_id],
+        ['Customer', ro.customer_name],
+        ['Phone', ro.phone],
+        ['Email', ro.email],
+        ['Address', ro.address],
+        ['RV', ro.rv],
+        ['VIN', ro.vin],
+        ['Repair Type', ro.repair_type],
+        ['Description', ro.description],
+        ['Technician', ro.technician],
+        ['Status (at close)', ro.status],
+        ['Urgency', ro.urgency],
+        ['Customer Type', ro.customer_type],
+        ['RO Type', ro.ro_type],
+        ['% Complete', ro.pct_complete != null ? ro.pct_complete + '%' : null],
+        ['Dollar Value', ro.dollar_value ? '$' + parseFloat(ro.dollar_value).toLocaleString() : null],
+        ['Date Received', formatDate(ro.date_received)],
+        ['Date Arrived', formatDate(ro.date_arrived)],
+        ['Promised Date', formatDate(ro.promised_date)],
+        ['Date Closed', formatDate(ro.date_closed)],
+        ['Days on Lot', ro.days_on_lot],
+        ['Week', ro.week_label],
+        ['Archived At', ro.archived_at ? new Date(ro.archived_at).toLocaleString('en-US', { timeZone: 'America/Chicago' }) : null],
+    ];
+
+    let html = '';
+    if (ro.photo_url) {
+        html += `<img src="${escapeHtml(ro.photo_url)}" style="width:100%;max-height:300px;object-fit:cover;border-radius:8px;margin-bottom:16px;" onerror="this.style.display='none'">`;
+    }
+
+    fields.forEach(([label, value]) => {
+        if (value == null || value === '' || value === 'null') return;
+        html += `<div class="detail-row"><div class="detail-label">${escapeHtml(label)}</div><div class="detail-value">${escapeHtml(String(value))}</div></div>`;
+    });
+
+    if (isManagerOrAdmin()) {
+        html += `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #334155;text-align:center;">
+            <button class="btn-reactivate" onclick="reactivateRO('${ro.id}');closeDetailModal();" style="font-size:1rem;padding:12px 28px;">&#9654; Reactivate this RO</button>
+        </div>`;
+    }
+
+    document.getElementById('detailModalBody').innerHTML = html;
+    document.getElementById('detailModal').classList.add('open');
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').classList.remove('open');
+}
+
+function formatDate(d) {
+    if (!d) return null;
+    try {
+        return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch { return d; }
+}
+
+// ── Reactivate ───────────────────────────────────────────
+async function reactivateRO(cashieredId) {
+    if (!isManagerOrAdmin()) {
+        alert('Only managers and admins can reactivate ROs.');
+        return;
+    }
+
+    const ro = allCashiered.find(r => r.id === cashieredId);
+    if (!ro) { alert('RO not found.'); return; }
+
+    if (!confirm(`Reactivate RO ${ro.ro_id} (${ro.customer_name}) back to the active dashboard?`)) return;
+
+    try {
+        // 1. Insert back into repair_orders
+        const { data: inserted, error: insertErr } = await getSB()
+            .from('repair_orders')
+            .insert({
+                ro_id:           ro.ro_id,
+                customer_name:   ro.customer_name,
+                phone:           ro.phone,
+                email:           ro.email,
+                address:         ro.address,
+                rv:              ro.rv,
+                vin:             ro.vin,
+                repair_type:     ro.repair_type,
+                description:     ro.description,
+                technician:      ro.technician,
+                date_received:   ro.date_received || null,
+                date_arrived:    ro.date_arrived || null,
+                promised_date:   ro.promised_date || null,
+                pct_complete:    ro.pct_complete || 0,
+                dollar_value:    ro.dollar_value || null,
+                status:          'In Progress',
+                urgency:         ro.urgency,
+                customer_type:   ro.customer_type,
+                ro_type:         ro.ro_type || 'standard',
+                photo_url:       ro.photo_url,
+                insurance_data:  ro.insurance_data || null,
+            })
+            .select()
+            .single();
+
+        if (insertErr) throw insertErr;
+
+        // 2. Delete from cashiered
+        const { error: delErr } = await getSB()
+            .from('cashiered')
+            .delete()
+            .eq('id', cashieredId);
+
+        if (delErr) throw delErr;
+
+        // 3. Remove from local state + re-render
+        allCashiered = allCashiered.filter(r => r.id !== cashieredId);
+        applyFilters();
+
+        // Toast
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:10051;background:linear-gradient(135deg,#10b981,#059669);color:white;padding:14px 22px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:1rem;';
+        toast.textContent = '✅ ' + ro.ro_id + ' reactivated! Check the main dashboard.';
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+
+        console.log('✅ RO reactivated:', ro.ro_id, '→ new ID:', inserted?.id);
+
+    } catch (err) {
+        console.error('Reactivate error:', err);
+        alert('Error reactivating RO: ' + (err.message || err));
+    }
+}
+
+// ── Utilities ────────────────────────────────────────────
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// ── Enhancement Request Functions ────────────────────────
+function openERModal() { document.getElementById('erModalOverlay').style.display = 'flex'; document.getElementById('erDescription').value = ''; document.getElementById('erDictationStatus').textContent = ''; }
+function closeERModal() { document.getElementById('erModalOverlay').style.display = 'none'; }
+
+function startERDictation() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) { alert('Voice dictation not supported. Use Chrome or Safari.'); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const r = new SR(); r.continuous = false; r.interimResults = false; r.lang = 'en-US';
+    const s = document.getElementById('erDictationStatus'), inp = document.getElementById('erDescription');
+    r.onstart = () => { if (s) { s.textContent = '🎤 Listening...'; s.style.color = '#10b981'; } };
+    r.onresult = (e) => { const t = e.results[0][0].transcript; if (inp) { inp.value = inp.value ? inp.value + ' ' + t : t; } if (s) { s.textContent = '✅ Transcribed!'; s.style.color = '#10b981'; setTimeout(() => { s.textContent = ''; }, 3000); } };
+    r.onerror = (e) => { if (s) { s.textContent = '❌ Error: ' + e.error; s.style.color = '#dc2626'; setTimeout(() => { s.textContent = ''; }, 3000); } };
+    r.onend = () => { if (s && s.textContent.includes('Listening')) s.textContent = ''; };
+    r.start();
+}
+
+async function submitEnhancementRequest() {
+    const desc = document.getElementById('erDescription').value.trim();
+    const cat = document.getElementById('erCategory').value;
+    if (!desc) { alert('Please describe your request.'); return; }
+    const sb = getSB();
+    if (!sb || !supabaseSession) { alert('You must be signed in.'); return; }
+    const email = supabaseSession.user?.email || 'unknown';
+    const name = currentUser?.name || supabaseSession.user?.user_metadata?.full_name || email;
+    try {
+        const { error } = await sb.from('enhancement_requests').insert({
+            submitted_by: email,
+            submitted_by_name: name,
+            source_page: 'closed-ros',
+            category: cat,
+            description: desc,
+        });
+        if (error) throw error;
+        closeERModal();
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:90px;left:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;padding:12px 20px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);';
+        toast.textContent = '🪔 Wish submitted! Roland will review it.';
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+    } catch (err) {
+        console.error('ER submit error:', err);
+        alert('Error: ' + (err.message || err));
+    }
+}
+
+// ── Init ─────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    initAuth();
+});
+</script>
+</body>
+</html>

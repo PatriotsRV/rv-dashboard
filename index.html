@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.307
+    PRVS Dashboard v1.308
     Released: 2026-04-09
+    v1.308: GH#22 Closed RO Archive — header button linking to closed-ros.html (visible to all users)
     v1.307: GH#19 Enhancement Request — floating genie lamp button on all pages, modal with category dropdown + voice dictation, Supabase enhancement_requests table, daily email report via pg_cron
     v1.306: Fix parts_status auto-flip gap — savePartForm() now checks if all parts are Received/Installed after edit and auto-flips parts_status to 'received' + clears has_open_parts_request; previously only markPartReceived() (quick button) triggered the flip, so parts edited via the form left stale 'outstanding' status on the RO, causing incorrect parts reports
     v1.305: GH#16 enhancement — Sr Manager silo-specific work lists; silo tabs in sidebar; silo picker on add; service_silo column on manager_work_lists
@@ -2698,7 +2699,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.307</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.308</span>
             </div>
         </header>
 
@@ -2720,6 +2721,9 @@
                 </button>
                 <button id="workListReportBtn" onclick="window.open('worklist-report.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(124,58,237,0.15); color: #c4b5fd; border: 2px solid rgba(124,58,237,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.3)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
                     &#128203; Work List Report
+                </button>
+                <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(100,116,139,0.15); color: #94a3b8; border: 2px solid rgba(100,116,139,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(100,116,139,0.3)'" onmouseout="this.style.background='rgba(100,116,139,0.15)'">
+                    &#128451; Closed ROs
                 </button>
                 <button id="erAdminBtn" onclick="openERAdminView()" style="display:none; padding: 10px 16px; background: rgba(217,119,6,0.15); color: #fbbf24; border: 2px solid rgba(217,119,6,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(217,119,6,0.3)'" onmouseout="this.style.background='rgba(217,119,6,0.15)'">
                     🪔 Wishes <span id="erUnreviewedCount" style="background:#d97706;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
@@ -8269,6 +8273,11 @@ Notes: ${notes}` : '',
             const wlReportBtn = document.getElementById('workListReportBtn');
             if (wlReportBtn) {
                 wlReportBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+            }
+            // Show Closed ROs button (all authenticated users)
+            const closedROsBtn = document.getElementById('closedROsBtn');
+            if (closedROsBtn) {
+                closedROsBtn.style.display = 'inline-block';
             }
             // Show/hide Enhancement Requests admin button (Admin only)
             const erAdminBtn = document.getElementById('erAdminBtn');
