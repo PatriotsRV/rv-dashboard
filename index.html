@@ -6963,7 +6963,7 @@ Notes: ${notes}` : '',
                     <span style=”color:#6b7280;font-size:0.8rem;min-width:20px;font-weight:700;”>${displayIdx + 1}.</span>
                     ${siloTag}
                     <span onclick=”scrollToROInBoard('${item.ro_id}')” style=”flex:1;color:white;font-size:0.85rem;cursor:pointer;line-height:1.3;” title=”Click to scroll to this RO”>${item.ro_name}</span>
-                    <button onclick=”removeFromWorkList(${item.id})” style=”background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;” title=”Remove from list”>×</button>
+                    <button onclick=”removeFromWorkList('${item.id}')” style=”background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;” title=”Remove from list”>×</button>
                 </div>
             `}).join('');
 
