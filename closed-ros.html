@@ -388,24 +388,13 @@ async function initAuth() {
             email: session.user.email,
             name: session.user.user_metadata?.full_name || session.user.email,
         };
+        localStorage.setItem('prvs_user_identity', JSON.stringify(currentUser));
         showApp();
         return;
     }
 
-    // Check stored identity
-    const stored = localStorage.getItem('prvs_user_identity');
-    if (stored) {
-        try {
-            const parsed = JSON.parse(stored);
-            if (parsed.email) {
-                currentUser = parsed;
-                showApp();
-                return;
-            }
-        } catch (e) { /* ignore */ }
-    }
-
-    // Show Google sign-in
+    // No stored Supabase session — require Google sign-in
+    // (localStorage identity alone is not enough — DB writes need an authenticated session)
     initGoogleSignIn();
 }
 
