@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.306
-    Released: 2026-04-08
+    PRVS Dashboard v1.307
+    Released: 2026-04-09
+    v1.307: GH#19 Enhancement Request — floating genie lamp button on all pages, modal with category dropdown + voice dictation, Supabase enhancement_requests table, daily email report via pg_cron
     v1.306: Fix parts_status auto-flip gap — savePartForm() now checks if all parts are Received/Installed after edit and auto-flips parts_status to 'received' + clears has_open_parts_request; previously only markPartReceived() (quick button) triggered the flip, so parts edited via the form left stale 'outstanding' status on the RO, causing incorrect parts reports
     v1.305: GH#16 enhancement — Sr Manager silo-specific work lists; silo tabs in sidebar; silo picker on add; service_silo column on manager_work_lists
     v1.304: GH#18 (partial) — Parts notifications: “Parts Ordered” + “ETA Updated” trigger emails to requester + info@; requested_by_email captured on submitPartsRequest; notifyPartsRequester/notifyPartsEtaUpdate added
@@ -2697,7 +2698,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.306</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.307</span>
             </div>
         </header>
 
@@ -2719,6 +2720,9 @@
                 </button>
                 <button id="workListReportBtn" onclick="window.open('worklist-report.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(124,58,237,0.15); color: #c4b5fd; border: 2px solid rgba(124,58,237,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.3)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
                     &#128203; Work List Report
+                </button>
+                <button id="erAdminBtn" onclick="openERAdminView()" style="display:none; padding: 10px 16px; background: rgba(217,119,6,0.15); color: #fbbf24; border: 2px solid rgba(217,119,6,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(217,119,6,0.3)'" onmouseout="this.style.background='rgba(217,119,6,0.15)'">
+                    🪔 Wishes <span id="erUnreviewedCount" style="background:#d97706;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
                 </button>
                 <button id="manageDupesBtn" onclick="openDuplicateManager()" style="display:none; padding: 10px 16px; background: rgba(239,68,68,0.15); color: #f87171; border: 2px solid rgba(239,68,68,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">
                     🔗 Merge Dupes <span id="dupesCount" style="background:#ef4444;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
@@ -8266,6 +8270,12 @@ Notes: ${notes}` : '',
             if (wlReportBtn) {
                 wlReportBtn.style.display = isAdmin() ? 'inline-block' : 'none';
             }
+            // Show/hide Enhancement Requests admin button (Admin only)
+            const erAdminBtn = document.getElementById('erAdminBtn');
+            if (erAdminBtn) {
+                erAdminBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+                if (isAdmin()) loadERUnreviewedCount();
+            }
             // Show/hide Merge Dupes button (Admin only — visible only when duplicates exist)
             const manageDupesBtn = document.getElementById('manageDupesBtn');
             if (manageDupesBtn && isAdmin()) {
@@ -13263,6 +13273,301 @@ function toggleWOTasks(tasksId, chevId) {
     <div id="workListSiloTabs" style="display:none;padding:8px 14px;background:#0f172a;border-bottom:1px solid #1e3a5f;flex-shrink:0;overflow-x:auto;overflow-y:hidden;gap:6px;flex-wrap:wrap;align-items:center;"></div>
     <div id="workListBody" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
     <div style="padding:10px 14px;background:#0f172a;border-top:1px solid #1e3a5f;color:#6b7280;font-size:0.72rem;text-align:center;flex-shrink:0;">Drag rows to reprioritize · Click an RO to scroll to it</div>
+</div>
+<!-- ═══════════════════════════════════════════════════════════════════
+     GH#19: Enhancement Request (ER) — Floating Genie Lamp + Modal
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="erFloatingBtn" onclick="openERModal()" title="Make a Wish — Submit an Enhancement Request" style="
+    position:fixed; bottom:24px; left:24px; z-index:9998;
+    width:56px; height:56px; border-radius:50%;
+    background:linear-gradient(135deg, #f59e0b, #d97706, #b45309);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; box-shadow:0 4px 20px rgba(217,119,6,0.5);
+    transition: transform 0.2s, box-shadow 0.2s;
+    border:2px solid #fbbf24;
+" onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(217,119,6,0.7)'"
+   onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(217,119,6,0.5)'">
+    <span style="font-size:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">🪔</span>
+</div>
+
+<div id="erModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10050;display:none;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeERModal()">
+    <div style="background:#1a1a2e;border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;border:1px solid #fbbf24;box-shadow:0 0 40px rgba(251,191,36,0.2);">
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:18px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:28px;">🪔</span>
+                <div>
+                    <h2 style="margin:0;font-size:1.2rem;color:#1a1a2e;font-family:'Barlow Condensed',sans-serif;font-weight:700;">Make a Wish</h2>
+                    <p style="margin:0;font-size:0.75rem;color:#451a03;">Submit an Enhancement Request</p>
+                </div>
+            </div>
+            <button onclick="closeERModal()" style="background:none;border:none;color:#1a1a2e;font-size:1.5rem;cursor:pointer;font-weight:700;line-height:1;">&times;</button>
+        </div>
+        <div style="padding:20px 24px;">
+            <label style="display:block;color:#fbbf24;font-size:0.8rem;font-weight:600;margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">CATEGORY</label>
+            <select id="erCategory" style="width:100%;padding:10px 12px;background:#0f172a;color:white;border:1px solid #334155;border-radius:8px;font-size:0.95rem;margin-bottom:16px;font-family:'Barlow Condensed',sans-serif;">
+                <option value="RO Management">RO Management</option>
+                <option value="Parts & Ordering">Parts &amp; Ordering</option>
+                <option value="Work Orders">Work Orders</option>
+                <option value="Time Clock / Check-In">Time Clock / Check-In</option>
+                <option value="Calendar">Calendar</option>
+                <option value="Work List">Work List</option>
+                <option value="Notifications / Email">Notifications / Email</option>
+                <option value="General UI/UX" selected>General UI/UX</option>
+                <option value="New Feature Idea">New Feature Idea</option>
+                <option value="Bug Report">Bug Report</option>
+            </select>
+
+            <label style="display:block;color:#fbbf24;font-size:0.8rem;font-weight:600;margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">DESCRIBE YOUR WISH</label>
+            <textarea id="erDescription" placeholder="What would you like to see improved or added? Be as specific as you can..." style="width:100%;min-height:120px;padding:12px;background:#0f172a;color:white;border:1px solid #334155;border-radius:8px;font-size:0.95rem;resize:vertical;font-family:'Barlow Condensed',sans-serif;box-sizing:border-box;"></textarea>
+
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                <button onclick="startERDictation()" style="background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:0.85rem;font-family:'Barlow Condensed',sans-serif;display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:1.1rem;">🎤</span> Voice Dictation
+                </button>
+                <span id="erDictationStatus" style="font-size:0.8rem;color:#6b7280;"></span>
+            </div>
+
+            <button onclick="submitEnhancementRequest()" style="
+                width:100%;margin-top:20px;padding:14px;
+                background:linear-gradient(135deg,#f59e0b,#d97706);
+                color:#1a1a2e;border:none;border-radius:10px;
+                font-size:1.05rem;font-weight:700;cursor:pointer;
+                font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;
+                transition:opacity 0.2s;
+            " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                ✨ Submit Wish
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── GH#19: Enhancement Request Functions ────────────────────────────
+function openERModal() {
+    const overlay = document.getElementById('erModalOverlay');
+    overlay.style.display = 'flex';
+    document.getElementById('erDescription').value = '';
+    document.getElementById('erDictationStatus').textContent = '';
+    // Auto-default category based on current page
+    const page = window.location.pathname.split('/').pop() || 'index.html';
+    const catSelect = document.getElementById('erCategory');
+    const pageDefaults = {
+        'checkin.html': 'Time Clock / Check-In',
+        'solar.html': 'General UI/UX',
+        'analytics.html': 'General UI/UX',
+        'worklist-report.html': 'Work List'
+    };
+    if (pageDefaults[page]) {
+        catSelect.value = pageDefaults[page];
+    }
+}
+
+function closeERModal() {
+    document.getElementById('erModalOverlay').style.display = 'none';
+}
+
+function startERDictation() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert('Voice dictation is not supported in this browser. Please use Chrome or Safari.');
+        return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    const statusEl = document.getElementById('erDictationStatus');
+    const inputEl = document.getElementById('erDescription');
+    recognition.onstart = () => {
+        if (statusEl) { statusEl.textContent = '🎤 Listening... Speak now.'; statusEl.style.color = '#10b981'; }
+    };
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (inputEl) {
+            const cur = inputEl.value;
+            inputEl.value = cur ? cur + ' ' + transcript : transcript;
+        }
+        if (statusEl) { statusEl.textContent = '✅ Transcribed!'; statusEl.style.color = '#10b981'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    };
+    recognition.onerror = (event) => {
+        if (statusEl) { statusEl.textContent = '❌ Error: ' + event.error; statusEl.style.color = '#dc2626'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+    };
+    recognition.onend = () => {
+        if (statusEl && statusEl.textContent.includes('Listening')) { statusEl.textContent = ''; }
+    };
+    recognition.start();
+}
+
+async function submitEnhancementRequest() {
+    const description = document.getElementById('erDescription').value.trim();
+    const category = document.getElementById('erCategory').value;
+    if (!description) { alert('Please describe your enhancement request.'); return; }
+    const sb = getSB();
+    if (!sb || !supabaseSession) { alert('You must be signed in to submit a request.'); return; }
+    const userEmail = supabaseSession.user?.email || 'unknown';
+    const userName = currentUser?.name || supabaseSession.user?.user_metadata?.full_name || userEmail;
+    const sourcePage = (window.location.pathname.split('/').pop() || 'index.html').replace('.html', '');
+    try {
+        const { error } = await sb.from('enhancement_requests').insert({
+            submitted_by: userEmail,
+            submitted_by_name: userName,
+            source_page: sourcePage,
+            category: category,
+            description: description
+        });
+        if (error) throw error;
+        closeERModal();
+        // Success toast
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:90px;left:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;padding:12px 20px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);animation:slideIn 0.3s ease;';
+        toast.textContent = '🪔 Wish submitted! Roland will review it.';
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+    } catch (err) {
+        console.error('ER submit error:', err);
+        alert('Error submitting request: ' + (err.message || err));
+    }
+}
+
+// ── GH#19: Enhancement Request Admin View ───────────────────────────
+let _erData = [];
+let _erFilterStatus = 'all';
+let _erFilterCategory = 'all';
+
+async function loadERUnreviewedCount() {
+    try {
+        const { count, error } = await getSB().from('enhancement_requests').select('*', { count: 'exact', head: true }).eq('status', 'unreviewed');
+        if (!error && count > 0) {
+            document.getElementById('erUnreviewedCount').textContent = count;
+        } else {
+            document.getElementById('erUnreviewedCount').textContent = '';
+        }
+    } catch(e) {}
+}
+
+async function openERAdminView() {
+    const overlay = document.getElementById('erAdminOverlay');
+    overlay.style.display = 'flex';
+    _erFilterStatus = 'all';
+    _erFilterCategory = 'all';
+    await loadERAdminData();
+}
+
+function closeERAdminView() {
+    document.getElementById('erAdminOverlay').style.display = 'none';
+}
+
+async function loadERAdminData() {
+    try {
+        let query = getSB().from('enhancement_requests').select('*').order('created_at', { ascending: false });
+        if (_erFilterStatus !== 'all') query = query.eq('status', _erFilterStatus);
+        if (_erFilterCategory !== 'all') query = query.eq('category', _erFilterCategory);
+        const { data, error } = await query;
+        if (error) throw error;
+        _erData = data || [];
+        renderERAdminList();
+    } catch(err) {
+        console.error('ER admin load error:', err);
+    }
+}
+
+function filterERAdmin(type, value) {
+    if (type === 'status') _erFilterStatus = value;
+    if (type === 'category') _erFilterCategory = value;
+    loadERAdminData();
+}
+
+function renderERAdminList() {
+    const body = document.getElementById('erAdminBody');
+    if (!_erData.length) {
+        body.innerHTML = '<div style="text-align:center;color:#6b7280;padding:40px;font-style:italic;">No enhancement requests found.</div>';
+        return;
+    }
+    const statusColors = { unreviewed:'#f59e0b', reviewed:'#3b82f6', planned:'#8b5cf6', 'in-progress':'#10b981', done:'#22c55e', declined:'#6b7280' };
+    body.innerHTML = _erData.map(er => {
+        const date = new Date(er.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'America/Chicago' });
+        const sc = statusColors[er.status] || '#6b7280';
+        return '<div style="background:#0f172a;border:1px solid #1e3a5f;border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+                '<div style="flex:1;min-width:200px;">' +
+                    '<div style="font-weight:700;color:white;font-size:0.95rem;margin-bottom:4px;">' + (er.description.length > 120 ? er.description.substring(0,120) + '...' : er.description) + '</div>' +
+                    '<div style="font-size:0.78rem;color:#94a3b8;">' + (er.submitted_by_name || er.submitted_by) + ' &middot; ' + date + ' &middot; from <strong>' + er.source_page + '</strong></div>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">' +
+                    '<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:3px 10px;border-radius:8px;font-size:0.75rem;font-weight:600;">' + er.category + '</span>' +
+                    '<select onchange="updateERStatus(\'' + er.id + '\',this.value)" style="background:#1e293b;color:' + sc + ';border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:0.78rem;font-weight:600;cursor:pointer;">' +
+                        ['unreviewed','reviewed','planned','in-progress','done','declined'].map(s => '<option value="' + s + '"' + (s === er.status ? ' selected' : '') + ' style="color:' + (statusColors[s]||'#6b7280') + '">' + s + '</option>').join('') +
+                    '</select>' +
+                '</div>' +
+            '</div>' +
+            (er.admin_notes ? '<div style="margin-top:8px;padding:8px 10px;background:#1e293b;border-radius:6px;font-size:0.8rem;color:#93c5fd;"><strong>Admin:</strong> ' + er.admin_notes + '</div>' : '') +
+            '<div style="margin-top:8px;display:flex;gap:8px;">' +
+                '<input id="erNote_' + er.id + '" placeholder="Add admin note..." value="' + (er.admin_notes || '').replace(/"/g, '&quot;') + '" style="flex:1;padding:6px 10px;background:#1e293b;color:white;border:1px solid #334155;border-radius:6px;font-size:0.8rem;" />' +
+                '<button onclick="saveERNote(\'' + er.id + '\')" style="background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.78rem;font-weight:600;">Save Note</button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+async function updateERStatus(id, status) {
+    try {
+        const { error } = await getSB().from('enhancement_requests').update({ status }).eq('id', id);
+        if (error) throw error;
+        const er = _erData.find(e => e.id === id);
+        if (er) er.status = status;
+        renderERAdminList();
+        loadERUnreviewedCount();
+    } catch(err) { alert('Error updating status: ' + (err.message || err)); }
+}
+
+async function saveERNote(id) {
+    const note = document.getElementById('erNote_' + id)?.value || '';
+    try {
+        const { error } = await getSB().from('enhancement_requests').update({ admin_notes: note }).eq('id', id);
+        if (error) throw error;
+        const er = _erData.find(e => e.id === id);
+        if (er) er.admin_notes = note;
+        renderERAdminList();
+    } catch(err) { alert('Error saving note: ' + (err.message || err)); }
+}
+</script>
+
+<!-- GH#19: Enhancement Request Admin Modal -->
+<div id="erAdminOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10060;display:none;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#1a1a2e;border-radius:16px;max-width:800px;width:100%;max-height:90vh;display:flex;flex-direction:column;border:1px solid #fbbf24;box-shadow:0 0 40px rgba(251,191,36,0.2);">
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:16px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:28px;">🪔</span>
+                <h2 style="margin:0;font-size:1.2rem;color:#1a1a2e;font-family:'Barlow Condensed',sans-serif;font-weight:700;">Enhancement Requests — Admin View</h2>
+            </div>
+            <button onclick="closeERAdminView()" style="background:none;border:none;color:#1a1a2e;font-size:1.5rem;cursor:pointer;font-weight:700;line-height:1;">&times;</button>
+        </div>
+        <div style="padding:12px 24px;display:flex;gap:12px;flex-wrap:wrap;border-bottom:1px solid #1e3a5f;">
+            <select onchange="filterERAdmin('status',this.value)" style="padding:6px 10px;background:#0f172a;color:white;border:1px solid #334155;border-radius:6px;font-size:0.85rem;">
+                <option value="all">All Statuses</option>
+                <option value="unreviewed">Unreviewed</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="planned">Planned</option>
+                <option value="in-progress">In Progress</option>
+                <option value="done">Done</option>
+                <option value="declined">Declined</option>
+            </select>
+            <select onchange="filterERAdmin('category',this.value)" style="padding:6px 10px;background:#0f172a;color:white;border:1px solid #334155;border-radius:6px;font-size:0.85rem;">
+                <option value="all">All Categories</option>
+                <option value="RO Management">RO Management</option>
+                <option value="Parts & Ordering">Parts & Ordering</option>
+                <option value="Work Orders">Work Orders</option>
+                <option value="Time Clock / Check-In">Time Clock / Check-In</option>
+                <option value="Calendar">Calendar</option>
+                <option value="Work List">Work List</option>
+                <option value="Notifications / Email">Notifications / Email</option>
+                <option value="General UI/UX">General UI/UX</option>
+                <option value="New Feature Idea">New Feature Idea</option>
+                <option value="Bug Report">Bug Report</option>
+            </select>
+        </div>
+        <div id="erAdminBody" style="flex:1;overflow-y:auto;padding:16px 24px;"></div>
+    </div>
 </div>
 </body>
 </html>

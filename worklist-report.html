@@ -913,5 +913,37 @@ window.addEventListener('load', () => {
     }, 5000);
 });
 </script>
+
+<!-- GH#19: Enhancement Request — Floating Genie Lamp + Modal -->
+<div id="erFloatingBtn" onclick="openERModal()" title="Make a Wish — Submit an Enhancement Request" style="position:fixed;bottom:24px;left:24px;z-index:9998;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706,#b45309);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(217,119,6,0.5);transition:transform 0.2s,box-shadow 0.2s;border:2px solid #fbbf24;" onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(217,119,6,0.7)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(217,119,6,0.5)'">
+    <span style="font-size:28px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">🪔</span>
+</div>
+<div id="erModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10050;display:none;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeERModal()">
+    <div style="background:#1a1a2e;border-radius:16px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;border:1px solid #fbbf24;box-shadow:0 0 40px rgba(251,191,36,0.2);">
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);padding:18px 24px;border-radius:16px 16px 0 0;display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:28px;">🪔</span><div><h2 style="margin:0;font-size:1.2rem;color:#1a1a2e;font-family:'Barlow Condensed',sans-serif;font-weight:700;">Make a Wish</h2><p style="margin:0;font-size:0.75rem;color:#451a03;">Submit an Enhancement Request</p></div></div>
+            <button onclick="closeERModal()" style="background:none;border:none;color:#1a1a2e;font-size:1.5rem;cursor:pointer;font-weight:700;line-height:1;">&times;</button>
+        </div>
+        <div style="padding:20px 24px;">
+            <label style="display:block;color:#fbbf24;font-size:0.8rem;font-weight:600;margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">CATEGORY</label>
+            <select id="erCategory" style="width:100%;padding:10px 12px;background:#0f172a;color:white;border:1px solid #334155;border-radius:8px;font-size:0.95rem;margin-bottom:16px;font-family:'Barlow Condensed',sans-serif;">
+                <option value="RO Management">RO Management</option><option value="Parts & Ordering">Parts &amp; Ordering</option><option value="Work Orders">Work Orders</option><option value="Time Clock / Check-In">Time Clock / Check-In</option><option value="Calendar">Calendar</option><option value="Work List" selected>Work List</option><option value="Notifications / Email">Notifications / Email</option><option value="General UI/UX">General UI/UX</option><option value="New Feature Idea">New Feature Idea</option><option value="Bug Report">Bug Report</option>
+            </select>
+            <label style="display:block;color:#fbbf24;font-size:0.8rem;font-weight:600;margin-bottom:6px;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">DESCRIBE YOUR WISH</label>
+            <textarea id="erDescription" placeholder="What would you like to see improved or added?" style="width:100%;min-height:120px;padding:12px;background:#0f172a;color:white;border:1px solid #334155;border-radius:8px;font-size:0.95rem;resize:vertical;font-family:'Barlow Condensed',sans-serif;box-sizing:border-box;"></textarea>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+                <button onclick="startERDictation()" style="background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:0.85rem;font-family:'Barlow Condensed',sans-serif;display:flex;align-items:center;gap:6px;"><span style="font-size:1.1rem;">🎤</span> Voice Dictation</button>
+                <span id="erDictationStatus" style="font-size:0.8rem;color:#6b7280;"></span>
+            </div>
+            <button onclick="submitEnhancementRequest()" style="width:100%;margin-top:20px;padding:14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;border:none;border-radius:10px;font-size:1.05rem;font-weight:700;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.5px;">✨ Submit Wish</button>
+        </div>
+    </div>
+</div>
+<script>
+function openERModal(){document.getElementById('erModalOverlay').style.display='flex';document.getElementById('erDescription').value='';document.getElementById('erDictationStatus').textContent='';}
+function closeERModal(){document.getElementById('erModalOverlay').style.display='none';}
+function startERDictation(){if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert('Voice dictation not supported. Use Chrome or Safari.');return;}const SR=window.SpeechRecognition||window.webkitSpeechRecognition;const r=new SR();r.continuous=false;r.interimResults=false;r.lang='en-US';const s=document.getElementById('erDictationStatus'),inp=document.getElementById('erDescription');r.onstart=()=>{if(s){s.textContent='🎤 Listening...';s.style.color='#10b981';}};r.onresult=(e)=>{const t=e.results[0][0].transcript;if(inp){inp.value=inp.value?inp.value+' '+t:t;}if(s){s.textContent='✅ Transcribed!';s.style.color='#10b981';setTimeout(()=>{s.textContent='';},3000);}};r.onerror=(e)=>{if(s){s.textContent='❌ Error: '+e.error;s.style.color='#dc2626';setTimeout(()=>{s.textContent='';},3000);}};r.onend=()=>{if(s&&s.textContent.includes('Listening'))s.textContent='';};r.start();}
+async function submitEnhancementRequest(){const desc=document.getElementById('erDescription').value.trim();const cat=document.getElementById('erCategory').value;if(!desc){alert('Please describe your request.');return;}const sb=getSB();if(!sb||!supabaseSession){alert('You must be signed in.');return;}const email=supabaseSession.user?.email||'unknown';const name=currentUser?.name||supabaseSession.user?.user_metadata?.full_name||email;try{const{error}=await sb.from('enhancement_requests').insert({submitted_by:email,submitted_by_name:name,source_page:'worklist-report',category:cat,description:desc});if(error)throw error;closeERModal();const toast=document.createElement('div');toast.style.cssText='position:fixed;bottom:90px;left:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;padding:12px 20px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);';toast.textContent='🪔 Wish submitted! Roland will review it.';document.body.appendChild(toast);setTimeout(()=>{toast.style.opacity='0';toast.style.transition='opacity 0.3s';setTimeout(()=>toast.remove(),300);},4000);}catch(err){console.error('ER submit error:',err);alert('Error: '+(err.message||err));}}
+</script>
 </body>
 </html>
