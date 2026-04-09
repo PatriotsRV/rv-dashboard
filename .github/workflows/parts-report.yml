@@ -1,14 +1,16 @@
 name: Parts Status Report
 
-# GH#18: Sends parts status email to all managers at 8 AM + 3 PM CDT, Mon-Fri
-# 8 AM CDTM  = 13:00 UTC  (UTC-5 daylight saving; adjust to 14:00 Nov-Mar for CST)
-# 3 PM CDT  = 20:00 UTC
+# GH#18: Parts status email to all managers at 8 AM + 3 PM CDT, Mon-Fri
+# MIGRATED TO SUPABASE pg_cron (Session 37, 2026-04-09) for reliable timing.
+# Supabase cron jobs: parts-report-morning (0 13 * * 1-5) + parts-report-afternoon (0 20 * * 1-5)
+# Service role key stored in Supabase Vault as 'service_role_key'.
+# GitHub Actions schedule disabled to prevent double-sends.
 
 on:
-  schedule:
-    - cron: '0 13 * * 1-5'   # 8 AM CDTM (Mon-Fri)
-    - cron: '0 20 * * 1-5'   # 3 PM CDT (Mon-Fri)
-  workflow_dispatch:           # allow manual trigger for testing
+  # schedule:                  # DISABLED — now handled by Supabase pg_cron
+  #   - cron: '0 13 * * 1-5'  # 8 AM CDT (Mon-Fri)
+  #   - cron: '0 20 * * 1-5'  # 3 PM CDT (Mon-Fri)
+  workflow_dispatch:           # keep manual trigger for testing
 
 jobs:
   send-report:
