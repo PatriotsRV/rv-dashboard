@@ -7182,7 +7182,7 @@ Notes: ${notes}` : '',
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
                         ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${ro.parkingSpot}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
-                        ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
+                        ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Sourcing')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
                         <div class="parts-status-chip ${ro.partsStatus}" onclick="openPartsStatusModal(${index})" title="Parts status — click to update">
                             ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : ro.partsStatus === 'estimate' ? `📋 ${t('PARTS ESTIMATE')}` : `✅ ${t('PARTS RECEIVED')}` }
@@ -10337,17 +10337,18 @@ Notes: ${notes}` : '',
 
                 // 2b. Insert a part row so the request appears in the Parts modal
                 if (!isEstimateOnly) {
-                    try {
-                        await getSB().from('parts').insert({
-                            ro_id:       ro._supabaseId,
-                            part_name:   description,
-                            status:      'Sourcing',
-                            ordered_by:  userName,
-                            notes:       `Requested by ${userName} on ${ts}`,
-                            qty:         1,
-                        });
-                    } catch(partErr) {
-                        console.warn('Parts row insert failed (non-blocking):', partErr);
+                    const { error: partInsertErr } = await getSB().from('parts').insert({
+                        ro_id:       ro._supabaseId,
+                        part_name:   description,
+                        status:      'Sourcing',
+                        ordered_by:  userName,
+                        notes:       `Requested by ${userName} on ${ts}`,
+                        qty:         1,
+                    });
+                    if (partInsertErr) {
+                        console.warn('Parts row insert failed (non-blocking):', partInsertErr.message, partInsertErr);
+                    } else {
+                        console.log('✅ Parts Sourcing row created for:', description);
                     }
                 }
 
