@@ -122,7 +122,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
 | `supabase/functions/send-quote-email/index.ts` | **v1.5** | Edge Function — solar quote email + parts request email + photo share email + parts ordered notification + ETA update notification (types: 'solar_quote', 'parts_request', 'photo_share', 'parts_ordered', 'parts_eta_update') |
-| `supabase/functions/send-parts-report/index.ts` | **v1.0** | Edge Function — GH#18 scheduled parts status report: 4 sections (open requests, ordered/in-transit, overdue, received 24h). Queries DB via service role, emails all sr_managers + managers + parts_managers. **Needs CLI deploy.** |
+| `supabase/functions/send-parts-report/index.ts` | **v1.1** | Edge Function — GH#18 scheduled parts status report: 4 sections (open requests, ordered/in-transit, overdue, received 24h). Queries DB via service role, emails all sr_managers + managers + parts_managers. **v1.1 (Session 37): Fixed `ro_id` FK bug in sections 2/3/4. CLI deployed ✅.** |
 | `.github/workflows/parts-report.yml` | — | GH#18 cron workflow — calls send-parts-report Mon–Fri at 13:00 UTC (8 AM CDT) + 20:00 UTC (3 PM CDT). Secrets needed: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY |
 | `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |

@@ -19,7 +19,12 @@ When this skill is triggered, execute the following session startup protocol exa
    - 🔴 items that are still open
    - Any pending Roland-action items (marked "Roland action")
 
-5. **Ask for iPhone updates:**
+5. **Check GitHub Actions cron health:**
+   - Go to `github.com/PatriotsRV/rv-dashboard/actions` and check whether the **Parts Status Report** and **Daily Backup** workflows have been running on schedule.
+   - If either workflow shows failures or hasn't run recently, flag it to Roland.
+   - Verify that the required GitHub secrets exist: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SERVICE_KEY`, `GH_BACKUP_PAT`. If any are missing or if runs show auth errors, flag it.
+
+6. **Ask for iPhone updates:**
    > "Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start."
 
    If Roland provides mobile updates, merge them into the TODO list immediately:
@@ -27,9 +32,9 @@ When this skill is triggered, execute the following session startup protocol exa
    - Add new items with the correct priority
    - Confirm what changed before continuing
 
-6. **Ask before starting work:**
+7. **Ask before starting work:**
    > "Is there anything else to add or change before we start?"
 
    **Wait for Roland's answer before beginning any work.**
 
-7. Only then begin work — starting with the highest-priority TODO item unless Roland redirects.
+8. Only then begin work — starting with the highest-priority TODO item unless Roland redirects.
