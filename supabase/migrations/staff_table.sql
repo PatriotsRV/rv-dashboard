@@ -62,7 +62,7 @@ INSERT INTO staff (name, email, role, service_silo) VALUES
   -- Sr. Manager — cross-silo (covers all 5 service silos including Roof + Paint & Body)
   -- Ryan is the acting manager for Roof and Paint & Body until dedicated managers are hired
   ('Ryan Dillon',     'ryan@patriotsrvservices.com',     'sr_manager',     NULL),
-  ('Sofia',           'sofia@patriotsrvservices.com',    'sr_manager',     NULL),
+  ('Sofia Pedroza',   'sofia@patriotsrvservices.com',    'sr_manager',     NULL),
 
   -- Repair Managers
   ('Mauricio Tellez', 'mauricio@patriotsrvservices.com', 'manager',        'repair'),
