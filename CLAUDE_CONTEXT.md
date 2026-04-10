@@ -70,6 +70,43 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 ---
 
+## 📐 Implementation Specs (2026-04-10 — Perplexity)
+
+> **Five detailed specs live in `docs/specs/`.** These were researched and written by Perplexity Computer, reviewed by Roland, and merged via PR #15 on 2026-04-10. Claude Cowork executes from these specs — one session per phase/section.
+>
+> **Read the full spec before starting any session.** Each spec contains exact line numbers, before/after code blocks, SQL migrations, test plans, and rollback instructions.
+
+| Spec File | Description | Sessions | Priority | Status |
+|---|---|---|---|---|
+| `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | ⏳ Not started |
+| `docs/specs/TWILIO_SMS_SPEC.md` | Full Twilio SMS integration: number port guide, `sms_log` + `sms_templates` tables, `twilio-sms` Edge Function, SMS compose modal (repurposes Kenect modal), 6 message templates, A2P 10DLC registration, inbound webhook | Phase 1–3 (3 phases) | 🔴 Blocks after number port | ⏳ Not started |
+| `docs/specs/TOAST_SYSTEM_SPEC.md` | Replace all `alert()` calls with non-blocking toast notifications: success/warning/danger/info types, auto-dismiss, stack management | 1 session | 🟠 High | ⏳ Not started |
+| `docs/specs/UNIFIED_SEARCH_SPEC.md` | Global search bar: search across customer name, RO ID, VIN, RV, phone, parking spot with debounced input and highlight | 1 session | 🟠 High | ⏳ Not started |
+| `docs/specs/MODULARIZATION_ROADMAP.md` | Split 13,631-line `index.html` into 18 ES modules (no bundler, GitHub Pages compatible): config, state, utils, auth, i18n, render, ro-crud, parts, work-orders, photos, time-tracking, scheduling, qr, work-list, insurance, kenect, duplicates, enhancement + CSS extraction | Phase 0–19 (~10-14 sessions) | 🟡 Long-term | ⏳ Not started |
+
+### Spec Execution Order (Recommended)
+1. **Security Remediation S1** (XSS) — zero regression risk, prerequisite for safe rendering
+2. **Security Remediation S2** (RBAC) — removes hardcoded emails, uses staff table
+3. **Security Remediation S3** (analytics auth) — depends on S2
+4. **Toast System** — can run anytime, independent
+5. **Unified Search** — can run anytime, independent
+6. **Security Remediation S4–S7** — remaining security items
+7. **Twilio SMS Phase 1** — after number port completes (Roland action)
+8. **Modularization Phase 0–19** — long-term, start after security + SMS are stable
+
+### Perplexity + Claude Cowork Workflow
+- **Perplexity Computer** researches, plans, and writes implementation specs → pushes to `docs/specs/` via GitHub
+- **Claude Cowork** reads specs from `docs/specs/` and executes them — one session per phase/section
+- Specs contain exact line numbers, before/after code, SQL migrations, and test plans
+- Roland reviews each spec before execution and tests after each Cowork session
+
+### Safe Fixes Already Merged (PR #14, 2026-04-10)
+- `backup.yml` — added 4 missing tables: `enhancement_requests`, `manager_work_lists`, `wo_task_templates`, `wo_template_tasks`
+- `backup.sh` — added 3 missing Edge Functions: `send-er-report`, `send-parts-report`, `kenect-proxy` + 2 new doc files
+- `ROLLBACK.md` — updated through v1.308 with Sessions 34–37
+
+---
+
 ## 📋 ACTIVE TODO LIST
 
 > This is the canonical task list. Update it every session. Priorities: 🔴 Blocking · 🟠 High · 🟡 Medium · 🔵 Low
@@ -128,13 +165,18 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `supabase/functions/send-parts-report/index.ts` | **v1.1** | Edge Function — GH#18 scheduled parts status report: 4 sections (open requests, ordered/in-transit, overdue, received 24h). Queries DB via service role, emails all sr_managers + managers + parts_managers. **v1.1 (Session 37): Fixed `ro_id` FK bug in sections 2/3/4. CLI deployed ✅.** |
 | `supabase/functions/send-er-report/index.ts` | **v1.0** | Edge Function — GH#19 daily Enhancement Request email report. Queries unreviewed + today's requests + total open count. Styled HTML email to roland@. pg_cron: Mon–Fri 3:30 PM CDT (20:30 UTC). |
 | `.github/workflows/parts-report.yml` | — | GH#18 cron workflow — schedule commented out (migrated to Supabase pg_cron Session 37). Manual trigger preserved. |
-| `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files |
+| `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files. **Updated 2026-04-10:** +3 Edge Functions (send-er-report, send-parts-report, kenect-proxy) + 2 doc files. |
+| `docs/specs/SECURITY_REMEDIATION.md` | **v1.0** | 10 security issues, 7 Claude Cowork sessions — XSS, RBAC, analytics auth, Anthropic key, console.log, onclick migration, CORS, anon key, calendar IDs, search_path |
+| `docs/specs/TWILIO_SMS_SPEC.md` | **v1.0** | Full Twilio SMS integration spec — number port, Edge Function, templates, UI, A2P 10DLC, webhook |
+| `docs/specs/TOAST_SYSTEM_SPEC.md` | **v1.0** | Replace alert() with toast notifications — success/warning/danger/info types |
+| `docs/specs/UNIFIED_SEARCH_SPEC.md` | **v1.0** | Global search bar — debounced, multi-field, highlight matches |
+| `docs/specs/MODULARIZATION_ROADMAP.md` | **v1.0** | 19-phase plan to split index.html into ES modules — no bundler, GitHub Pages compatible |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |
 | `ROLLBACK.md` | — | Emergency rollback guide — step-by-step restore instructions, version table, rollback commands |
 | `SESSION_STARTER.md` | — | Copyable session kickoff prompt for Roland to paste into Claude |
 | `RELEASE_NOTES_v1.265.md` | — | Release notes for v1.265 |
 | `RELEASE_NOTES_v1.266.md` | — | Release notes for v1.266 |
-| `.github/workflows/backup.yml` | — | Daily Supabase backup → private backup repo |
+| `.github/workflows/backup.yml` | — | Daily Supabase backup → private backup repo. **Updated 2026-04-10:** +4 tables (enhancement_requests, manager_work_lists, wo_task_templates, wo_template_tasks) |
 | `docs/PRVS_Manager_Training_Guide.pdf` | **Session 33** | Manager Role Training Guide — 13 pages, 21 sections covering all manager abilities: check-in, planning, Work Orders (inc. Est. Hours + Task Templates), Parts Workflow (inc. Notify Requester + ETA auto-notification), Manager Work List, delivery, ongoing. Updated April 2026. Also saved as .docx for easy editing. |
 | `docs/PRVS_Manager_Training_Guide.docx` | **Session 33** | Word version of Manager Training Guide — same content as .pdf, fully editable in Word. |
 
@@ -255,7 +297,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - **Database:** Supabase (PostgreSQL + RLS)
 - **Storage:** Supabase Storage (`rv-media` bucket)
 - **Backups:** GitHub Actions → `prvshepard/rv-dashboard-backups` (private), daily 4 AM EST
-- **SMS:** Twilio (planned — number port in progress)
+- **SMS:** Twilio (planned — full spec in `docs/specs/TWILIO_SMS_SPEC.md`, number port pending)
 - **Offline:** IndexedDB queue in checkin.html
 - **Hosting:** GitHub Pages
 
