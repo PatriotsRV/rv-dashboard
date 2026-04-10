@@ -18,7 +18,7 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           mkdir -p backups/$DATE
 
-          TABLES="repair_orders notes parts time_logs cashiered users user_roles roles audit_log config insurance_scans"
+          TABLES="repair_orders notes parts time_logs cashiered users user_roles roles audit_log config insurance_scans staff service_work_orders service_tasks enhancement_requests wo_task_templates wo_template_tasks manager_work_lists solar_project_store solar_settings"
 
           for TABLE in $TABLES; do
             echo "Backing up $TABLE..."
