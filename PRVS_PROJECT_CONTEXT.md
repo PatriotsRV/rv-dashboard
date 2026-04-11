@@ -26,13 +26,13 @@
 
 | Spec | Sessions | Priority | Status |
 |---|---|---|---|
-| `SECURITY_REMEDIATION.md` — 10 security issues (XSS, RBAC, auth gaps, API key exposure, etc.) | S1–S7 | 🔴 **ASAP** | ⏳ Not started |
+| `SECURITY_REMEDIATION.md` — 10 security issues (XSS, RBAC, auth gaps, API key exposure, etc.) | S1–S7 | 🔴 **ASAP** | ✅ **ALL COMPLETE** — 2026-04-11 |
 | `TWILIO_SMS_SPEC.md` — Full SMS integration replacing Kenect | Phase 1–3 | 🔴 After port | ⏳ Not started |
 | `TOAST_SYSTEM_SPEC.md` — Replace alert() with toast notifications | 1 session | 🟠 High | ⏳ Not started |
 | `UNIFIED_SEARCH_SPEC.md` — Global search bar | 1 session | 🟠 High | ⏳ Not started |
 | `MODULARIZATION_ROADMAP.md` — Split index.html into 18 ES modules | Phase 0–19 | 🟡 Long-term | ⏳ Not started |
 
-**Start with:** Security Remediation S1 (XSS fix) → S2 (RBAC) → S3 (analytics auth)
+**Next up:** Toast System or Unified Search (1 session each), then Twilio SMS after number port
 
 **Workflow:** Perplexity researches/writes specs → pushes to `docs/specs/` → Claude Cowork reads and executes
 
@@ -43,7 +43,7 @@
 > Use this list from your iPhone to log updates between laptop sessions.
 
 ### 🔴 Blocking / Top Priority
-- **Security Remediation** — Full spec in `docs/specs/SECURITY_REMEDIATION.md`. 7 sessions. Start this weekend. ⏳ Not started
+- ~~**Security Remediation**~~ ✅ **ALL 10 ISSUES COMPLETE** — 2026-04-11. S1 (XSS × 44), S2 (RBAC), S3 (analytics auth), S4 (Anthropic key proxy), S5 (console.log cleanup), S6 (onclick migration), S7 (CORS + session tokens + calendar config + search_path). 10 commits + 2 hotfixes. 5 Edge Functions redeployed. 2 SQL migrations run.
 - **GH#1 — Twilio number port** — Roland must gather carrier info + create Twilio account. Full guide in `docs/specs/TWILIO_SMS_SPEC.md` Section 2. Blocks all SMS features. ⏳ Roland action
 - **GH#4 — Twilio SMS build** — Full spec in `docs/specs/TWILIO_SMS_SPEC.md`. Replaces Kenect. ⏳ Waiting on number port
 
@@ -69,11 +69,11 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **Security Remediation — ALL COMPLETE (2026-04-11)** — 10 security issues across 7 sessions (S1–S7) + 2 hotfixes. Commits: 0c04416, ee1c91e, 28c52f8, c920277, 14ab339, 350bf35, f78dceb, 44a8991, a4ad2b4, f12d775, 9c81cf7, 385ddd5, d5acc07, 19deb64. claude-vision-proxy Edge Function deployed (×2). 5 Edge Functions redeployed with CORS. 2 SQL migrations run. QA verified by Perplexity.
+- ✅ **Perplexity scan + specs (2026-04-10)** — Full project scan. 5 implementation specs written, reviewed, merged (PR #14 safe fixes + PR #15 specs).
 - ✅ **v1.308 (2026-04-05)** — Closed RO Archive (GH#22), Enhancement Request system (GH#19), parts badge fixes, Work List DOM fix, send-parts-report ro_id FK bug fix.
 - ✅ **v1.305 (2026-04-04)** — Sr Manager silo-specific work lists, Work List Report page.
 - ✅ **v1.304 (2026-04-03)** — Parts Notifications (GH#18) — Notify Requester button, ETA auto-notification, parts status report cron.
-- ✅ **Perplexity scan + specs (2026-04-10)** — Full project scan. 5 implementation specs written, reviewed, merged (PR #14 safe fixes + PR #15 specs).
-- ✅ **Backup coverage fix (2026-04-10)** — backup.yml +4 tables, backup.sh +3 Edge Functions, ROLLBACK.md updated through v1.308.
 
 ---
 
@@ -102,7 +102,7 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 - **Database:** Supabase (PostgreSQL) — project ref `axfejhudchdejoiwaetq`
 - **Auth:** Google Identity Services → Supabase `signInWithIdToken`
 - **Storage:** Supabase Storage (`rv-media` bucket)
-- **Edge Functions:** `kenect-proxy` (dormant), `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron)
+- **Edge Functions:** `kenect-proxy` (dormant), `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner)
 - **SMS:** Twilio (planned — full spec in `docs/specs/TWILIO_SMS_SPEC.md`)
 - **Roles:** Admin (roland@, lynn@), Sr Manager (ryan@, kevin@), Manager (mauricio@, jason@, andrew@, solar@, bobby@, brandon@), Tech (9 techs)
 
@@ -118,4 +118,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-10 — v1.308 — Perplexity specs merged*
+*Last updated: 2026-04-11 — v1.308 — Security Remediation ALL COMPLETE (S1–S7)*
