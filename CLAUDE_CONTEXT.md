@@ -80,7 +80,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 |---|---|---|---|---|
 | `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | ✅ **ALL COMPLETE** — 2026-04-11 (10 commits + S1/S4 hotfixes, 5 Edge Functions redeployed, 2 SQL migrations run) |
 | `docs/specs/TWILIO_SMS_SPEC.md` | Full Twilio SMS integration: number port guide, `sms_log` + `sms_templates` tables, `twilio-sms` Edge Function, SMS compose modal (repurposes Kenect modal), 6 message templates, A2P 10DLC registration, inbound webhook | Phase 1–3 (3 phases) | 🔴 Blocks after number port | ⏳ Not started |
-| `docs/specs/TOAST_SYSTEM_SPEC.md` | Replace all `alert()` calls with non-blocking toast notifications: success/warning/danger/info types, auto-dismiss, stack management | 1 session | 🟠 High | ⏳ Not started |
+| `docs/specs/TOAST_SYSTEM_SPEC.md` | Replace all `alert()` calls with non-blocking toast notifications: success/warning/danger/info types, auto-dismiss, stack management | 1 session | 🟠 High | ✅ **COMPLETE** — 2026-04-11 (commit 609201d: 116 alert→showToast, 4 confirm→toast-action, CSS+JS IIFE) |
 | `docs/specs/UNIFIED_SEARCH_SPEC.md` | Global search bar: search across customer name, RO ID, VIN, RV, phone, parking spot with debounced input and highlight | 1 session | 🟠 High | ⏳ Not started |
 | `docs/specs/MODULARIZATION_ROADMAP.md` | Split 13,631-line `index.html` into 18 ES modules (no bundler, GitHub Pages compatible): config, state, utils, auth, i18n, render, ro-crud, parts, work-orders, photos, time-tracking, scheduling, qr, work-list, insurance, kenect, duplicates, enhancement + CSS extraction | Phase 0–19 (~10-14 sessions) | 🟡 Long-term | ⏳ Not started |
 
@@ -88,7 +88,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 1. ~~**Security Remediation S1** (XSS) — escapeHtml × 44 + S1 hotfix (4 gaps)~~ ✅ Done 2026-04-11
 2. ~~**Security Remediation S2** (RBAC) — removes hardcoded emails, uses staff table~~ ✅ Done 2026-04-11
 3. ~~**Security Remediation S3** (analytics auth) — depends on S2~~ ✅ Done 2026-04-11
-4. **Toast System** — can run anytime, independent
+4. ~~**Toast System** — replace 116 alert() with showToast, 4 confirm→toast-action~~ ✅ Done 2026-04-11
 5. **Unified Search** — can run anytime, independent
 6. ~~**Security Remediation S4** (Anthropic key to server-side proxy)~~ ✅ Done 2026-04-11
 7. ~~**Security Remediation S5–S7** — console.log, onclick, CORS, session tokens, calendar config, search_path~~ ✅ All 10 issues complete 2026-04-11. Edge Functions redeployed. SQL migrations run.
@@ -152,6 +152,9 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | ✅ | — | **S1 hotfix — escapeHtml on 4 XSS gaps (GH#18 QA)** | **2026-04-11:** escapeHtml on customerEmail (card mailto + photo email input), parts table fields (partName/partNumber/supplier/status), statusBadge ro.status. Commit: d5acc07. | ✅ Done — 2026-04-11 |
 | ✅ | — | **Deploy 5 Edge Functions (S7 CORS changes)** | kenect-proxy, roof-lookup, send-er-report, send-parts-report, send-quote-email — all redeployed by Roland 2026-04-11 with getCorsHeaders(req). | ✅ Done — 2026-04-11 |
 | ✅ | — | **Run 2 SQL migrations (S7)** | `app_config_table.sql` (8 calendar IDs seeded) + `fix_is_silo_manager_search_path.sql` (search_path fix). Run by Roland 2026-04-11 in Supabase SQL Editor. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Toast System (TOAST_SYSTEM_SPEC.md)** | **2026-04-11:** 116 alert()→showToast, 4 confirm()→toast-with-action, CSS toast stack + IIFE. 3 confirm() calls preserved (archive RO, delete field, delete part). Commit: 609201d. QA verified: 0 alert(), 3 confirm(), 124 showToast(). | ✅ Done — 2026-04-11 |
+| ✅ | — | **slideIn keyframe fix** | **2026-04-11:** scanMilestoneBanner referenced non-existent `slideIn` keyframe (silent no-op). Rewired to `toast-slide-in` with matching 280ms cubic-bezier easing. Commit: 5d321ae. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Dead Code Cleanup (DEAD_CODE_CLEANUP_SPEC.md)** | **2026-04-11:** 3 phases + cross-file audit. Phase 1: 285 lines dead CSS (7 class blocks) from index.html (ac105ed). Phase 2: 584 lines dead JS (22 functions) from index.html (cc8314a). Phase 3: 60 lines from analytics/solar/worklist-report (52686f4). Cross-file: 39 lines (WireConn+DiagNode) from solar.html (c1a8ccf). Total: **968 lines removed**. index.html 13,997→13,128. solar.html 6,393→6,354. | ✅ Done — 2026-04-11 |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -161,7 +164,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.308** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager silo-specific lists (v1.305), silo tabs + picker popup, DOM-constructed rows (v1.308)**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification**, **📋 Work List Report link (Admin only, v1.305)**, **🗃 Closed ROs link (all users, v1.308)**, **🪔 Enhancement Requests (GH#19) — genie lamp, admin view, v1.307)**, **Parts request auto-creates Sourcing row in parts table (v1.307)**, **S4: Insurance estimate scanner now uses claude-vision-proxy Edge Function — API key input removed, localStorage key cleaned up** |
+| `index.html` | **v1.308** (13,128 lines) | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager silo-specific lists (v1.305), silo tabs + picker popup, DOM-constructed rows (v1.308)**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification**, **📋 Work List Report link (Admin only, v1.305)**, **🗃 Closed ROs link (all users, v1.308)**, **🪔 Enhancement Requests (GH#19) — genie lamp, admin view, v1.307)**, **Parts request auto-creates Sourcing row in parts table (v1.307)**, **S4: Insurance estimate scanner now uses claude-vision-proxy Edge Function — API key input removed, localStorage key cleaned up** |
 | `closed-ros.html` | **v1.1** | GH#22 Closed RO Archive — card grid with photos, search/filter/sort, detail modal, reactivation (Managers+Admins), genie lamp ER button. Google SSO auth gate (requires real Supabase session). **S2 Phase 4: RBAC migration — loadUserRoles, role-based isAdmin/isManagerOrAdmin/hasRole, _allStaff lookups, hardcoded email arrays removed.** |
 | `worklist-report.html` | **v1.2** | Admin-only Active Work List Report — all managers' work lists + time logs per RO. Manager accordion sections (Sr Managers grouped by silo). Condensed RO rows with KPI chips (Days on Lot color-coded, Dollar Value). Expandable time log detail per RO. Staff Status tiles (red/green clock-in grid). Auto-refresh every 3 min. Google SSO auth gate. **S2 Phase 3: RBAC migration — loadUserRoles, role-based isAdmin, _allStaff lookups, hardcoded email arrays removed.** |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
@@ -170,7 +173,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `supabase/functions/kenect-proxy/index.ts` | **v1.1** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. **S7: CORS origin validation (getCorsHeaders).** |
 | `checkin.html` | **v1.29** | Technician clock-in/out, offline-first IndexedDB queue, Spanish language toggle. **v1.28:** Proper Supabase auth — `signInWithIdToken()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`. **S2 Phase 6: Dead ADMIN_EMAILS constant removed.** |
 | `analytics.html` | **v1.1** | Analytics/reporting view. **S2 Phase 5: RBAC migration — loadUserRoles, async DOMContentLoaded/handleSignIn with signInWithIdToken, role-based isAdmin gate, hardcoded ADMIN_EMAILS removed.** |
-| `solar.html` | **v2.1** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes. **S3: Supabase client with persistSession + storageKey, session restore, session-guarded ER submit.** |
+| `solar.html` | **v2.1** (6,354 lines) | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes. **S3: Supabase client with persistSession + storageKey, session restore, session-guarded ER submit.** **Dead code cleanup 2026-04-11: WireConn + DiagNode removed (replaced by Wire2 + DiagNode2).** |
 | `supabase/functions/roof-lookup/index.ts` | **v1.1** | Edge Function — Anthropic API proxy for AI roof lookup. **S7: CORS origin validation (getCorsHeaders). Redeployed 2026-04-11.** |
 | `supabase/functions/send-quote-email/index.ts` | **v1.6** | Edge Function — solar quote email + parts request email + photo share email + parts ordered notification + ETA update notification (types: 'solar_quote', 'parts_request', 'photo_share', 'parts_ordered', 'parts_eta_update'). **S7: CORS origin validation (getCorsHeaders). Redeployed 2026-04-11.** |
 | `supabase/functions/send-parts-report/index.ts` | **v1.2** | Edge Function — GH#18 scheduled parts status report: 4 sections (open requests, ordered/in-transit, overdue, received 24h). Queries DB via service role, emails all sr_managers + managers + parts_managers. **v1.1 (Session 37): Fixed `ro_id` FK bug in sections 2/3/4. S7: CORS origin validation (getCorsHeaders). Redeployed 2026-04-11.** |
@@ -179,6 +182,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `supabase/migrations/fix_is_silo_manager_search_path.sql` | — | S7 NEW: Adds `SET search_path = public` to `is_silo_manager()`. Run by Roland 2026-04-11. |
 | `.github/workflows/parts-report.yml` | — | GH#18 cron workflow — schedule commented out (migrated to Supabase pg_cron Session 37). Manual trigger preserved. |
 | `scripts/backup.sh` | — | Pre-deploy backup script — 6-version rolling snapshots of all key files. **Updated 2026-04-10:** +3 Edge Functions (send-er-report, send-parts-report, kenect-proxy) + 2 doc files. |
+| `docs/specs/DEAD_CODE_CLEANUP_SPEC.md` | **v1.0** | Dead code cleanup spec — 3 phases: dead CSS (285 lines), dead JS functions (584 lines), secondary HTML files (60+39 lines). Total ~968 lines removed. |
 | `docs/specs/SECURITY_REMEDIATION.md` | **v1.0** | 10 security issues, 7 Claude Cowork sessions — XSS, RBAC, analytics auth, Anthropic key, console.log, onclick migration, CORS, anon key, calendar IDs, search_path |
 | `docs/specs/TWILIO_SMS_SPEC.md` | **v1.0** | Full Twilio SMS integration spec — number port, Edge Function, templates, UI, A2P 10DLC, webhook |
 | `docs/specs/TOAST_SYSTEM_SPEC.md` | **v1.0** | Replace alert() with toast notifications — success/warning/danger/info types |
@@ -254,6 +258,19 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - All 5 Edge Functions use `ALLOWED_ORIGIN = 'https://patriotsrv.github.io'` + `getCorsHeaders(req)` that checks `req.headers.get('origin')`.
 - Non-matching origins get `Access-Control-Allow-Origin: ''` (empty string) — browser blocks the response.
 - **Edge Functions must be redeployed** for CORS changes to take effect. Code is committed but runtime still has old `*` CORS.
+
+### Toast System (2026-04-11)
+- `showToast(message, type, options)` — types: `success` (green), `warning` (amber), `danger` (red), `info` (blue). Default auto-dismiss 4s. Options: `duration`, `action` (label+handler for confirm-style toasts), `persistent: true`.
+- Toast CSS + JS wrapped in IIFE at top of index.html. Toast container `#toast-container` is fixed top-right, stacks vertically.
+- 3 `confirm()` calls intentionally preserved: archive RO (line ~4327), delete field (~4529), delete part (~6445). These are destructive actions that need blocking confirmation.
+- `showToast()` count after dead code cleanup: 116 (8 calls were inside dead functions that got removed).
+- `toast-slide-in` keyframe (280ms cubic-bezier) shared with scanMilestoneBanner animation.
+
+### Dead Code Cleanup (2026-04-11)
+- **968 lines removed** across 4 commits. index.html went from 13,997 → 13,128 lines (-869). solar.html went from 6,393 → 6,354 lines (-39).
+- Spec: `docs/specs/DEAD_CODE_CLEANUP_SPEC.md` — 3 phases with verification scripts.
+- Dynamic CSS classes preserved (never remove): `status-*`, `urgency-*`, `toast-*`, `ro-card-status-*`.
+- `_doMarkPartsOrdered` was orphaned by the removal of `markPartsOrdered` in a prior session — caught and removed in Phase 2.
 
 ### Calendar Config Table (S7)
 - `app_config` table stores calendar IDs (key/value). `getCalendarId(serviceType)` checks `_appConfig` cache first, falls back to `CALENDAR_IDS_FALLBACK` constant.
