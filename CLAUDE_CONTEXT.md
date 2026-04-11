@@ -91,7 +91,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 4. **Toast System** — can run anytime, independent
 5. **Unified Search** — can run anytime, independent
 6. ~~**Security Remediation S4** (Anthropic key to server-side proxy)~~ ✅ Done 2026-04-11
-7. **Security Remediation S5–S7** — remaining security items (console.log cleanup, inline onclick migration, CORS/anon key/calendar/search_path)
+7. ~~**Security Remediation S5–S7**~~ ✅ All 10 issues complete (S1–S7 + S1 hotfix). 5 Edge Functions need redeploy (Roland action). 2 SQL migrations need running (Roland action).
 8. **Twilio SMS Phase 1** — after number port completes (Roland action)
 9. **Modularization Phase 0–19** — long-term, start after security + SMS are stable
 
@@ -146,6 +146,12 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | ✅ | GH#22 | **Closed/Cashiered RO View** | **Session 37:** `closed-ros.html` v1.0 built — card grid with photos, search/filter (customer, RO ID, RV, VIN, technician), sort options, detail modal, reactivation (Managers+Admins insert back to `repair_orders`, delete from `cashiered`). Bright yellow "🗃 Closed ROs" header button on main dashboard (all users). Genie lamp ER button included. RLS auth fix — requires real Supabase session, no localStorage fallback. | ✅ Done — Session 37 |
 | 🟡 | — | **GitHub Release v1.308** | GH#22 Closed RO Archive + GH#19 ER system + parts badge fixes + Work List fix. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.308` | ⏳ Roland action |
 | ✅ | — | **Deploy claude-vision-proxy Edge Function** | `supabase functions deploy claude-vision-proxy` — deployed by Roland 2026-04-11. Estimate scanner operational. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Security Remediation S5 — DEBUG-gated logging + PDF guard** | **2026-04-11:** `const DEBUG = false` + `log()`/`warn()` wrappers in index/checkin/closed-ros/worklist-report. 136 console.log → log, 40 console.warn → warn. 3 sensitive logs deleted. PDF size guard (4.5 MB) in handleEstimateFile. Commit: 4 files. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Security Remediation S6 — Event delegation (Phase 1)** | **2026-04-11:** Delegated click + change listeners on #boardGrid. 23 onclick= and 3 onchange= in card template replaced with data-action/data-idx attributes. 21 action cases in switch. Commit: index.html. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Security Remediation S7 — CORS, session tokens, calendar config, search_path** | **2026-04-11:** Dynamic getCorsHeaders(req) in 5 Edge Functions. 5 Authorization headers prefer session token. CALENDAR_IDS → CALENDAR_IDS_FALLBACK + getCalendarId() + loadAppConfig(). app_config table migration. SET search_path on is_silo_manager. Commits: index.html + 5 Edge Functions + 2 SQL migrations. | ✅ Done — 2026-04-11 |
+| ✅ | — | **S1 hotfix — escapeHtml on 4 XSS gaps (GH#18 QA)** | **2026-04-11:** escapeHtml on customerEmail (card mailto + photo email input), parts table fields (partName/partNumber/supplier/status), statusBadge ro.status. Commit: d5acc07. | ✅ Done — 2026-04-11 |
+| 🟠 | — | **Deploy 5 Edge Functions (S7 CORS changes)** | kenect-proxy, roof-lookup, send-er-report, send-parts-report, send-quote-email — all have new getCorsHeaders(req). `supabase functions deploy <name>` for each. | ⏳ Roland action |
+| 🟠 | — | **Run 2 SQL migrations (S7)** | `app_config_table.sql` (calendar IDs config table) + `fix_is_silo_manager_search_path.sql` (search_path fix). Run in Supabase SQL Editor. | ⏳ Roland action |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -231,6 +237,26 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - Client sends `apikey: SUPABASE_ANON_KEY` header so Supabase gateway validates JWT before the function runs. Function also verifies JWT server-side via `auth.getUser()`.
 - The 120-line system prompt stays client-side in `callClaudeVision()` — update it in index.html, no redeploy needed.
 - `scan-api-key-bar` CSS class is dead but intentionally left in the stylesheet.
+
+### DEBUG-Gated Logging (S5)
+- `const DEBUG = false;` + `log()`/`warn()` wrappers defined near top of each HTML file. All `console.log`/`console.warn` routed through these (except `console.error` which stays direct).
+- The helper bodies MUST use `console.log`/`console.warn` directly — never `log()`/`warn()` (infinite recursion bug hit during S5, fixed).
+- 3 sensitive log lines permanently deleted (token preview, extracted data, id_token).
+
+### Event Delegation on Card Template (S6)
+- `#boardGrid` has delegated click + change listeners. Card template uses `data-action` + `data-idx`/`data-sid`/`data-field` attributes instead of inline onclick/onchange.
+- 170+ onclick attributes remain outside the card template (modal buttons, header buttons, etc.) — Phase 2 scope if needed.
+- The delegated change listener handles `parts-status-change` action from the `<select>` in the parts chip.
+
+### CORS Origin Validation (S7)
+- All 5 Edge Functions use `ALLOWED_ORIGIN = 'https://patriotsrv.github.io'` + `getCorsHeaders(req)` that checks `req.headers.get('origin')`.
+- Non-matching origins get `Access-Control-Allow-Origin: ''` (empty string) — browser blocks the response.
+- **Edge Functions must be redeployed** for CORS changes to take effect. Code is committed but runtime still has old `*` CORS.
+
+### Calendar Config Table (S7)
+- `app_config` table stores calendar IDs (key/value). `getCalendarId(serviceType)` checks `_appConfig` cache first, falls back to `CALENDAR_IDS_FALLBACK` constant.
+- `loadAppConfig()` called in both auth paths (SSO success + session restore). Must complete before calendar features work.
+- **Migration `app_config_table.sql` must be run in Supabase SQL Editor** before the config table exists.
 
 ### solar.html Auth — Partial (S3, GH#17 pending)
 - solar.html has NO login gate and NO Google sign-in flow. It creates a Supabase client with `storageKey: 'prvs_solar_auth'` and attempts to restore an existing session via `getSession()`, but there is no way to CREATE a session on this page.
