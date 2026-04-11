@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.308
-    Released: 2026-04-09
+    PRVS Dashboard v1.400
+    Released: 2026-04-11
+    v1.400: Security Remediation Complete — S1-S7: XSS escapeHtml (44 calls), RBAC migration (5 files), analytics+solar auth guards, Anthropic API key to server-side proxy, DEBUG-gated console logging, inline onclick event delegation, CORS origin lockdown, session-token auth, calendar config table, search_path fix
     v1.308: GH#22 Closed RO Archive — header button linking to closed-ros.html (visible to all users)
     v1.307: GH#19 Enhancement Request — floating genie lamp button on all pages, modal with category dropdown + voice dictation, Supabase enhancement_requests table, daily email report via pg_cron
     v1.306: Fix parts_status auto-flip gap — savePartForm() now checks if all parts are Received/Installed after edit and auto-flips parts_status to 'received' + clears has_open_parts_request; previously only markPartReceived() (quick button) triggered the flip, so parts edited via the form left stale 'outstanding' status on the RO, causing incorrect parts reports
@@ -2699,7 +2700,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.308</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.400</span>
             </div>
         </header>
 
