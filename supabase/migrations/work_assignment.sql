@@ -25,6 +25,7 @@ CREATE OR REPLACE FUNCTION is_silo_manager(silo TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = public
 AS $$
   SELECT
     has_role('Admin')

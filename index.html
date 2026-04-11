@@ -4048,7 +4048,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
                     },
                     body: JSON.stringify({
                         type: 'photo_share',
@@ -5434,8 +5434,8 @@ Always prefer mapping to a standard key over creating a new one.`;
             );
 
             // Parse service types from RO
-            const roServices = (ro.repairType || '').split(',').map(s => s.trim()).filter(s => CALENDAR_IDS[s] !== undefined);
-            const hasCalendars = roServices.some(s => CALENDAR_IDS[s]);
+            const roServices = (ro.repairType || '').split(',').map(s => s.trim()).filter(s => getCalendarId(s) !== null);
+            const hasCalendars = roServices.some(s => getCalendarId(s));
             // Check if any selected service uses day-based scheduling
             const isDayBased = roServices.some(s => DAY_BASED_SERVICES.includes(s));
 
@@ -5495,10 +5495,10 @@ Always prefer mapping to a standard key over creating a new one.`;
                             ${roServices.length === 0 ? `<p style="color:#6b7280;font-size:0.85rem;">No service types assigned to this RO.</p>` :
                             roServices.map(s => `
                                 <label style="display:flex;align-items:center;gap:10px;padding:8px;background:#252930;border-radius:8px;margin-bottom:6px;cursor:pointer;">
-                                    <input type="checkbox" name="schedCalendar" value="${s}" ${CALENDAR_IDS[s] ? 'checked' : 'disabled'}
+                                    <input type="checkbox" name="schedCalendar" value="${s}" ${getCalendarId(s) ? 'checked' : 'disabled'}
                                         style="width:16px;height:16px;accent-color:#39ff6e;">
-                                    <span style="color:${CALENDAR_IDS[s] ? '#e8eaed' : '#6b7280'};font-size:0.9rem;font-weight:600;">${s}</span>
-                                    ${!CALENDAR_IDS[s] ? '<span style="font-size:0.75rem;color:#6b7280;">(no calendar configured)</span>' : ''}
+                                    <span style="color:${getCalendarId(s) ? '#e8eaed' : '#6b7280'};font-size:0.9rem;font-weight:600;">${s}</span>
+                                    ${!getCalendarId(s) ? '<span style="font-size:0.75rem;color:#6b7280;">(no calendar configured)</span>' : ''}
                                 </label>`).join('')}
                         </div>
 
@@ -5579,7 +5579,7 @@ Always prefer mapping to a standard key over creating a new one.`;
             const conflicts = [];
             if (accessToken) {
                 for (const service of selectedCals) {
-                    const calId = CALENDAR_IDS[service];
+                    const calId = getCalendarId(service);
                     if (!calId) continue;
                     try {
                         const params = new URLSearchParams({
@@ -5676,7 +5676,7 @@ Notes: ${notes}` : '',
             let failed = 0;
 
             for (const service of selectedCals) {
-                const calId = CALENDAR_IDS[service];
+                const calId = getCalendarId(service);
                 if (!calId || !accessToken) { failed++; continue; }
 
                 try {
@@ -8240,7 +8240,7 @@ Notes: ${notes}` : '',
         const DAY_BASED_SERVICES = ['Roof', 'Paint and Body', 'Solar', 'Vroom'];
 
         // ── Google Calendar IDs per service type ─────────────────────
-        const CALENDAR_IDS = {
+        const CALENDAR_IDS_FALLBACK = {
             'Roof':          'c_23890bb21428b7a92b1f942387a4ea769f4b00b9a08a2448ccbd31e0f1f0234d@group.calendar.google.com',
             'Solar':         'c_f7395ae6ecb439db38486d6aa9750c15dadbf34e7c29b0cdf64e0d5b0bfc1b95@group.calendar.google.com',
             'Vroom':         'c_5ih1tgaloe3kitrpidg2fttrgk@group.calendar.google.com',
@@ -8250,6 +8250,10 @@ Notes: ${notes}` : '',
             'Detailing':     'c_121e30023259fa55ae879ae30dab545b9a49c6d88b27bc8a5113b9ab20c8a88e@group.calendar.google.com',
             'Chassis':       'c_00fe106cb9b6c88fd83296d6bc2afde52b94fd5a5a46e598f0d8d9447fefaf0e@group.calendar.google.com',
         };
+        function getCalendarId(serviceType) {
+            const key = 'calendar_id_' + serviceType.toLowerCase().replace(/ /g, '_').replace(/&/g, '').replace(/__/g, '_');
+            return _appConfig[key] || CALENDAR_IDS_FALLBACK[serviceType] || null;
+        }
         
         // User roles loaded from Supabase
         let userRoles = []; // array of role names e.g. ['Admin', 'Manager']
@@ -8553,6 +8557,7 @@ Notes: ${notes}` : '',
                     await loadDataFromSupabase();
                     await loadTimeLogsFromSupabase();
                     loadStaff(); // GH#5 — load staff roster for work order assignment
+                    loadAppConfig(); // S7 — load calendar IDs + future config from Supabase
 
                     initialLoadDone = true;
                     startTimeLogsAutoRefresh();
@@ -8845,6 +8850,7 @@ Notes: ${notes}` : '',
 
                         await loadDataFromSupabase();
                         await loadTimeLogsFromSupabase();
+                        loadAppConfig(); // S7 — load calendar IDs + future config from Supabase
 
                         initialLoadDone = true;
                         startTimeLogsAutoRefresh();
@@ -10239,7 +10245,7 @@ Notes: ${notes}` : '',
             try {
                 const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+                    headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         type:         'parts_ordered',
                         to:           ro.requestedByEmail,
@@ -10271,7 +10277,7 @@ Notes: ${notes}` : '',
             try {
                 await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+                    headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         type:         'parts_eta_update',
                         to:           ro.requestedByEmail,
@@ -10477,7 +10483,7 @@ Notes: ${notes}` : '',
                     await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
                         method: 'POST',
                         headers: {
-                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                            'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
                             'Content-Type':  'application/json',
                         },
                         body: JSON.stringify({
@@ -11083,7 +11089,7 @@ Notes: ${notes}` : '',
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
                     'apikey': SUPABASE_ANON_KEY,
                 },
                 body: JSON.stringify({ action, params, payload }),
@@ -11855,6 +11861,20 @@ Notes: ${notes}` : '',
                 _initWorkListBtn();
             } catch (err) {
                 warn('⚠️ Could not load staff table:', err.message);
+            }
+        }
+
+        let _appConfig = {};  // { key: value }
+        async function loadAppConfig() {
+            try {
+                const { data, error } = await getSB()
+                    .from('app_config')
+                    .select('key, value');
+                if (!error && data) {
+                    _appConfig = Object.fromEntries(data.map(r => [r.key, r.value]));
+                }
+            } catch(e) {
+                log('app_config load failed, using hardcoded defaults:', e);
             }
         }
 

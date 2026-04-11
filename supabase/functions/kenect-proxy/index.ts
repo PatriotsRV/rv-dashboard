@@ -11,15 +11,21 @@
 
 const KENECT_BASE = "https://integrations-api.kenect.com";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get('Origin') || '';
+  return {
+    'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: getCorsHeaders(req) });
   }
 
   try {
@@ -29,7 +35,7 @@ Deno.serve(async (req: Request) => {
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: "KENECT_API_KEY secret is not set. Run: supabase secrets set KENECT_API_KEY=your_key" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
       );
     }
 
@@ -66,7 +72,7 @@ Deno.serve(async (req: Request) => {
         if (!phoneNumber) {
           return new Response(
             JSON.stringify({ error: "params.phoneNumber is required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 400, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
           );
         }
         const locId = locationId || envLocationId;
@@ -92,7 +98,7 @@ Deno.serve(async (req: Request) => {
         if (!phoneNumber) {
           return new Response(
             JSON.stringify({ error: "params.phoneNumber is required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 400, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
           );
         }
         const locId = locationId || envLocationId;
@@ -108,7 +114,7 @@ Deno.serve(async (req: Request) => {
         if (!contactPhone || !messageBody) {
           return new Response(
             JSON.stringify({ error: "payload.contactPhone and payload.messageBody are required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 400, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
           );
         }
         const locId = locationId || envLocationId;
@@ -130,7 +136,7 @@ Deno.serve(async (req: Request) => {
         if (!contactPhone) {
           return new Response(
             JSON.stringify({ error: "payload.contactPhone is required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 400, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
           );
         }
         const locId = locationId || envLocationId;
@@ -146,7 +152,7 @@ Deno.serve(async (req: Request) => {
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: "${action}". Valid actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 400, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
         );
     }
 
@@ -169,13 +175,13 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ status: kenectResp.status, ok: kenectResp.ok, data: respData }),
       {
         status: kenectResp.ok ? 200 : kenectResp.status,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
       }
     );
   } catch (err) {
     return new Response(
       JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }
     );
   }
 });
