@@ -1292,13 +1292,214 @@ Expected output should show:
 | 15 | Roland | Deactivate Mauricio in `staff` table (`active = false`), refresh → Mauricio loses Manager access without code change | index.html |
 | 16 | Roland | Restore Mauricio (`active = true`), refresh → access returns | index.html |
 
-**Rollback plan:**
+**Rollback plan — Code files:**
 
-If anything breaks, restore from the pre-S2 backup:
+If code changes break functionality, restore from the pre-S2 backup:
 ```bash
-./scripts/backup.sh --tag pre-s2
 git checkout pre-s2-backup -- index.html worklist-report.html closed-ros.html analytics.html checkin.html
+git commit -m "Rollback S2 code changes"
 git push
+```
+
+#### Rollback plan — Phase 1 Database Migrations
+
+If the role assignments break access in production, reverse each migration step below. Run them in **reverse order** (1.6 → 1.1). Each step is safe to run independently — they use targeted deletes with exact email/name matches, so they won't touch unrelated data.
+
+> **IMPORTANT:** The code files contain hardcoded email fallbacks that act as a safety net. If you rollback the database but the code is still the OLD version (pre-S2), access will continue to work via the email arrays. If you rollback the database AND the code is the NEW version (post-S2), access will break because the new code has no email fallback. Always rollback code FIRST, then database.
+
+**Rollback 1.6 — Revert Sofia staff UPSERT**
+
+Sofia already existed as `sr_manager` before S2, so Step 1.6 is a no-op in practice. No rollback needed. If for any reason her role was changed, restore:
+
+```sql
+-- Rollback 1.6 — Sofia was already sr_manager before S2 (no-op)
+-- Only run if you suspect Step 1.6 changed something unexpected:
+UPDATE staff SET role = 'sr_manager', active = TRUE
+WHERE email = 'sofia@patriotsrvservices.com';
+```
+
+**Rollback 1.5 — Revert Kevin staff UPSERT**
+
+Kevin already existed as `sr_manager` before S2, so Step 1.5 is a no-op in practice. No rollback needed. Same logic as 1.6:
+
+```sql
+-- Rollback 1.5 — Kevin was already sr_manager before S2 (no-op)
+-- Only run if you suspect Step 1.5 changed something unexpected:
+UPDATE staff SET role = 'sr_manager', active = TRUE
+WHERE email = 'kevin@patriotsrvservices.com';
+```
+
+**Rollback 1.4 — Remove Manager role assignments added by S2**
+
+Before S2, these 4 managers already had Manager in `user_roles`: andrew@, brandon@, mauricio@, ryan@. The 3 managers that did NOT have entries were: jason@, solar@, bobby@. Ryan already had Manager, so only the 3 new ones need removal.
+
+```sql
+-- Rollback 1.4 — Remove Manager roles that S2 added (keep pre-existing ones)
+-- Pre-S2 state: andrew, brandon, mauricio, ryan already had Manager
+-- S2 added: jason, solar (note: solar@ had Solar but not Manager), bobby
+
+DO $$
+DECLARE
+    mgr_role_id UUID;
+    _email TEXT;
+    _user_id UUID;
+BEGIN
+    SELECT id INTO mgr_role_id FROM roles WHERE name = 'Manager';
+    IF mgr_role_id IS NULL THEN
+        RAISE WARNING 'Manager role not found — nothing to rollback';
+        RETURN;
+    END IF;
+
+    -- Only remove the 3 Manager assignments that S2 ADDED (not the 4 that pre-existed)
+    FOREACH _email IN ARRAY ARRAY[
+        'jason@patriotsrvservices.com',
+        'solar@patriotsrvservices.com',
+        'bobby@patriotsrvservices.com'
+    ] LOOP
+        SELECT id INTO _user_id FROM users WHERE email = _email;
+        IF _user_id IS NOT NULL THEN
+            DELETE FROM user_roles
+            WHERE user_id = _user_id AND role_id = mgr_role_id;
+            RAISE NOTICE 'Removed Manager role from %', _email;
+        END IF;
+    END LOOP;
+END $$;
+```
+
+> **Note:** brandon@ had Manager pre-S2, so we do NOT remove it. solar@ had Solar pre-S2 but not Manager — the Manager assignment is new and gets removed; the Solar assignment is untouched.
+
+**Rollback 1.3 — Remove Sr Manager role assignments**
+
+No one had Sr Manager in `user_roles` before S2 (the role didn't even exist). Remove all three:
+
+```sql
+-- Rollback 1.3 — Remove all Sr Manager role assignments (none existed pre-S2)
+
+DO $$
+DECLARE
+    sr_mgr_role_id UUID;
+    _email TEXT;
+    _user_id UUID;
+BEGIN
+    SELECT id INTO sr_mgr_role_id FROM roles WHERE name = 'Sr Manager';
+    IF sr_mgr_role_id IS NULL THEN
+        RAISE WARNING 'Sr Manager role not found — nothing to rollback';
+        RETURN;
+    END IF;
+
+    FOREACH _email IN ARRAY ARRAY[
+        'ryan@patriotsrvservices.com',
+        'kevin@patriotsrvservices.com',
+        'sofia@patriotsrvservices.com'
+    ] LOOP
+        SELECT id INTO _user_id FROM users WHERE email = _email;
+        IF _user_id IS NOT NULL THEN
+            DELETE FROM user_roles
+            WHERE user_id = _user_id AND role_id = sr_mgr_role_id;
+            RAISE NOTICE 'Removed Sr Manager role from %', _email;
+        END IF;
+    END LOOP;
+END $$;
+```
+
+**Rollback 1.2 — Remove Admin role assignments for Roland and Lynn**
+
+Neither Roland nor Lynn had Admin in `user_roles` before S2. Remove both:
+
+```sql
+-- Rollback 1.2 — Remove Admin roles for Roland and Lynn (neither had it pre-S2)
+
+DO $$
+DECLARE
+    admin_role_id UUID;
+    _email TEXT;
+    _user_id UUID;
+BEGIN
+    SELECT id INTO admin_role_id FROM roles WHERE name = 'Admin';
+    IF admin_role_id IS NULL THEN
+        RAISE WARNING 'Admin role not found — nothing to rollback';
+        RETURN;
+    END IF;
+
+    FOREACH _email IN ARRAY ARRAY[
+        'roland@patriotsrvservices.com',
+        'lynn@patriotsrvservices.com'
+    ] LOOP
+        SELECT id INTO _user_id FROM users WHERE email = _email;
+        IF _user_id IS NOT NULL THEN
+            DELETE FROM user_roles
+            WHERE user_id = _user_id AND role_id = admin_role_id;
+            RAISE NOTICE 'Removed Admin role from %', _email;
+        END IF;
+    END LOOP;
+END $$;
+```
+
+**Rollback 1.1 — Remove "Sr Manager" role from roles table**
+
+"Sr Manager" did not exist before S2. Removing it will also cascade-delete any `user_roles` entries that reference it (if Rollback 1.3 wasn't run first). Check for CASCADE behavior on your FK before running:
+
+```sql
+-- Rollback 1.1 — Remove the Sr Manager role entirely
+-- WARNING: if user_roles FK has ON DELETE CASCADE, this also removes
+-- the Sr Manager assignments (making Rollback 1.3 redundant).
+-- If FK has ON DELETE RESTRICT, run Rollback 1.3 first.
+
+DELETE FROM roles WHERE name = 'Sr Manager';
+```
+
+**Verification query — confirm rollback restored pre-S2 state:**
+
+```sql
+-- After rollback, user_roles should show exactly 7 rows:
+-- andrew/Manager, brandon/Manager, mauricio/Manager, ryan/Manager,
+-- ryan/Solar, solar/Solar, tipton/Solar
+-- Roland and Lynn should have NO entries.
+-- Sr Manager role should not exist.
+
+SELECT u.email, r.name AS role
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+ORDER BY r.name, u.email;
+
+SELECT name FROM roles ORDER BY name;
+-- Expected: Admin, Insurance Manager, Manager, Parts Manager, Solar, Technician (6 rows, no Sr Manager)
+```
+
+**Quick rollback — nuclear option (revert ALL S2 database changes in one shot):**
+
+If you need to revert everything at once and don't want to run individual steps:
+
+```sql
+-- NUCLEAR ROLLBACK — removes all S2 database changes in one transaction
+BEGIN;
+
+-- Remove all Sr Manager role assignments, then the role itself
+DELETE FROM user_roles WHERE role_id = (SELECT id FROM roles WHERE name = 'Sr Manager');
+DELETE FROM roles WHERE name = 'Sr Manager';
+
+-- Remove Admin for Roland and Lynn
+DELETE FROM user_roles
+WHERE role_id = (SELECT id FROM roles WHERE name = 'Admin')
+  AND user_id IN (
+    SELECT id FROM users WHERE email IN ('roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com')
+  );
+
+-- Remove Manager for jason, solar, bobby (the 3 S2 added; keep pre-existing 4)
+DELETE FROM user_roles
+WHERE role_id = (SELECT id FROM roles WHERE name = 'Manager')
+  AND user_id IN (
+    SELECT id FROM users WHERE email IN (
+        'jason@patriotsrvservices.com',
+        'solar@patriotsrvservices.com',
+        'bobby@patriotsrvservices.com'
+    )
+  );
+
+-- Kevin and Sofia staff entries: no-op (they were already sr_manager before S2)
+
+COMMIT;
 ```
 
 #### Supabase migrations summary
