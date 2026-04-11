@@ -7319,7 +7319,7 @@ Notes: ${notes}` : '',
                             ${shouldShow('technicianAssigned') ? `
                             <div class="info-row">
                                 <span class="info-label">${t('Tech:')}</span>
-                                <span class="info-value">${ro.technicianAssigned || t('Unassigned')}</span>
+                                <span class="info-value">${escapeHtml(ro.technicianAssigned) || t('Unassigned')}</span>
                             </div>
                             ` : ''}
                             ${shouldShow('contactInfo') && ro.customerPhone ? `
