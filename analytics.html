@@ -870,6 +870,17 @@
         });
     }
 
+    // ── HELPERS ──
+    function escapeHtml(unsafe) {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // ── REPAIR TYPE TABLE ──
     function renderRepairTypeTable(data) {
         const grouped = {};
@@ -888,7 +899,7 @@
             ? '<tr><td colspan="4" style="color:var(--text-muted);padding:20px;text-align:center;">No data for this period</td></tr>'
             : rows.map(([type, s]) => `
                 <tr>
-                    <td>${type}</td>
+                    <td>${escapeHtml(type)}</td>
                     <td class="count-cell">${s.count}</td>
                     <td class="money">${formatMoney(s.revenue)}</td>
                     <td class="money">${formatMoney(s.revenue / s.count)}</td>
@@ -911,7 +922,7 @@
             ? '<tr><td colspan="4" style="color:var(--text-muted);padding:20px;text-align:center;">No data for this period</td></tr>'
             : rows.map(([tech, s]) => `
                 <tr>
-                    <td>${tech}</td>
+                    <td>${escapeHtml(tech)}</td>
                     <td class="count-cell">${s.count}</td>
                     <td class="money">${formatMoney(s.revenue)}</td>
                     <td class="money">${formatMoney(s.revenue / s.count)}</td>

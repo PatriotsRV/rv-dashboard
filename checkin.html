@@ -644,7 +644,7 @@ async function autoClockOut(session) {
             .select('customer_name, ro_id')
             .eq('id', session.ro_id)
             .maybeSingle();
-        if (prevRO) prevROName = `${prevRO.customer_name} (${prevRO.ro_id})`;
+        if (prevRO) prevROName = `${escapeHtml(prevRO.customer_name)} (${escapeHtml(prevRO.ro_id)})`;
     }
 
     const answer = await showFinishedTimePrompt(prevROName, session.clock_in);
@@ -763,23 +763,23 @@ function render() {
             <h2>${t('📋 Repair Order')}</h2>
             <div class="info-row">
                 <span class="info-label">${t('Customer')}</span>
-                <span class="info-value">${roData.customer_name || '—'}</span>
+                <span class="info-value">${escapeHtml(roData.customer_name) || '—'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">${t('RV')}</span>
-                <span class="info-value">${roData.rv || '—'}</span>
+                <span class="info-value">${escapeHtml(roData.rv) || '—'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">${t('RO ID')}</span>
-                <span class="info-value" style="font-family:monospace;font-size:12px;">${roData.ro_id}</span>
+                <span class="info-value" style="font-family:monospace;font-size:12px;">${escapeHtml(roData.ro_id)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">${t('Status')}</span>
-                <span class="info-value">${roData.status || '—'}</span>
+                <span class="info-value">${escapeHtml(roData.status) || '—'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">${t('Technician')}</span>
-                <span class="info-value">${roData.technician || '—'}</span>
+                <span class="info-value">${escapeHtml(roData.technician) || '—'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">${t('Your Status')}</span>
@@ -817,7 +817,7 @@ function render() {
             <div class="notes-toolbar">
                 <button class="btn-dictate" id="dictateBtn" onclick="toggleDictation()">${t('🎤 Dictate')}</button>
             </div>
-            <textarea id="workNotes" placeholder="${t('Describe work performed...')}">${activeSession?.work_notes || ''}</textarea>
+            <textarea id="workNotes" placeholder="${t('Describe work performed...')}">${escapeHtml(activeSession?.work_notes) || ''}</textarea>
         </div>
 
         <div class="action-buttons">
@@ -1066,6 +1066,16 @@ async function signOut() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function showLoading(msg = 'Loading...') {
     document.getElementById('app').innerHTML = `<div class="loading">⏳ ${msg}</div>`;
 }
