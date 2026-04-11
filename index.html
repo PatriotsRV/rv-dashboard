@@ -4931,6 +4931,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${supabaseSession.access_token}`,
+                    'apikey': SUPABASE_ANON_KEY,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
