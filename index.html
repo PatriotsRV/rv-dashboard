@@ -6533,6 +6533,52 @@ Notes: ${notes}` : '',
                     renderBoard();
                 });
             });
+
+            // --- S6: Delegated event handlers for RO card grid ---
+            document.getElementById('boardGrid').addEventListener('click', function(e) {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const idx = parseInt(btn.dataset.idx, 10);
+                switch (action) {
+                    case 'parking-spot':      openEditRO(idx);                    break;
+                    case 'parts-badge':       openPartsModal(idx);                break;
+                    case 'parts-status':      openPartsStatusModal(idx);          break;
+                    case 'toggle-qr':         toggleQRSection(btn, idx);          break;
+                    case 'open-qr':           openQRModal(idx);                   break;
+                    case 'print-qr':          printQRLabel(idx);                  break;
+                    case 'checkin':           openCheckIn(idx);                   break;
+                    case 'photo-library':     openPhotoLibrary(idx);              break;
+                    case 'edit-field':        editField(idx, btn.dataset.field);  break;
+                    case 'time-logs':         openTimeLogsModal(idx);             break;
+                    case 'refresh-logs':      manualRefreshTimeLogs();            break;
+                    case 'edit-ro':           openEditRO(idx);                    break;
+                    case 'manage-parts':      openPartsModal(idx);                break;
+                    case 'request-parts':     openPartsRequestModal(idx);         break;
+                    case 'work-orders':       openWorkOrderModal(idx);            break;
+                    case 'add-to-list':       addToWorkList(btn.dataset.sid);     break;
+                    case 'messages':          openKenectModal(idx);               break;
+                    case 'set-parts-status':  openPartsStatusModal(idx);          break;
+                    case 'schedule':          openScheduleModal(idx);             break;
+                    case 'archive':           archiveRO(idx);                     break;
+                }
+            });
+
+            document.getElementById('boardGrid').addEventListener('change', function(e) {
+                const el = e.target;
+                const card = el.closest('[data-ro-index]');
+                if (!card) return;
+                const idx = parseInt(card.dataset.roIndex, 10);
+                if (el.classList.contains('urgency-dropdown')) {
+                    updateROUrgency(idx, el.value);
+                }
+                if (el.classList.contains('status-dropdown')) {
+                    updateROStatus(idx, el.value);
+                }
+                if (el.classList.contains('progress-input')) {
+                    updateROProgress(idx, parseInt(el.value));
+                }
+            });
         }
 
         function parseCSV(file) {
@@ -7172,8 +7218,7 @@ Notes: ${notes}` : '',
                     <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
                         ${shouldShow('urgencySelector') ? `
                         <div class="urgency-selector-badge">
-                            <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}" 
-                                    onchange="updateROUrgency(${index}, this.value)"
+                            <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
                                     title="Change urgency level">
                                 <option value="Critical" ${ro.urgency === 'Critical' ? 'selected' : ''}>${t('CRITICAL')}</option>
                                 <option value="High" ${ro.urgency === 'High' ? 'selected' : ''}>${t('HIGH')}</option>
@@ -7207,15 +7252,15 @@ Notes: ${notes}` : '',
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${escapeHtml(ro.customerName) || t('Unknown Customer')}</div>
                         ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${escapeHtml(ro.roId)}</div>` : ''}
-                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
+                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
-                        ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
+                        ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
-                        <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" onclick="openPartsStatusModal(${index})" title="Parts status — click to update">
+                        <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" data-action="parts-status" data-idx="${index}" title="Parts status — click to update">
                             ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : ro.partsStatus === 'estimate' ? `📋 ${t('PARTS ESTIMATE')}` : `✅ ${t('PARTS RECEIVED')}` }
                         </div>
                         ` : ro.hasOpenPartsRequest ? `
-                        <div class="parts-status-chip outstanding" onclick="openPartsStatusModal(${index})" title="Parts outstanding — click to update status">
+                        <div class="parts-status-chip outstanding" data-action="parts-status" data-idx="${index}" title="Parts outstanding — click to update status">
                             ⚠️ ${t('PARTS OUTSTANDING')}
                         </div>
                         ` : ''}
@@ -7223,39 +7268,38 @@ Notes: ${notes}` : '',
                         
                         <!-- QR Code — collapsible toggle always shown, content hidden by default in Regular view -->
                         <div class="qr-collapsible-wrapper">
-                            <button class="qr-toggle-btn" onclick="toggleQRSection(this, ${index})" title="Show/Hide QR Code">
+                            <button class="qr-toggle-btn" data-action="toggle-qr" data-idx="${index}" title="Show/Hide QR Code">
                                 📱 ${t('QR Code')} <span class="qr-chevron">▼</span>
                             </button>
                             <div class="qr-collapsible" style="display:none;">
                                 <div class="qr-code-section">
-                                    <div class="qr-code-container" onclick="openQRModal(${index})">
+                                    <div class="qr-code-container" data-action="open-qr" data-idx="${index}">
                                         <canvas id="qr-${index}" class="qr-canvas"></canvas>
                                     </div>
                                     <div class="qr-label">${escapeHtml(ro.customerName) || t('Unknown')}</div>
                                     ${shouldShow('rvDetails') ? `
                                     <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${escapeHtml(ro.rv) || t('RV Not Specified')}</div>
                                     ` : ''}
-                                    <button class="print-qr-btn" onclick="printQRLabel(${index})" title="Print QR Label">
+                                    <button class="print-qr-btn" data-action="print-qr" data-idx="${index}" title="Print QR Label">
                                         ${t('🖨️ Print Label')}
                                     </button>
                                 </div>
                             </div>
                         </div>
                         
-                        <button class="checkin-btn" onclick="openCheckIn(${index})" title="Check in to this RO">
+                        <button class="checkin-btn" data-action="checkin" data-idx="${index}" title="Check in to this RO">
                             ${t('🚪 Tech Check In')}
                         </button>
                         
                         ${shouldShow('photoUpload') ? `
-                        <button class="photo-upload-btn" onclick="openPhotoLibrary(${index})" title="Manage Photos & Docs">
+                        <button class="photo-upload-btn" data-action="photo-library" data-idx="${index}" title="Manage Photos & Docs">
                             📷 ${ro.rvPhotoUrl ? t('Manage Photos & Docs') : t('Add Photo / Docs')}
                         </button>
                         ` : ''}
                         
                         ${shouldShow('statusDropdown') ? `
                         <div class="status-selector-container">
-                            <select class="status-dropdown status-${statusClass}" 
-                                    onchange="updateROStatus(${index}, this.value)"
+                            <select class="status-dropdown status-${statusClass}"
                                     data-original-status="${escapeHtml(ro.status)}">
                                 <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>${t('Not On Lot')}</option>
                                 <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>${t('On Lot')}</option>
@@ -7323,7 +7367,7 @@ Notes: ${notes}` : '',
                         ` : ''}
                         
                         ${shouldShow('repairDescription') ? `
-                        <div class="note-item editable-field" onclick="editField(${index}, 'repairDescription')">
+                        <div class="note-item editable-field" data-action="edit-field" data-idx="${index}" data-field="repairDescription">
                             <div class="note-header">
                                 <span class="note-icon">🔩</span>
                                 <span class="note-title">${t('Repair Description')}</span>
@@ -7342,7 +7386,6 @@ Notes: ${notes}` : '',
                                        min="0" 
                                        max="100" 
                                        step="5"
-                                       onchange="updateROProgress(${index}, parseInt(this.value))"
                                        title="Manual adjustment">
                                 <span class="progress-value">${ro.percentComplete}%</span>
                             </div>
@@ -7355,7 +7398,7 @@ Notes: ${notes}` : '',
                         ${shouldShow('roStatusNotes') || shouldShow('customerCommNotes') ? `
                         <div class="notes-section">
                             ${shouldShow('roStatusNotes') ? `
-                            <div class="note-item editable-field" onclick="editField(${index}, 'roStatusNotes')">
+                            <div class="note-item editable-field" data-action="edit-field" data-idx="${index}" data-field="roStatusNotes">
                                 <div class="note-header">
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">${t('RO Status')}</span>
@@ -7364,7 +7407,7 @@ Notes: ${notes}` : '',
                             </div>
                             ` : ''}
                             ${shouldShow('customerCommNotes') ? `
-                            <div class="note-item editable-field" onclick="editField(${index}, 'customerCommunicationNotes')">
+                            <div class="note-item editable-field" data-action="edit-field" data-idx="${index}" data-field="customerCommunicationNotes">
                                 <div class="note-header">
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">${t('Customer Comm')}</span>
@@ -7386,11 +7429,11 @@ Notes: ${notes}` : '',
                                         <span class="time-total">${formatHours(timeStats.totalSeconds)}</span>
                                         <span class="time-sessions">(${timeStats.sessionCount} ${timeStats.sessionCount !== 1 ? t('sessions') : t('session')})</span>
                                     </div>
-                                    <button class="view-time-logs-btn" onclick="openTimeLogsModal(${index})" title="View detailed time logs">
+                                    <button class="view-time-logs-btn" data-action="time-logs" data-idx="${index}" title="View detailed time logs">
                                         ${t('View Time Logs')}
                                     </button>
                                     ${isAdmin() ? `
-                                    <button class="view-time-logs-btn" onclick="manualRefreshTimeLogs()" title="Admin: Force refresh time logs from Google Sheets" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-top: 8px;">
+                                    <button class="view-time-logs-btn" data-action="refresh-logs" data-idx="${index}" title="Admin: Force refresh time logs from Google Sheets" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-top: 8px;">
                                         ${t('🔄 Refresh Time Logs')}
                                     </button>
                                     ` : ''}
@@ -7401,37 +7444,37 @@ Notes: ${notes}` : '',
                         })() : ''}
                         
                         ${shouldShow('editButton') ? `
-                        <button class="edit-ro-btn" onclick="openEditRO(${index})">
+                        <button class="edit-ro-btn" data-action="edit-ro" data-idx="${index}">
                             ${t('✏️ Edit RO')}
                         </button>
-                        <button class="parts-btn" onclick="openPartsModal(${index})">
+                        <button class="parts-btn" data-action="manage-parts" data-idx="${index}">
                             ${t('🔩 Manage Parts')}
                         </button>
                         ` : ''}
-                        <button class="request-parts-btn" onclick="openPartsRequestModal(${index})" title="Submit a parts request for this RO">
+                        <button class="request-parts-btn" data-action="request-parts" data-idx="${index}" title="Submit a parts request for this RO">
                             ${t('🔩 Request Parts')}
                         </button>
-                        <button class="work-order-btn" onclick="openWorkOrderModal(${index})">
+                        <button class="work-order-btn" data-action="work-orders" data-idx="${index}">
                             🔧 ${t('Work Orders')}
                         </button>
-                        ${canSeeWorkList() ? `<button onclick="addToWorkList('${ro._supabaseId}')" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
+                        ${canSeeWorkList() ? `<button data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
                         ${ro.customerPhone ? `
-                        <button class="kenect-msg-btn" onclick="openKenectModal(${index})" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
+                        <button class="kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
                             💬 ${t('Messages')}
                         </button>
                         ` : ''}
                         ${(isAdmin() || hasRole('Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
-                        <button class="mark-ordered-btn" onclick="openPartsStatusModal(${index})" title="Update parts status for this RO">
+                        <button class="mark-ordered-btn" data-action="set-parts-status" data-idx="${index}" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}
                         </button>
                         ` : ''}
                         ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? `
-                        <button class="schedule-ro-btn" onclick="openScheduleModal(${index})">
+                        <button class="schedule-ro-btn" data-action="schedule" data-idx="${index}">
                             📅 ${ro.status === 'Scheduled' ? t('Reschedule') : t('Schedule')}
                         </button>` : ''}
 
                         ${isAdmin() && (ro.status === 'Delivered/Cashed Out') ? `
-                        <button class="archive-ro-btn visible" onclick="archiveRO(${index})">
+                        <button class="archive-ro-btn visible" data-action="archive" data-idx="${index}">
                             ${t('📦 Archive to Cashiered')}
                         </button>
                         ` : ''}
