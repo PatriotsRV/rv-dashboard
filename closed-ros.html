@@ -341,6 +341,16 @@ const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.goo
 
 // S2 Phase 4: Hardcoded ADMIN_EMAILS, SR_MANAGER_EMAILS, MANAGER_EMAILS removed — now using userRoles[] + _allStaff lookups
 
+/**
+ * DEBUG — set to true locally for verbose logging; false in production.
+ * Never commit with DEBUG = true.
+ */
+const DEBUG = false;
+/** log() — gated console.log. Use instead of console.log throughout. */
+function log(...args) { if (DEBUG) console.log(...args); }
+/** warn() — gated console.warn. */
+function warn(...args) { if (DEBUG) console.warn(...args); }
+
 const PAGE_SIZE = 24;
 
 // ── State ────────────────────────────────────────────────
@@ -834,7 +844,7 @@ async function reactivateRO(cashieredId) {
         document.body.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
 
-        console.log('✅ RO reactivated:', ro.ro_id, '→ new ID:', inserted?.id);
+        log('✅ RO reactivated:', ro.ro_id, '→ new ID:', inserted?.id);
 
     } catch (err) {
         console.error('Reactivate error:', err);

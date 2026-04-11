@@ -3233,7 +3233,7 @@
             
             if (viewPresets[presetName]) {
                 viewPresets[presetName] = { ...tileVisibility };
-                console.log(`✅ Saved current configuration as "${presetName}" preset`);
+                log(`✅ Saved current configuration as "${presetName}" preset`);
                 alert(`Configuration saved to "${presetName}" preset!\n\nNow click "Admin Settings" → "Export Configuration Code" to make it permanent.`);
             }
         }
@@ -3292,7 +3292,7 @@
                 return;
             }
 
-            console.log('Updating urgency for index:', index, 'to:', newUrgency);
+            log('Updating urgency for index:', index, 'to:', newUrgency);
 
             // Show loading indicator
             const dropdown = event.target;
@@ -3311,7 +3311,7 @@
                 }
 
                 const userName = currentUser ? currentUser.name : 'Unknown User';
-                console.log('Updating urgency for:', ro.customerName, 'from', ro.urgency, 'to', newUrgency, 'by', userName);
+                log('Updating urgency for:', ro.customerName, 'from', ro.urgency, 'to', newUrgency, 'by', userName);
 
                 // Update in currentData
                 const originalIndex = currentData.findIndex(item => 
@@ -3321,13 +3321,13 @@
 
                 if (originalIndex !== -1) {
                     currentData[originalIndex].urgency = newUrgency;
-                    console.log('Updated currentData at index:', originalIndex, 'by', userName);
+                    log('Updated currentData at index:', originalIndex, 'by', userName);
                 }
 
                 // Update Supabase
                 await updateFieldInSupabase(originalIndex, 'urgency', newUrgency);
                 await writeAuditLog(ro.roId, [{ field: 'urgency', oldValue: ro.urgency, newValue: newUrgency }]);
-                console.log('✓ Urgency updated in Supabase');
+                log('✓ Urgency updated in Supabase');
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
@@ -3402,7 +3402,7 @@
                     // Audit log — before & after
                     await writeAuditLog(ro.roId, [{ field: 'Repair Description', oldValue, newValue }]);
 
-                    console.log('✓ Repair Description updated in Supabase');
+                    log('✓ Repair Description updated in Supabase');
                     renderBoard();
                     return;
                 }
@@ -3425,12 +3425,12 @@
                 }
 
                 currentData[originalIndex][fieldName] = updatedValue;
-                console.log('Updated', fieldName, 'for:', ro.customerName);
+                log('Updated', fieldName, 'for:', ro.customerName);
 
                 const noteText = '[' + new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' - ' + (currentUser?.name || 'Unknown') + '] ' + newUpdate.trim();
                 await updateFieldInSupabase(originalIndex, fieldName, noteText);
 
-                console.log('✓ Field updated in Supabase');
+                log('✓ Field updated in Supabase');
                 renderBoard();
 
             } catch (error) {
@@ -3451,7 +3451,7 @@
             if (newProgress < 0) newProgress = 0;
             if (newProgress > 100) newProgress = 100;
 
-            console.log('Manually updating progress for index:', index, 'to:', newProgress + '%');
+            log('Manually updating progress for index:', index, 'to:', newProgress + '%');
 
             try {
                 const ro = currentFilteredData[index];
@@ -3462,7 +3462,7 @@
                 }
 
                 const userName = currentUser ? currentUser.name : 'Unknown User';
-                console.log('Updating progress for:', ro.customerName, 'to', newProgress + '%', 'by', userName);
+                log('Updating progress for:', ro.customerName, 'to', newProgress + '%', 'by', userName);
 
                 // Update in currentData
                 const originalIndex = currentData.findIndex(item => 
@@ -3472,13 +3472,13 @@
 
                 if (originalIndex !== -1) {
                     currentData[originalIndex].percentComplete = newProgress;
-                    console.log('Updated currentData at index:', originalIndex, 'by', userName);
+                    log('Updated currentData at index:', originalIndex, 'by', userName);
                 }
 
                 // Update Supabase
                 await updateFieldInSupabase(originalIndex, 'percentComplete', newProgress);
                 await writeAuditLog(ro.roId, [{ field: 'percentComplete', oldValue: ro.percentComplete, newValue: newProgress }]);
-                console.log('✓ Progress updated in Supabase');
+                log('✓ Progress updated in Supabase');
                 renderBoard();
 
             } catch (error) {
@@ -3494,7 +3494,7 @@
                 return;
             }
 
-            console.log('Updating status for index:', index, 'to:', newStatus);
+            log('Updating status for index:', index, 'to:', newStatus);
 
             // Show loading indicator
             const dropdown = event.target;
@@ -3513,11 +3513,11 @@
                 }
 
                 const userName = currentUser ? currentUser.name : 'Unknown User';
-                console.log('Updating status for:', ro.customerName, 'from', ro.status, 'to', newStatus, 'by', userName);
+                log('Updating status for:', ro.customerName, 'from', ro.status, 'to', newStatus, 'by', userName);
 
                 // Get automatic progress for this status
                 const autoProgress = STATUS_PROGRESS_MAP[newStatus] || 0;
-                console.log('Auto-setting progress to:', autoProgress + '%');
+                log('Auto-setting progress to:', autoProgress + '%');
 
                 // Update in currentData
                 const originalIndex = currentData.findIndex(item => 
@@ -3534,11 +3534,11 @@
                     if (wasNotOnLot && newStatus !== 'Not On Lot' && !hasArrivalDate) {
                         autoDateArrived = today;
                         currentData[originalIndex].dateArrived = today;
-                        console.log('Auto-setting dateArrived to today:', today);
+                        log('Auto-setting dateArrived to today:', today);
                     }
                     currentData[originalIndex].status = newStatus;
                     currentData[originalIndex].percentComplete = autoProgress;
-                    console.log('Updated currentData at index:', originalIndex, 'by', userName);
+                    log('Updated currentData at index:', originalIndex, 'by', userName);
                 }
 
                 // Update Supabase — status, progress, and dateArrived if set
@@ -3559,7 +3559,7 @@
                     if (autoDateArrived) auditChanges.push({ field: 'dateArrived', oldValue: '', newValue: autoDateArrived });
                     await writeAuditLog(ro.roId, auditChanges);
                 }
-                console.log('✓ Status and progress updated in Supabase');
+                log('✓ Status and progress updated in Supabase');
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
@@ -3695,7 +3695,7 @@
                 photo_library: libraryObj,
                 updated_at: new Date().toISOString(),
             }).eq('id', ro._supabaseId);
-            console.log('✅ Photo library updated in Supabase');
+            log('✅ Photo library updated in Supabase');
         }
 
 
@@ -3741,7 +3741,7 @@
             const libraryJson = serializeLibrary(library);
             currentData[originalIndex].photoLibrary = libraryJson;
             await updatePhotoLibraryInSheet(libraryJson, originalIndex);
-            console.log('✅ Document added to library:', docName);
+            log('✅ Document added to library:', docName);
         }
 
         function openPhotoLibrary(index, initialTab = 'photos') {
@@ -4080,7 +4080,7 @@
         }
 
         async function uploadToSupabaseStorage(file, roId, options = {}) {
-            console.log('Uploading to Supabase Storage...');
+            log('Uploading to Supabase Storage...');
 
             // Pre-flight size check — warn before hitting Supabase (500 MB soft limit matches bucket config)
             const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
@@ -4120,7 +4120,7 @@
 
             if (!publicUrl) throw new Error('Could not get public URL after upload');
 
-            console.log('✅ Uploaded to Supabase Storage:', publicUrl);
+            log('✅ Uploaded to Supabase Storage:', publicUrl);
             return publicUrl;
         }
 
@@ -4138,7 +4138,7 @@
                         ]
                     }
                 });
-                console.log('✅ Photo and library updated in sheet');
+                log('✅ Photo and library updated in sheet');
             } catch (error) {
                 console.error('Error updating sheet:', error);
                 throw error;
@@ -4175,7 +4175,7 @@
                 // Remove from local data and re-render
                 currentData.splice(originalIndex, 1);
                 renderBoard();
-                console.log(`✅ Archived RO for ${ro.customerName} to Cashiered`);
+                log(`✅ Archived RO for ${ro.customerName} to Cashiered`);
 
             } catch (err) {
                 console.error('Error archiving RO:', err);
@@ -4203,10 +4203,10 @@
                 if (val) {
                     const config = JSON.parse(val);
                     customInsuranceFields = config.insuranceCustomFields || [];
-                    console.log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields');
+                    log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields');
                 }
             } catch(e) {
-                console.log('No Config tab found or empty — custom fields starting fresh');
+                log('No Config tab found or empty — custom fields starting fresh');
                 customInsuranceFields = [];
             }
             renderCustomFields('new');
@@ -4224,9 +4224,9 @@
                     valueInputOption: 'RAW',
                     resource: { values: [[JSON.stringify(config)]] }
                 });
-                console.log('✅ Custom field config saved');
+                log('✅ Custom field config saved');
             } catch(e) {
-                console.warn('Could not save custom field config:', e);
+                warn('Could not save custom field config:', e);
             }
         }
 
@@ -4316,7 +4316,7 @@
             renderCustomFields('new');
             renderCustomFields('edit');
             toggleAddFieldForm(mode);
-            console.log('✅ Custom field added:', newField);
+            log('✅ Custom field added:', newField);
         }
 
         function openManageFieldsModal() {
@@ -4599,6 +4599,13 @@
             const file = input.files[0];
             if (!file) return;
 
+            const MAX_ESTIMATE_SIZE = 4.5 * 1024 * 1024; // 4.5 MB — Edge Function proxy limit
+            if (file.size > MAX_ESTIMATE_SIZE) {
+                console.error('Estimate file too large:', (file.size / 1024 / 1024).toFixed(1), 'MB (max 4.5 MB)');
+                alert('This file is too large for the estimate scanner (max 4.5 MB). Please compress the PDF or use a smaller scan.');
+                return;
+            }
+
             const btn = document.getElementById(mode === 'new' ? 'newScanBtn' : 'editScanBtn');
 
             btn.disabled = true;
@@ -4611,7 +4618,7 @@
                     driveUrl = await uploadEstimateToDrive(file);
                     btn.textContent = '🔍 Scanning with Claude...';
                 } catch (driveErr) {
-                    console.warn('Drive upload failed (non-fatal):', driveErr);
+                    warn('Drive upload failed (non-fatal):', driveErr);
                     btn.textContent = '🔍 Scanning with Claude...';
                 }
 
@@ -4622,7 +4629,6 @@
 
                 // Step 3: Call Claude API
                 const extracted = await callClaudeVision(base64, mediaType, isPDF);
-                console.log('Claude extracted data:', JSON.stringify(extracted, null, 2));
 
                 // Step 4: Render suggestion chips
                 clearAllSuggestions(mode);
@@ -4646,11 +4652,11 @@
 
                 // Add scanned estimate to RO document library if we're in edit mode
                 if (driveUrl) {
-                    console.log('✅ Estimate stored in Drive:', driveUrl);
+                    log('✅ Estimate stored in Drive:', driveUrl);
                     if (mode === 'edit' && editingROIndex !== null) {
                         const docName = 'Insurance_Estimate_' + new Date().toISOString().slice(0,10) + '.pdf';
                         await addDocToLibrary(editingROIndex, driveUrl, docName, 'pdf');
-                        console.log('✅ Estimate added to document library');
+                        log('✅ Estimate added to document library');
                     } else if (mode === 'new') {
                         // Store for later — will be added after RO is saved
                         window._pendingEstimateDoc = { url: driveUrl, name: 'Insurance_Estimate_' + new Date().toISOString().slice(0,10) + '.pdf', type: 'pdf' };
@@ -4670,7 +4676,6 @@
 
         async function uploadEstimateToDrive(file) {
             if (!accessToken) throw new Error('Not connected to Google Drive');
-            console.log('Drive upload - accessToken present:', !!accessToken, 'token preview:', accessToken ? accessToken.substring(0,20) + '...' : 'NULL');
             const metadata = {
                 name: `Insurance_Estimate_${new Date().toISOString().slice(0,10)}_${file.name}`,
                 parents: [GOOGLE_CONFIG.DRIVE_FOLDER_ID],
@@ -4713,7 +4718,7 @@
                 for (const milestone of milestones) {
                     if (count >= milestone && lastNotified < milestone) {
                         localStorage.setItem('prvs_scan_milestone_notified', milestone.toString());
-                        console.log(`📊 Scan milestone reached: ${count} scans`);
+                        log(`📊 Scan milestone reached: ${count} scans`);
 
                         // Show admin notification banner
                         if (isAdmin()) {
@@ -4723,7 +4728,7 @@
                     }
                 }
             } catch(e) {
-                console.warn('Scan milestone check failed (non-fatal):', e);
+                warn('Scan milestone check failed (non-fatal):', e);
             }
         }
 
@@ -5092,7 +5097,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
                     // Save to Supabase config
                     await saveCustomFieldConfig();
-                    console.log(`✅ Custom field "${label}" added to config`);
+                    log(`✅ Custom field "${label}" added to config`);
                 }
 
                 // Re-render custom fields grid — new field will auto-populate from scan
@@ -5205,9 +5210,9 @@ Always prefer mapping to a standard key over creating a new one.`;
                     raw_data:   extractedData,
                     scanned_at: new Date().toISOString(),
                 });
-                console.log('✅ Insurance scan written to Supabase for', roId);
+                log('✅ Insurance scan written to Supabase for', roId);
             } catch (err) {
-                console.warn('Insurance scan write failed (non-fatal):', err);
+                warn('Insurance scan write failed (non-fatal):', err);
             }
 
             // Also update insurance_data on the repair_orders row
@@ -5222,10 +5227,10 @@ Always prefer mapping to a standard key over creating a new one.`;
                             updated_at: new Date().toISOString(),
                         }).eq('id', ro._supabaseId);
                         currentData[dataIndex].insuranceData = json;
-                        console.log('✅ Insurance data written to repair_orders in Supabase');
+                        log('✅ Insurance data written to repair_orders in Supabase');
                     }
                 } catch (err) {
-                    console.warn('Insurance data RO update failed (non-fatal):', err);
+                    warn('Insurance data RO update failed (non-fatal):', err);
                 }
             }
         }
@@ -5331,7 +5336,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                         });
 
                         if (!response.ok) {
-                            console.warn(`Failed to fetch ${fileId}:`, response.status);
+                            warn(`Failed to fetch ${fileId}:`, response.status);
                             failed++; failedEl.textContent = failed; continue;
                         }
 
@@ -5349,7 +5354,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                             });
 
                         if (uploadErr) {
-                            console.warn('Upload error:', uploadErr);
+                            warn('Upload error:', uploadErr);
                             failed++; failedEl.textContent = failed; continue;
                         }
 
@@ -5375,13 +5380,13 @@ Always prefer mapping to a standard key over creating a new one.`;
                                         photo_library: lib
                                     }).eq('id', job.roId);
                                 }
-                            } catch(e) { console.warn('Library update failed:', e); }
+                            } catch(e) { warn('Library update failed:', e); }
                         }
 
                         migrated++; migratedEl.textContent = migrated;
 
                     } catch(e) {
-                        console.warn('Migration error for', job.roStr, e);
+                        warn('Migration error for', job.roStr, e);
                         failed++; failedEl.textContent = failed;
                     }
 
@@ -5593,7 +5598,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                                 data.items.forEach(ev => conflicts.push({ service, title: ev.summary, start: ev.start?.dateTime || ev.start?.date }));
                             }
                         }
-                    } catch(e) { console.warn('Conflict check failed for', service, e); }
+                    } catch(e) { warn('Conflict check failed for', service, e); }
                 }
             }
 
@@ -5693,8 +5698,8 @@ Notes: ${notes}` : '',
                     );
 
                     if (resp.ok) { created++; }
-                    else { console.warn('Calendar event failed:', await resp.text()); failed++; }
-                } catch(e) { console.warn('Calendar event error:', e); failed++; }
+                    else { warn('Calendar event failed:', await resp.text()); failed++; }
+                } catch(e) { warn('Calendar event error:', e); failed++; }
             }
 
             // ── Update RO status to Scheduled ─────────────────────────
@@ -5863,12 +5868,12 @@ Notes: ${notes}` : '',
                         warrantyPeriod:  row[25] || '',
                     });
                 }
-                console.log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
+                log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
                 // Update partsJson on currentData for badge rendering
                 updatePartsJsonOnData();
                 renderBoard();
             } catch(e) {
-                console.warn('Could not load Parts tab:', e);
+                warn('Could not load Parts tab:', e);
             }
         }
 
@@ -5900,9 +5905,9 @@ Notes: ${notes}` : '',
                     valueInputOption: 'RAW',
                     resource: { values: [[json]] }
                 });
-                console.log('✅ PartsJSON updated in Sheet1 col X');
+                log('✅ PartsJSON updated in Sheet1 col X');
             } catch(e) {
-                console.warn('Could not update PartsJSON:', e);
+                warn('Could not update PartsJSON:', e);
             }
         }
 
@@ -6220,7 +6225,7 @@ Notes: ${notes}` : '',
                         const _etaRo = currentData.find(d => d.roId === roId);
                         if (_etaRo?.requestedByEmail) {
                             notifyPartsEtaUpdate(_etaRo, part.partName, _newEta)
-                                .catch(e => console.warn('ETA notify non-blocking fail:', e));
+                                .catch(e => warn('ETA notify non-blocking fail:', e));
                         }
                     }
                 } else {
@@ -6234,7 +6239,7 @@ Notes: ${notes}` : '',
                     // GH#18: Fire ETA notification if eta is set on a newly-added part
                     if (part.eta && roRecord?.requestedByEmail) {
                         notifyPartsEtaUpdate(roRecord, part.partName, part.eta)
-                            .catch(e => console.warn('ETA notify non-blocking fail:', e));
+                            .catch(e => warn('ETA notify non-blocking fail:', e));
                     }
                 }
 
@@ -6247,7 +6252,7 @@ Notes: ${notes}` : '',
                 const allDone = allParts.length > 0 && allParts.every(p => p.status === 'Received' || p.status === 'Installed');
                 const roForFlip = currentFilteredData[filteredIndex];
                 if (allDone && roForFlip && roForFlip.partsStatus && roForFlip.partsStatus !== 'received') {
-                    console.log('🔩 savePartForm: All parts received — auto-flipping parts_status to received');
+                    log('🔩 savePartForm: All parts received — auto-flipping parts_status to received');
                     await setPartsStatus(filteredIndex, 'received');
                     return; // setPartsStatus calls renderBoard()
                 }
@@ -6307,7 +6312,7 @@ Notes: ${notes}` : '',
                 const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed');
                 const ro = currentFilteredData[filteredIndex];
                 if (allDone && ro && ro.partsStatus !== 'received') {
-                    console.log('🔩 All parts received — auto-flipping parts_status to received');
+                    log('🔩 All parts received — auto-flipping parts_status to received');
                     await setPartsStatus(filteredIndex, 'received');
                     // setPartsStatus calls renderBoard() so no need to re-render or reopen modal
                     return;
@@ -6413,7 +6418,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            console.log('📦 PRVS Dashboard v1.282 - Released 2026-03-23');
+            log('📦 PRVS Dashboard v1.282 - Released 2026-03-23');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -6429,10 +6434,10 @@ Notes: ${notes}` : '',
             // Check for saved authentication token - retry until libraries load
             const checkAuth = async () => {
                 if (gapiInited && gisInited) {
-                    console.log('📡 Libraries loaded, checking for saved token...');
+                    log('📡 Libraries loaded, checking for saved token...');
                     await loadSavedToken();
                 } else {
-                    console.log('⏳ Waiting for Google libraries...');
+                    log('⏳ Waiting for Google libraries...');
                     setTimeout(checkAuth, 200);
                 }
             };
@@ -7448,12 +7453,12 @@ Notes: ${notes}` : '',
         function generateAllQRCodes(filteredData) {
             // Check if QR library is loaded
             if (typeof QRCode === 'undefined') {
-                console.warn('QR library not loaded yet, retrying...');
+                warn('QR library not loaded yet, retrying...');
                 setTimeout(() => generateAllQRCodes(filteredData), 200);
                 return;
             }
             
-            console.log('Generating QR codes for', filteredData.length, 'ROs');
+            log('Generating QR codes for', filteredData.length, 'ROs');
             filteredData.forEach((ro, index) => {
                 const canvas = document.getElementById(`qr-${index}`);
                 if (canvas) {
@@ -7475,10 +7480,10 @@ Notes: ${notes}` : '',
             // Shorter URL — scans open the RO tile in the main dashboard
             const checkInURL = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(roId)}`;
             
-            console.log('=== QR Code Debug ===');
-            console.log('RO ID:', roId);
-            console.log('Full URL:', checkInURL);
-            console.log('URL Length:', checkInURL.length);
+            log('=== QR Code Debug ===');
+            log('RO ID:', roId);
+            log('Full URL:', checkInURL);
+            log('URL Length:', checkInURL.length);
             
             try {
                 // Clear the canvas first
@@ -7509,7 +7514,7 @@ Notes: ${notes}` : '',
                         
                         // Draw to canvas
                         ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
-                        console.log('✓ QR code generated and drawn to canvas');
+                        log('✓ QR code generated and drawn to canvas');
                         
                         canvasElement.dataset.ready = 'true';
                         canvasElement.dataset.url = checkInURL;
@@ -7528,7 +7533,7 @@ Notes: ${notes}` : '',
                     }
                 }, 3000);
                 
-                console.log('===================');
+                log('===================');
             } catch (error) {
                 console.error('Error generating QR code:', error);
             }
@@ -7892,6 +7897,16 @@ Notes: ${notes}` : '',
         const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 
+        /**
+         * DEBUG — set to true locally for verbose logging; false in production.
+         * Never commit with DEBUG = true.
+         */
+        const DEBUG = false;
+        /** log() — gated console.log. Use instead of console.log throughout. */
+        function log(...args) { if (DEBUG) console.log(...args); }
+        /** warn() — gated console.warn. */
+        function warn(...args) { if (DEBUG) console.warn(...args); }
+
         // ── LANGUAGE / i18n ──────────────────────────────────────────────
         const TRANSLATIONS_ES = {
             // Header & nav
@@ -8222,7 +8237,7 @@ Notes: ${notes}` : '',
                     .eq('user_id', userRecord.id);
                 if (roleData) {
                     userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
-                    console.log('✅ User roles:', userRoles);
+                    log('✅ User roles:', userRoles);
                 }
 
                 // Merge staff table role into userRoles (S2 Phase 2 — staff → role sync)
@@ -8253,7 +8268,7 @@ Notes: ${notes}` : '',
                 }
 
             } catch(e) {
-                console.warn('Could not load roles:', e);
+                warn('Could not load roles:', e);
             }
         }
 
@@ -8270,7 +8285,7 @@ Notes: ${notes}` : '',
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'id' });
             } catch(e) {
-                console.warn('Could not upsert user:', e);
+                warn('Could not upsert user:', e);
             }
         }
         
@@ -8387,13 +8402,13 @@ Notes: ${notes}` : '',
         // Get current user info
         async function getUserInfo() {
             if (!accessToken) {
-                console.warn('No access token available for user info');
+                warn('No access token available for user info');
                 currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
                 return currentUser;
             }
 
             try {
-                console.log('Fetching user info...');
+                log('Fetching user info...');
                 
                 const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
                     headers: {
@@ -8407,7 +8422,7 @@ Notes: ${notes}` : '',
                         email: userInfo.email || 'unknown@user.com',
                         name: userInfo.name || userInfo.email?.split('@')[0] || 'Unknown User'
                     };
-                    console.log('✓ Logged in as:', currentUser.name, '(' + currentUser.email + ')');
+                    log('✓ Logged in as:', currentUser.name, '(' + currentUser.email + ')');
                     localStorage.setItem('currentUser', JSON.stringify(currentUser));
                     
                     // Update view mode dropdown based on admin status
@@ -8415,8 +8430,8 @@ Notes: ${notes}` : '',
                     
                     return currentUser;
                 } else {
-                    console.warn('Could not fetch user info (status:', response.status + ')');
-                    console.warn('You need to disconnect and reconnect to grant userinfo permissions.');
+                    warn('Could not fetch user info (status:', response.status + ')');
+                    warn('You need to disconnect and reconnect to grant userinfo permissions.');
                     currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
                     return currentUser;
                 }
@@ -8434,27 +8449,27 @@ Notes: ${notes}` : '',
             getSB().auth.onAuthStateChange((event, session) => {
                 if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
                     supabaseSession = session;
-                    console.log('✅ Supabase session updated via onAuthStateChange:', event);
+                    log('✅ Supabase session updated via onAuthStateChange:', event);
                     updateAuthStatus(true);
                 } else if (event === 'SIGNED_OUT') {
                     supabaseSession = null;
                     currentUser = null;
                     updateAuthStatus(false);
-                    console.log('🔒 Supabase session signed out');
+                    log('🔒 Supabase session signed out');
                 }
             });
         }
 
         // Load saved token on page load
         async function loadSavedToken() {
-            console.log('🔍 loadSavedToken called');
+            log('🔍 loadSavedToken called');
             const savedToken = localStorage.getItem('google_access_token');
             const tokenExpiry = localStorage.getItem('google_token_expiry');
             const savedUser = localStorage.getItem('currentUser');
             const lastAuthTime = localStorage.getItem('last_auth_time');
             const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-            console.log('Saved token exists:', !!savedToken, '| Expiry:', tokenExpiry);
+            log('Saved token exists:', !!savedToken, '| Expiry:', tokenExpiry);
 
             // Register auth state listener once (idempotent — Supabase deduplicates)
             initSupabaseAuthListener();
@@ -8466,7 +8481,7 @@ Notes: ${notes}` : '',
                 const { data: { session } } = await getSB().auth.getSession();
                 if (session) {
                     supabaseSession = session;
-                    console.log('✅ Supabase session active — loading data');
+                    log('✅ Supabase session active — loading data');
 
                     // Restore user from Supabase session
                     if (!currentUser) {
@@ -8486,7 +8501,7 @@ Notes: ${notes}` : '',
                     if (savedToken && tokenExpiry && now < (parseInt(tokenExpiry) - 300000)) {
                         accessToken = savedToken;
                         gapi.client.setToken({access_token: savedToken});
-                        console.log('✅ Google token also valid');
+                        log('✅ Google token also valid');
                     }
 
                     await loadUserRoles();
@@ -8501,11 +8516,11 @@ Notes: ${notes}` : '',
                     if (!isSafari) setupTokenRefresh();
 
                     sessionRestoredFromCache = true;
-                    console.log('✅ Session restored via Supabase');
+                    log('✅ Session restored via Supabase');
                     return true;
                 }
             } catch(e) {
-                console.warn('Supabase session check failed:', e);
+                warn('Supabase session check failed:', e);
             }
 
             // ── STEP 2: Fall back to Google token if Supabase session gone ──
@@ -8513,17 +8528,17 @@ Notes: ${notes}` : '',
                 const now = Date.now();
                 const expiryTime = parseInt(tokenExpiry);
 
-                console.log('Time until Google token expiry (minutes):', Math.round((expiryTime - now) / 60000));
+                log('Time until Google token expiry (minutes):', Math.round((expiryTime - now) / 60000));
 
                 if (now < (expiryTime - 300000)) {
-                    console.log('✅ Google token valid, loading...');
+                    log('✅ Google token valid, loading...');
                     accessToken = savedToken;
                     gapi.client.setToken({access_token: savedToken});
 
                     if (savedUser) {
                         try {
                             currentUser = JSON.parse(savedUser);
-                            console.log('Loaded saved user:', currentUser.name);
+                            log('Loaded saved user:', currentUser.name);
                             updateViewModeDropdown();
                         } catch(e) {}
                     }
@@ -8539,14 +8554,14 @@ Notes: ${notes}` : '',
 
                     return true;
                 } else if (lastAuthTime && !isSafari) {
-                    console.log('Token expired, attempting silent refresh (Chrome only)...');
+                    log('Token expired, attempting silent refresh (Chrome only)...');
                     // Token expired but user had recent session - try silent refresh
                     // SKIP on Safari - silent refresh not supported
                     const lastAuth = parseInt(lastAuthTime);
                     const hoursSinceAuth = (now - lastAuth) / (1000 * 60 * 60);
                     
                     if (hoursSinceAuth < 24) {
-                        console.log('Token expired but recent session detected, attempting silent refresh...');
+                        log('Token expired but recent session detected, attempting silent refresh...');
                         // Load user info first
                         if (savedUser) {
                             try {
@@ -8557,20 +8572,20 @@ Notes: ${notes}` : '',
                         try {
                             tokenClient.requestAccessToken({prompt: ''});
                         } catch (e) {
-                            console.log('Silent refresh not supported, clearing token');
+                            log('Silent refresh not supported, clearing token');
                             clearToken();
                         }
                         return true;
                     } else {
-                        console.log('Session too old, clearing...');
+                        log('Session too old, clearing...');
                         clearToken();
                     }
                 } else {
-                    console.log('❌ Saved token expired, clearing...');
+                    log('❌ Saved token expired, clearing...');
                     clearToken();
                 }
             } else {
-                console.log('❌ No saved token found');
+                log('❌ No saved token found');
             }
             return false;
         }
@@ -8607,15 +8622,15 @@ Notes: ${notes}` : '',
             const refreshTime = timeUntilExpiry - 300000;
             
             if (refreshTime > 0) {
-                console.log('Token refresh scheduled in', Math.round(refreshTime / 60000), 'minutes');
+                log('Token refresh scheduled in', Math.round(refreshTime / 60000), 'minutes');
                 setTimeout(() => {
-                    console.log('Auto-refreshing token silently...');
+                    log('Auto-refreshing token silently...');
                     // Silent refresh only — no popup ever
                     // If it fails, user just reconnects manually when needed (Drive uploads)
                     try {
                         tokenClient.requestAccessToken({prompt: '', hint: currentUser?.email || ''});
                     } catch (e) {
-                        console.log('Silent refresh not available — token will expire naturally');
+                        log('Silent refresh not available — token will expire naturally');
                     }
                 }, refreshTime);
             }
@@ -8637,7 +8652,7 @@ Notes: ${notes}` : '',
                     discoveryDocs: GOOGLE_CONFIG.DISCOVERY_DOCS,
                 });
                 gapiInited = true;
-                console.log('gapi initialized successfully');
+                log('gapi initialized successfully');
             } catch (error) {
                 console.error('Error initializing gapi:', error);
                 setTimeout(initializeGapiClient, 1000);
@@ -8672,10 +8687,9 @@ Notes: ${notes}` : '',
                 callback: async (credentialResponse) => {
                     if (credentialResponse.credential) {
                         googleIdToken = credentialResponse.credential;
-                        console.log('\u2705 Google id_token captured for Supabase RBAC');
                         // Skip if session was restored from cache
                         if (sessionRestoredFromCache || supabaseSession) {
-                            console.log('\u2705 Session already active — skipping signInWithIdToken');
+                            log('\u2705 Session already active — skipping signInWithIdToken');
                             return;
                         }
                         try {
@@ -8686,19 +8700,19 @@ Notes: ${notes}` : '',
                                 nonce: retrievedNonce,
                             });
                             if (sbError) {
-                                console.warn('\u26a0\ufe0f Supabase signInWithIdToken failed:', sbError.message);
+                                warn('\u26a0\ufe0f Supabase signInWithIdToken failed:', sbError.message);
                                 // Clear nonce on failure — fresh one generated on next attempt
                                 localStorage.removeItem('prvs_sb_nonce');
                                 localStorage.removeItem('prvs_sb_nonce_hash');
                             } else {
                                 supabaseSession = sbData.session;
-                                console.log('\u2705 Supabase authenticated session created — RBAC active');
+                                log('\u2705 Supabase authenticated session created — RBAC active');
                                 // Clear nonce after successful use
                                 localStorage.removeItem('prvs_sb_nonce');
                                 localStorage.removeItem('prvs_sb_nonce_hash');
                             }
                         } catch(e) {
-                            console.warn('\u26a0\ufe0f Supabase auth exchange failed:', e.message);
+                            warn('\u26a0\ufe0f Supabase auth exchange failed:', e.message);
                         }
                     }
                 },
@@ -8708,14 +8722,14 @@ Notes: ${notes}` : '',
             if (!sessionRestoredFromCache) {
                 google.accounts.id.prompt();
             } else {
-                console.log('✅ Session already restored — skipping One Tap prompt');
+                log('✅ Session already restored — skipping One Tap prompt');
             }
 
             tokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CONFIG.CLIENT_ID,
                 scope: GOOGLE_CONFIG.SCOPES,
                 callback: async (resp) => {
-                    console.log('Auth callback received:', resp);
+                    log('Auth callback received:', resp);
                     if (resp.error !== undefined) {
                         console.error('Auth error:', resp.error);
                         return;
@@ -8724,7 +8738,7 @@ Notes: ${notes}` : '',
 
                     // CRITICAL: always set token in gapi client — covers both fresh login and silent refresh
                     gapi.client.setToken({access_token: accessToken});
-                    console.log('✅ Token set in gapi client');
+                    log('✅ Token set in gapi client');
 
                     const expiresIn = resp.expires_in || 3600;
                     saveToken(accessToken, expiresIn);
@@ -8751,7 +8765,7 @@ Notes: ${notes}` : '',
                                 name:  currentUser.name,
                                 savedAt: Date.now(),
                             }));
-                            console.log('✅ User identity saved for persistent sessions');
+                            log('✅ User identity saved for persistent sessions');
 
                             // ── Wire Supabase authenticated session ──────────
                             // Exchange Google ID token for a real Supabase session.
@@ -8761,7 +8775,7 @@ Notes: ${notes}` : '',
                                 // id_token comes from google.accounts.id.initialize callback
                                 const idTokenToUse = googleIdToken || resp.id_token;
                                 if (!idTokenToUse) {
-                                    console.warn('⚠️ No Google id_token available — requesting via prompt...');
+                                    warn('⚠️ No Google id_token available — requesting via prompt...');
                                     google.accounts.id.prompt();
                                 }
                                 const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
@@ -8770,15 +8784,15 @@ Notes: ${notes}` : '',
                                     nonce: localStorage.getItem('prvs_sb_nonce') || undefined,
                                 });
                                 if (sbError) {
-                                    console.warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
-                                    console.log('Continuing with anon key — RBAC not enforced this session');
+                                    warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
+                                    log('Continuing with anon key — RBAC not enforced this session');
                                 } else {
                                     supabaseSession = sbData.session;
-                                    console.log('✅ Supabase authenticated session created — RBAC active');
-                                    console.log('Session expires:', new Date(supabaseSession.expires_at * 1000).toLocaleString());
+                                    log('✅ Supabase authenticated session created — RBAC active');
+                                    log('Session expires:', new Date(supabaseSession.expires_at * 1000).toLocaleString());
                                 }
                             } catch(e) {
-                                console.warn('⚠️ Supabase auth exchange failed (non-fatal):', e.message);
+                                warn('⚠️ Supabase auth exchange failed (non-fatal):', e.message);
                             }
                             // ─────────────────────────────────────────────────
 
@@ -8794,34 +8808,34 @@ Notes: ${notes}` : '',
                         loadCustomFieldConfig();
                         loadPartsFromSupabase();
                     } else {
-                        console.log('✅ Token silently refreshed — session continues');
+                        log('✅ Token silently refreshed — session continues');
                         // Refresh Supabase session on Google token refresh
                         if (supabaseSession) {
                             const { data } = await getSB().auth.getSession();
                             if (data?.session) {
                                 supabaseSession = data.session;
-                                console.log('✅ Supabase session refreshed');
+                                log('✅ Supabase session refreshed');
                             }
                         }
                     }
                 },
             });
             gisInited = true;
-            console.log('gis initialized successfully');
+            log('gis initialized successfully');
         }
 
         function handleAuthClick() {
-            console.log('=== handleAuthClick called ===');
+            log('=== handleAuthClick called ===');
             // Always try silent first, only show popup on explicit user click
             if (accessToken === null) {
-                console.log('Requesting new token...');
+                log('Requesting new token...');
                 tokenClient.requestAccessToken({prompt: 'consent'});
             } else {
-                console.log('Refreshing existing token silently...');
+                log('Refreshing existing token silently...');
                 try {
                     tokenClient.requestAccessToken({prompt: ''});
                 } catch (e) {
-                    console.log('Silent refresh not available');
+                    log('Silent refresh not available');
                 }
             }
         }
@@ -8912,7 +8926,7 @@ Notes: ${notes}` : '',
 
         // Load all repair orders from Supabase
         async function loadDataFromSupabase() {
-            console.log('=== loadDataFromSupabase called ===');
+            log('=== loadDataFromSupabase called ===');
             try {
                 // Load repair orders
                 const { data: ros, error } = await getSB()
@@ -8965,7 +8979,7 @@ Notes: ${notes}` : '',
                 });
 
                 currentData = data;
-                console.log('✅ Loaded', data.length, 'repair orders from Supabase');
+                log('✅ Loaded', data.length, 'repair orders from Supabase');
                 renderBoard();
 
                 // Load custom fields config
@@ -9001,7 +9015,7 @@ Notes: ${notes}` : '',
                     serviceTypes: row.service_type || '',
                 }));
 
-                console.log('✅ Loaded', timeLogsData.length, 'time logs from Supabase');
+                log('✅ Loaded', timeLogsData.length, 'time logs from Supabase');
                 renderBoard();
             } catch(err) {
                 console.error('Error loading time logs from Supabase:', err);
@@ -9055,7 +9069,7 @@ Notes: ${notes}` : '',
                     });
                 });
 
-                console.log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
+                log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
                 updatePartsJsonOnData();
                 renderBoard();
 
@@ -9071,10 +9085,10 @@ Notes: ${notes}` : '',
                     const badge = document.getElementById('dupesCount');
                     if (dupesBtn) dupesBtn.style.display = dupeCount > 0 ? 'inline-block' : 'none';
                     if (badge) badge.textContent = dupeCount;
-                    console.log(`🔗 Dupe check: ${dupeCount} duplicate(s) found, button ${dupeCount > 0 ? 'shown' : 'hidden'}`);
+                    log(`🔗 Dupe check: ${dupeCount} duplicate(s) found, button ${dupeCount > 0 ? 'shown' : 'hidden'}`);
                 }
             } catch(e) {
-                console.warn('Could not load parts from Supabase:', e);
+                warn('Could not load parts from Supabase:', e);
             }
         }
 
@@ -9217,7 +9231,7 @@ Notes: ${notes}` : '',
                 });
             }
 
-            console.log('✅ New RO saved to Supabase:', data.ro_id);
+            log('✅ New RO saved to Supabase:', data.ro_id);
             return data;
         }
 
@@ -9226,7 +9240,7 @@ Notes: ${notes}` : '',
             const ro = currentData[originalIndex];
             const supabaseId = ro._supabaseId;
             if (!supabaseId) {
-                console.warn('No Supabase ID found for RO, trying to find by ro_id');
+                warn('No Supabase ID found for RO, trying to find by ro_id');
                 return;
             }
 
@@ -9257,7 +9271,7 @@ Notes: ${notes}` : '',
             }));
             await writeAuditLog(ro.roId, auditChanges);
 
-            console.log('✅ RO updated in Supabase');
+            log('✅ RO updated in Supabase');
         }
 
         // Update a single field on an RO in Supabase
@@ -9365,7 +9379,7 @@ Notes: ${notes}` : '',
             const { error: delErr } = await getSB().from('repair_orders').delete().eq('id', supabaseId);
             if (delErr) throw delErr;
 
-            console.log('✅ RO archived to cashiered in Supabase');
+            log('✅ RO archived to cashiered in Supabase');
         }
 
         function getWeekLabel() {
@@ -9385,10 +9399,10 @@ Notes: ${notes}` : '',
                     .maybeSingle();
                 if (data?.value) {
                     customInsuranceFields = Array.isArray(data.value) ? data.value : [];
-                    console.log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields from Supabase');
+                    log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields from Supabase');
                 }
             } catch(e) {
-                console.warn('Could not load custom fields from Supabase:', e);
+                warn('Could not load custom fields from Supabase:', e);
                 customInsuranceFields = [];
             }
             renderCustomFields('new');
@@ -9403,9 +9417,9 @@ Notes: ${notes}` : '',
                     value: customInsuranceFields,
                     updated_at: new Date().toISOString(),
                 }, { onConflict: 'key' });
-                console.log('✅ Custom field config saved to Supabase');
+                log('✅ Custom field config saved to Supabase');
             } catch(e) {
-                console.warn('Could not save custom field config to Supabase:', e);
+                warn('Could not save custom field config to Supabase:', e);
             }
         }
 
@@ -9419,29 +9433,29 @@ Notes: ${notes}` : '',
                     scanned_at: new Date().toISOString(),
                 });
             } catch(e) {
-                console.warn('Could not log insurance scan:', e);
+                warn('Could not log insurance scan:', e);
             }
         }
 
         async function loadDataFromSheets() {
-            console.log('=== loadDataFromSheets called ===');
+            log('=== loadDataFromSheets called ===');
             try {
-                console.log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
+                log('Fetching data from spreadsheet:', GOOGLE_CONFIG.SPREADSHEET_ID);
                 const response = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                     range: 'Sheet1!A1:X1000',  // Now includes column X (PartsJSON)
                 });
 
-                console.log('Response received:', response);
+                log('Response received:', response);
                 const rows = response.result.values;
                 if (!rows || rows.length === 0) {
-                    console.log('No data found.');
+                    log('No data found.');
                     return;
                 }
 
                 // Convert rows to data objects (skip header row)
                 const headers = rows[0];
-                console.log('Sheet headers:', headers);
+                log('Sheet headers:', headers);
                 const data = [];
                 
                 for (let i = 1; i < rows.length; i++) {
@@ -9449,11 +9463,11 @@ Notes: ${notes}` : '',
                     
                     // Debug: Show the raw row data
                     if (i === 1) {
-                        console.log('=== First row detailed debug ===');
-                        console.log('Row array length:', row.length);
-                        console.log('Headers array length:', headers.length);
-                        console.log('Row[5] (RV Photo URL position):', row[5]);
-                        console.log('Full row:', row);
+                        log('=== First row detailed debug ===');
+                        log('Row array length:', row.length);
+                        log('Headers array length:', headers.length);
+                        log('Row[5] (RV Photo URL position):', row[5]);
+                        log('Full row:', row);
                     }
                     
                     const obj = {};
@@ -9464,11 +9478,11 @@ Notes: ${notes}` : '',
                         
                         // Debug column F specifically
                         if (index === 5 && i === 1) {
-                            console.log('Processing column F (index 5):');
-                            console.log('  Header:', header);
-                            console.log('  Key:', key);
-                            console.log('  Value from row[5]:', value);
-                            console.log('  Final obj.rvPhotoUrl:', obj.rvPhotoUrl);
+                            log('Processing column F (index 5):');
+                            log('  Header:', header);
+                            log('  Key:', key);
+                            log('  Value from row[5]:', value);
+                            log('  Final obj.rvPhotoUrl:', obj.rvPhotoUrl);
                         }
                     });
                     
@@ -9482,18 +9496,18 @@ Notes: ${notes}` : '',
                     }
                     
                     // Log the entire object to see what we got
-                    console.log('Row', i, 'Customer:', obj.customerName, 'Photo URL:', obj.rvPhotoUrl);
+                    log('Row', i, 'Customer:', obj.customerName, 'Photo URL:', obj.rvPhotoUrl);
                     
                     // Log photo URLs to debug
                     if (obj.rvPhotoUrl) {
-                        console.log('✓ Loaded photo URL for', obj.customerName, ':', obj.rvPhotoUrl);
+                        log('✓ Loaded photo URL for', obj.customerName, ':', obj.rvPhotoUrl);
                     }
                     
                     data.push(obj);
                 }
 
                 currentData = data;
-                console.log('Loaded', data.length, 'records from sheet');
+                log('Loaded', data.length, 'records from sheet');
                 renderBoard();
             } catch (err) {
                 console.error('Error loading from Sheets:', err);
@@ -9512,7 +9526,7 @@ Notes: ${notes}` : '',
 
                 const rows = response.result.values;
                 if (!rows || rows.length <= 1) {
-                    console.log('No time logs found');
+                    log('No time logs found');
                     timeLogsData = [];
                     return;
                 }
@@ -9536,7 +9550,7 @@ Notes: ${notes}` : '',
                 }
 
                 timeLogsData = logs;
-                console.log(`✅ Loaded ${logs.length} time log entries`);
+                log(`✅ Loaded ${logs.length} time log entries`);
                 
                 // Re-render board to show time data
                 renderBoard();
@@ -9557,12 +9571,12 @@ Notes: ${notes}` : '',
             // Only refresh when tab is visible
             timeLogsRefreshInterval = setInterval(async () => {
                 if (!document.hidden && accessToken) {
-                    console.log('🔄 Auto-refreshing time logs...');
+                    log('🔄 Auto-refreshing time logs...');
                     await loadTimeLogsFromSheets();
                 }
             }, 30000); // 30 seconds
             
-            console.log('✅ Time logs auto-refresh started (30s interval)');
+            log('✅ Time logs auto-refresh started (30s interval)');
         }
         
         // Stop auto-refresh (useful for cleanup)
@@ -9570,13 +9584,13 @@ Notes: ${notes}` : '',
             if (timeLogsRefreshInterval) {
                 clearInterval(timeLogsRefreshInterval);
                 timeLogsRefreshInterval = null;
-                console.log('⏹️ Time logs auto-refresh stopped');
+                log('⏹️ Time logs auto-refresh stopped');
             }
         }
         
         // Manual refresh function for admin button
         async function manualRefreshTimeLogs() {
-            console.log('🔄 Manual refresh triggered by admin');
+            log('🔄 Manual refresh triggered by admin');
             const btn = event.target;
             const originalText = btn.textContent;
             btn.textContent = '⏳ Refreshing...';
@@ -9980,7 +9994,7 @@ Notes: ${notes}` : '',
         }
 
         // Backfill roId for any RO that doesn't have one, writing to column U in the sheet
-        async function backfillROIds() { console.log("backfillROIds skipped — using Supabase"); return; // Sheets-only function
+        async function backfillROIds() { log("backfillROIds skipped — using Supabase"); return; // Sheets-only function
 
             const response = await gapi.client.sheets.spreadsheets.values.get({
                 spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -10012,9 +10026,9 @@ Notes: ${notes}` : '',
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
                     resource: { valueInputOption: 'RAW', data: updates }
                 });
-                console.log(`✅ Backfilled ${updates.length} RO IDs`);
+                log(`✅ Backfilled ${updates.length} RO IDs`);
             } else {
-                console.log('✅ All ROs already have IDs');
+                log('✅ All ROs already have IDs');
             }
         }
 
@@ -10053,7 +10067,7 @@ Notes: ${notes}` : '',
                     alert('Error: Could not locate this RO in the spreadsheet. Please refresh and try again.');
                     return false;
                 }
-                console.log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
+                log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
                 
                 const existing = currentData[roIndex];
                 const values = [[
@@ -10092,7 +10106,7 @@ Notes: ${notes}` : '',
                     resource: { values }
                 });
 
-                console.log('RO updated in sheet:', response);
+                log('RO updated in sheet:', response);
                 
                 // Update local data — only overwrite editable fields, preserve the rest
                 const userName = currentUser ? currentUser.name : 'Unknown User';
@@ -10111,8 +10125,8 @@ Notes: ${notes}` : '',
                     vin: formData.vin || existing.vin || '',                               // editable
                 };
                 
-                console.log('✓ RO updated by', userName);
-                console.log('Updated RO data:', currentData[roIndex]);
+                log('✓ RO updated by', userName);
+                log('Updated RO data:', currentData[roIndex]);
                 renderBoard();
                 return true;
             } catch (err) {
@@ -10227,9 +10241,9 @@ Notes: ${notes}` : '',
                         updatedBy: currentUser?.name || 'Parts Department',
                     }),
                 });
-                console.log('ETA notification sent to', ro.requestedByEmail, 'for part:', partName, 'ETA:', eta);
+                log('ETA notification sent to', ro.requestedByEmail, 'for part:', partName, 'ETA:', eta);
             } catch(err) {
-                console.warn('ETA notification failed (non-blocking):', err);
+                warn('ETA notification failed (non-blocking):', err);
             }
         }
 
@@ -10373,9 +10387,9 @@ Notes: ${notes}` : '',
                         qty:         1,
                     });
                     if (partInsertErr) {
-                        console.warn('Parts row insert failed (non-blocking):', partInsertErr.message, partInsertErr);
+                        warn('Parts row insert failed (non-blocking):', partInsertErr.message, partInsertErr);
                     } else {
-                        console.log('✅ Parts Sourcing row created for:', description);
+                        log('✅ Parts Sourcing row created for:', description);
                     }
                 }
 
@@ -10397,7 +10411,7 @@ Notes: ${notes}` : '',
                             const pUrl = await uploadToSupabaseStorage(_partsRequestFiles[pi], ro.roId || 'general');
                             photoUrls.push(pUrl);
                         } catch(pe) {
-                            console.warn(`Photo ${pi + 1} upload failed (non-blocking):`, pe);
+                            warn(`Photo ${pi + 1} upload failed (non-blocking):`, pe);
                         }
                     }
                     // Add uploaded URLs to the RO's photo_library
@@ -10438,7 +10452,7 @@ Notes: ${notes}` : '',
                         }),
                     });
                 } catch(emailErr) {
-                    console.warn('Parts request email notification failed (non-blocking):', emailErr);
+                    warn('Parts request email notification failed (non-blocking):', emailErr);
                 }
 
                 // 6. Audit log
@@ -10485,7 +10499,7 @@ Notes: ${notes}` : '',
                 if (notes?.length) {
                     notesHtml = notes.map(n => `<div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--border-color);">${n.body}</div>`).join('');
                 }
-            } catch(e) { console.warn('Could not load parts request notes:', e); }
+            } catch(e) { warn('Could not load parts request notes:', e); }
 
             const modal = document.createElement('div');
             modal.id = 'partsRequestDetailsModal';
@@ -10678,7 +10692,7 @@ Notes: ${notes}` : '',
                 }
 
                 renderBoard();
-                console.log(`✅ Parts status set to: ${newStatus || 'cleared'} for ${ro.roId}`);
+                log(`✅ Parts status set to: ${newStatus || 'cleared'} for ${ro.roId}`);
 
             } catch(err) {
                 console.error('Set parts status error:', err);
@@ -10710,9 +10724,9 @@ Notes: ${notes}` : '',
                 }));
 
                 await getSB().from('audit_log').insert(rows);
-                console.log(`✅ Audit log written to Supabase: ${changes.length} change(s) for ${roId}`);
+                log(`✅ Audit log written to Supabase: ${changes.length} change(s) for ${roId}`);
             } catch (err) {
-                console.warn('Audit log write failed (non-fatal):', err);
+                warn('Audit log write failed (non-fatal):', err);
             }
         }
 
@@ -10765,7 +10779,7 @@ Notes: ${notes}` : '',
                     }
                 }
                 const newRow = lastDataRow + 1;
-                console.log(`Appending new RO to row ${newRow} (last data was row ${lastDataRow})`);
+                log(`Appending new RO to row ${newRow} (last data was row ${lastDataRow})`);
 
                 const response = await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
@@ -10774,7 +10788,7 @@ Notes: ${notes}` : '',
                     resource: { values }
                 });
 
-                console.log('Row added:', response);
+                log('Row added:', response);
                 
                 // Reload data from sheets
                 await loadDataFromSheets();
@@ -11794,10 +11808,10 @@ Notes: ${notes}` : '',
                 const { data, error } = await sb.from('staff').select('*').eq('active', true).order('name');
                 if (error) throw error;
                 _staffCache = data || [];
-                console.log('👥 Staff loaded:', _staffCache.length, 'members');
+                log('👥 Staff loaded:', _staffCache.length, 'members');
                 _initWorkListBtn();
             } catch (err) {
-                console.warn('⚠️ Could not load staff table:', err.message);
+                warn('⚠️ Could not load staff table:', err.message);
             }
         }
 

@@ -204,6 +204,16 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 // S2 Phase 6: Hardcoded ADMIN_EMAILS removed (was unused)
 
+/**
+ * DEBUG — set to true locally for verbose logging; false in production.
+ * Never commit with DEBUG = true.
+ */
+const DEBUG = false;
+/** log() — gated console.log. Use instead of console.log throughout. */
+function log(...args) { if (DEBUG) console.log(...args); }
+/** warn() — gated console.warn. */
+function warn(...args) { if (DEBUG) console.warn(...args); }
+
 const ALL_SERVICE_TYPES = ['Roof', 'Solar', 'Vroom', 'Paint and Body', 'Repairs', 'TrueTopper', 'Detailing', 'Chassis'];
 
 // ── Spanish Language Toggle ────────────────────────────────────
@@ -407,17 +417,17 @@ async function drainQueue() {
                 if (!error) await removeQueuedAction(item.id);
             }
         } catch(e) {
-            console.warn('Queue drain error:', e);
+            warn('Queue drain error:', e);
         }
     }
 
     if (banner) banner.style.display = 'none';
-    console.log('✅ Offline queue drained');
+    log('✅ Offline queue drained');
 }
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('📦 PRVS Tech Check-In v1.28 - Released 2026-04-05');
+    log('📦 PRVS Tech Check-In v1.28 - Released 2026-04-05');
     translateStaticUI();
 
     if (!roIdParam) {
@@ -430,7 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Auth state listener — keeps supabaseSession in sync ──
     getSB().auth.onAuthStateChange((event, session) => {
         supabaseSession = session;
-        console.log('🔐 Auth state change:', event, session?.user?.email || 'signed out');
+        log('🔐 Auth state change:', event, session?.user?.email || 'signed out');
     });
 
     // ── Step 1: Try to restore existing Supabase session ─────
@@ -442,12 +452,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 email: session.user.email,
                 name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
             };
-            console.log('✅ Supabase session restored:', currentUser.name);
+            log('✅ Supabase session restored:', currentUser.name);
             await loadAndRender();
             return;
         }
     } catch(e) {
-        console.warn('Session restore failed:', e);
+        warn('Session restore failed:', e);
     }
 
     // ── Step 2: Offline fallback — use cached identity ───────
@@ -459,11 +469,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const stored = JSON.parse(storedIdentity);
                 if (stored.email) {
                     currentUser = { email: stored.email, name: stored.name };
-                    console.log('📵 Offline — using cached identity:', currentUser.name);
+                    log('📵 Offline — using cached identity:', currentUser.name);
                     await loadAndRender();
                     return;
                 }
-            } catch(e) { console.warn('Identity parse error:', e); }
+            } catch(e) { warn('Identity parse error:', e); }
         }
     }
 
@@ -521,7 +531,7 @@ async function handleSignIn(response) {
             name: supabaseSession.user.user_metadata?.full_name || supabaseSession.user.email.split('@')[0],
         };
 
-        console.log('✅ Signed in + Supabase session established:', currentUser.name);
+        log('✅ Signed in + Supabase session established:', currentUser.name);
 
         localStorage.setItem('prvs_user_identity', JSON.stringify({
             email: currentUser.email, name: currentUser.name, savedAt: Date.now()
@@ -536,7 +546,7 @@ async function handleSignIn(response) {
         try {
             const payload = JSON.parse(atob(response.credential.split('.')[1]));
             currentUser = { email: payload.email, name: payload.name };
-            console.warn('⚠️ Supabase session NOT established — clock-in will be blocked online. Error:', e.message);
+            warn('⚠️ Supabase session NOT established — clock-in will be blocked online. Error:', e.message);
             localStorage.removeItem('prvs_raw_nonce');
             await loadAndRender();
         } catch(e2) {
@@ -565,7 +575,7 @@ async function loadAndRender() {
             } else {
                 const parts = roIdParam.replace('RO-', '').split('-');
                 const namePart = parts.slice(0, -3).join(' ');
-                console.warn('Legacy RO ID format detected:', roIdParam, '— searching by name:', namePart);
+                warn('Legacy RO ID format detected:', roIdParam, '— searching by name:', namePart);
                 const result = await getSB()
                     .from('repair_orders')
                     .select('*')
@@ -615,7 +625,7 @@ async function loadAndRender() {
             activeSession = thisLogs?.[0] || null;
 
         } catch(e) {
-            console.warn('Online load failed, using cached data:', e);
+            warn('Online load failed, using cached data:', e);
             loadFromCache();
         }
     } else {
@@ -663,7 +673,7 @@ async function autoClockOut(session) {
         work_notes:       (session.work_notes || '') + (session.work_notes ? '\n' : '') + '[Auto clocked out — tech indicated finished ' + answer + ' min ago]',
     };
 
-    console.log(`🔄 Auto clocking out of ${prevROName}, adjusted by -${answer} min. Duration: ${Math.round(duration/60)} min`);
+    log(`🔄 Auto clocking out of ${prevROName}, adjusted by -${answer} min. Duration: ${Math.round(duration/60)} min`);
 
     if (isOnline) {
         await getSB().from('time_logs').update(updateData).eq('id', session.id);
@@ -885,12 +895,12 @@ async function clockIn() {
             const { data, error } = await getSB().from('time_logs').insert(logData).select().single();
             if (error) throw error;
             activeSession = data;
-            console.log('✅ Clocked in:', activeSession.id);
+            log('✅ Clocked in:', activeSession.id);
         } else {
             const tempId = 'offline_' + Date.now();
             activeSession = { ...logData, id: tempId, _offline: true };
             await queueOfflineAction({ type: 'clock_in', data: logData, tempId });
-            console.log('📵 Clock-in queued for sync');
+            log('📵 Clock-in queued for sync');
         }
 
         localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
@@ -932,10 +942,10 @@ async function clockOut() {
         if (isOnline && !activeSession._offline) {
             const { error } = await getSB().from('time_logs').update(updateData).eq('id', activeSession.id);
             if (error) throw error;
-            console.log('✅ Clocked out. Duration:', Math.round(duration / 60), 'minutes');
+            log('✅ Clocked out. Duration:', Math.round(duration / 60), 'minutes');
         } else {
             await queueOfflineAction({ type: 'clock_out', logId: activeSession.id, data: updateData });
-            console.log('📵 Clock-out queued for sync');
+            log('📵 Clock-out queued for sync');
         }
 
         localStorage.removeItem('prvs_session_' + roIdParam + '_' + currentUser.email);
@@ -1043,7 +1053,7 @@ function toggleDictation() {
     };
 
     recognition.onerror = (e) => {
-        console.warn('Speech error:', e.error);
+        warn('Speech error:', e.error);
         isRecording = false;
         const btn = document.getElementById('dictateBtn');
         if (btn) { btn.textContent = t('🎤 Dictate'); btn.classList.remove('recording'); }

@@ -329,6 +329,17 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 
 // S2 Phase 3: Hardcoded ADMIN_EMAILS, SR_MANAGER_EMAILS, MANAGER_EMAILS removed — now using userRoles[] + _allStaff lookups
+
+/**
+ * DEBUG — set to true locally for verbose logging; false in production.
+ * Never commit with DEBUG = true.
+ */
+const DEBUG = false;
+/** log() — gated console.log. Use instead of console.log throughout. */
+function log(...args) { if (DEBUG) console.log(...args); }
+/** warn() — gated console.warn. */
+function warn(...args) { if (DEBUG) console.warn(...args); }
+
 const SERVICE_SILOS = [
     { key: 'repair',     label: 'Repair',       emoji: '&#128295;' },
     { key: 'vroom',      label: 'Vroom',        emoji: '&#10024;' },
@@ -388,7 +399,7 @@ async function loadUserRoles() {
             }
         } catch (e) { /* non-critical */ }
     } catch (e) {
-        console.warn('Could not load roles:', e);
+        warn('Could not load roles:', e);
     }
 }
 
@@ -489,7 +500,7 @@ async function handleGoogleSignIn(response) {
         });
         if (!error && data.session) supabaseSession = data.session;
         localStorage.removeItem('prvs_report_nonce');
-    } catch(e) { console.warn('Supabase auth exchange failed:', e); }
+    } catch(e) { warn('Supabase auth exchange failed:', e); }
 
     await loadUserRoles();
 
