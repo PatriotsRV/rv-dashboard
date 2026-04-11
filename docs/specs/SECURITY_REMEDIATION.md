@@ -429,6 +429,123 @@ SELECT name, email, role, active FROM staff WHERE active = TRUE ORDER BY role, n
 
 > **IMPORTANT:** If any users show "not found in users table" warnings, they need to sign in to the dashboard once (which triggers `upsertUser()`), then re-run the relevant migration.
 
+#### Pre-flight Safety Check — Email-Fallback Access (run after EACH Phase 1 step)
+
+During Phase 1 the code is unchanged — all five files still have hardcoded `ADMIN_EMAILS` arrays. Roland and Lynn's access flows through two parallel paths:
+
+1. **Email fallback (always works during Phase 1):** `isAdmin()` in index.html checks `ADMIN_EMAILS.includes(email)` at line 8238 as a fallback after the `userRoles` check. worklist-report.html, closed-ros.html, and analytics.html use `ADMIN_EMAILS.includes()` exclusively — they have no `userRoles` system yet.
+2. **Database path (being built by Phase 1):** `loadUserRoles()` in index.html queries `user_roles` → populates `userRoles[]` → `isAdmin()` checks `userRoles.includes('Admin')`. Also has a hardcoded Roland catch at line 8271.
+
+The risk: a bad migration could cause `loadUserRoles()` to throw an unhandled error before it reaches the email fallback. Run the following check after **each** Phase 1 step to confirm the database path doesn't break.
+
+**After Step 1.1 (add Sr Manager role):**
+
+```sql
+-- Confirm roles table is clean — no duplicate names, no nulls
+SELECT name, COUNT(*) FROM roles GROUP BY name HAVING COUNT(*) > 1;
+-- Expected: 0 rows (no duplicates)
+
+-- Confirm the new role didn't break the roles FK relationship
+SELECT ur.user_id, ur.role_id
+FROM user_roles ur
+LEFT JOIN roles r ON r.id = ur.role_id
+WHERE r.id IS NULL;
+-- Expected: 0 rows (no orphaned role references)
+```
+
+Then open the dashboard in a browser, sign in as Roland, and verify:
+- Console shows `✅ User roles: [...]` (the `loadUserRoles()` log at line 8268)
+- No errors in console related to roles/user_roles queries
+- All admin buttons visible (Admin Settings, Analytics, Work List Report, etc.)
+
+**After Step 1.2 (assign Admin to Roland and Lynn):**
+
+```sql
+-- Confirm Roland and Lynn now have Admin in user_roles
+SELECT u.email, r.name
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+WHERE u.email IN ('roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com');
+-- Expected: 2 rows — roland/Admin, lynn/Admin
+
+-- Confirm no duplicate role assignments were created
+SELECT user_id, role_id, COUNT(*)
+FROM user_roles
+GROUP BY user_id, role_id
+HAVING COUNT(*) > 1;
+-- Expected: 0 rows
+```
+
+Then in the browser console (as Roland):
+```javascript
+// Both paths should now return true:
+userRoles.includes('Admin')  // true — database path
+isAdmin()                     // true — should hit userRoles first, email fallback also works
+```
+
+**After Step 1.3 (assign Sr Manager to Ryan, Kevin, Sofia):**
+
+```sql
+-- Confirm Sr Manager assignments exist
+SELECT u.email, r.name
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+WHERE r.name = 'Sr Manager';
+-- Expected: 3 rows — ryan, kevin, sofia
+
+-- Confirm Roland's roles are untouched
+SELECT u.email, r.name
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+WHERE u.email = 'roland@patriotsrvservices.com';
+-- Expected: 1 row — roland/Admin (unchanged from Step 1.2)
+```
+
+Refresh dashboard as Roland — confirm admin access still works, no console errors.
+
+**After Step 1.4 (assign Manager to 7 managers):**
+
+```sql
+-- Confirm total user_roles count is correct
+SELECT COUNT(*) FROM user_roles;
+-- Expected: 7 (pre-existing) + 2 (Admin: Roland, Lynn) + 3 (Sr Manager) + 3 (new Managers: jason, solar, bobby) = 15
+-- Note: ryan already had Manager, so ON CONFLICT DO NOTHING keeps it at 15, not 16
+
+-- Confirm Roland and Lynn still have exactly Admin
+SELECT u.email, r.name
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+WHERE u.email IN ('roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com')
+ORDER BY u.email;
+-- Expected: roland/Admin, lynn/Admin — nothing else added
+```
+
+Refresh dashboard as Roland — confirm admin access still works.
+
+**After Steps 1.5 and 1.6 (Kevin and Sofia staff UPSERTs):**
+
+These are no-ops (both already exist as `sr_manager`), but confirm nothing changed:
+
+```sql
+-- Confirm Kevin and Sofia staff entries are unchanged
+SELECT name, email, role, active FROM staff
+WHERE email IN ('kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com');
+-- Expected: Kevin/sr_manager/true, Sofia/sr_manager/true
+
+-- Final full state check — all user_roles
+SELECT u.email, r.name AS role
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+ORDER BY r.name, u.email;
+```
+
+> **Why this matters:** Phase 2 removes the email fallback from `isAdmin()` and `hasRole()`. If the database path is broken after Phase 1, Phase 2 will lock everyone out. These checks confirm the database path is solid before any code changes begin.
+
 ---
 
 #### Phase 2 — index.html Changes (~16 call sites)
