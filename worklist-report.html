@@ -328,17 +328,7 @@ const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 
-const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
-const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com'];
-const MANAGER_EMAILS = [
-    'ryan@patriotsrvservices.com',
-    'mauricio@patriotsrvservices.com',
-    'jason@patriotsrvservices.com',
-    'andrew@patriotsrvservices.com',
-    'solar@patriotsrvservices.com',
-    'bobby@patriotsrvservices.com',
-    'brandon@patriotsrvservices.com',
-];
+// S2 Phase 3: Hardcoded ADMIN_EMAILS, SR_MANAGER_EMAILS, MANAGER_EMAILS removed — now using userRoles[] + _allStaff lookups
 const SERVICE_SILOS = [
     { key: 'repair',     label: 'Repair',       emoji: '&#128295;' },
     { key: 'vroom',      label: 'Vroom',        emoji: '&#10024;' },
@@ -363,6 +353,48 @@ let _allActiveClockIns = []; // currently active time_log entries (clock_out IS 
 let _staffSectionOpen = true;
 let _refreshTimer = null;
 let _countdownSec = 180;
+
+// S2 — Role-based access (replaces hardcoded email arrays)
+let userRoles = [];
+
+async function loadUserRoles() {
+    if (!supabaseSession) return;
+    try {
+        const email = supabaseSession.user.email;
+        const { data: userRecord } = await getSB()
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+        if (!userRecord) return;
+        const { data: roleData } = await getSB()
+            .from('user_roles')
+            .select('roles(name)')
+            .eq('user_id', userRecord.id);
+        if (roleData) {
+            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+        }
+        // Merge staff table role
+        try {
+            const { data: staffRecord } = await getSB()
+                .from('staff')
+                .select('role, service_silo, active')
+                .eq('email', email)
+                .single();
+            if (staffRecord && staffRecord.active) {
+                const staffRoleMap = { 'sr_manager': 'Sr Manager', 'manager': 'Manager', 'parts_manager': 'Manager', 'tech': 'Tech' };
+                const mapped = staffRoleMap[staffRecord.role];
+                if (mapped && !userRoles.includes(mapped)) userRoles.push(mapped);
+            }
+        } catch (e) { /* non-critical */ }
+    } catch (e) {
+        console.warn('Could not load roles:', e);
+    }
+}
+
+function hasRole(role) {
+    return userRoles.includes(role);
+}
 
 function getSB() {
     if (!_sb) {
@@ -392,21 +424,22 @@ async function initAuth() {
             email: session.user.email,
             name: session.user.user_metadata?.full_name || session.user.email,
         };
+        await loadUserRoles();
         if (isAdmin()) {
             showApp();
             return;
         }
     }
 
-    // Also check stored identity
+    // Also check stored identity (only useful if we have a session for role lookup)
     const stored = localStorage.getItem('prvs_user_identity');
-    if (stored) {
+    if (stored && supabaseSession) {
         try {
             const parsed = JSON.parse(stored);
-            if (parsed.email && ADMIN_EMAILS.includes(parsed.email.toLowerCase())) {
+            if (parsed.email) {
                 currentUser = { email: parsed.email, name: parsed.name };
-                // Session might still be valid from index.html
-                if (supabaseSession) {
+                await loadUserRoles();
+                if (isAdmin()) {
                     showApp();
                     return;
                 }
@@ -419,8 +452,7 @@ async function initAuth() {
 }
 
 function isAdmin() {
-    const email = (currentUser?.email || '').toLowerCase();
-    return ADMIN_EMAILS.includes(email);
+    return userRoles.includes('Admin');
 }
 
 function showGoogleSignIn() {
@@ -449,13 +481,7 @@ async function handleGoogleSignIn(response) {
     const payload = JSON.parse(atob(response.credential.split('.')[1]));
     currentUser = { email: payload.email, name: payload.name };
 
-    if (!isAdmin()) {
-        document.getElementById('authGate').innerHTML =
-            '<div style="text-align:center;padding:60px;"><h2 style="color:#ef4444;">Access Denied</h2><p style="color:#94a3b8;margin-top:8px;">This report is restricted to Admins only.</p></div>';
-        return;
-    }
-
-    // Exchange for Supabase session
+    // Exchange for Supabase session first (needed for role lookup)
     try {
         const rawNonce = localStorage.getItem('prvs_report_nonce');
         const { data, error } = await getSB().auth.signInWithIdToken({
@@ -464,6 +490,14 @@ async function handleGoogleSignIn(response) {
         if (!error && data.session) supabaseSession = data.session;
         localStorage.removeItem('prvs_report_nonce');
     } catch(e) { console.warn('Supabase auth exchange failed:', e); }
+
+    await loadUserRoles();
+
+    if (!isAdmin()) {
+        document.getElementById('authGate').innerHTML =
+            '<div style="text-align:center;padding:60px;"><h2 style="color:#ef4444;">Access Denied</h2><p style="color:#94a3b8;margin-top:8px;">This report is restricted to Admins only.</p></div>';
+        return;
+    }
 
     showApp();
 }
@@ -582,18 +616,16 @@ function renderReport() {
         logsByRO[log.ro_id].push(log);
     });
 
-    // Filter out Admins — only show Sr Managers, Managers, and Techs
-    const adminEmails = ADMIN_EMAILS.map(e => e.toLowerCase());
+    // Filter out pure Admins — only show operational staff (Sr Managers, Managers, Techs)
     Object.keys(byManager).forEach(email => {
-        if (adminEmails.includes(email.toLowerCase()) && !SR_MANAGER_EMAILS.includes(email.toLowerCase())) {
-            delete byManager[email];
-        }
+        const staffRec = _allStaff.find(s => s.email.toLowerCase() === email.toLowerCase());
+        if (!staffRec) delete byManager[email]; // not in staff table = admin-only user
     });
 
     // Determine manager ordering: Sr Managers first, then regular managers
     const managerOrder = Object.keys(byManager).sort((a, b) => {
-        const aIsSr = SR_MANAGER_EMAILS.includes(a);
-        const bIsSr = SR_MANAGER_EMAILS.includes(b);
+        const aIsSr = _allStaff.find(s => s.email.toLowerCase() === a.toLowerCase())?.role === 'sr_manager';
+        const bIsSr = _allStaff.find(s => s.email.toLowerCase() === b.toLowerCase())?.role === 'sr_manager';
         if (aIsSr && !bIsSr) return -1;
         if (!aIsSr && bIsSr) return 1;
         return a.localeCompare(b);
@@ -626,7 +658,7 @@ function renderReport() {
     // Render manager sections
     body.innerHTML = managerOrder.map((email, mIdx) => {
         const items = byManager[email];
-        const isSr = SR_MANAGER_EMAILS.includes(email);
+        const isSr = _allStaff.find(s => s.email.toLowerCase() === email.toLowerCase())?.role === 'sr_manager';
         const roleBadge = isSr ? 'Sr Manager' : 'Manager';
         const displayName = email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         const uniqueROs = new Set(items.map(i => i.ro_id)).size;
@@ -686,9 +718,9 @@ function renderReport() {
 }
 
 function renderStaffTiles() {
-    // Filter: everyone except admins
-    const adminEmails = ADMIN_EMAILS.map(e => e.toLowerCase());
-    const staffToShow = _allStaff.filter(s => !adminEmails.includes(s.email.toLowerCase()));
+    // Filter: show only operational staff (techs, managers, sr_managers, parts_managers)
+    // Excludes anyone not in the staff table (i.e., admin-only users)
+    const staffToShow = _allStaff.filter(s => s.active !== false);
 
     if (staffToShow.length === 0) return '';
 

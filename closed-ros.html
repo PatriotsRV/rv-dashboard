@@ -339,17 +339,7 @@ const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 
-const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
-const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com'];
-const MANAGER_EMAILS = [
-    'ryan@patriotsrvservices.com',
-    'mauricio@patriotsrvservices.com',
-    'jason@patriotsrvservices.com',
-    'andrew@patriotsrvservices.com',
-    'solar@patriotsrvservices.com',
-    'bobby@patriotsrvservices.com',
-    'brandon@patriotsrvservices.com',
-];
+// S2 Phase 4: Hardcoded ADMIN_EMAILS, SR_MANAGER_EMAILS, MANAGER_EMAILS removed — now using userRoles[] + _allStaff lookups
 
 const PAGE_SIZE = 24;
 
@@ -360,6 +350,8 @@ let currentUser = null;
 let allCashiered = [];
 let filteredCashiered = [];
 let currentPage = 1;
+let userRoles = [];
+let _allStaff = [];
 
 function getSB() {
     if (!_sb) {
@@ -368,6 +360,41 @@ function getSB() {
         });
     }
     return _sb;
+}
+
+// ── RBAC ────────────────────────────────────────────────
+async function loadUserRoles() {
+    userRoles = [];
+    _allStaff = [];
+    const email = (supabaseSession?.user?.email || '').toLowerCase();
+    if (!email) return;
+
+    // 1. Look up user id in the users table
+    const { data: userRow } = await getSB()
+        .from('users').select('id').eq('email', email).maybeSingle();
+
+    // 2. Fetch roles from user_roles junction table
+    if (userRow?.id) {
+        const { data: roleRows } = await getSB()
+            .from('user_roles').select('roles(name)').eq('user_id', userRow.id);
+        if (roleRows) {
+            userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
+        }
+    }
+
+    // 3. Sync staff table for role lookups
+    const { data: staffRows } = await getSB()
+        .from('staff').select('*').eq('active', true);
+    if (staffRows) _allStaff = staffRows;
+
+    // 4. Set current staff role/silo
+    const me = _allStaff.find(s => s.email.toLowerCase() === email);
+    window._currentStaffRole = me?.role || null;
+    window._currentStaffSilo = me?.service_silo || null;
+}
+
+function hasRole(role) {
+    return userRoles.includes(role);
 }
 
 // ── Auth ─────────────────────────────────────────────────
@@ -389,6 +416,7 @@ async function initAuth() {
             name: session.user.user_metadata?.full_name || session.user.email,
         };
         localStorage.setItem('prvs_user_identity', JSON.stringify(currentUser));
+        await loadUserRoles();
         showApp();
         return;
     }
@@ -441,6 +469,7 @@ async function handleGoogleCredential(response) {
             name: data.user.user_metadata?.full_name || data.user.email,
         };
         localStorage.setItem('prvs_user_identity', JSON.stringify(currentUser));
+        await loadUserRoles();
         showApp();
     } catch (err) {
         console.error('Auth error:', err);
@@ -449,13 +478,11 @@ async function handleGoogleCredential(response) {
 }
 
 function isAdmin() {
-    const email = (currentUser?.email || supabaseSession?.user?.email || '').toLowerCase();
-    return ADMIN_EMAILS.includes(email);
+    return userRoles.includes('Admin');
 }
 
 function isManagerOrAdmin() {
-    const email = (currentUser?.email || supabaseSession?.user?.email || '').toLowerCase();
-    return ADMIN_EMAILS.includes(email) || SR_MANAGER_EMAILS.includes(email) || MANAGER_EMAILS.includes(email);
+    return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
 }
 
 function showApp() {

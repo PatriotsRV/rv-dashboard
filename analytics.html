@@ -557,12 +557,42 @@
     const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
     const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
     const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
-    const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+    // S2 Phase 5: Hardcoded ADMIN_EMAILS removed — now using userRoles[] lookups
 
     let _sb = null;
+    let supabaseSession = null;
+    let userRoles = [];
+
     function getSB() {
-        if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+        if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_analytics_auth' }
+        });
         return _sb;
+    }
+
+    async function loadUserRoles() {
+        userRoles = [];
+        const email = (supabaseSession?.user?.email || '').toLowerCase();
+        if (!email) return;
+
+        const { data: userRow } = await getSB()
+            .from('users').select('id').eq('email', email).maybeSingle();
+
+        if (userRow?.id) {
+            const { data: roleRows } = await getSB()
+                .from('user_roles').select('roles(name)').eq('user_id', userRow.id);
+            if (roleRows) {
+                userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
+            }
+        }
+    }
+
+    function hasRole(role) {
+        return userRoles.includes(role);
+    }
+
+    function isAdmin() {
+        return userRoles.includes('Admin');
     }
 
     let currentUser = null;
@@ -573,26 +603,25 @@
     let techChartInstance = null;
 
     // ── INIT ──
-    document.addEventListener('DOMContentLoaded', () => {
-        // Check stored identity first
-        const stored = localStorage.getItem('prvs_user_identity');
-        if (stored) {
-            try {
-                const identity = JSON.parse(stored);
-                const daysSince = (Date.now() - (identity.savedAt || 0)) / 86400000;
-                if (daysSince < 30 && identity.email) {
-                    currentUser = { email: identity.email, name: identity.name };
-                    if (ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
-                        showApp();
-                        return;
-                    } else {
-                        showAccessDenied();
-                        return;
-                    }
-                }
-            } catch(e) {}
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Check for existing Supabase session first
+        const { data: { session } } = await getSB().auth.getSession();
+        if (session) {
+            supabaseSession = session;
+            currentUser = {
+                email: session.user.email,
+                name: session.user.user_metadata?.full_name || session.user.email,
+            };
+            await loadUserRoles();
+            if (isAdmin()) {
+                showApp();
+                return;
+            } else {
+                showAccessDenied();
+                return;
+            }
         }
-        // No stored identity — show Google sign-in
+        // No Supabase session — show Google sign-in
         initGoogleSignIn();
     });
 
@@ -614,15 +643,25 @@
         }, 200);
     }
 
-    function handleSignIn(response) {
+    async function handleSignIn(response) {
         try {
-            const payload = JSON.parse(atob(response.credential.split('.')[1]));
-            currentUser = { email: payload.email, name: payload.name };
-            // Save identity
+            // Exchange Google credential for Supabase session
+            const { data, error } = await getSB().auth.signInWithIdToken({
+                provider: 'google',
+                token: response.credential,
+            });
+            if (error) throw error;
+
+            supabaseSession = data.session;
+            currentUser = {
+                email: data.user.email,
+                name: data.user.user_metadata?.full_name || data.user.email,
+            };
             localStorage.setItem('prvs_user_identity', JSON.stringify({
                 email: currentUser.email, name: currentUser.name, savedAt: Date.now()
             }));
-            if (ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
+            await loadUserRoles();
+            if (isAdmin()) {
                 showApp();
             } else {
                 showAccessDenied();
