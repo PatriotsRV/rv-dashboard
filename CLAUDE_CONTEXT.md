@@ -79,7 +79,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | Spec File | Description | Sessions | Priority | Status |
 |---|---|---|---|---|
 | `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | ✅ **ALL COMPLETE** — 2026-04-11 (10 commits + S1/S4 hotfixes, 5 Edge Functions redeployed, 2 SQL migrations run) |
-| `docs/specs/TWILIO_SMS_SPEC.md` | Full Twilio SMS integration: number port guide, `sms_log` + `sms_templates` tables, `twilio-sms` Edge Function, SMS compose modal (repurposes Kenect modal), 6 message templates, A2P 10DLC registration, inbound webhook | Phase 1–3 (3 phases) | 🔴 Blocks after number port | ⏳ Not started |
+| `docs/specs/TWILIO_SMS_SPEC.md` | Full Twilio SMS integration: number port guide, `sms_log` + `sms_templates` tables, `twilio-sms` Edge Function, SMS compose modal, 6 message templates, A2P 10DLC registration, inbound webhook | Phase 1–3 (3 phases) | 🔴 Blocks after number port | ⏳ Not started |
 | `docs/specs/TOAST_SYSTEM_SPEC.md` | Replace all `alert()` calls with non-blocking toast notifications: success/warning/danger/info types, auto-dismiss, stack management | 1 session | 🟠 High | ✅ **COMPLETE** — 2026-04-11 (commit 609201d: 116 alert→showToast, 4 confirm→toast-action, CSS+JS IIFE) |
 | `docs/specs/UNIFIED_SEARCH_SPEC.md` | Global search bar: search across customer name, RO ID, VIN, RV, phone, parking spot with debounced input and highlight | 1 session | 🟠 High | ⏳ Not started |
 | `docs/specs/MODULARIZATION_ROADMAP.md` | Split 13,631-line `index.html` into 18 ES modules (no bundler, GitHub Pages compatible): config, state, utils, auth, i18n, render, ro-crud, parts, work-orders, photos, time-tracking, scheduling, qr, work-list, insurance, kenect, duplicates, enhancement + CSS extraction | Phase 0–19 (~10-14 sessions) | 🟡 Long-term | ⏳ Not started |
@@ -155,6 +155,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | ✅ | — | **Toast System (TOAST_SYSTEM_SPEC.md)** | **2026-04-11:** 116 alert()→showToast, 4 confirm()→toast-with-action, CSS toast stack + IIFE. 3 confirm() calls preserved (archive RO, delete field, delete part). Commit: 609201d. QA verified: 0 alert(), 3 confirm(), 124 showToast(). | ✅ Done — 2026-04-11 |
 | ✅ | — | **slideIn keyframe fix** | **2026-04-11:** scanMilestoneBanner referenced non-existent `slideIn` keyframe (silent no-op). Rewired to `toast-slide-in` with matching 280ms cubic-bezier easing. Commit: 5d321ae. | ✅ Done — 2026-04-11 |
 | ✅ | — | **Dead Code Cleanup (DEAD_CODE_CLEANUP_SPEC.md)** | **2026-04-11:** 3 phases + cross-file audit. Phase 1: 285 lines dead CSS (7 class blocks) from index.html (ac105ed). Phase 2: 584 lines dead JS (22 functions) from index.html (cc8314a). Phase 3: 60 lines from analytics/solar/worklist-report (52686f4). Cross-file: 39 lines (WireConn+DiagNode) from solar.html (c1a8ccf). Total: **968 lines removed**. index.html 13,997→13,128. solar.html 6,393→6,354. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Kenect Removal** | **2026-04-11:** Kenect refused API keys. Removed 329 lines from index.html (10 functions, messaging modal, card button, admin settings, event delegation case). Deleted kenect-proxy Edge Function (187 lines). Removed dead `_sessionEmail` variable (4 lines). Updated backup.sh, MODULARIZATION_ROADMAP.md Phase 16 marked REMOVED. Total: **550 lines removed**. index.html 13,128→12,800. Commit: c8bc2c8. | ✅ Done — 2026-04-11 |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -164,13 +165,13 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | File | Version | Description |
 |---|---|---|
-| `index.html` | **v1.308** (13,128 lines) | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager silo-specific lists (v1.305), silo tabs + picker popup, DOM-constructed rows (v1.308)**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification**, **📋 Work List Report link (Admin only, v1.305)**, **🗃 Closed ROs link (all users, v1.308)**, **🪔 Enhancement Requests (GH#19) — genie lamp, admin view, v1.307)**, **Parts request auto-creates Sourcing row in parts table (v1.307)**, **S4: Insurance estimate scanner now uses claude-vision-proxy Edge Function — API key input removed, localStorage key cleaned up** |
+| `index.html` | **v1.308** (12,800 lines) | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager silo-specific lists (v1.305), silo tabs + picker popup, DOM-constructed rows (v1.308)**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification**, **📋 Work List Report link (Admin only, v1.305)**, **🗃 Closed ROs link (all users, v1.308)**, **🪔 Enhancement Requests (GH#19) — genie lamp, admin view, v1.307)**, **Parts request auto-creates Sourcing row in parts table (v1.307)**, **S4: Insurance estimate scanner now uses claude-vision-proxy Edge Function — API key input removed, localStorage key cleaned up** |
 | `closed-ros.html` | **v1.1** | GH#22 Closed RO Archive — card grid with photos, search/filter/sort, detail modal, reactivation (Managers+Admins), genie lamp ER button. Google SSO auth gate (requires real Supabase session). **S2 Phase 4: RBAC migration — loadUserRoles, role-based isAdmin/isManagerOrAdmin/hasRole, _allStaff lookups, hardcoded email arrays removed.** |
 | `worklist-report.html` | **v1.2** | Admin-only Active Work List Report — all managers' work lists + time logs per RO. Manager accordion sections (Sr Managers grouped by silo). Condensed RO rows with KPI chips (Days on Lot color-coded, Dollar Value). Expandable time log detail per RO. Staff Status tiles (red/green clock-in grid). Auto-refresh every 3 min. Google SSO auth gate. **S2 Phase 3: RBAC migration — loadUserRoles, role-based isAdmin, _allStaff lookups, hardcoded email arrays removed.** |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/claude-vision-proxy/index.ts` | **v1.0** | Edge Function — S4: Proxies Claude Vision API calls to Anthropic with server-side ANTHROPIC_API_KEY. JWT-verified (auth.getUser). CORS for patriotsrv.github.io. Accepts full Anthropic request body (system, messages, model, max_tokens). **⚠️ Requires CLI deploy: `supabase functions deploy claude-vision-proxy`** |
-| `supabase/functions/kenect-proxy/index.ts` | **v1.1** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. **S7: CORS origin validation (getCorsHeaders).** |
+| ~~`supabase/functions/kenect-proxy/index.ts`~~ | **REMOVED** | Kenect refused API keys — entire Edge Function + all Kenect UI code deleted 2026-04-11. Twilio replacing. |
 | `checkin.html` | **v1.29** | Technician clock-in/out, offline-first IndexedDB queue, Spanish language toggle. **v1.28:** Proper Supabase auth — `signInWithIdToken()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`. **S2 Phase 6: Dead ADMIN_EMAILS constant removed.** |
 | `analytics.html` | **v1.1** | Analytics/reporting view. **S2 Phase 5: RBAC migration — loadUserRoles, async DOMContentLoaded/handleSignIn with signInWithIdToken, role-based isAdmin gate, hardcoded ADMIN_EMAILS removed.** |
 | `solar.html` | **v2.1** (6,354 lines) | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes. **S3: Supabase client with persistSession + storageKey, session restore, session-guarded ER submit.** **Dead code cleanup 2026-04-11: WireConn + DiagNode removed (replaced by Wire2 + DiagNode2).** |
@@ -282,8 +283,11 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - The ER genie lamp submit is guarded with `!supabaseSession` and shows a clear error message directing the user to sign in on the main dashboard first.
 - GH#17 tracks adding full Google sign-in to solar.html. Until then, solar's core features (quoting, PDF, projects) work without auth via permissive anon RLS on `solar_project_store` and `solar_settings`.
 
-### Kenect — ON HOLD
-- Zapier has no inbound message trigger → can't support conversation thread view. Direct partner API access still possible. `kenect-proxy` Edge Function committed but not deployed.
+### Kenect — REMOVED (2026-04-11)
+- Kenect refused to supply API keys. All Kenect code deleted: 329 lines from index.html (messaging modal, card button, admin settings, 10 functions), 187-line `kenect-proxy` Edge Function, backup.sh references.
+- `localStorage.removeItem('prvs_kenect_location_id')` added to `init()` for one-time cleanup.
+- SMS/messaging will be handled by Twilio (see `TWILIO_SMS_SPEC.md`).
+- MODULARIZATION_ROADMAP.md Phase 16 (kenect.js) marked as REMOVED.
 
 ### Git & Deployment
 - `gh` CLI not available in sandbox — use `git` directly.
@@ -446,20 +450,8 @@ supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 supabase functions deploy roof-lookup
 ```
 
-### Supabase Edge Function — kenect-proxy (v1.290)
-Proxies all Kenect API calls from the dashboard. Code is committed to `supabase/functions/kenect-proxy/index.ts`. **Must be deployed via CLI:**
-
-```bash
-supabase link --project-ref axfejhudchdejoiwaetq   # if not already linked
-supabase secrets set KENECT_API_KEY=your_kenect_api_key_here
-# Optional (can also be set per-user in Admin Settings):
-supabase secrets set KENECT_LOCATION_ID=your_location_id
-supabase functions deploy kenect-proxy
-```
-
-After deploy, open Admin Settings in the dashboard → Kenect section → click **Test Connection**.
-
-**Kenect phone number format**: The dashboard normalizes `customerPhone` to E.164 (+1XXXXXXXXXX). If customers are stored as `555-1234` (7-digit), Kenect lookups will fail — full 10-digit numbers are required.
+### ~~Supabase Edge Function — kenect-proxy~~ (REMOVED 2026-04-11)
+Kenect refused to supply API keys. Edge Function deleted, all UI code removed. SMS/messaging migrating to Twilio.
 
 ### GH#18 Parts Notifications (Session 32)
 - `requested_by_email` column on `repair_orders` — tracks who submitted the parts request. Set every time `submitPartsRequest()` is called (most recent requester).
