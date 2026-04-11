@@ -74,7 +74,25 @@ function saveProjects(arr) {
 const _SB_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 const _SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 let _sbSolar = null;
-try { _sbSolar = supabase.createClient(_SB_URL, _SB_ANON); } catch(e) {}
+try {
+    _sbSolar = supabase.createClient(_SB_URL, _SB_ANON, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            storageKey: 'prvs_solar_auth'
+        }
+    });
+} catch(e) {}
+
+// S3: Session-aware ER submit — solar.html has no login gate, but restores existing Supabase session for authenticated DB writes
+let supabaseSession = null;
+(async () => {
+    if (!_sbSolar) return;
+    try {
+        const { data: { session } } = await _sbSolar.auth.getSession();
+        if (session) supabaseSession = session;
+    } catch(e) {}
+})();
 
 async function loadProjectsFromDb() {
     if (!_sbSolar) return [];
@@ -6389,7 +6407,7 @@ document.getElementById('loading').style.display = 'none';
 function openERModal(){document.getElementById('erModalOverlay').style.display='flex';document.getElementById('erDescription').value='';document.getElementById('erDictationStatus').textContent='';}
 function closeERModal(){document.getElementById('erModalOverlay').style.display='none';}
 function startERDictation(){if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){alert('Voice dictation not supported. Use Chrome or Safari.');return;}const SR=window.SpeechRecognition||window.webkitSpeechRecognition;const r=new SR();r.continuous=false;r.interimResults=false;r.lang='en-US';const s=document.getElementById('erDictationStatus'),inp=document.getElementById('erDescription');r.onstart=()=>{if(s){s.textContent='🎤 Listening...';s.style.color='#10b981';}};r.onresult=(e)=>{const t=e.results[0][0].transcript;if(inp){inp.value=inp.value?inp.value+' '+t:t;}if(s){s.textContent='✅ Transcribed!';s.style.color='#10b981';setTimeout(()=>{s.textContent='';},3000);}};r.onerror=(e)=>{if(s){s.textContent='❌ Error: '+e.error;s.style.color='#dc2626';setTimeout(()=>{s.textContent='';},3000);}};r.onend=()=>{if(s&&s.textContent.includes('Listening'))s.textContent='';};r.start();}
-async function submitEnhancementRequest(){const desc=document.getElementById('erDescription').value.trim();const cat=document.getElementById('erCategory').value;if(!desc){alert('Please describe your request.');return;}let email='unknown',name='unknown';try{const stored=JSON.parse(localStorage.getItem('prvs_user_identity')||'{}');email=stored.email||'unknown';name=stored.name||email;}catch(e){}if(!_sbSolar){alert('Database not available.');return;}try{const{error}=await _sbSolar.from('enhancement_requests').insert({submitted_by:email,submitted_by_name:name,source_page:'solar',category:cat,description:desc});if(error)throw error;closeERModal();const toast=document.createElement('div');toast.style.cssText='position:fixed;bottom:90px;left:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;padding:12px 20px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);';toast.textContent='🪔 Wish submitted! Roland will review it.';document.body.appendChild(toast);setTimeout(()=>{toast.style.opacity='0';toast.style.transition='opacity 0.3s';setTimeout(()=>toast.remove(),300);},4000);}catch(err){console.error('ER submit error:',err);alert('Error: '+(err.message||err));}}
+async function submitEnhancementRequest(){const desc=document.getElementById('erDescription').value.trim();const cat=document.getElementById('erCategory').value;if(!desc){alert('Please describe your request.');return;}if(!_sbSolar||!supabaseSession){alert('You must be signed into the PRVS dashboard first. Open the main dashboard, sign in, then come back and try again.');return;}const email=supabaseSession.user?.email||'unknown';const name=supabaseSession.user?.user_metadata?.full_name||email;try{const{error}=await _sbSolar.from('enhancement_requests').insert({submitted_by:email,submitted_by_name:name,source_page:'solar',category:cat,description:desc});if(error)throw error;closeERModal();const toast=document.createElement('div');toast.style.cssText='position:fixed;bottom:90px;left:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;padding:12px 20px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);';toast.textContent='🪔 Wish submitted! Roland will review it.';document.body.appendChild(toast);setTimeout(()=>{toast.style.opacity='0';toast.style.transition='opacity 0.3s';setTimeout(()=>toast.remove(),300);},4000);}catch(err){console.error('ER submit error:',err);alert('Error: '+(err.message||err));}}
 </script>
 </body>
 </html>
