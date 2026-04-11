@@ -1,7 +1,7 @@
 # PRVS Dashboard — Security Remediation Plan
 
 **Version:** 1.0  
-**Target file:** `index.html` (v1.308, ~13,631 lines) + supporting files  
+**Target file:** `index.html` (v1.308, ~13,649 lines) + `worklist-report.html`, `closed-ros.html`, `analytics.html`, `checkin.html`  
 **Prepared for:** Claude Cowork execution  
 **Last updated:** 2026-04
 
@@ -24,7 +24,7 @@ Items 4–10 are lower urgency — they don't represent immediate exploits but s
 | Session | Items | Description |
 |---|---|---|
 | **S1** | #1 (XSS) | `escapeHtml()` utility + apply to all render functions |
-| **S2** | #2 (RBAC) | Remove hardcoded email arrays, migrate to staff table |
+| **S2** | #2 (RBAC) | Remove hardcoded email arrays from all 5 files, migrate to Supabase role-based access (6 DB migrations + ~40 code changes across index.html, worklist-report.html, closed-ros.html, analytics.html, checkin.html) |
 | **S3** | #3 (analytics.html auth) | Full Supabase session auth in analytics.html |
 | **S4** | #4 (Anthropic key) | Edge Function proxy for Claude Vision |
 | **S5** | #5 (console.log) | Debug flag / logging removal |
@@ -234,92 +234,307 @@ None — this is a client-side change only.
 **Session: S2**
 
 #### Risk (plain English)
-Three arrays of real employee email addresses live in plain text in the JavaScript source, visible to anyone who opens browser DevTools → Sources. More importantly, if you hire or fire someone, you have to edit the code and redeploy to GitHub Pages instead of just updating a database row. The `staff` table already exists and is seeded — this change just cuts the cord between the code and the email lists.
+Three arrays of real employee email addresses live in plain text in the JavaScript source of **five separate files**, visible to anyone who opens browser DevTools → Sources. More importantly, if you hire or fire someone, you have to edit code in up to five files and redeploy instead of just updating a database row. The `staff` table already exists with 19 people — this change cuts the cord between the code and the email lists across the entire codebase.
 
-#### Current hardcoded arrays (lines 8123–8133)
+#### Scope — 5 Files, ~40 Call Sites
 
-```javascript
-const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
-const MANAGER_EMAILS = [
-    'ryan@patriotsrvservices.com',
-    'mauricio@patriotsrvservices.com',
-    'jason@patriotsrvservices.com',
-    'andrew@patriotsrvservices.com',
-    'solar@patriotsrvservices.com',
-    'bobby@patriotsrvservices.com',
-    'brandon@patriotsrvservices.com',
-];
-const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com'];
-```
+| File | Hardcoded Arrays | Call Sites | Notes |
+|---|---|---|---|
+| `index.html` | `ADMIN_EMAILS`, `MANAGER_EMAILS`, `SR_MANAGER_EMAILS` | ~16 | Core app — most complex; has `loadUserRoles()` + `_staffCache` already |
+| `worklist-report.html` | `ADMIN_EMAILS`, `SR_MANAGER_EMAILS`, `MANAGER_EMAILS` | 10 | Admin-only report page; no `loadUserRoles()` — needs new role system |
+| `closed-ros.html` | `ADMIN_EMAILS`, `SR_MANAGER_EMAILS`, `MANAGER_EMAILS` | 6 | Archive viewer; no `loadUserRoles()` — needs new role system |
+| `analytics.html` | `ADMIN_EMAILS` | 3 | Admin-only analytics; no `loadUserRoles()` — needs new role system |
+| `checkin.html` | `ADMIN_EMAILS` | 1 | Tech check-in kiosk; `ADMIN_EMAILS` declared but never used — dead code |
 
-#### Where these arrays are used (all call sites to update)
+---
 
-| Line | Usage | Resolution |
-|---|---|---|
-| 6685 | `SR_MANAGER_EMAILS.includes(email) \|\| ADMIN_EMAILS.includes(email) \|\| MANAGER_EMAILS.includes(email)` in `canSeeWorkList()` | Replace with role check |
-| 6691 | `SR_MANAGER_EMAILS.includes(email) \|\| ADMIN_EMAILS.includes(email)` in `isSrManagerOrAdmin()` | Replace with role check |
-| 6723 | `[...SR_MANAGER_EMAILS, ...MANAGER_EMAILS]` (work list picker population) | Replace with staff table lookup |
-| 6891 | `SR_MANAGER_EMAILS.includes(targetEmail) \|\| ADMIN_EMAILS.includes(targetEmail)` | Replace with role check |
-| 8221 | `ADMIN_EMAILS.includes(currentUser.email)` in `isAdmin()` fallback | Remove fallback, rely on `userRoles` only |
-| 8227–8228 | `MANAGER_EMAILS.includes(...)` / `ADMIN_EMAILS.includes(...)` in `hasRole()` | Remove fallback, rely on `userRoles` only |
-| 9071 | `ADMIN_EMAILS.includes(_sessionEmail)` in `loadDataFromSupabase()` | Replace with `userRoles` check |
-| 11815–11816 | `ADMIN_EMAILS.includes(email)` and `SR_MANAGER_EMAILS.includes(email)` in `canManageSilo()` | Replace with role check |
+#### Phase 1 — Database Migrations (run FIRST, before any code changes)
 
-#### What to change
+**Step 1.1 — Add "Sr Manager" role to the `roles` table**
 
-**Step 1 — Add `kevin@` to the `staff` table (Sr. Manager)**
-
-Kevin McHenry is in `SR_MANAGER_EMAILS` but was not in the original staff seed. The changelog (`v1.300`) records this addition. Confirm he exists:
+The `roles` table has 6 roles but "Sr Manager" is missing. This role is needed for `hasRole('Sr Manager')` checks.
 
 ```sql
--- Run in Supabase SQL Editor to verify and insert if missing
+-- Migration: add_sr_manager_role.sql
+-- Run in Supabase SQL Editor
+
+INSERT INTO roles (name)
+VALUES ('Sr Manager')
+ON CONFLICT (name) DO NOTHING;
+```
+
+**Step 1.2 — Assign Admin role to Roland and Lynn in `user_roles`**
+
+The `user_roles` table currently has 7 entries. Roland (`roland@patriotsrvservices.com`) and Lynn (`lynn@patriotsrvservices.com`) are MISSING their Admin role assignments. Without this, `isAdmin()` will return `false` once we remove the email fallback.
+
+```sql
+-- Migration: assign_admin_roles.sql
+-- Run in Supabase SQL Editor
+
+-- Get the Admin role ID
+-- Then insert user_roles for Roland and Lynn
+
+DO $$
+DECLARE
+    admin_role_id UUID;
+    roland_user_id UUID;
+    lynn_user_id UUID;
+BEGIN
+    -- Get Admin role ID
+    SELECT id INTO admin_role_id FROM roles WHERE name = 'Admin';
+    IF admin_role_id IS NULL THEN
+        RAISE EXCEPTION 'Admin role not found in roles table';
+    END IF;
+
+    -- Get Roland's user ID
+    SELECT id INTO roland_user_id FROM users WHERE email = 'roland@patriotsrvservices.com';
+    IF roland_user_id IS NOT NULL THEN
+        INSERT INTO user_roles (user_id, role_id)
+        VALUES (roland_user_id, admin_role_id)
+        ON CONFLICT DO NOTHING;
+        RAISE NOTICE 'Roland assigned Admin role';
+    ELSE
+        RAISE WARNING 'Roland not found in users table — he must sign in once first, then re-run this';
+    END IF;
+
+    -- Get Lynn's user ID
+    SELECT id INTO lynn_user_id FROM users WHERE email = 'lynn@patriotsrvservices.com';
+    IF lynn_user_id IS NOT NULL THEN
+        INSERT INTO user_roles (user_id, role_id)
+        VALUES (lynn_user_id, admin_role_id)
+        ON CONFLICT DO NOTHING;
+        RAISE NOTICE 'Lynn assigned Admin role';
+    ELSE
+        RAISE WARNING 'Lynn not found in users table — she must sign in once first, then re-run this';
+    END IF;
+END $$;
+```
+
+**Step 1.3 — Assign Sr Manager roles in `user_roles`**
+
+Ryan, Kevin, and Sofia are Sr Managers in the hardcoded arrays. They need `user_roles` entries so `hasRole('Sr Manager')` works.
+
+```sql
+-- Migration: assign_sr_manager_roles.sql
+-- Run in Supabase SQL Editor
+
+DO $$
+DECLARE
+    sr_mgr_role_id UUID;
+    _email TEXT;
+    _user_id UUID;
+BEGIN
+    SELECT id INTO sr_mgr_role_id FROM roles WHERE name = 'Sr Manager';
+    IF sr_mgr_role_id IS NULL THEN
+        RAISE EXCEPTION 'Sr Manager role not found — run Step 1.1 first';
+    END IF;
+
+    FOREACH _email IN ARRAY ARRAY[
+        'ryan@patriotsrvservices.com',
+        'kevin@patriotsrvservices.com',
+        'sofia@patriotsrvservices.com'
+    ] LOOP
+        SELECT id INTO _user_id FROM users WHERE email = _email;
+        IF _user_id IS NOT NULL THEN
+            INSERT INTO user_roles (user_id, role_id)
+            VALUES (_user_id, sr_mgr_role_id)
+            ON CONFLICT DO NOTHING;
+            RAISE NOTICE '% assigned Sr Manager role', _email;
+        ELSE
+            RAISE WARNING '% not found in users table — they must sign in first', _email;
+        END IF;
+    END LOOP;
+END $$;
+```
+
+**Step 1.4 — Assign Manager roles in `user_roles`**
+
+All managers in the hardcoded `MANAGER_EMAILS` array need `user_roles` entries. Note: Ryan is both a Sr Manager and in MANAGER_EMAILS — he gets both roles.
+
+```sql
+-- Migration: assign_manager_roles.sql
+-- Run in Supabase SQL Editor
+
+DO $$
+DECLARE
+    mgr_role_id UUID;
+    _email TEXT;
+    _user_id UUID;
+BEGIN
+    SELECT id INTO mgr_role_id FROM roles WHERE name = 'Manager';
+    IF mgr_role_id IS NULL THEN
+        RAISE EXCEPTION 'Manager role not found in roles table';
+    END IF;
+
+    FOREACH _email IN ARRAY ARRAY[
+        'ryan@patriotsrvservices.com',
+        'mauricio@patriotsrvservices.com',
+        'jason@patriotsrvservices.com',
+        'andrew@patriotsrvservices.com',
+        'solar@patriotsrvservices.com',
+        'bobby@patriotsrvservices.com',
+        'brandon@patriotsrvservices.com'
+    ] LOOP
+        SELECT id INTO _user_id FROM users WHERE email = _email;
+        IF _user_id IS NOT NULL THEN
+            INSERT INTO user_roles (user_id, role_id)
+            VALUES (_user_id, mgr_role_id)
+            ON CONFLICT DO NOTHING;
+            RAISE NOTICE '% assigned Manager role', _email;
+        ELSE
+            RAISE WARNING '% not found in users table — they must sign in first', _email;
+        END IF;
+    END LOOP;
+END $$;
+```
+
+**Step 1.5 — Ensure Kevin McHenry exists in `staff` table**
+
+Kevin is in `SR_MANAGER_EMAILS` but may be missing from the `staff` table:
+
+```sql
+-- Migration: ensure_kevin_in_staff.sql
+
 INSERT INTO staff (name, email, role, service_silo)
 VALUES ('Kevin McHenry', 'kevin@patriotsrvservices.com', 'sr_manager', NULL)
 ON CONFLICT (email) DO UPDATE SET role = 'sr_manager', active = TRUE;
 ```
 
-**Step 2 — Ensure `userRoles` is populated with Sr. Manager**
+**Step 1.6 — Ensure Sofia exists in `staff` table**
 
-The `loadUserRoles()` function queries `user_roles` (the junction table). The `staff` table exists separately. The `isAdmin()`/`hasRole()` system reads from `userRoles[]`. The gap is that `staff.role` is not automatically reflected in `userRoles`.
+Sofia is in `SR_MANAGER_EMAILS` and `closed-ros.html` — verify she's in staff:
 
-**Option A (recommended, minimal code change):** Extend `loadUserRoles()` to also read from `staff` for the current user's role and merge it into `userRoles`.
+```sql
+INSERT INTO staff (name, email, role, service_silo)
+VALUES ('Sofia', 'sofia@patriotsrvservices.com', 'sr_manager', NULL)
+ON CONFLICT (email) DO UPDATE SET role = 'sr_manager', active = TRUE;
+```
+
+**Verification query — run after all migrations:**
+
+```sql
+-- Verify: all hardcoded emails now have matching user_roles entries
+SELECT u.email, r.name AS role
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+ORDER BY r.name, u.email;
+
+-- Verify: Sr Manager role exists
+SELECT * FROM roles WHERE name = 'Sr Manager';
+
+-- Verify: staff table has all expected entries
+SELECT name, email, role, active FROM staff WHERE active = TRUE ORDER BY role, name;
+```
+
+> **IMPORTANT:** If any users show "not found in users table" warnings, they need to sign in to the dashboard once (which triggers `upsertUser()`), then re-run the relevant migration.
+
+---
+
+#### Phase 2 — index.html Changes (~16 call sites)
+
+index.html is the most complex file because it already has `loadUserRoles()`, `userRoles[]`, `isAdmin()`, `hasRole()`, and `_staffCache`. The strategy is: (a) enhance `loadUserRoles()` to also read from `staff` table, (b) rewrite `isAdmin()`/`hasRole()` to use `userRoles` only (no email fallback), (c) rewrite work list functions to use `_staffCache`, (d) delete the three hardcoded arrays.
+
+**Step 2.1 — Enhance `loadUserRoles()` to merge staff table roles (~line 8250)**
+
+The existing `loadUserRoles()` queries `user_roles` junction table. We add a second query to `staff` to pull the user's operational role and silo:
 
 ```javascript
-// In loadUserRoles() (~line 8233), after the existing userRoles population block:
-
-// AFTER — add staff table role sync
-try {
-    const { data: staffRecord } = await getSB()
-        .from('staff')
-        .select('role, service_silo, active')
-        .eq('email', email)
-        .single();
-
-    if (staffRecord && staffRecord.active) {
-        // Map staff.role values to the userRoles convention
-        const staffRoleMap = {
-            'sr_manager':    'Sr Manager',
-            'manager':       'Manager',
-            'parts_manager': 'Manager',
-            'tech':          'Tech',
-        };
-        const mapped = staffRoleMap[staffRecord.role];
-        if (mapped && !userRoles.includes(mapped)) {
-            userRoles.push(mapped);
+// BEFORE (~line 8250)
+async function loadUserRoles() {
+    if (!supabaseSession) return;
+    try {
+        const email = supabaseSession.user.email;
+        // Get user record
+        const { data: userRecord } = await getSB()
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+        if (!userRecord) return;
+        // Get roles via junction table
+        const { data: roleData } = await getSB()
+            .from('user_roles')
+            .select('roles(name)')
+            .eq('user_id', userRecord.id);
+        if (roleData) {
+            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+            console.log('✅ User roles:', userRoles);
         }
-        // Store silo for canManageSilo() use
-        window._currentStaffSilo = staffRecord.service_silo || null;
-        window._currentStaffRole = staffRecord.role || null;
+        // Admin fallback — always give Roland admin
+        if (email === 'roland@patriotsrvservices.com' && !userRoles.includes('Admin')) {
+            userRoles.push('Admin');
+        }
+    } catch(e) {
+        console.warn('Could not load roles:', e);
+        // Fallback: give admin to roland
+        if (supabaseSession?.user?.email === 'roland@patriotsrvservices.com') {
+            userRoles = ['Admin'];
+        }
     }
-} catch (e) {
-    // Non-critical — fall through
+}
+
+// AFTER
+async function loadUserRoles() {
+    if (!supabaseSession) return;
+    try {
+        const email = supabaseSession.user.email;
+        // Get user record
+        const { data: userRecord } = await getSB()
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+        if (!userRecord) return;
+        // Get roles via junction table
+        const { data: roleData } = await getSB()
+            .from('user_roles')
+            .select('roles(name)')
+            .eq('user_id', userRecord.id);
+        if (roleData) {
+            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+        }
+
+        // Also read staff table for operational role + silo
+        try {
+            const { data: staffRecord } = await getSB()
+                .from('staff')
+                .select('role, service_silo, active')
+                .eq('email', email)
+                .maybeSingle();
+
+            if (staffRecord && staffRecord.active) {
+                const staffRoleMap = {
+                    'sr_manager':    'Sr Manager',
+                    'manager':       'Manager',
+                    'parts_manager': 'Manager',
+                    'tech':          'Tech',
+                };
+                const mapped = staffRoleMap[staffRecord.role];
+                if (mapped && !userRoles.includes(mapped)) {
+                    userRoles.push(mapped);
+                }
+                // Store silo + staff role for canManageSilo() and solar access
+                window._currentStaffSilo = staffRecord.service_silo || null;
+                window._currentStaffRole = staffRecord.role || null;
+            }
+        } catch (e) {
+            // Non-critical — staff lookup is supplementary
+        }
+
+        console.log('✅ User roles:', userRoles);
+    } catch(e) {
+        console.warn('Could not load roles:', e);
+    }
 }
 ```
 
-**Step 3 — Rewrite `isAdmin()` to use only `userRoles`**
+> **Key change:** Removed the hardcoded Roland fallback (`if (email === 'roland@...')`) — Roland now gets Admin from the `user_roles` table (Step 1.2). Also removed the catch-block Roland fallback.
+
+**Step 2.2 — Rewrite `isAdmin()` (~line 8235)**
 
 ```javascript
-// BEFORE (~line 8220)
+// BEFORE
 function isAdmin() {
     // Check roles array first, then fall back to email check
     if (userRoles.includes('Admin')) return true;
@@ -333,10 +548,10 @@ function isAdmin() {
 }
 ```
 
-**Step 4 — Rewrite `hasRole()` to use only `userRoles`**
+**Step 2.3 — Rewrite `hasRole()` (~line 8241)**
 
 ```javascript
-// BEFORE (~line 8223)
+// BEFORE
 function hasRole(role) {
     if (userRoles.includes(role)) return true;
     // Email fallback while Supabase roles load
@@ -351,12 +566,12 @@ function hasRole(role) {
 }
 ```
 
-**Step 5 — Rewrite `canSeeWorkList()` (line ~6685)**
+**Step 2.4 — Rewrite `canSeeWorkList()` (~line 6700)**
 
 ```javascript
 // BEFORE
 function canSeeWorkList() {
-    const email = currentUser?.email?.toLowerCase() || '';
+    const email = supabaseSession?.user?.email || '';
     return SR_MANAGER_EMAILS.includes(email) ||
            ADMIN_EMAILS.includes(email) ||
            MANAGER_EMAILS.includes(email);
@@ -364,65 +579,85 @@ function canSeeWorkList() {
 
 // AFTER
 function canSeeWorkList() {
-    return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
+    return isAdmin() || hasRole('Sr Manager') || hasRole('Manager');
 }
 ```
 
-**Step 6 — Rewrite `isSrManagerOrAdmin()` (line ~6691)**
+**Step 2.5 — Rewrite `isSrOrAdmin()` (~line 6706)**
 
 ```javascript
 // BEFORE
-function isSrManagerOrAdmin() {
-    const email = currentUser?.email?.toLowerCase() || '';
+function isSrOrAdmin() {
+    const email = supabaseSession?.user?.email || '';
     return SR_MANAGER_EMAILS.includes(email) || ADMIN_EMAILS.includes(email);
 }
 
 // AFTER
-function isSrManagerOrAdmin() {
+function isSrOrAdmin() {
     return isAdmin() || hasRole('Sr Manager');
 }
 ```
 
-**Step 7 — Rewrite `canManageSilo()` (line ~11815)**
+**Step 2.6 — Rewrite `_populateManagerPicker()` (~line 6734)**
+
+Replace hardcoded email arrays with `_staffCache`:
+
+```javascript
+// BEFORE (~line 6738–6743)
+if (!isSrOrAdmin()) { bar.style.display = 'none'; return; }
+bar.style.display = 'block';
+const all = [...(SR_MANAGER_EMAILS || []), ...(MANAGER_EMAILS || [])];
+const myEmail = supabaseSession?.user?.email || '';
+sel.innerHTML = '<option value="">— My List —</option>' +
+    all.filter(e => e !== myEmail).map(e => `<option value="${e}">${e}</option>`).join('');
+
+// AFTER
+if (!isSrOrAdmin()) { bar.style.display = 'none'; return; }
+bar.style.display = 'block';
+const managerStaff = (_staffCache || []).filter(s =>
+    s.active && (s.role === 'manager' || s.role === 'sr_manager' || s.role === 'parts_manager')
+);
+const myEmail = (supabaseSession?.user?.email || '').toLowerCase();
+sel.innerHTML = '<option value="">— My List —</option>' +
+    managerStaff
+        .filter(s => s.email.toLowerCase() !== myEmail)
+        .map(s => `<option value="${escapeHtml(s.email)}">${escapeHtml(s.name)} (${escapeHtml(s.email)})</option>`)
+        .join('');
+```
+
+Note: `_staffCache` is populated by `loadStaff()` which is called during auth. If empty at this point, add `if (!_staffCache.length) await loadStaff();` before the filter.
+
+**Step 2.7 — Rewrite `_renderWorkListSiloTabs()` isSrManagerList check (~line 6908)**
+
+```javascript
+// BEFORE (~line 6907–6908)
+const targetEmail = _workListViewEmail || supabaseSession?.user?.email || '';
+const isSrManagerList = SR_MANAGER_EMAILS.includes(targetEmail) || ADMIN_EMAILS.includes(targetEmail);
+
+// AFTER
+const targetEmail = _workListViewEmail || supabaseSession?.user?.email || '';
+// Check if the viewed list belongs to a Sr Manager or Admin via staff table
+const targetStaff = (_staffCache || []).find(s => s.email.toLowerCase() === targetEmail.toLowerCase());
+const isSrManagerList = (targetStaff && targetStaff.role === 'sr_manager') ||
+    (!_workListViewEmail && (isAdmin() || hasRole('Sr Manager')));
+```
+
+**Step 2.8 — Fix Solar access check (~line 8312)**
 
 ```javascript
 // BEFORE
-function canManageSilo(silo) {
-    const email = currentUser?.email?.toLowerCase() || '';
-    if (isAdmin()) return true;
-    if (ADMIN_EMAILS.includes(email)) return true;
-    if (SR_MANAGER_EMAILS.includes(email)) return true;
-    // Check user_roles for silo-specific manager
-    return userRoles.some(r => r === silo + '_manager' || r === 'Manager');
-}
+const hasSolarAccess = isAdmin() || hasRole('Solar') ||
+    (currentUser && ['solar@patriotsrvservices.com','tipton@patriotsrvservices.com','ryan@patriotsrvservices.com'].includes(currentUser.email?.toLowerCase()));
 
-// AFTER
-function canManageSilo(silo) {
-    if (isAdmin()) return true;
-    if (hasRole('Sr Manager')) return true;
-    // Silo-specific manager: check staff table silo assignment
-    if (hasRole('Manager') && window._currentStaffSilo === silo) return true;
-    // Parts managers have their own access path; general Manager role
-    if (hasRole('Manager') && window._currentStaffRole === 'parts_manager') return false;
-    return false;
-}
+// AFTER — use staff table silo assignment
+const hasSolarAccess = isAdmin() || hasRole('Solar') ||
+    window._currentStaffSilo === 'solar' ||
+    window._currentStaffRole === 'sr_manager';
 ```
 
-**Step 8 — Remove the `ADMIN_EMAILS`, `MANAGER_EMAILS`, `SR_MANAGER_EMAILS` constant declarations**
+> **Note:** Sr Managers (Ryan, Kevin, Sofia) get solar access by virtue of their role; solar@ and tipton@ should have `service_silo = 'solar'` in the staff table. Verify: `SELECT name, email, service_silo FROM staff WHERE service_silo = 'solar' OR role = 'sr_manager';`
 
-After all call sites above are updated and tested, delete lines 8123–8133:
-
-```javascript
-// DELETE these three constant declarations entirely:
-const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
-const MANAGER_EMAILS = [
-    'ryan@patriotsrvservices.com',
-    // ...
-];
-const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com'];
-```
-
-**Step 9 — Fix `loadDataFromSupabase()` fallback (line ~9071)**
+**Step 2.9 — Fix `loadDataFromSupabase()` fallback (~line 9088)**
 
 ```javascript
 // BEFORE
@@ -432,51 +667,650 @@ const _isAdminNow = isAdmin() || ADMIN_EMAILS.includes(_sessionEmail);
 const _isAdminNow = isAdmin();
 ```
 
-**Step 10 — Fix work list manager picker (line ~6723)**
+The `_sessionEmail` variable on line 9087 can be left in place (it's used for logging) or removed. The `ADMIN_EMAILS` reference must go.
 
-The Sr. Manager work list picker currently uses the hardcoded arrays to populate the email dropdown:
+**Step 2.10 — Rewrite `isSrManagerOrAdmin()` in WO module (~line 11830)**
 
 ```javascript
 // BEFORE
-const all = [...(SR_MANAGER_EMAILS || []), ...(MANAGER_EMAILS || [])];
-sel.innerHTML = '<option value="">— My List —</option>' + all.map(e => `<option value="${e}">${e}</option>`).join('');
+function isSrManagerOrAdmin() {
+    const email = (supabaseSession?.user?.email || currentUser?.email || '').toLowerCase();
+    if (isAdmin() || ADMIN_EMAILS.includes(email)) return true;
+    if (SR_MANAGER_EMAILS.includes(email)) return true;
+    return _staffCache.some(s => s.email.toLowerCase() === email && s.role === 'sr_manager');
+}
 
-// AFTER — pull from staff cache instead
-const managerStaff = (_staffCache || []).filter(s =>
-    s.active && (s.role === 'manager' || s.role === 'sr_manager')
-);
-sel.innerHTML = '<option value="">— My List —</option>' +
-    managerStaff.map(s =>
-        `<option value="${escapeHtml(s.email)}">${escapeHtml(s.name)} (${escapeHtml(s.email)})</option>`
-    ).join('');
+// AFTER
+function isSrManagerOrAdmin() {
+    return isAdmin() || hasRole('Sr Manager');
+}
 ```
 
-Note: `_staffCache` is populated by `loadStaff()` which is already called during auth. If it's not yet loaded at this call site, call `await loadStaff()` first.
+**Step 2.11 — Rewrite `canManageSilo()` in WO module (~line 11837)**
 
-#### Supabase migrations needed
+```javascript
+// BEFORE
+function canManageSilo(silo) {
+    if (isSrManagerOrAdmin()) return true;
+    const email = (supabaseSession?.user?.email || currentUser?.email || '').toLowerCase();
+    return _staffCache.some(s =>
+        s.email.toLowerCase() === email &&
+        s.role === 'manager' &&
+        s.service_silo === silo
+    );
+}
+
+// AFTER
+function canManageSilo(silo) {
+    if (isAdmin() || hasRole('Sr Manager')) return true;
+    // Silo-specific manager: check staff table silo assignment
+    if (hasRole('Manager') && window._currentStaffSilo === silo) return true;
+    return false;
+}
+```
+
+**Step 2.12 — Replace hardcoded `mailto:roland@` (~line 4819)**
+
+```javascript
+// BEFORE
+window.location.href = `mailto:roland@patriotsrvservices.com?subject=${subject}&body=${body}`;
+
+// AFTER — send to the first Admin in the staff/users tables, or fall back
+const adminEmail = (_staffCache || []).find(s => s.role === 'admin')?.email || 'roland@patriotsrvservices.com';
+window.location.href = `mailto:${encodeURIComponent(adminEmail)}?subject=${subject}&body=${body}`;
+```
+
+> **Alternative:** If you want this to always go to the owner regardless of role changes, keep it hardcoded but add a comment: `// Owner email — intentionally hardcoded`. Roland can decide.
+
+**Step 2.13 — Delete the three constant declarations (~lines 8140–8150)**
+
+After all call sites above are updated and tested, delete these lines entirely:
+
+```javascript
+// DELETE these constant declarations:
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+const MANAGER_EMAILS = [
+    'ryan@patriotsrvservices.com',
+    'mauricio@patriotsrvservices.com',
+    'jason@patriotsrvservices.com',
+    'andrew@patriotsrvservices.com',
+    'solar@patriotsrvservices.com',
+    'bobby@patriotsrvservices.com',
+    'brandon@patriotsrvservices.com',
+];
+const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com'];
+```
+
+**Remaining `isAdmin()` call sites that need NO code changes** (they already call the function, which will now use roles):
+
+| Line | Context | Why it's fine |
+|---|---|---|
+| 3229 | `if (!isAdmin())` in `saveCurrentAsPreset()` | Calls `isAdmin()` — works with new role-based version |
+| 3243 | `if (!isAdmin())` in `setViewMode('custom')` | Same |
+| 3251 | `if (!isAdmin())` in `setViewMode('expanded')` | Same |
+| 4150 | `if (!isAdmin())` in `archiveRO()` | Same |
+| 4727 | `if (isAdmin())` in card render | Same |
+| 7413 | `${isAdmin() ? ...}` in RO card template | Same |
+| 7444 | `${(isAdmin() || hasRole('Manager'))...}` | Same |
+| 7449 | `${(isAdmin() || hasRole('Manager'))...}` | Same |
+| 7454 | `${isAdmin() && ...}` | Same |
+| 8307 | `isAdmin() ? 'inline-block' : 'none'` | Same |
+| 8319 | Analytics button visibility | Same |
+| 8324 | WL Report button visibility | Same |
+| 8334 | ER Admin button visibility | Same |
+| 8335 | `if (isAdmin()) loadERUnreviewedCount()` | Same |
+| 8339 | `if (manageDupesBtn && isAdmin())` | Same |
+| 8351 | `if (isAdmin())` | Same |
+| 9837 | `if (!isAdmin())` in `openDuplicateManager()` | Same |
+
+---
+
+#### Phase 3 — worklist-report.html Changes (10 call sites)
+
+This file has NO `loadUserRoles()` or `userRoles[]` — it's a standalone admin report page. Strategy: add a shared `loadUserRoles()` function, rewrite `isAdmin()`, replace all hardcoded array references.
+
+**Step 3.1 — Add `userRoles` state and `loadUserRoles()` function**
+
+Add after the existing state declarations (~line 365, after `let _countdownSec = 180;`):
+
+```javascript
+// ── Role-based access ────────────────────────────────────
+let userRoles = [];
+window._currentStaffRole = null;
+
+async function loadUserRoles() {
+    if (!supabaseSession) return;
+    try {
+        const email = supabaseSession.user.email;
+        const { data: userRecord } = await getSB()
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+        if (!userRecord) return;
+        const { data: roleData } = await getSB()
+            .from('user_roles')
+            .select('roles(name)')
+            .eq('user_id', userRecord.id);
+        if (roleData) {
+            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+        }
+        // Also read staff table for operational role
+        try {
+            const { data: staffRecord } = await getSB()
+                .from('staff')
+                .select('role, active')
+                .eq('email', email)
+                .maybeSingle();
+            if (staffRecord && staffRecord.active) {
+                window._currentStaffRole = staffRecord.role || null;
+                const staffRoleMap = {
+                    'sr_manager': 'Sr Manager',
+                    'manager': 'Manager',
+                    'parts_manager': 'Manager',
+                    'tech': 'Tech',
+                };
+                const mapped = staffRoleMap[staffRecord.role];
+                if (mapped && !userRoles.includes(mapped)) {
+                    userRoles.push(mapped);
+                }
+            }
+        } catch (e) {}
+        console.log('✅ WL Report roles:', userRoles);
+    } catch(e) {
+        console.warn('Could not load roles:', e);
+    }
+}
+
+function hasRole(role) {
+    return userRoles.includes(role);
+}
+```
+
+**Step 3.2 — Rewrite `isAdmin()` (~line 421)**
+
+```javascript
+// BEFORE
+function isAdmin() {
+    const email = (currentUser?.email || '').toLowerCase();
+    return ADMIN_EMAILS.includes(email);
+}
+
+// AFTER
+function isAdmin() {
+    return userRoles.includes('Admin');
+}
+```
+
+**Step 3.3 — Update `initAuth()` to call `loadUserRoles()` before access check (~line 395)**
+
+```javascript
+// BEFORE (~line 388–398)
+const { data: { session } } = await getSB().auth.getSession();
+if (session) {
+    supabaseSession = session;
+    currentUser = {
+        email: session.user.email,
+        name: session.user.user_metadata?.full_name || session.user.email,
+    };
+    if (isAdmin()) {
+        showApp();
+        return;
+    }
+}
+
+// AFTER
+const { data: { session } } = await getSB().auth.getSession();
+if (session) {
+    supabaseSession = session;
+    currentUser = {
+        email: session.user.email,
+        name: session.user.user_metadata?.full_name || session.user.email,
+    };
+    await loadUserRoles();
+    if (isAdmin()) {
+        showApp();
+        return;
+    }
+}
+```
+
+**Step 3.4 — Update localStorage identity check to use roles (~line 406)**
+
+```javascript
+// BEFORE (~line 406)
+if (parsed.email && ADMIN_EMAILS.includes(parsed.email.toLowerCase())) {
+    currentUser = { email: parsed.email, name: parsed.name };
+    if (supabaseSession) {
+        showApp();
+        return;
+    }
+}
+
+// AFTER
+if (parsed.email && supabaseSession) {
+    currentUser = { email: parsed.email, name: parsed.name };
+    await loadUserRoles();
+    if (isAdmin()) {
+        showApp();
+        return;
+    }
+}
+```
+
+> **Note:** We require `supabaseSession` here because `loadUserRoles()` needs it to query Supabase. Without a session, we fall through to Google sign-in.
+
+**Step 3.5 — Update `handleGoogleSignIn()` to load roles (~line 452)**
+
+```javascript
+// BEFORE
+if (!isAdmin()) {
+
+// AFTER — insert loadUserRoles() call before the check
+await loadUserRoles();
+if (!isAdmin()) {
+```
+
+**Step 3.6 — Replace admin filter in `renderReport()` (~line 586–591)**
+
+```javascript
+// BEFORE
+const adminEmails = ADMIN_EMAILS.map(e => e.toLowerCase());
+Object.keys(byManager).forEach(email => {
+    if (adminEmails.includes(email.toLowerCase()) && !SR_MANAGER_EMAILS.includes(email.toLowerCase())) {
+        delete byManager[email];
+    }
+});
+
+// AFTER — filter out admins who are NOT also managers, using staff table
+const adminStaff = (_allStaff || []).filter(s =>
+    s.role !== 'sr_manager' && s.role !== 'manager' && s.role !== 'parts_manager' && s.role !== 'tech'
+);
+const adminOnlyEmails = adminStaff.map(s => s.email.toLowerCase());
+Object.keys(byManager).forEach(email => {
+    if (adminOnlyEmails.includes(email.toLowerCase())) {
+        delete byManager[email];
+    }
+});
+```
+
+> **Logic:** Admins who are ALSO managers (dual-role) should still appear. We only hide pure-admin entries (like Roland/Lynn who manage the tool but don't have work lists).
+
+**Step 3.7 — Replace manager sort by role (~line 594–600)**
+
+```javascript
+// BEFORE
+const managerOrder = Object.keys(byManager).sort((a, b) => {
+    const aIsSr = SR_MANAGER_EMAILS.includes(a);
+    const bIsSr = SR_MANAGER_EMAILS.includes(b);
+    if (aIsSr && !bIsSr) return -1;
+    if (!aIsSr && bIsSr) return 1;
+    return a.localeCompare(b);
+});
+
+// AFTER — use _allStaff to determine Sr Manager status
+const managerOrder = Object.keys(byManager).sort((a, b) => {
+    const aStaff = (_allStaff || []).find(s => s.email.toLowerCase() === a.toLowerCase());
+    const bStaff = (_allStaff || []).find(s => s.email.toLowerCase() === b.toLowerCase());
+    const aIsSr = aStaff?.role === 'sr_manager';
+    const bIsSr = bStaff?.role === 'sr_manager';
+    if (aIsSr && !bIsSr) return -1;
+    if (!aIsSr && bIsSr) return 1;
+    return a.localeCompare(b);
+});
+```
+
+**Step 3.8 — Replace Sr Manager badge and silo grouping (~line 629–636)**
+
+```javascript
+// BEFORE
+const isSr = SR_MANAGER_EMAILS.includes(email);
+const roleBadge = isSr ? 'Sr Manager' : 'Manager';
+// ... later:
+if (isSr) {
+
+// AFTER
+const staffEntry = (_allStaff || []).find(s => s.email.toLowerCase() === email.toLowerCase());
+const isSr = staffEntry?.role === 'sr_manager';
+const roleBadge = isSr ? 'Sr Manager' : 'Manager';
+// ... later:
+if (isSr) {
+```
+
+**Step 3.9 — Replace admin filter in `renderStaffTiles()` (~line 690–691)**
+
+```javascript
+// BEFORE
+const adminEmails = ADMIN_EMAILS.map(e => e.toLowerCase());
+const staffToShow = _allStaff.filter(s => !adminEmails.includes(s.email.toLowerCase()));
+
+// AFTER — filter out staff with no operational role (pure admins)
+// If someone is in staff table, they should appear; hide only if they have no staff entry
+// or their staff.role indicates non-operational (future-proof)
+const staffToShow = _allStaff.filter(s => {
+    // Show everyone who has an operational role (tech, manager, sr_manager, parts_manager)
+    return ['tech', 'manager', 'sr_manager', 'parts_manager'].includes(s.role);
+});
+```
+
+**Step 3.10 — Delete the three constant declarations (~lines 331–341)**
+
+```javascript
+// DELETE these constant declarations:
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com'];
+const MANAGER_EMAILS = [
+    'ryan@patriotsrvservices.com',
+    'mauricio@patriotsrvservices.com',
+    // ...
+];
+```
+
+---
+
+#### Phase 4 — closed-ros.html Changes (6 call sites)
+
+This file has `ADMIN_EMAILS`, `SR_MANAGER_EMAILS`, `MANAGER_EMAILS`, `isAdmin()`, and `isManagerOrAdmin()`. No existing `loadUserRoles()`. Strategy: add role system, rewrite access functions, remove arrays.
+
+**Step 4.1 — Add `userRoles` state and `loadUserRoles()` function**
+
+Add after line 363 (after `let currentPage = 1;`):
+
+```javascript
+// ── Role-based access ────────────────────────────────────
+let userRoles = [];
+
+async function loadUserRoles() {
+    if (!supabaseSession) return;
+    try {
+        const email = supabaseSession.user.email;
+        const { data: userRecord } = await getSB()
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+        if (!userRecord) return;
+        const { data: roleData } = await getSB()
+            .from('user_roles')
+            .select('roles(name)')
+            .eq('user_id', userRecord.id);
+        if (roleData) {
+            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+        }
+        // Also read staff table
+        try {
+            const { data: staffRecord } = await getSB()
+                .from('staff')
+                .select('role, active')
+                .eq('email', email)
+                .maybeSingle();
+            if (staffRecord && staffRecord.active) {
+                const staffRoleMap = {
+                    'sr_manager': 'Sr Manager',
+                    'manager': 'Manager',
+                    'parts_manager': 'Manager',
+                    'tech': 'Tech',
+                };
+                const mapped = staffRoleMap[staffRecord.role];
+                if (mapped && !userRoles.includes(mapped)) {
+                    userRoles.push(mapped);
+                }
+            }
+        } catch (e) {}
+        console.log('✅ Closed ROs roles:', userRoles);
+    } catch(e) {
+        console.warn('Could not load roles:', e);
+    }
+}
+
+function hasRole(role) {
+    return userRoles.includes(role);
+}
+```
+
+**Step 4.2 — Rewrite `isAdmin()` (~line 451)**
+
+```javascript
+// BEFORE
+function isAdmin() {
+    const email = (currentUser?.email || supabaseSession?.user?.email || '').toLowerCase();
+    return ADMIN_EMAILS.includes(email);
+}
+
+// AFTER
+function isAdmin() {
+    return userRoles.includes('Admin');
+}
+```
+
+**Step 4.3 — Rewrite `isManagerOrAdmin()` (~line 456)**
+
+```javascript
+// BEFORE
+function isManagerOrAdmin() {
+    const email = (currentUser?.email || supabaseSession?.user?.email || '').toLowerCase();
+    return ADMIN_EMAILS.includes(email) || SR_MANAGER_EMAILS.includes(email) || MANAGER_EMAILS.includes(email);
+}
+
+// AFTER
+function isManagerOrAdmin() {
+    return isAdmin() || hasRole('Sr Manager') || hasRole('Manager');
+}
+```
+
+**Step 4.4 — Add `await loadUserRoles()` in the auth flow**
+
+In the `handleGoogleCredential()` function (or equivalent sign-in handler), add `await loadUserRoles();` after `supabaseSession` is set and before `showApp()` is called.
+
+In the `initAuth()` / `DOMContentLoaded` flow where Supabase session is restored, add `await loadUserRoles();` before `showApp()`.
+
+**Step 4.5 — Delete the three constant declarations (~lines 342–352)**
+
+```javascript
+// DELETE:
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com'];
+const MANAGER_EMAILS = [
+    'ryan@patriotsrvservices.com',
+    // ...
+];
+```
+
+**Call sites that need NO changes** (they call `isAdmin()` or `isManagerOrAdmin()` which are now role-based):
+
+| Line | Usage | Why it's fine |
+|---|---|---|
+| 468 | `if (isAdmin())` in `showApp()` badge logic | Calls rewritten `isAdmin()` |
+| 471 | `else if (isManagerOrAdmin())` in badge logic | Calls rewritten function |
+
+---
+
+#### Phase 5 — analytics.html Changes (3 call sites)
+
+This is the simplest file after checkin.html. Only `ADMIN_EMAILS` is used — for admin-only access gating.
+
+**Step 5.1 — Add `userRoles` and `loadUserRoles()`**
+
+Add after `let techChartInstance = null;` (~line 573):
+
+```javascript
+// ── Role-based access ────────────────────────────────────
+let userRoles = [];
+
+async function loadUserRoles() {
+    // analytics.html does NOT have a Supabase session (S3 will fix this)
+    // For now, use a lightweight approach: query staff + user_roles via anon key
+    // This works because RLS allows authenticated reads on user_roles
+    // NOTE: After S3 adds full Supabase auth, this function can be simplified
+    if (!currentUser?.email) return;
+    try {
+        const email = currentUser.email.toLowerCase();
+        // Try to get user record and roles
+        const { data: userRecord } = await getSB()
+            .from('users')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+        if (!userRecord) return;
+        const { data: roleData } = await getSB()
+            .from('user_roles')
+            .select('roles(name)')
+            .eq('user_id', userRecord.id);
+        if (roleData) {
+            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+        }
+    } catch(e) {
+        console.warn('Could not load roles:', e);
+    }
+}
+```
+
+> **Note:** analytics.html currently has no real Supabase session (Issue #3 / S3 will fix this). The `loadUserRoles()` query may fail under strict RLS. As a fallback, if the query fails, the user won't get access — which is safe (fail-closed). S3 will give analytics.html a proper Supabase session, making this fully reliable.
+
+**Step 5.2 — Replace `ADMIN_EMAILS` check in stored identity flow (~line 585)**
+
+```javascript
+// BEFORE
+if (ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
+    showApp();
+    return;
+} else {
+    showAccessDenied();
+    return;
+}
+
+// AFTER
+await loadUserRoles();
+if (userRoles.includes('Admin')) {
+    showApp();
+    return;
+} else {
+    showAccessDenied();
+    return;
+}
+```
+
+> **Important:** The enclosing `DOMContentLoaded` callback must become `async` for `await` to work. Change `document.addEventListener('DOMContentLoaded', () => {` to `document.addEventListener('DOMContentLoaded', async () => {`.
+
+**Step 5.3 — Replace `ADMIN_EMAILS` check in `handleSignIn()` (~line 625)**
+
+```javascript
+// BEFORE
+if (ADMIN_EMAILS.includes(currentUser.email.toLowerCase())) {
+    showApp();
+} else {
+    showAccessDenied();
+}
+
+// AFTER
+await loadUserRoles();
+if (userRoles.includes('Admin')) {
+    showApp();
+} else {
+    showAccessDenied();
+}
+```
+
+> **Important:** `handleSignIn()` must become `async function handleSignIn(response)`.
+
+**Step 5.4 — Delete the constant declaration (~line 560)**
+
+```javascript
+// DELETE:
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
+```
+
+---
+
+#### Phase 6 — checkin.html Changes (1 call site — dead code)
+
+checkin.html has `const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];` on line 205, but it is **never referenced** anywhere in the file. This is dead code.
+
+**Step 6.1 — Delete the unused constant (~line 205)**
+
+```javascript
+// DELETE this line:
+const ADMIN_EMAILS = ['roland@patriotsrvservices.com'];
+```
+
+No other changes needed in checkin.html.
+
+---
+
+#### Execution Order
+
+Claude must execute these phases in strict order:
+
+1. **Phase 1 — Database migrations** (Steps 1.1–1.6) — run all SQL in Supabase SQL Editor, then verify
+2. **Phase 2 — index.html** (Steps 2.1–2.13) — the core app; largest change set
+3. **Phase 3 — worklist-report.html** (Steps 3.1–3.10) — admin report page
+4. **Phase 4 — closed-ros.html** (Steps 4.1–4.5) — archive viewer
+5. **Phase 5 — analytics.html** (Steps 5.1–5.4) — admin analytics
+6. **Phase 6 — checkin.html** (Step 6.1) — dead code removal
+
+> **Why this order:** index.html must go first because other pages (worklist-report, closed-ros) link back to it. Database migrations must be first because the code changes depend on roles existing in the tables.
+
+#### Testing Plan
+
+**Pre-flight checks (before any code changes):**
 
 ```sql
--- Migration: add kevin@patriotsrvservices.com to staff table
--- File: supabase/migrations/add_kevin_sr_manager.sql
-
-INSERT INTO staff (name, email, role, service_silo)
-VALUES ('Kevin McHenry', 'kevin@patriotsrvservices.com', 'sr_manager', NULL)
-ON CONFLICT (email) DO UPDATE SET
-    role   = 'sr_manager',
-    active = TRUE;
+-- Verify all migrations succeeded
+SELECT u.email, r.name AS role
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id
+JOIN roles r ON r.id = ur.role_id
+ORDER BY r.name, u.email;
 ```
 
-Also ensure Roland and Lynn have the `Admin` role in `user_roles` (if not already set, use the Admin → Manage Users UI after this change is live).
+Expected output should show:
+- Roland → Admin
+- Lynn → Admin
+- Ryan → Sr Manager, Manager
+- Kevin → Sr Manager
+- Sofia → Sr Manager
+- Mauricio, Jason, Andrew, Solar, Bobby, Brandon → Manager
 
-#### Testing steps
-1. Sign in as Roland (`roland@`). Confirm `isAdmin()` returns `true` via console: `isAdmin()`.
-2. Sign in as Ryan (`ryan@`). Confirm Work List and Sr Manager features are visible.
-3. Sign in as Mauricio (`mauricio@`). Confirm Manager features are accessible, Admin features are not.
-4. Sign in as a Tech. Confirm only tech-level actions are available.
-5. In Supabase, temporarily change Mauricio's `staff.active` to `false`. Refresh — confirm Manager access is revoked without a code change.
-6. Restore `active = true`.
-7. Confirm no console errors about missing `ADMIN_EMAILS`.
+**Test matrix (after all code changes deployed):**
 
+| Test | User | Expected Result | File(s) |
+|---|---|---|---|
+| 1 | Roland (`roland@`) | Full admin access, all buttons visible, `isAdmin()` → true via console | index.html |
+| 2 | Lynn (`lynn@`) | Full admin access, matches Roland's permissions | index.html |
+| 3 | Ryan (`ryan@`) | Sr Manager — Work List visible, can view other managers' lists, silo tabs shown, WO silo management works | index.html |
+| 4 | Kevin (`kevin@`) | Sr Manager — same as Ryan | index.html |
+| 5 | Mauricio (`mauricio@`) | Manager — Work List visible but can't see others' lists, no silo tabs, can manage assigned silo only | index.html |
+| 6 | Tech user | No Work List, no Admin buttons, can only see own ROs and check in/out | index.html, checkin.html |
+| 7 | Roland | Can access worklist-report.html, sees all manager sections | worklist-report.html |
+| 8 | Non-admin | Gets "Access Denied" on worklist-report.html | worklist-report.html |
+| 9 | Roland | Can access analytics.html, dashboard loads | analytics.html |
+| 10 | Non-admin | Gets "Access Denied" on analytics.html | analytics.html |
+| 11 | Roland | Can access closed-ros.html with Admin badge | closed-ros.html |
+| 12 | Ryan | Can access closed-ros.html with Manager badge | closed-ros.html |
+| 13 | Tech user | Can access closed-ros.html with User badge (read-only) | closed-ros.html |
+| 14 | Any | No console errors about `ADMIN_EMAILS`, `MANAGER_EMAILS`, or `SR_MANAGER_EMAILS` being undefined | All 5 files |
+| 15 | Roland | Deactivate Mauricio in `staff` table (`active = false`), refresh → Mauricio loses Manager access without code change | index.html |
+| 16 | Roland | Restore Mauricio (`active = true`), refresh → access returns | index.html |
+
+**Rollback plan:**
+
+If anything breaks, restore from the pre-S2 backup:
+```bash
+./scripts/backup.sh --tag pre-s2
+git checkout pre-s2-backup -- index.html worklist-report.html closed-ros.html analytics.html checkin.html
+git push
+```
+
+#### Supabase migrations summary
+
+| Migration | Table | Action |
+|---|---|---|
+| 1.1 | `roles` | INSERT "Sr Manager" role |
+| 1.2 | `user_roles` | INSERT Admin for Roland + Lynn |
+| 1.3 | `user_roles` | INSERT Sr Manager for Ryan, Kevin, Sofia |
+| 1.4 | `user_roles` | INSERT Manager for 7 managers |
+| 1.5 | `staff` | UPSERT Kevin as sr_manager |
+| 1.6 | `staff` | UPSERT Sofia as sr_manager |
 ---
 
 ### Issue 3 — analytics.html Auth Gap
@@ -1500,7 +2334,12 @@ Run this migration in the Supabase SQL Editor (it replaces the function in-place
 
 | File | Session | Contents |
 |---|---|---|
-| `supabase/migrations/add_kevin_sr_manager.sql` | S2 | Adds Kevin McHenry to staff table |
+| `supabase/migrations/s2_add_sr_manager_role.sql` | S2 | Adds "Sr Manager" to roles table |
+| `supabase/migrations/s2_assign_admin_roles.sql` | S2 | Assigns Admin role to Roland + Lynn in user_roles |
+| `supabase/migrations/s2_assign_sr_manager_roles.sql` | S2 | Assigns Sr Manager to Ryan, Kevin, Sofia in user_roles |
+| `supabase/migrations/s2_assign_manager_roles.sql` | S2 | Assigns Manager to 7 managers in user_roles |
+| `supabase/migrations/s2_ensure_kevin_in_staff.sql` | S2 | UPSERTs Kevin McHenry as sr_manager in staff |
+| `supabase/migrations/s2_ensure_sofia_in_staff.sql` | S2 | UPSERTs Sofia as sr_manager in staff |
 | `supabase/migrations/tighten_enhancement_requests_rls.sql` | S3 | Removes anon INSERT on enhancement_requests |
 | `supabase/migrations/fix_is_silo_manager_search_path.sql` | S7 | Adds SET search_path to is_silo_manager() |
 | `supabase/migrations/app_config_table.sql` | S7 | Creates app_config table, seeds Calendar IDs |
@@ -1521,13 +2360,53 @@ Run this migration in the Supabase SQL Editor (it replaces the function in-place
 | `openPartsStatusModal()` | ~10603 | Apply escapeHtml |
 | `openTimeLogsModal()` | ~10854 | Apply escapeHtml |
 | `buildWOTaskRowHtml()` | 12114+ | Apply escapeHtml to task fields |
-| `isAdmin()` | 8220 | Remove ADMIN_EMAILS fallback |
-| `hasRole()` | 8223 | Remove MANAGER_EMAILS/ADMIN_EMAILS fallback |
-| `canSeeWorkList()` | ~6685 | Replace email array checks with role checks |
-| `isSrManagerOrAdmin()` | ~6691 | Replace email array checks with role checks |
-| `canManageSilo()` | ~11815 | Replace email array checks with role checks |
-| `loadUserRoles()` | 8233 | Add staff table role merge |
-| `loadDataFromSupabase()` | ~9071 | Replace ADMIN_EMAILS check |
+| `isAdmin()` | 8235 | Remove ADMIN_EMAILS fallback — use `userRoles` only |
+| `hasRole()` | 8241 | Remove MANAGER/ADMIN_EMAILS fallback — use `userRoles` only |
+| `canSeeWorkList()` | ~6700 | Replace email array checks with `isAdmin() \|\| hasRole()` |
+| `isSrOrAdmin()` | ~6706 | Replace email array checks with `isAdmin() \|\| hasRole('Sr Manager')` |
+| `isSrManagerOrAdmin()` | ~11830 | Replace email array checks with `isAdmin() \|\| hasRole('Sr Manager')` |
+| `canManageSilo()` | ~11837 | Replace email array + _staffCache with role + silo checks |
+| `_populateManagerPicker()` | ~6734 | Replace hardcoded email arrays with `_staffCache` lookup |
+| `_renderWorkListSiloTabs()` | ~6908 | Replace SR_MANAGER_EMAILS check with `_staffCache` lookup |
+| `loadUserRoles()` | 8250 | Add staff table role merge + store silo/role in window globals |
+| `loadDataFromSupabase()` | ~9088 | Replace `ADMIN_EMAILS.includes()` fallback with `isAdmin()` |
+| `updateViewModeDropdown()` | ~8312 | Replace hardcoded solar email array with staff silo check |
+
+### Functions Modified in worklist-report.html (S2)
+
+| Function | Lines | Change |
+|---|---|---|
+| *(new)* `loadUserRoles()` | Insert ~366 | New — query user_roles + staff table |
+| *(new)* `hasRole()` | Insert ~366 | New — check userRoles array |
+| `isAdmin()` | 421 | Rewrite to use `userRoles.includes('Admin')` |
+| `initAuth()` | 395 | Add `await loadUserRoles()` before access check |
+| `handleGoogleSignIn()` | 452 | Add `await loadUserRoles()` before access check |
+| `renderReport()` | 586–600 | Replace ADMIN_EMAILS/SR_MANAGER_EMAILS with _allStaff lookups |
+| `renderReport()` | 629 | Replace SR_MANAGER_EMAILS.includes with _allStaff lookup |
+| `renderStaffTiles()` | 690 | Replace ADMIN_EMAILS filter with operational role filter |
+
+### Functions Modified in closed-ros.html (S2)
+
+| Function | Lines | Change |
+|---|---|---|
+| *(new)* `loadUserRoles()` | Insert ~364 | New — query user_roles + staff table |
+| *(new)* `hasRole()` | Insert ~364 | New — check userRoles array |
+| `isAdmin()` | 451 | Rewrite to use `userRoles.includes('Admin')` |
+| `isManagerOrAdmin()` | 456 | Rewrite to use `isAdmin() \|\| hasRole('Sr Manager') \|\| hasRole('Manager')` |
+
+### Functions Modified in analytics.html (S2)
+
+| Function | Lines | Change |
+|---|---|---|
+| *(new)* `loadUserRoles()` | Insert ~574 | New — lightweight role query (no Supabase session yet) |
+| DOMContentLoaded handler | 585 | Replace `ADMIN_EMAILS.includes()` with `loadUserRoles()` + role check |
+| `handleSignIn()` | 625 | Replace `ADMIN_EMAILS.includes()` with `loadUserRoles()` + role check |
+
+### checkin.html (S2)
+
+| Change | Line | Description |
+|---|---|---|
+| Delete dead code | 205 | Remove unused `ADMIN_EMAILS` constant |
 | `callClaudeVision()` | 4823 | Replace direct Anthropic call with proxy fetch |
 | `openEstimateScanner()` | 4597 | Remove apiKey parameter |
 | `handleEstimateFile()` | 4605 | Remove apiKey parameter |
@@ -1543,7 +2422,7 @@ Run this migration in the Supabase SQL Editor (it replaces the function in-place
 
 **S1 must come first** — the escapeHtml utility is a prerequisite for safe rendering regardless of other changes. It has zero risk of regression since it only adds encoding.
 
-**S2 should come before S3** — the analytics.html auth change references `checkIsAdmin()` which uses the staff table role system that S2 sets up.
+**S2 should come before S3** — the analytics.html auth change references the role system that S2 sets up. S2 now covers all 5 files with 6 phases: database migrations first, then index.html → worklist-report.html → closed-ros.html → analytics.html → checkin.html.
 
 **S4 can run in parallel with S2/S3** — the Anthropic proxy is completely independent.
 
