@@ -6698,14 +6698,10 @@ Notes: ${notes}` : '',
         }
 
         function canSeeWorkList() {
-            const email = supabaseSession?.user?.email || '';
-            return SR_MANAGER_EMAILS.includes(email) ||
-                   ADMIN_EMAILS.includes(email) ||
-                   MANAGER_EMAILS.includes(email);
+            return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
         }
         function isSrOrAdmin() {
-            const email = supabaseSession?.user?.email || '';
-            return SR_MANAGER_EMAILS.includes(email) || ADMIN_EMAILS.includes(email);
+            return isAdmin() || hasRole('Sr Manager');
         }
 
         // ============================================================
@@ -6737,10 +6733,14 @@ Notes: ${notes}` : '',
             if (!bar || !sel) return;
             if (!isSrOrAdmin()) { bar.style.display = 'none'; return; }
             bar.style.display = 'block';
-            const all = [...(SR_MANAGER_EMAILS || []), ...(MANAGER_EMAILS || [])];
+            const managerStaff = (_staffCache || []).filter(s =>
+                s.active && (s.role === 'manager' || s.role === 'sr_manager')
+            );
             const myEmail = supabaseSession?.user?.email || '';
             sel.innerHTML = '<option value="">— My List —</option>' +
-                all.filter(e => e !== myEmail).map(e => `<option value="${e}">${e}</option>`).join('');
+                managerStaff.filter(s => s.email !== myEmail).map(s =>
+                    `<option value="${escapeHtml(s.email)}">${escapeHtml(s.name)} (${escapeHtml(s.email)})</option>`
+                ).join('');
             sel.value = _workListViewEmail || '';
         }
 
@@ -6905,7 +6905,10 @@ Notes: ${notes}` : '',
 
             // Show tabs for Sr Manager/Admin lists (always — even when empty, so the silo structure is clear)
             const targetEmail = _workListViewEmail || supabaseSession?.user?.email || '';
-            const isSrManagerList = SR_MANAGER_EMAILS.includes(targetEmail) || ADMIN_EMAILS.includes(targetEmail);
+            const targetStaff = (_staffCache || []).find(s => s.email === targetEmail);
+            const isSrManagerList = _workListViewEmail
+                ? (targetStaff && targetStaff.role === 'sr_manager')
+                : isSrOrAdmin();
 
             if (!isSrManagerList) {
                 tabsContainer.style.display = 'none';
@@ -8136,18 +8139,8 @@ Notes: ${notes}` : '',
         var sessionRestoredFromCache = false; // set by loadSavedToken to prevent gisLoaded from re-authing
         var currentUser = null;
         
-        // Admin access control
-        const ADMIN_EMAILS = ['roland@patriotsrvservices.com', 'lynn@patriotsrvservices.com'];
-        const MANAGER_EMAILS = [
-            'ryan@patriotsrvservices.com',
-            'mauricio@patriotsrvservices.com',
-            'jason@patriotsrvservices.com',
-            'andrew@patriotsrvservices.com',
-            'solar@patriotsrvservices.com',
-            'bobby@patriotsrvservices.com',
-            'brandon@patriotsrvservices.com',
-        ];
-        const SR_MANAGER_EMAILS = ['ryan@patriotsrvservices.com', 'kevin@patriotsrvservices.com', 'sofia@patriotsrvservices.com'];
+        // S2: ADMIN_EMAILS, MANAGER_EMAILS, SR_MANAGER_EMAILS removed.
+        // Role checks now use userRoles[] (populated from user_roles + staff tables).
 
         // GH#5 — Service silo definitions
         const SERVICE_SILOS = [
@@ -8233,17 +8226,10 @@ Notes: ${notes}` : '',
         let userRoles = []; // array of role names e.g. ['Admin', 'Manager']
 
         function isAdmin() {
-            // Check roles array first, then fall back to email check
-            if (userRoles.includes('Admin')) return true;
-            if (currentUser && ADMIN_EMAILS.includes(currentUser.email?.toLowerCase())) return true;
-            return false;
+            return userRoles.includes('Admin');
         }
         function hasRole(role) {
-            if (userRoles.includes(role)) return true;
-            // Email fallback while Supabase roles load
-            if (role === 'Manager' && currentUser) return MANAGER_EMAILS.includes(currentUser.email?.toLowerCase());
-            if (role === 'Admin' && currentUser) return ADMIN_EMAILS.includes(currentUser.email?.toLowerCase());
-            return false;
+            return userRoles.includes(role);
         }
 
         // Load roles from Supabase for current user
@@ -8267,16 +8253,36 @@ Notes: ${notes}` : '',
                     userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
                     console.log('✅ User roles:', userRoles);
                 }
-                // Admin fallback — always give Roland admin
-                if (email === 'roland@patriotsrvservices.com' && !userRoles.includes('Admin')) {
-                    userRoles.push('Admin');
+
+                // Merge staff table role into userRoles (S2 Phase 2 — staff → role sync)
+                try {
+                    const { data: staffRecord } = await getSB()
+                        .from('staff')
+                        .select('role, service_silo, active')
+                        .eq('email', email)
+                        .single();
+
+                    if (staffRecord && staffRecord.active) {
+                        const staffRoleMap = {
+                            'sr_manager':    'Sr Manager',
+                            'manager':       'Manager',
+                            'parts_manager': 'Manager',
+                            'tech':          'Tech',
+                        };
+                        const mapped = staffRoleMap[staffRecord.role];
+                        if (mapped && !userRoles.includes(mapped)) {
+                            userRoles.push(mapped);
+                        }
+                        // Store silo for canManageSilo() use
+                        window._currentStaffSilo = staffRecord.service_silo || null;
+                        window._currentStaffRole = staffRecord.role || null;
+                    }
+                } catch (e) {
+                    // Non-critical — staff record may not exist for this user
                 }
+
             } catch(e) {
                 console.warn('Could not load roles:', e);
-                // Fallback: give admin to roland
-                if (supabaseSession?.user?.email === 'roland@patriotsrvservices.com') {
-                    userRoles = ['Admin'];
-                }
             }
         }
 
@@ -9085,7 +9091,7 @@ Notes: ${notes}` : '',
                 // was set to 'unknown@user.com' before the Supabase session email arrived,
                 // so also check supabaseSession.user.email directly as a reliable fallback.
                 const _sessionEmail = (supabaseSession?.user?.email || '').toLowerCase();
-                const _isAdminNow = isAdmin() || ADMIN_EMAILS.includes(_sessionEmail);
+                const _isAdminNow = isAdmin();
                 if (_isAdminNow) {
                     const dupeGroups = findDuplicateGroups();
                     const dupeCount = dupeGroups.reduce((sum, g) => sum + g.length - 1, 0);
@@ -11828,20 +11834,16 @@ Notes: ${notes}` : '',
         }
 
         function isSrManagerOrAdmin() {
-            const email = (supabaseSession?.user?.email || currentUser?.email || '').toLowerCase();
-            if (isAdmin() || ADMIN_EMAILS.includes(email)) return true;
-            if (SR_MANAGER_EMAILS.includes(email)) return true;
-            return _staffCache.some(s => s.email.toLowerCase() === email && s.role === 'sr_manager');
+            return isAdmin() || hasRole('Sr Manager');
         }
 
         function canManageSilo(silo) {
-            if (isSrManagerOrAdmin()) return true;
-            const email = (supabaseSession?.user?.email || currentUser?.email || '').toLowerCase();
-            return _staffCache.some(s =>
-                s.email.toLowerCase() === email &&
-                s.role === 'manager' &&
-                s.service_silo === silo
-            );
+            if (isAdmin()) return true;
+            if (hasRole('Sr Manager')) return true;
+            // Silo-specific manager: check staff table silo assignment
+            if (hasRole('Manager') && window._currentStaffSilo === silo) return true;
+            if (hasRole('Manager') && window._currentStaffRole === 'parts_manager') return false;
+            return false;
         }
 
         function getStaffName(email) {
