@@ -3810,7 +3810,7 @@
                 <div id="photoLibraryModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closePhotoLibrary(event)">
                     <div style="background:white;border-radius:16px;padding:30px;max-width:700px;width:100%;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                            <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;">📷 Photos &amp; Docs — ${ro.customerName}</h2>
+                            <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;">📷 Photos &amp; Docs — ${escapeHtml(ro.customerName)}</h2>
                             <button onclick="closePhotoLibrary()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:600;">✕ Close</button>
                         </div>
                         <!-- Tab switcher -->
@@ -5450,7 +5450,7 @@ Always prefer mapping to a standard key over creating a new one.`;
                 <div id="scheduleModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;">
                     <div style="background:#1a1d24;border:1px solid #2d3139;border-radius:16px;padding:28px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;">
                         <h2 style="color:#e8eaed;font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;margin-bottom:4px;">📅 Schedule RO</h2>
-                        <p style="color:#6b7280;font-size:0.9rem;margin-bottom:20px;">${ro.customerName} — ${ro.rv || '—'}</p>
+                        <p style="color:#6b7280;font-size:0.9rem;margin-bottom:20px;">${escapeHtml(ro.customerName)} — ${escapeHtml(ro.rv) || '—'}</p>
 
                         ${!accessToken ? `<div style="background:#fef3c7;color:#92400e;padding:12px 14px;border-radius:8px;margin-bottom:16px;font-size:0.85rem;">
                             <span id="schedCalendarWarning">⚠️ Google Calendar access has expired. Re-authorize to create events.</span>
@@ -6010,10 +6010,10 @@ Notes: ${notes}` : '',
                 <div id="partsModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closePartsModal(event)">
                     <div style="background:white;border-radius:16px;padding:28px;max-width:900px;width:100%;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                            <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;">🔩 Parts — ${ro.customerName}</h2>
+                            <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;">🔩 Parts — ${escapeHtml(ro.customerName)}</h2>
                             <button onclick="closePartsModal()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:600;">✕ Close</button>
                         </div>
-                        <div style="color:#64748b;font-size:0.85rem;margin-bottom:16px;">${ro.rv || ''} &nbsp;•&nbsp; RO: ${roId || '—'}</div>
+                        <div style="color:#64748b;font-size:0.85rem;margin-bottom:16px;">${escapeHtml(ro.rv) || ''} &nbsp;•&nbsp; RO: ${escapeHtml(roId) || '—'}</div>
 
                         <!-- Add Part Form (hidden by default) -->
                         <div id="addPartForm" style="display:none;background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #e2e8f0;">
@@ -6632,7 +6632,24 @@ Notes: ${notes}` : '',
         function shouldShow(element) {
             return tileVisibility[element] === true;
         }
-        
+
+        /**
+         * escapeHtml — sanitizes a string for safe insertion into innerHTML.
+         * Converts the five HTML-special characters to their entity equivalents.
+         * Use on every database field rendered into template literals.
+         * @param {any} unsafe — raw value (will be coerced to string)
+         * @returns {string}
+         */
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function calculatePriority(ro) {
             let score = 0;
             
@@ -7209,13 +7226,13 @@ Notes: ${notes}` : '',
                         ` : ''}
                         
                         ${shouldShow('customerName') ? `
-                        <div class="customer-name">${ro.customerName || t('Unknown Customer')}</div>
-                        ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${ro.roId}</div>` : ''}
-                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${ro.parkingSpot}</div>` : ''}
+                        <div class="customer-name">${escapeHtml(ro.customerName) || t('Unknown Customer')}</div>
+                        ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${escapeHtml(ro.roId)}</div>` : ''}
+                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" onclick="openEditRO(${index})" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" onclick="openPartsModal(' + index + ')">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
-                        <div class="parts-status-chip ${ro.partsStatus}" onclick="openPartsStatusModal(${index})" title="Parts status — click to update">
+                        <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" onclick="openPartsStatusModal(${index})" title="Parts status — click to update">
                             ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : ro.partsStatus === 'estimate' ? `📋 ${t('PARTS ESTIMATE')}` : `✅ ${t('PARTS RECEIVED')}` }
                         </div>
                         ` : ro.hasOpenPartsRequest ? `
@@ -7235,9 +7252,9 @@ Notes: ${notes}` : '',
                                     <div class="qr-code-container" onclick="openQRModal(${index})">
                                         <canvas id="qr-${index}" class="qr-canvas"></canvas>
                                     </div>
-                                    <div class="qr-label">${ro.customerName || t('Unknown')}</div>
+                                    <div class="qr-label">${escapeHtml(ro.customerName) || t('Unknown')}</div>
                                     ${shouldShow('rvDetails') ? `
-                                    <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${ro.rv || t('RV Not Specified')}</div>
+                                    <div class="qr-label" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: -4px;">${escapeHtml(ro.rv) || t('RV Not Specified')}</div>
                                     ` : ''}
                                     <button class="print-qr-btn" onclick="printQRLabel(${index})" title="Print QR Label">
                                         ${t('🖨️ Print Label')}
@@ -7260,7 +7277,7 @@ Notes: ${notes}` : '',
                         <div class="status-selector-container">
                             <select class="status-dropdown status-${statusClass}" 
                                     onchange="updateROStatus(${index}, this.value)"
-                                    data-original-status="${ro.status}">
+                                    data-original-status="${escapeHtml(ro.status)}">
                                 <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>${t('Not On Lot')}</option>
                                 <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>${t('On Lot')}</option>
                                 <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>${t('Awaiting Approval')}</option>
@@ -7290,12 +7307,12 @@ Notes: ${notes}` : '',
                             ${shouldShow('rvDetails') ? `
                             <div class="info-row">
                                 <span class="info-label">${t('RV:')}</span>
-                                <span class="info-value">${ro.rv || t('Not specified')}</span>
+                                <span class="info-value">${escapeHtml(ro.rv) || t('Not specified')}</span>
                             </div>
                             ${ro.vin ? `
                             <div class="info-row">
                                 <span class="info-label">${t('VIN:')}</span>
-                                <span class="info-value" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; letter-spacing:0.04em;">${ro.vin}</span>
+                                <span class="info-value" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; letter-spacing:0.04em;">${escapeHtml(ro.vin)}</span>
                             </div>
                             ` : ''}
                             ` : ''}
@@ -7308,7 +7325,7 @@ Notes: ${notes}` : '',
                             ${shouldShow('contactInfo') && ro.customerPhone ? `
                             <div class="info-row">
                                 <span class="info-label">${t('Phone:')}</span>
-                                <span class="info-value"><a href="tel:${ro.customerPhone}" class="contact-link">${ro.customerPhone}</a></span>
+                                <span class="info-value"><a href="tel:${escapeHtml(ro.customerPhone)}" class="contact-link">${escapeHtml(ro.customerPhone)}</a></span>
                             </div>
                             ` : ''}
                             ${shouldShow('contactInfo') && ro.customerEmail ? `
@@ -7320,7 +7337,7 @@ Notes: ${notes}` : '',
                             ${shouldShow('contactInfo') && ro.customerAddress ? `
                             <div class="info-row">
                                 <span class="info-label">${t('Address:')}</span>
-                                <span class="info-value">${ro.customerAddress}</span>
+                                <span class="info-value">${escapeHtml(ro.customerAddress)}</span>
                             </div>
                             ` : ''}
                         </div>
@@ -7332,7 +7349,7 @@ Notes: ${notes}` : '',
                                 <span class="note-icon">🔩</span>
                                 <span class="note-title">${t('Repair Description')}</span>
                             </div>
-                            <div class="note-content repair-desc">${ro.repairDescription || '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
+                            <div class="note-content repair-desc">${ro.repairDescription ? escapeHtml(ro.repairDescription) : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                         </div>
                         ` : ''}
                         
@@ -7364,7 +7381,7 @@ Notes: ${notes}` : '',
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">${t('RO Status')}</span>
                                 </div>
-                                <div class="note-content">${ro.roStatusNotes ? ro.roStatusNotes.split('\n').reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
+                                <div class="note-content">${ro.roStatusNotes ? ro.roStatusNotes.split('\n').map(escapeHtml).reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                             </div>
                             ` : ''}
                             ${shouldShow('customerCommNotes') ? `
@@ -7373,7 +7390,7 @@ Notes: ${notes}` : '',
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">${t('Customer Comm')}</span>
                                 </div>
-                                <div class="note-content">${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.split('\n').reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
+                                <div class="note-content">${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.split('\n').map(escapeHtml).reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                             </div>
                             ` : ''}
                         </div>
@@ -7584,8 +7601,8 @@ Notes: ${notes}` : '',
                         <div style="background: white; padding: 20px; border-radius: 12px; display: inline-block; border: 2px solid #e2e8f0;">
                             <canvas id="qrModalCanvas" width="300" height="300"></canvas>
                         </div>
-                        <div style="margin-top: 20px; font-size: 1.2rem; font-weight: 700; color: #1e293b;">${ro.customerName}</div>
-                        <div style="margin-top: 8px; font-size: 1rem; font-weight: 600; color: #475569;">${ro.rv || 'RV Not Specified'}</div>
+                        <div style="margin-top: 20px; font-size: 1.2rem; font-weight: 700; color: #1e293b;">${escapeHtml(ro.customerName)}</div>
+                        <div style="margin-top: 8px; font-size: 1rem; font-weight: 600; color: #475569;">${escapeHtml(ro.rv) || 'RV Not Specified'}</div>
                         <div style="margin-top: 8px; font-size: 0.9rem; color: #64748b; font-family: 'JetBrains Mono', monospace;">${roId}</div>
                         <div style="margin-top: 20px; padding: 12px; background: #f1f5f9; border-radius: 8px; font-size: 0.85rem; color: #475569;">
                             Scan to open this RO on the dashboard — use 🚪 Tech Check In from there
@@ -9844,8 +9861,8 @@ Notes: ${notes}` : '',
                         <label style="display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:8px;border:2px solid ${checked ? '#3b82f6' : '#e2e8f0'};cursor:pointer;margin-bottom:8px;transition:border 0.15s;" id="dupeRow_${gi}_${ri}">
                             <input type="radio" name="master_${gi}" value="${ri}" ${checked} onchange="highlightDupeRows(${gi},${ri})" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;accent-color:#3b82f6;">
                             <div style="flex:1;min-width:0;">
-                                <div style="font-weight:700;color:#1e293b;font-size:14px;">${ro.roId}</div>
-                                <div style="color:#475569;font-size:12px;margin-top:2px;">${ro.customerName} · ${ro.rv || 'No RV'} · Received ${dateStr}</div>
+                                <div style="font-weight:700;color:#1e293b;font-size:14px;">${escapeHtml(ro.roId)}</div>
+                                <div style="color:#475569;font-size:12px;margin-top:2px;">${escapeHtml(ro.customerName)} · ${escapeHtml(ro.rv) || 'No RV'} · Received ${dateStr}</div>
                                 <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
                                     ${statusBadge}
                                     ${checked ? '<span style="background:#3b82f6;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;">⭐ MASTER</span>' : '<span style="background:#fef2f2;color:#ef4444;border-radius:6px;padding:2px 8px;font-size:11px;">Will be deleted</span>'}
@@ -10258,9 +10275,9 @@ Notes: ${notes}` : '',
                         <button class="modal-close" onclick="_partsRequestFiles=[]; document.getElementById('partsRequestModal').remove()">×</button>
                     </div>
                     <div style="padding:0 0 14px; color:var(--text-secondary); font-size:0.85rem; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
-                        <strong style="color:var(--text-primary); font-size:0.95rem;">${ro.customerName}</strong>
-                        &nbsp;·&nbsp; ${ro.rv || 'RV'}
-                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.8rem;">${ro.roId}</span>` : ''}
+                        <strong style="color:var(--text-primary); font-size:0.95rem;">${escapeHtml(ro.customerName)}</strong>
+                        &nbsp;·&nbsp; ${escapeHtml(ro.rv) || 'RV'}
+                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.8rem;">${escapeHtml(ro.roId)}</span>` : ''}
                     </div>
 
                     <div style="margin-bottom:12px;">
@@ -10502,9 +10519,9 @@ Notes: ${notes}` : '',
                         <button class="modal-close" onclick="document.getElementById('partsRequestDetailsModal').remove()">×</button>
                     </div>
                     <div style="padding:0 0 14px; color:var(--text-secondary); font-size:0.85rem; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
-                        <strong style="color:var(--text-primary);">${ro.customerName}</strong>
-                        &nbsp;·&nbsp; ${ro.rv || ''}
-                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.8rem;">${ro.roId}</span>` : ''}
+                        <strong style="color:var(--text-primary);">${escapeHtml(ro.customerName)}</strong>
+                        &nbsp;·&nbsp; ${escapeHtml(ro.rv) || ''}
+                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.8rem;">${escapeHtml(ro.roId)}</span>` : ''}
                     </div>
                     <div style="background:var(--bg-tertiary); border-radius:8px; padding:14px; font-size:0.85rem; color:var(--text-primary); line-height:1.6; border:1px solid var(--border-color); max-height:260px; overflow-y:auto;">
                         ${notesHtml}
@@ -10600,8 +10617,8 @@ Notes: ${notes}` : '',
                         <button class="modal-close" onclick="document.getElementById('partsStatusModal').remove()">×</button>
                     </div>
                     <div style="padding-bottom:14px; margin-bottom:16px; border-bottom:1px solid var(--border-color); font-size:0.85rem; color:var(--text-secondary);">
-                        <strong style="color:var(--text-primary);">${ro.customerName}</strong> · ${ro.rv || ''}
-                        ${ro.roId ? `· <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.78rem;">${ro.roId}</span>` : ''}
+                        <strong style="color:var(--text-primary);">${escapeHtml(ro.customerName)}</strong> · ${escapeHtml(ro.rv) || ''}
+                        ${ro.roId ? `· <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.78rem;">${escapeHtml(ro.roId)}</span>` : ''}
                     </div>
                     <div style="margin-bottom:16px; font-size:0.82rem; color:var(--text-secondary);">
                         Current: ${currentChip}
@@ -10851,7 +10868,7 @@ Notes: ${notes}` : '',
             const modalHTML = `
                 <div id="timeLogsModalOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="closeTimeLogsModal(event)">
                     <div style="background: white; border-radius: 16px; padding: 40px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;" onclick="event.stopPropagation()">
-                        <h2 style="margin-bottom: 20px; color: #1e293b; font-family: 'Barlow Condensed', sans-serif;">⏱️ Time Logs - ${ro.customerName}</h2>
+                        <h2 style="margin-bottom: 20px; color: #1e293b; font-family: 'Barlow Condensed', sans-serif;">⏱️ Time Logs - ${escapeHtml(ro.customerName)}</h2>
                         <div style="display: flex; gap: 20px; margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
                             <div style="flex: 1; text-align: center;">
                                 <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.9; margin-bottom: 4px;">Total Time</div>
@@ -11173,7 +11190,7 @@ Notes: ${notes}` : '',
                         font-size:0.9rem;
                         line-height:1.45;
                         word-break:break-word;
-                    ">${body.replace(/\n/g, '<br>')}</div>
+                    ">${escapeHtml(body).replace(/\n/g, '<br>')}</div>
                     ${ts ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;padding:0 4px;">${ts}${isOutbound ? ' · Sent' : ''}</div>` : ''}
                 </div>`;
             }).join('');
@@ -12078,7 +12095,7 @@ function toggleWOTasks(tasksId, chevId) {
                 </div>
                 <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border-radius:10px;padding:12px 16px;margin-bottom:14px;">
                     <div style="font-size:1rem;font-weight:700;">${existingWO ? "Edit" : "Create"} ${siloInfo.emoji} ${siloInfo.label} MASTER Work Order</div>
-                    <div style="font-size:0.82rem;opacity:0.8;">${ro.customerName} — ${ro.roId}</div>
+                    <div style="font-size:0.82rem;opacity:0.8;">${escapeHtml(ro.customerName)} — ${escapeHtml(ro.roId)}</div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
                     <div>
@@ -12122,8 +12139,8 @@ function toggleWOTasks(tasksId, chevId) {
                     <span style="font-size:0.8rem;font-weight:700;color:#475569;">Task ${index+1}${siloBadge}</span>
                     <button onclick="document.getElementById('${uid}').remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85rem;">✕ Remove</button>
                 </div>
-                <input type="text" placeholder="Task title *" value="${task?.task_title||''}" class="wo-task-title" style="width:100%;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" required>
-                <textarea placeholder="Description (optional)" class="wo-task-desc" rows="2" style="width:100%;resize:vertical;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;">${task?.description||''}</textarea>
+                <input type="text" placeholder="Task title *" value="${escapeHtml(task?.task_title)||''}" class="wo-task-title" style="width:100%;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" required>
+                <textarea placeholder="Description (optional)" class="wo-task-desc" rows="2" style="width:100%;resize:vertical;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;">${escapeHtml(task?.description)||''}</textarea>
                 <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;">
                     <div>
                         <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Assigned Tech</label>
