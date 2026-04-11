@@ -545,6 +545,8 @@ ORDER BY r.name, u.email;
 ```
 
 > **Why this matters:** Phase 2 removes the email fallback from `isAdmin()` and `hasRole()`. If the database path is broken after Phase 1, Phase 2 will lock everyone out. These checks confirm the database path is solid before any code changes begin.
+>
+> **If any check fails:** Run `bash scripts/rollback-s2-phase1.sh --step <N>` to revert the specific step, or `--verify` to inspect the current state. See the Rollback plan section below for full details.
 
 ---
 
@@ -1420,7 +1422,28 @@ git push
 
 #### Rollback plan — Phase 1 Database Migrations
 
-If the role assignments break access in production, reverse each migration step below. Run them in **reverse order** (1.6 → 1.1). Each step is safe to run independently — they use targeted deletes with exact email/name matches, so they won't touch unrelated data.
+A companion rollback script is available at `scripts/rollback-s2-phase1.sh`. It reverses each migration step in strict reverse order (1.6 → 1.1), with verification queries after each step.
+
+```bash
+# Preview what would run (no changes made)
+bash scripts/rollback-s2-phase1.sh --dry-run
+
+# Full rollback (all steps, reverse order)
+bash scripts/rollback-s2-phase1.sh
+
+# Rollback a single step
+bash scripts/rollback-s2-phase1.sh --step 1.4
+
+# Nuclear option (single transaction)
+bash scripts/rollback-s2-phase1.sh --nuclear
+
+# Just check current state
+bash scripts/rollback-s2-phase1.sh --verify
+```
+
+The script requires `SUPABASE_DB_URL` for direct execution. Without it, it prints the SQL for you to paste into the Supabase SQL Editor. Each step is idempotent — safe to run multiple times.
+
+The individual SQL for each rollback step is also documented below for manual execution.
 
 > **IMPORTANT:** The code files contain hardcoded email fallbacks that act as a safety net. If you rollback the database but the code is still the OLD version (pre-S2), access will continue to work via the email arrays. If you rollback the database AND the code is the NEW version (post-S2), access will break because the new code has no email fallback. Always rollback code FIRST, then database.
 
@@ -2662,6 +2685,7 @@ Run this migration in the Supabase SQL Editor (it replaces the function in-place
 | `supabase/migrations/fix_is_silo_manager_search_path.sql` | S7 | Adds SET search_path to is_silo_manager() |
 | `supabase/migrations/app_config_table.sql` | S7 | Creates app_config table, seeds Calendar IDs |
 | `supabase/functions/claude-vision-proxy/index.ts` | S4 | New Edge Function for Anthropic API proxy |
+| `scripts/rollback-s2-phase1.sh` | S2 | Rollback script for all Phase 1 DB migrations (individual, full, or nuclear) |
 
 ---
 
