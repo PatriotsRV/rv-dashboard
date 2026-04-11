@@ -34,6 +34,7 @@
 ---
 ## ✅ Completed Work
 
+- ✅ **Security Remediation S2 — RBAC migration (2026-04-11)** — Replaced all hardcoded ADMIN_EMAILS/MANAGER_EMAILS/SR_MANAGER_EMAILS arrays across 5 HTML files with Supabase role-based access control. Phase 1: DB migration (users, user_roles, roles tables, 15 role entries, Sr Manager role added). Phase 2: index.html (12 steps — loadUserRoles, isAdmin/isSrManagerOrAdmin/isManagerOrAdmin rewritten, _staffCache integration, solar access fix). Phases 3-6: worklist-report.html (10 call sites), closed-ros.html (6 call sites), analytics.html (3 call sites + new signInWithIdToken flow), checkin.html (dead code removal). Commits: 0c04416, ee1c91e, 28c52f8, c920277.
 - ✅ **Supabase RBAC** — RLS on all 11 tables + storage, `has_role()` helper
 - ✅ **checkin.html v1.26** — Supabase backend, offline-first IndexedDB queue
 - ✅ **Nonce fixes (v1.262, v1.263)** — placement + hex encoding; Supabase auth working

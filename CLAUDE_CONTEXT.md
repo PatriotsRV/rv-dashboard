@@ -78,7 +78,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | Spec File | Description | Sessions | Priority | Status |
 |---|---|---|---|---|
-| `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | ⏳ Not started |
+| `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | 🔄 S2 complete (Phases 1-6) — S3 next |
 | `docs/specs/TWILIO_SMS_SPEC.md` | Full Twilio SMS integration: number port guide, `sms_log` + `sms_templates` tables, `twilio-sms` Edge Function, SMS compose modal (repurposes Kenect modal), 6 message templates, A2P 10DLC registration, inbound webhook | Phase 1–3 (3 phases) | 🔴 Blocks after number port | ⏳ Not started |
 | `docs/specs/TOAST_SYSTEM_SPEC.md` | Replace all `alert()` calls with non-blocking toast notifications: success/warning/danger/info types, auto-dismiss, stack management | 1 session | 🟠 High | ⏳ Not started |
 | `docs/specs/UNIFIED_SEARCH_SPEC.md` | Global search bar: search across customer name, RO ID, VIN, RV, phone, parking spot with debounced input and highlight | 1 session | 🟠 High | ⏳ Not started |
@@ -86,7 +86,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 ### Spec Execution Order (Recommended)
 1. **Security Remediation S1** (XSS) — zero regression risk, prerequisite for safe rendering
-2. **Security Remediation S2** (RBAC) — removes hardcoded emails, uses staff table
+2. ~~**Security Remediation S2** (RBAC) — removes hardcoded emails, uses staff table~~ ✅ Done 2026-04-11
 3. **Security Remediation S3** (analytics auth) — depends on S2
 4. **Toast System** — can run anytime, independent
 5. **Unified Search** — can run anytime, independent
@@ -138,6 +138,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | — | **Test out Claude dispatch** | Test Claude dispatch workflow | ⏳ Open |
 | 🟡 | GH#21 | **checkin.html Auth Persistence Fix** | Supabase client created with no auth options — no `persistSession`, `autoRefreshToken`, or `storageKey`. Authenticated session lost on every page reload (falls back to anon key). Fix: add `SB_AUTH_OPTIONS` matching index.html + `getSession()` restore on load. | ⏳ Open |
 | ✅ | — | **Run SQL migration: service_silo column** | `service_silo TEXT` column confirmed on `manager_work_lists`. Migration ran by Roland. | ✅ Done — Session 37 |
+| ✅ | — | **Security Remediation S2 — RBAC migration** | **2026-04-11:** Phase 1 (DB migration: users, user_roles, roles tables + 15 role entries). Phase 2 (index.html: Steps 2.1-2.13, solar access fix). Phases 3-6 (worklist-report, closed-ros, analytics, checkin: loadUserRoles + isAdmin rewrite + constant deletion). All hardcoded ADMIN_EMAILS/MANAGER_EMAILS/SR_MANAGER_EMAILS removed from all 5 HTML files. Commits: 0c04416, ee1c91e, 28c52f8, c920277. QA verified by Perplexity. | ✅ Done — 2026-04-11 |
 | 🟡 | — | **GitHub Release v1.305** | GH#16 Sr Manager silo work lists + Work List Report page. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.305` | ⏳ Roland action |
 | ✅ | — | **Batch-invite remaining techs in Supabase Auth** | All techs invited. Zak Wombles fixed Session 36; remaining techs (ignacio@, tipton@, rod@, travis@, cooper@, rudy@, tommy@) batch-invited by Roland. | ✅ Done — Session 37 |
 | ✅ | GH#22 | **Closed/Cashiered RO View** | **Session 37:** `closed-ros.html` v1.0 built — card grid with photos, search/filter (customer, RO ID, RV, VIN, technician), sort options, detail modal, reactivation (Managers+Admins insert back to `repair_orders`, delete from `cashiered`). Bright yellow "🗃 Closed ROs" header button on main dashboard (all users). Genie lamp ER button included. RLS auth fix — requires real Supabase session, no localStorage fallback. | ✅ Done — Session 37 |
@@ -152,13 +153,13 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | File | Version | Description |
 |---|---|---|
 | `index.html` | **v1.308** | Main dashboard — ROs, time tracking, parts, calendar, audit log, parts request system (photo attachments, email to customer), Spanish toggle, video upload, duplicate RO manager, four-state parts chip (Sourcing/Outstanding/Received/Estimate), For Estimate Only toggle, Kenect messaging (💬, dormant), 📍 Parking Spot, 🖨️ QR Print Sheet, **🔧 Work Orders (GH#5c) — 8-silo WO builder, RO-service filtering, chevron collapse, ⏱️ Est. Hours per task + rollup, Task Templates (save/load/overwrite/merge), form modal outside-click lock**, **📋 Manager Work List (GH#16) — slide-in sidebar panel, Add to My List on RO cards, drag-to-reorder, Supabase storage, Sr Manager silo-specific lists (v1.305), silo tabs + picker popup, DOM-constructed rows (v1.308)**, **📦 Parts Notifications (GH#18) — requestedByEmail captured, Notify Requester button, ETA auto-notification**, **📋 Work List Report link (Admin only, v1.305)**, **🗃 Closed ROs link (all users, v1.308)**, **🪔 Enhancement Requests (GH#19) — genie lamp, admin view, v1.307)**, **Parts request auto-creates Sourcing row in parts table (v1.307)** |
-| `closed-ros.html` | **v1.0** | GH#22 Closed RO Archive — card grid with photos, search/filter/sort, detail modal, reactivation (Managers+Admins), genie lamp ER button. Google SSO auth gate (requires real Supabase session). |
-| `worklist-report.html` | **v1.1** | Admin-only Active Work List Report — all managers' work lists + time logs per RO. Manager accordion sections (Sr Managers grouped by silo). Condensed RO rows with KPI chips (Days on Lot color-coded, Dollar Value). Expandable time log detail per RO. Staff Status tiles (red/green clock-in grid). Auto-refresh every 3 min. Google SSO auth gate. |
+| `closed-ros.html` | **v1.1** | GH#22 Closed RO Archive — card grid with photos, search/filter/sort, detail modal, reactivation (Managers+Admins), genie lamp ER button. Google SSO auth gate (requires real Supabase session). **S2 Phase 4: RBAC migration — loadUserRoles, role-based isAdmin/isManagerOrAdmin/hasRole, _allStaff lookups, hardcoded email arrays removed.** |
+| `worklist-report.html` | **v1.2** | Admin-only Active Work List Report — all managers' work lists + time logs per RO. Manager accordion sections (Sr Managers grouped by silo). Condensed RO rows with KPI chips (Days on Lot color-coded, Dollar Value). Expandable time log detail per RO. Staff Status tiles (red/green clock-in grid). Auto-refresh every 3 min. Google SSO auth gate. **S2 Phase 3: RBAC migration — loadUserRoles, role-based isAdmin, _allStaff lookups, hardcoded email arrays removed.** |
 | `supabase/migrations/staff_table.sql` | — | Staff table migration — 14 PRVS personnel seeded (sr_manager, manager, parts_manager, tech roles) |
 | `supabase/migrations/work_assignment.sql` | — | GH#5 DB migration — service_work_orders + service_tasks tables, is_silo_manager() RLS function, dollar_value column on repair_orders |
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
-| `checkin.html` | **v1.28** | Technician clock-in/out, offline-first IndexedDB queue, Spanish language toggle. **v1.28:** Proper Supabase auth — `signInWithIdToken()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`. |
-| `analytics.html` | **v1.0** | Analytics/reporting view |
+| `checkin.html` | **v1.29** | Technician clock-in/out, offline-first IndexedDB queue, Spanish language toggle. **v1.28:** Proper Supabase auth — `signInWithIdToken()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`. **S2 Phase 6: Dead ADMIN_EMAILS constant removed.** |
+| `analytics.html` | **v1.1** | Analytics/reporting view. **S2 Phase 5: RBAC migration — loadUserRoles, async DOMContentLoaded/handleSignIn with signInWithIdToken, role-based isAdmin gate, hardcoded ADMIN_EMAILS removed.** |
 | `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
 | `supabase/functions/send-quote-email/index.ts` | **v1.5** | Edge Function — solar quote email + parts request email + photo share email + parts ordered notification + ETA update notification (types: 'solar_quote', 'parts_request', 'photo_share', 'parts_ordered', 'parts_eta_update') |
@@ -214,8 +215,11 @@ Claude must complete ALL of these before the session ends (context limit, user s
 ### Spanish Toggle
 - `t(str)` — English string IS the key. Emoji must be INSIDE the `t()` call: `${t('🖨️ Print Label')}` not `🖨️ ${t('Print Label')}`. DB values stay English.
 
-### `isAdmin()` Timing Bug (v1.282b)
-- Post-load admin checks: use `isAdmin() || ADMIN_EMAILS.includes(supabaseSession?.user?.email)` — never `isAdmin()` alone. Root cause: `getUserInfo()` runs during `init()` with no token, sets `currentUser` to unknown email, blocking real session restore.
+### `isAdmin()` — Now Role-Based (S2 complete 2026-04-11)
+- **All 5 HTML files migrated:** `isAdmin()` now checks `userRoles.includes('Admin')` via Supabase `user_roles` table — no hardcoded email arrays anywhere.
+- **`loadUserRoles()`** must be awaited before any `isAdmin()` / `isManagerOrAdmin()` / `hasRole()` call. All auth flows (DOMContentLoaded, handleSignIn/handleGoogleSignIn) already do this.
+- **`_allStaff`** (from `staff` table) used for operational role lookups (sr_manager badge, silo grouping, admin exclusion from reports). Separate from `userRoles` (which is RBAC permissions).
+- **Old fallback pattern `isAdmin() || ADMIN_EMAILS.includes(...)` is dead** — do not reintroduce.
 
 ### Kenect — ON HOLD
 - Zapier has no inbound message trigger → can't support conversation thread view. Direct partner API access still possible. `kenect-proxy` Edge Function committed but not deployed.
@@ -283,7 +287,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - Uses its own Supabase auth with `storageKey: 'prvs_report_auth'` (separate from index.html's `prvs_supabase_auth`).
 - `repair_orders` column for date is `date_received` (NOT `date_in`). Days on lot uses `date_arrived || date_received` matching dashboard logic.
 - `time_logs` column for tech email is `user_id` (NOT `tech_email`). Tech display name in `tech_name` column.
-- Staff tiles exclude Admins; work list sections exclude Admins unless they're also in SR_MANAGER_EMAILS.
+- Staff tiles show all active staff from `_allStaff`. Work list sections exclude users not in the `staff` table (i.e., admin-only users with no operational role).
 
 ### CLAUDE_CONTEXT.md Storage (Session 29)
 - **Local-primary strategy:** Read/write from `PRVS RO Dashboard` workspace folder. Push to GitHub at end of session as backup only.
