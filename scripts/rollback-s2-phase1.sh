@@ -2,7 +2,7 @@
 # =============================================================================
 # PRVS Dashboard — S2 Phase 1 Rollback Script
 # =============================================================================
-# Reverses the S2 database migrations in strict reverse order (1.6 → 1.1).
+# Reverses the S2 database migrations in strict reverse order (1.6 → 1.0).
 # Run this if any Phase 1 migration step breaks access in production.
 #
 # Each step is idempotent — safe to run multiple times or skip individual steps.
@@ -12,6 +12,9 @@
 #   user_roles: 7 entries:
 #               andrew@/Manager, brandon@/Manager, mauricio@/Manager, ryan@/Manager,
 #               ryan@/Solar, solar@/Solar, tipton@/Solar
+#   users:      6 rows (andrew, brandon, mauricio, ryan, solar, tipton)
+#               MISSING from public.users: roland, lynn, kevin, sofia, jason, bobby
+#               (all 6 exist in auth.users but upsertUser() never synced them)
 #   staff:      Kevin (sr_manager), Sofia (sr_manager) — already existed before S2
 #
 # FK behavior: user_roles.role_id → roles.id is ON DELETE CASCADE
@@ -113,6 +116,12 @@ run_sql() {
 # ─────────────────────────────────────────────────────────────
 verify_state() {
   local label="${1:-Current}"
+
+  run_sql "$label state — public.users" "
+SELECT email, name FROM users ORDER BY email;
+-- Pre-S2 expected: 6 rows (andrew, brandon, mauricio, ryan, solar, tipton)
+-- Post-S2 Step 1.0 expected: 12 rows (+roland, lynn, kevin, sofia, jason, bobby)
+"
 
   run_sql "$label state — user_roles" "
 SELECT u.email, r.name AS role
@@ -290,6 +299,53 @@ DELETE FROM roles WHERE name = 'Sr Manager';
 "
 }
 
+rollback_1_0() {
+  # Step 1.0 synced 6 users from auth.users → public.users who were missing.
+  # Pre-S2 state: only andrew, brandon, mauricio, ryan, solar, tipton existed.
+  # Removing these rows will CASCADE-delete their user_roles entries too
+  # (if Steps 1.2–1.4 haven't been rolled back yet), which is the desired behavior.
+  #
+  # IMPORTANT: Only removes users that S2 Step 1.0 added. The 6 pre-existing
+  # users are untouched. We also check that the user has no user_roles entries
+  # from before S2 to avoid data loss (they shouldn't, but safety first).
+  run_sql "Rollback 1.0 — Remove synced users from public.users (6 added by S2)" "
+DO \$\$
+DECLARE
+    _email TEXT;
+    _user_id UUID;
+    _role_count INT;
+    _removed INT := 0;
+BEGIN
+    -- These 6 were missing from public.users before S2
+    FOREACH _email IN ARRAY ARRAY[
+        'roland@patriotsrvservices.com',
+        'lynn@patriotsrvservices.com',
+        'kevin@patriotsrvservices.com',
+        'sofia@patriotsrvservices.com',
+        'jason@patriotsrvservices.com',
+        'bobby@patriotsrvservices.com'
+    ] LOOP
+        SELECT id INTO _user_id FROM users WHERE email = _email;
+        IF _user_id IS NOT NULL THEN
+            -- Safety: check no pre-S2 user_roles exist (there shouldn't be any)
+            SELECT COUNT(*) INTO _role_count FROM user_roles WHERE user_id = _user_id;
+            IF _role_count > 0 THEN
+                RAISE WARNING '% still has % user_roles entries — run rollback steps 1.2–1.4 first', _email, _role_count;
+            ELSE
+                DELETE FROM users WHERE id = _user_id;
+                _removed := _removed + 1;
+                RAISE NOTICE 'Removed % from public.users', _email;
+            END IF;
+        ELSE
+            RAISE NOTICE '% not in public.users — skipped', _email;
+        END IF;
+    END LOOP;
+
+    RAISE NOTICE 'Rollback 1.0 complete: removed % users from public.users', _removed;
+END \$\$;
+"
+}
+
 # ─────────────────────────────────────────────────────────────
 # NUCLEAR ROLLBACK (single transaction)
 # ─────────────────────────────────────────────────────────────
@@ -326,6 +382,17 @@ WHERE role_id = (SELECT id FROM roles WHERE name = 'Admin')
 -- 1.1 + 1.3: Delete Sr Manager role (CASCADE auto-removes ryan/kevin/sofia assignments)
 DELETE FROM roles WHERE name = 'Sr Manager';
 
+-- 1.0: Remove the 6 users synced from auth.users -> public.users
+-- (Their user_roles were already deleted above, so no FK conflict)
+DELETE FROM users WHERE email IN (
+    'roland@patriotsrvservices.com',
+    'lynn@patriotsrvservices.com',
+    'kevin@patriotsrvservices.com',
+    'sofia@patriotsrvservices.com',
+    'jason@patriotsrvservices.com',
+    'bobby@patriotsrvservices.com'
+);
+
 COMMIT;
 "
 }
@@ -351,6 +418,7 @@ case "$MODE" in
 
   step)
     case "$TARGET_STEP" in
+      1.0) rollback_1_0 ;;
       1.1) rollback_1_1 ;;
       1.2) rollback_1_2 ;;
       1.3) rollback_1_3 ;;
@@ -359,7 +427,7 @@ case "$MODE" in
       1.6) rollback_1_6 ;;
       *)
         echo -e "${RED}Unknown step: $TARGET_STEP${NC}"
-        echo "Valid steps: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6"
+        echo "Valid steps: 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6"
         exit 1
         ;;
     esac
@@ -389,7 +457,7 @@ case "$MODE" in
 
   full)
     echo ""
-    echo -e "${YELLOW}Running full rollback in reverse order (1.6 → 1.1)...${NC}"
+    echo -e "${YELLOW}Running full rollback in reverse order (1.6 → 1.0)...${NC}"
     echo ""
 
     rollback_1_6
@@ -398,6 +466,7 @@ case "$MODE" in
     rollback_1_3
     rollback_1_2
     rollback_1_1
+    rollback_1_0
 
     echo ""
     echo -e "${GREEN}Verifying state after full rollback...${NC}"
@@ -407,6 +476,8 @@ esac
 
 echo ""
 echo -e "${CYAN}━━━ Expected pre-S2 state ━━━${NC}"
+echo "  users (6 rows): andrew, brandon, mauricio, ryan, solar, tipton"
+echo "    NOT in public.users: roland, lynn, kevin, sofia, jason, bobby"
 echo "  user_roles (7 rows):"
 echo "    andrew@/Manager, brandon@/Manager, mauricio@/Manager, ryan@/Manager"
 echo "    ryan@/Solar, solar@/Solar, tipton@/Solar"

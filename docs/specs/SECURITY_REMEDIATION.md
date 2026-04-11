@@ -250,6 +250,58 @@ Three arrays of real employee email addresses live in plain text in the JavaScri
 
 #### Phase 1 — Database Migrations (run FIRST, before any code changes)
 
+**Step 1.0 — Sync missing users from `auth.users` to public `users` table (PREREQUISITE)**
+
+Dry-run validation discovered that 6 people exist in Supabase's `auth.users` (they've signed in via Google) but are **missing from the public `users` table**. The `upsertUser()` function in index.html is supposed to create these on login, but it didn't fire for everyone. Steps 1.2–1.4 INSERT into `user_roles` using `users.id` — they will silently skip anyone not in the public `users` table.
+
+| Email | auth.users | public.users | Impact if not synced |
+|---|---|---|---|
+| `roland@patriotsrvservices.com` | ✅ | ❌ MISSING | Step 1.2 fails — **Roland gets no Admin role** |
+| `lynn@patriotsrvservices.com` | ✅ | ❌ MISSING | Step 1.2 fails — **Lynn gets no Admin role** |
+| `kevin@patriotsrvservices.com` | ✅ | ❌ MISSING | Step 1.3 fails — no Sr Manager role |
+| `sofia@patriotsrvservices.com` | ✅ | ❌ MISSING | Step 1.3 fails — no Sr Manager role |
+| `jason@patriotsrvservices.com` | ✅ | ❌ MISSING | Step 1.4 fails — no Manager role |
+| `bobby@patriotsrvservices.com` | ✅ | ❌ MISSING | Step 1.4 fails — no Manager role |
+
+```sql
+-- Migration: s2_sync_auth_users.sql
+-- Copies auth.users records into public.users for anyone who authenticated
+-- via Google but whose upsertUser() never created a public record.
+-- Uses auth.users.id so the UUID matches across both tables.
+
+INSERT INTO users (id, email, name, avatar_url, created_at, updated_at)
+SELECT
+    au.id,
+    au.email,
+    au.raw_user_meta_data->>'full_name',
+    au.raw_user_meta_data->>'avatar_url',
+    au.created_at,
+    NOW()
+FROM auth.users au
+WHERE au.email IN (
+    'roland@patriotsrvservices.com',
+    'lynn@patriotsrvservices.com',
+    'kevin@patriotsrvservices.com',
+    'sofia@patriotsrvservices.com',
+    'jason@patriotsrvservices.com',
+    'bobby@patriotsrvservices.com'
+)
+AND NOT EXISTS (
+    SELECT 1 FROM users u WHERE u.id = au.id
+)
+ON CONFLICT (id) DO NOTHING;
+```
+
+**Verification:**
+
+```sql
+-- Confirm all 12 staff members now exist in public.users
+SELECT email, name FROM users ORDER BY email;
+-- Expected: 12 rows (6 pre-existing + 6 just synced)
+```
+
+> **Why this is safe:** The INSERT uses the same `auth.users.id` as the primary key, matching what `upsertUser()` would have written. Future sign-ins will hit `ON CONFLICT (id) DO UPDATE` and refresh `updated_at` — no duplicate or orphan risk.
+
 **Step 1.1 — Add "Sr Manager" role to the `roles` table**
 
 The `roles` table has 6 roles but "Sr Manager" is missing. This role is needed for `hasRole('Sr Manager')` checks.
