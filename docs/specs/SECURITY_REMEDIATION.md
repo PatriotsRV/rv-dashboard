@@ -33,6 +33,42 @@ Items 4–10 are lower urgency — they don't represent immediate exploits but s
 
 ---
 
+## Pre-Implementation Backup — REQUIRED BEFORE ANY CHANGES
+
+> **Claude: Run these steps at the start of the first Security Remediation session (S1), before writing any code.** This creates a known-good restore point for the entire remediation effort.
+
+### Step 1 — Supabase Data Backup
+```bash
+bash scripts/backup.sh
+```
+Confirm the backup completes successfully and report the output to Roland.
+
+### Step 2 — Git Tag the Current State
+```bash
+git tag -a pre-security-remediation -m "Snapshot before Security Remediation spec execution — v1.308"
+git push origin pre-security-remediation
+```
+This creates a permanent, named restore point. If anything goes wrong during any session (S1–S7), Roland can restore to exactly this state with:
+```bash
+git checkout pre-security-remediation
+```
+
+### Step 3 — Local HTML Backup
+```bash
+cp index.html index.html.backup-pre-security
+```
+This keeps a side-by-side copy of the monolith in the working directory. Do **not** commit this file — it's a local safety net only.
+
+### Verification
+Before proceeding to S1, confirm all three:
+- [ ] `backup.sh` ran successfully
+- [ ] `pre-security-remediation` tag exists on GitHub (`git tag -l | grep pre-security`)
+- [ ] `index.html.backup-pre-security` exists in the repo root (`ls -la index.html.backup*`)
+
+Report the verification results to Roland before starting any code changes.
+
+---
+
 ## CRITICAL — Fix First
 
 ---
