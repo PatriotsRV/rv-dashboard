@@ -27,7 +27,7 @@
 | 13 | `qr.js` | 3 QR functions | Low |
 | 14 | `work-list.js` | ~5 work list functions | Low |
 | 15 | `insurance.js` | 5 scanner functions | Low |
-| 16 | `kenect.js` | 5 Kenect functions | Low |
+| ~~16~~ | ~~`kenect.js`~~ | ~~Kenect removed 2026-04-11 — Twilio replacing~~ | N/A |
 | 17 | `duplicates.js` | 3 dupe functions | Low |
 | 18 | `enhancement.js` | 5 ER functions | Low |
 | 19 | CSS extraction | 0 (CSS only) | Low |
@@ -101,7 +101,6 @@ config.js        (no imports)
        ├─ qr.js            (imports state, utils)
        ├─ work-list.js     (imports config, state, utils, render)
        ├─ insurance.js     (imports state, utils, render)
-       ├─ kenect.js        (imports config, state, utils)
        ├─ duplicates.js    (imports config, state, utils)
        └─ enhancement.js   (imports state, utils)
 ```
@@ -167,7 +166,6 @@ js/scheduling.js
 js/qr.js
 js/work-list.js
 js/insurance.js
-js/kenect.js
 js/duplicates.js
 js/enhancement.js
 ```
@@ -1278,35 +1276,9 @@ Object.assign(window, {
 
 ---
 
-## Phase 16 — `kenect.js`: Kenect Messaging (Dormant)
+## ~~Phase 16 — `kenect.js`: REMOVED~~
 
-**Duration estimate:** 30–45 minutes
-
-**Note:** Kenect is currently dormant (buttons may be hidden). Migrate functions without breaking anything, but don't invest heavily in testing the actual API calls.
-
-### What Moves
-
-| Function | Line |
-|---|---|
-| `kenectCall(action, params, payload)` | 11029 |
-| `openKenectModal(roIndex)` | 11044 |
-| `refreshKenectMessages(phone, locationId)` | 11108 |
-| `renderKenectMessages(container, data)` | 11134 |
-| `sendKenectMessage(roIndex)` | 11186 |
-| `sendKenectReview(roIndex)` | 11228 |
-
-### Window Bridge
-
-```javascript
-Object.assign(window, {
-  kenectCall,
-  openKenectModal,
-  refreshKenectMessages,
-  sendKenectMessage,
-  sendKenectReview,
-});
-```
-
+> **Kenect removed 2026-04-11.** Kenect refused to supply API keys. All Kenect code (329 lines), the `kenect-proxy` Edge Function (187 lines), and Admin Settings UI have been deleted. SMS/messaging will be handled by Twilio (see `TWILIO_SMS_SPEC.md`).
 ---
 
 ## Phase 17 — `duplicates.js`: Duplicate RO Detection & Merging
@@ -1456,7 +1428,6 @@ import './scheduling.js';
 import './qr.js';
 import './work-list.js';
 import './insurance.js';
-import './kenect.js';
 import './duplicates.js';
 import './enhancement.js';
 
