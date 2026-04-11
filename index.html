@@ -4816,6 +4816,7 @@
 ` +
                 `-- PRVS Dashboard Auto-Reminder`
             );
+            // Intentionally hardcoded — owner email for dashboard auto-reminders
             window.location.href = `mailto:roland@patriotsrvservices.com?subject=${subject}&body=${body}`;
             document.getElementById('scanMilestoneBanner').remove();
         }
@@ -8316,7 +8317,8 @@ Notes: ${notes}` : '',
             const solarBtn = document.getElementById('solarBtn');
             if (solarBtn) {
                 const hasSolarAccess = isAdmin() || hasRole('Solar') ||
-                    (currentUser && ['solar@patriotsrvservices.com','tipton@patriotsrvservices.com','ryan@patriotsrvservices.com'].includes(currentUser.email?.toLowerCase()));
+                    window._currentStaffSilo === 'solar' ||
+                    window._currentStaffRole === 'sr_manager';
                 solarBtn.style.display = hasSolarAccess ? 'inline-block' : 'none';
             }
             // Show/hide Analytics button (Admin only)
