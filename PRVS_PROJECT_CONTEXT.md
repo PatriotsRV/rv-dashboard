@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.308 |
+| **Current Version** | v1.400 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -28,11 +28,11 @@
 |---|---|---|---|
 | `SECURITY_REMEDIATION.md` — 10 security issues (XSS, RBAC, auth gaps, API key exposure, etc.) | S1–S7 | 🔴 **ASAP** | ✅ **ALL COMPLETE** — 2026-04-11 |
 | `TWILIO_SMS_SPEC.md` — Full SMS integration replacing Kenect | Phase 1–3 | 🔴 After port | ⏳ Not started |
-| `TOAST_SYSTEM_SPEC.md` — Replace alert() with toast notifications | 1 session | 🟠 High | ⏳ Not started |
+| `TOAST_SYSTEM_SPEC.md` — Replace alert() with toast notifications | 1 session | 🟠 High | ✅ **COMPLETE** — 2026-04-11 |
 | `UNIFIED_SEARCH_SPEC.md` — Global search bar | 1 session | 🟠 High | ⏳ Not started |
 | `MODULARIZATION_ROADMAP.md` — Split index.html into 18 ES modules | Phase 0–19 | 🟡 Long-term | ⏳ Not started |
 
-**Next up:** Toast System or Unified Search (1 session each), then Twilio SMS after number port
+**Next up:** Unified Search (1 session), then Twilio SMS after number port
 
 **Workflow:** Perplexity researches/writes specs → pushes to `docs/specs/` → Claude Cowork reads and executes
 
@@ -47,11 +47,7 @@
 - **GH#1 — Twilio number port** — Roland must gather carrier info + create Twilio account. Full guide in `docs/specs/TWILIO_SMS_SPEC.md` Section 2. Blocks all SMS features. ⏳ Roland action
 - **GH#4 — Twilio SMS build** — Full spec in `docs/specs/TWILIO_SMS_SPEC.md`. Replaces Kenect. ⏳ Waiting on number port
 
-### ⚠️ On Hold
-- **GH#10 — Kenect messaging** — Pivoting to Twilio. Dormant code stays in repo until Twilio SMS is live. ⏳ On Hold
-
 ### 🟠 High Priority
-- **Toast System** — Spec ready in `docs/specs/TOAST_SYSTEM_SPEC.md`. 1 session. ⏳ Not started
 - **Unified Search** — Spec ready in `docs/specs/UNIFIED_SEARCH_SPEC.md`. 1 session. ⏳ Not started
 - **GH#5c — Polish Work Orders UI** — Mobile layout, remaining bugs. 🔄 In Progress
 - **GH#17 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. ⏳ Open
@@ -69,11 +65,11 @@
 ---
 
 ## ✅ Recently Completed
-- ✅ **Security Remediation — ALL COMPLETE (2026-04-11)** — 10 security issues across 7 sessions (S1–S7) + 2 hotfixes. Commits: 0c04416, ee1c91e, 28c52f8, c920277, 14ab339, 350bf35, f78dceb, 44a8991, a4ad2b4, f12d775, 9c81cf7, 385ddd5, d5acc07, 19deb64. claude-vision-proxy Edge Function deployed (×2). 5 Edge Functions redeployed with CORS. 2 SQL migrations run. QA verified by Perplexity.
-- ✅ **Perplexity scan + specs (2026-04-10)** — Full project scan. 5 implementation specs written, reviewed, merged (PR #14 safe fixes + PR #15 specs).
-- ✅ **v1.308 (2026-04-05)** — Closed RO Archive (GH#22), Enhancement Request system (GH#19), parts badge fixes, Work List DOM fix, send-parts-report ro_id FK bug fix.
+- ✅ **v1.400 Session (2026-04-11)** — Version bumped v1.308→v1.400. Toast System complete (116 alert→showToast, 4 confirm→toast-action). Visual cleanup pass (calmed animations, utility classes). Dead code cleanup (968 lines removed). Kenect removal (550 lines). Compact Manager View (dense 6-column row layout with RV photo thumbnail). slideIn keyframe fix.
+- ✅ **Security Remediation — ALL COMPLETE (2026-04-11)** — 10 security issues across 7 sessions (S1–S7) + 2 hotfixes. 5 Edge Functions redeployed with CORS. 2 SQL migrations run.
+- ✅ **Perplexity scan + specs (2026-04-10)** — Full project scan. 5 implementation specs written, reviewed, merged.
+- ✅ **v1.308 (2026-04-05)** — Closed RO Archive (GH#22), Enhancement Request system (GH#19), parts badge fixes, Work List DOM fix.
 - ✅ **v1.305 (2026-04-04)** — Sr Manager silo-specific work lists, Work List Report page.
-- ✅ **v1.304 (2026-04-03)** — Parts Notifications (GH#18) — Notify Requester button, ETA auto-notification, parts status report cron.
 
 ---
 
@@ -102,9 +98,9 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 - **Database:** Supabase (PostgreSQL) — project ref `axfejhudchdejoiwaetq`
 - **Auth:** Google Identity Services → Supabase `signInWithIdToken`
 - **Storage:** Supabase Storage (`rv-media` bucket)
-- **Edge Functions:** `kenect-proxy` (dormant), `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner)
+- **Edge Functions:** `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner)
 - **SMS:** Twilio (planned — full spec in `docs/specs/TWILIO_SMS_SPEC.md`)
-- **Roles:** Admin (roland@, lynn@), Sr Manager (ryan@, kevin@), Manager (mauricio@, jason@, andrew@, solar@, bobby@, brandon@), Tech (9 techs)
+- **Roles:** Supabase RBAC via `user_roles` table — Admin, Sr Manager, Manager, Parts Manager, Tech (all hardcoded email arrays removed S2)
 
 ---
 
@@ -118,4 +114,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-11 — v1.308 — Security Remediation ALL COMPLETE (S1–S7)*
+*Last updated: 2026-04-11 — v1.400 — Session 39: Toast System, Visual Cleanup, Dead Code, Kenect Removal, Compact Manager View*
