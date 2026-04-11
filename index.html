@@ -2770,6 +2770,180 @@
         .card-actions-primary { margin-top: 16px; }
         .card-actions-secondary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); }
 
+        /* ── Compact Manager View ──────────────────────────────────────── */
+        .board-grid.compact-grid {
+            grid-template-columns: 1fr;
+            gap: 6px;
+        }
+        .ro-card-compact {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: grid;
+            grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(180px, 1.2fr) auto;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.15s ease;
+            position: relative;
+            min-height: 0;
+        }
+        .ro-card-compact:hover { background: var(--bg-elevated); }
+        .ro-card-compact.has-parts-request {
+            border-color: rgba(255, 20, 147, 0.4);
+        }
+        .ro-card-compact.ro-card-status-waiting-for-qa-qc {
+            border-color: rgba(255, 20, 147, 0.5);
+        }
+
+        .compact-col-id {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .compact-customer {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .compact-ro-id {
+            font-size: 0.68rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-info);
+            letter-spacing: 0.04em;
+        }
+        .compact-rv {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .compact-col-status {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+        .compact-stage {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .compact-urgency {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 1px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            width: fit-content;
+        }
+        .compact-urgency.u-critical { color: #ff3b30; background: rgba(255, 59, 48, 0.12); }
+        .compact-urgency.u-high     { color: #ff9500; background: rgba(255, 149, 0, 0.12); }
+        .compact-urgency.u-medium   { color: #ffcc00; background: rgba(255, 204, 0, 0.10); }
+        .compact-urgency.u-low      { color: #34c759; background: rgba(52, 199, 89, 0.12); }
+
+        .compact-col-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .compact-days {
+            font-size: 0.85rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .compact-days-label {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .compact-tech {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .compact-spot {
+            font-size: 0.7rem;
+            color: #fde047;
+            font-weight: 600;
+        }
+
+        .compact-col-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            min-width: 0;
+        }
+        .compact-chip {
+            font-size: 0.62rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .compact-chip.ch-sourcing    { color: #ff6a00; border-color: #ff6a00; background: rgba(255,106,0,0.08); }
+        .compact-chip.ch-outstanding { color: #f59e0b; border-color: #f59e0b; background: rgba(245,158,11,0.08); }
+        .compact-chip.ch-received    { color: #22c55e; border-color: #22c55e; background: rgba(34,197,94,0.08); }
+        .compact-chip.ch-estimate    { color: #3b82f6; border-color: #3b82f6; background: rgba(59,130,246,0.08); }
+        .compact-chip.ch-request     { color: #FF1493; border-color: #FF1493; background: rgba(255,20,147,0.08); }
+        .compact-chip.ch-insurance   { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(251,146,60,0.08); }
+        .compact-chip.ch-parts-badge { color: var(--text-secondary); border-color: var(--border-color); background: var(--bg-elevated); }
+
+        .compact-col-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .compact-action-btn {
+            padding: 5px 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            font-family: 'Barlow Condensed', sans-serif;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .compact-action-btn:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.25); }
+
+        /* Compact grid header row */
+        .compact-grid-header {
+            display: grid;
+            grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(180px, 1.2fr) auto;
+            gap: 12px;
+            padding: 6px 14px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2px;
+        }
+
         .wo-silo-card {
             background: white;
             border: 1.5px solid #e2e8f0;
@@ -2889,6 +3063,7 @@
                 <select id="viewModeSelector" class="view-mode-dropdown" onchange="setViewMode(this.value)">
                     <option value="condensed">Condensed</option>
                     <option value="regular" selected>Regular</option>
+                    <option value="compact">Compact</option>
                 </select>
                 <button id="adminSettingsBtn" onclick="openAdminSettingsModal()" style="display: none; padding: 10px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; cursor: pointer; font-weight: 600; margin-left: 12px;">
                     ⚙️ Admin Settings
@@ -3358,6 +3533,27 @@
                 roStatusNotes: true,
                 customerCommNotes: true,
                 timeLogs: true,
+                editButton: true
+            },
+            compact: {
+                rvPhoto: false,
+                customerName: true,
+                rvDetails: true,
+                dollarValue: false,
+                daysOnLot: true,
+                qrCode: false,
+                printLabel: false,
+                photoUpload: false,
+                urgencySelector: false,
+                statusDropdown: false,
+                repairTypeTags: false,
+                technicianAssigned: true,
+                contactInfo: false,
+                repairDescription: false,
+                progressBar: false,
+                roStatusNotes: false,
+                customerCommNotes: false,
+                timeLogs: false,
                 editButton: true
             }
         };
@@ -7402,7 +7598,7 @@ Notes: ${notes}` : '',
         }
 
         function scrollToROInBoard(roId) {
-            const cards = document.querySelectorAll('.ro-card[data-ro-index]');
+            const cards = document.querySelectorAll('.ro-card[data-ro-index], .ro-card-compact[data-ro-index]');
             for (const card of cards) {
                 const idx = parseInt(card.dataset.roIndex);
                 const ro = currentData[idx];
@@ -7527,10 +7723,72 @@ Notes: ${notes}` : '',
                 return;
             }
 
-            grid.innerHTML = filtered.map((ro, index) => {
+            // Toggle grid layout for compact view
+            grid.classList.toggle('compact-grid', currentViewMode === 'compact');
+
+            // Compact header row
+            const compactHeader = currentViewMode === 'compact' ? `<div class="compact-grid-header"><span>Customer / RO</span><span>Status</span><span>Days / Tech</span><span>Parts / Tags</span><span>Actions</span></div>` : '';
+
+            grid.innerHTML = compactHeader + filtered.map((ro, index) => {
                 const priorityLevel = getPriorityLevel(ro.priorityScore);
                 const statusClass = ro.status.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-');
-                
+
+                /* ── Compact Manager View ──────────────────────────────── */
+                if (currentViewMode === 'compact') {
+                    const urgency = ro.urgency || 'Medium';
+                    const urgencyLc = urgency.toLowerCase();
+                    const days = calculateDaysOnLot(ro);
+                    const daysColor = getDaysHeatColor(days);
+
+                    // Build chips
+                    let chips = '';
+                    if (ro.partsStatus === 'sourcing') chips += '<span class="compact-chip ch-sourcing" data-action="parts-status" data-idx="' + index + '">Sourcing</span>';
+                    else if (ro.partsStatus === 'outstanding' || ro.hasOpenPartsRequest) chips += '<span class="compact-chip ch-outstanding" data-action="parts-status" data-idx="' + index + '">Outstanding</span>';
+                    else if (ro.partsStatus === 'estimate') chips += '<span class="compact-chip ch-estimate" data-action="parts-status" data-idx="' + index + '">Estimate</span>';
+                    else if (ro.partsStatus === 'received') chips += '<span class="compact-chip ch-received" data-action="parts-status" data-idx="' + index + '">Received</span>';
+
+                    if (ro.hasOpenPartsRequest && ro.partsStatus !== 'outstanding') chips += '<span class="compact-chip ch-request">Requested</span>';
+
+                    try {
+                        const ins = ro.insuranceData ? JSON.parse(ro.insuranceData) : null;
+                        if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
+                    } catch(e) {}
+
+                    try {
+                        const parts = ro.partsJson ? JSON.parse(ro.partsJson) : [];
+                        if (parts.length > 0) {
+                            const ct = parts.length;
+                            chips += '<span class="compact-chip ch-parts-badge" data-action="parts-badge" data-idx="' + index + '">' + ct + ' part' + (ct !== 1 ? 's' : '') + '</span>';
+                        }
+                    } catch(e) {}
+
+                    return `
+                    <div class="ro-card-compact ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
+                        <div class="compact-col-id">
+                            <span class="compact-customer">${escapeHtml(ro.customerName) || t('Unknown')}</span>
+                            ${ro.roId ? '<span class="compact-ro-id">' + escapeHtml(ro.roId) + '</span>' : ''}
+                            <span class="compact-rv">${escapeHtml(ro.rv) || t('RV not specified')}</span>
+                        </div>
+                        <div class="compact-col-status">
+                            <span class="compact-stage" style="color: var(--text-primary);">${escapeHtml(ro.status)}</span>
+                            <span class="compact-urgency u-${urgencyLc}">${urgency}</span>
+                        </div>
+                        <div class="compact-col-meta">
+                            ${days !== null ? '<span class="compact-days" style="color:' + daysColor + ';">' + days + ' <span class="compact-days-label">days</span></span>' : '<span class="compact-days-label">Not on lot</span>'}
+                            <span class="compact-tech">${escapeHtml(ro.technicianAssigned) || 'Unassigned'}</span>
+                            ${ro.parkingSpot ? '<span class="compact-spot">📍 ' + escapeHtml(ro.parkingSpot) + '</span>' : ''}
+                        </div>
+                        <div class="compact-col-chips">${chips || '<span style="color:var(--text-secondary);font-size:0.7rem;">—</span>'}</div>
+                        <div class="compact-col-actions">
+                            <button class="compact-action-btn" data-action="edit-ro" data-idx="${index}" title="Edit RO">✏️</button>
+                            <button class="compact-action-btn" data-action="manage-parts" data-idx="${index}" title="Manage Parts">🔩</button>
+                            <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
+                            ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
+                        </div>
+                    </div>`;
+                }
+
+                /* ── Standard Card View (condensed / regular / expanded) ─ */
                 return `
                     <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
                         ${shouldShow('urgencySelector') ? `
