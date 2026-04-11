@@ -1646,6 +1646,164 @@
             }
         }
 
+        /* ── Toast Notification System ─────────────────────────────────────── */
+
+        @keyframes toast-slide-in {
+          from {
+            opacity: 0;
+            transform: translateX(110%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes toast-slide-out {
+          from {
+            opacity: 1;
+            transform: translateX(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateX(110%);
+          }
+        }
+
+        #toast-container {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          z-index: 13000;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          width: 320px;
+          pointer-events: none;
+        }
+
+        .toast {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border-color);
+          border-radius: 10px;
+          padding: 12px 14px 14px 14px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+          overflow: hidden;
+          pointer-events: all;
+          animation: toast-slide-in 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transition: transform 0.2s ease, opacity 0.2s ease;
+          font-family: 'Barlow Condensed', sans-serif;
+          border-left-width: 3px;
+          border-left-style: solid;
+          min-height: 48px;
+        }
+
+        .toast.toast-exiting {
+          animation: toast-slide-out 220ms ease-in forwards;
+        }
+
+        .toast--success { border-left-color: #34c759; }
+        .toast--error   { border-left-color: #ff3b30; }
+        .toast--warning { border-left-color: #ff9500; }
+        .toast--info    { border-left-color: #0a84ff; }
+
+        .toast__body {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding-right: 20px;
+        }
+
+        .toast__icon {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1rem;
+          flex-shrink: 0;
+          line-height: 1.4;
+        }
+
+        .toast--success .toast__icon { color: #34c759; }
+        .toast--error   .toast__icon { color: #ff3b30; }
+        .toast--warning .toast__icon { color: #ff9500; }
+        .toast--info    .toast__icon { color: #0a84ff; }
+
+        .toast__message {
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: var(--text-primary);
+          line-height: 1.4;
+          flex: 1;
+        }
+
+        .toast__close {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: none;
+          border: none;
+          color: var(--text-secondary);
+          font-size: 1rem;
+          line-height: 1;
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: 4px;
+          transition: color 0.15s ease, background 0.15s ease;
+          font-family: 'JetBrains Mono', monospace;
+        }
+
+        .toast__close:hover {
+          color: var(--text-primary);
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .toast__action {
+          margin-top: 8px;
+          margin-left: 20px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid var(--border-color);
+          color: var(--text-primary);
+          font-family: 'Barlow Condensed', sans-serif;
+          font-size: 0.8rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          padding: 4px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background 0.15s ease, border-color 0.15s ease;
+          display: inline-block;
+        }
+
+        .toast--success .toast__action:hover { background: rgba(52, 199, 89, 0.15); border-color: #34c759; }
+        .toast--error   .toast__action:hover { background: rgba(255, 59, 48, 0.15); border-color: #ff3b30; }
+        .toast--warning .toast__action:hover { background: rgba(255, 149, 0, 0.15); border-color: #ff9500; }
+        .toast--info    .toast__action:hover { background: rgba(10, 132, 255, 0.15); border-color: #0a84ff; }
+
+        .toast__progress {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          height: 2px;
+          width: 100%;
+          border-radius: 0 0 10px 10px;
+          transform-origin: left;
+          transition: width linear;
+        }
+
+        .toast--success .toast__progress { background: rgba(52, 199, 89, 0.5); }
+        .toast--error   .toast__progress { background: rgba(255, 59, 48, 0.5); }
+        .toast--warning .toast__progress { background: rgba(255, 149, 0, 0.5); }
+        .toast--info    .toast__progress { background: rgba(10, 132, 255, 0.5); }
+
+        @media (prefers-reduced-motion: reduce) {
+          .toast, .toast.toast-exiting {
+            animation: none;
+            transition: none;
+          }
+        }
+
         .modal-header {
             display: flex;
             justify-content: space-between;
@@ -3228,21 +3386,21 @@
         
         function saveCurrentAsPreset(presetName) {
             if (!isAdmin()) {
-                alert('Admin access required');
+                showToast('Admin access required.', 'warning');
                 return;
             }
             
             if (viewPresets[presetName]) {
                 viewPresets[presetName] = { ...tileVisibility };
                 log(`✅ Saved current configuration as "${presetName}" preset`);
-                alert(`Configuration saved to "${presetName}" preset!\n\nNow click "Admin Settings" → "Export Configuration Code" to make it permanent.`);
+                showToast('Configuration saved to "' + presetName + '" preset! Use Admin Settings → Export to make it permanent.', 'success', { duration: 8000 });
             }
         }
         
         function setViewMode(mode) {
             if (mode === 'custom') {
                 if (!isAdmin()) {
-                    alert('🔒 Custom view configuration is only available to administrators.');
+                    showToast('Custom view is only available to administrators.', 'warning');
                     // Reset dropdown to current mode
                     document.getElementById('viewModeSelector').value = currentViewMode;
                     return;
@@ -3250,7 +3408,7 @@
                 openCustomViewModal();
             } else if (mode === 'expanded') {
                 if (!isAdmin()) {
-                    alert('🔒 Expanded view is only available to administrators.');
+                    showToast('Expanded view is only available to administrators.', 'warning');
                     // Reset dropdown to current mode
                     document.getElementById('viewModeSelector').value = currentViewMode;
                     return;
@@ -3289,7 +3447,7 @@
         // Update RO Urgency
         async function updateROUrgency(index, newUrgency) {
             if (!getSB()) {
-                alert('Please connect to PRVS database first!');
+                showToast('Please connect to the PRVS database first.', 'warning');
                 return;
             }
 
@@ -3305,7 +3463,7 @@
                 
                 if (!ro) {
                     console.error('Could not find RO at index:', index);
-                    alert('Error: Could not find the repair order.');
+                    showToast('Error: Could not find the repair order.', 'error');
                     dropdown.style.opacity = '1';
                     dropdown.disabled = false;
                     return;
@@ -3345,7 +3503,7 @@
 
             } catch (error) {
                 console.error('Error updating urgency:', error);
-                alert('Error updating urgency: ' + error.message + '\n\nCheck the console for details.');
+                showToast('Error updating urgency: ' + error.message, 'error');
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
                 // Reload from sheets to revert
@@ -3356,7 +3514,7 @@
         // Edit field inline
         async function editField(index, fieldName) {
             if (!getSB()) {
-                alert('Please connect to PRVS database first!');
+                showToast('Please connect to the PRVS database first.', 'warning');
                 return;
             }
 
@@ -3373,7 +3531,7 @@
             // Read current value directly from data — never embed raw text in onclick attributes
             // (apostrophes, quotes, newlines, backticks all break inline JS string literals)
             const ro = currentFilteredData[index];
-            if (!ro) { alert('Error: Could not find the repair order.'); return; }
+            if (!ro) { showToast('Error: Could not find the repair order.', 'error'); return; }
             const decodedValue = ro[fieldName] || '';
 
             try {
@@ -3383,7 +3541,7 @@
                     item.customerName === ro.customerName &&
                     item.dateReceived === ro.dateReceived
                 );
-                if (originalIndex === -1) { alert('Error: Could not find the repair order in data.'); return; }
+                if (originalIndex === -1) { showToast('Error: Could not find the repair order in data.', 'error'); return; }
 
                 // ── REPAIR DESCRIPTION — full edit (pre-filled, full replace, audited) ──
                 if (fieldName === 'repairDescription') {
@@ -3436,7 +3594,7 @@
 
             } catch (error) {
                 console.error('Error updating field:', error);
-                alert('Error updating field: ' + error.message);
+                showToast('Error updating field: ' + error.message, 'error');
                 await loadDataFromSupabase();
             }
         }
@@ -3444,7 +3602,7 @@
         // Update RO Progress manually
         async function updateROProgress(index, newProgress) {
             if (!getSB()) {
-                alert('Please connect to PRVS database first!');
+                showToast('Please connect to the PRVS database first.', 'warning');
                 return;
             }
 
@@ -3458,7 +3616,7 @@
                 const ro = currentFilteredData[index];
                 if (!ro) {
                     console.error('Could not find RO at index:', index);
-                    alert('Error: Could not find the repair order.');
+                    showToast('Error: Could not find the repair order.', 'error');
                     return;
                 }
 
@@ -3484,14 +3642,14 @@
 
             } catch (error) {
                 console.error('Error updating progress:', error);
-                alert('Error updating progress: ' + error.message);
+                showToast('Error updating progress: ' + error.message, 'error');
                 await loadDataFromSupabase();
             }
         }
 
         async function updateROStatus(index, newStatus) {
             if (!getSB()) {
-                alert('Please connect to PRVS database first!');
+                showToast('Please connect to the PRVS database first.', 'warning');
                 return;
             }
 
@@ -3507,7 +3665,7 @@
                 const ro = currentFilteredData[index];
                 if (!ro) {
                     console.error('Could not find RO at index:', index);
-                    alert('Error: Could not find the repair order.');
+                    showToast('Error: Could not find the repair order.', 'error');
                     dropdown.style.opacity = '1';
                     dropdown.disabled = false;
                     return;
@@ -3577,7 +3735,7 @@
 
             } catch (error) {
                 console.error('Error updating status:', error);
-                alert('Error updating status: ' + error.message + '\n\nCheck the console for details.');
+                showToast('Error updating status: ' + error.message, 'error');
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
                 // Reload from sheets to revert
@@ -3589,7 +3747,7 @@
         function openCheckIn(index) {
             const ro = currentFilteredData[index];
             if (!ro) {
-                alert('Error: Could not find the repair order.');
+                showToast('Error: Could not find the repair order.', 'error');
                 return;
             }
             
@@ -3607,12 +3765,12 @@
         // Photo Upload Function
         async function uploadPhoto(index) {
             if (!getSB() || !supabaseSession) {
-                alert('Session expired or not logged in. Please refresh the page and sign in again.');
+                showToast('Session expired — please refresh the page and sign in again.', 'warning');
                 return;
             }
 
             const ro = currentFilteredData[index];
-            if (!ro) { alert('Error: Could not find the repair order.'); return; }
+            if (!ro) { showToast('Error: Could not find the repair order.', 'error'); return; }
 
             const input = document.createElement('input');
             input.type = 'file';
@@ -3626,7 +3784,7 @@
 
                 // Re-check session inside async callback — session may have changed since picker opened
                 if (!getSB() || !supabaseSession) {
-                    alert('Session expired. Please refresh the page and sign in again.');
+                    showToast('Session expired — please refresh the page and sign in again.', 'warning');
                     return;
                 }
 
@@ -3668,17 +3826,17 @@
                         currentData[originalIndex].rvPhotoUrl = firstPhotoUrl;
                         currentData[originalIndex].photoLibrary = libraryJson;
                         await updatePhotoInSheet(firstPhotoUrl, originalIndex, libraryJson);
-                        alert(`✅ ${uploaded} photo(s) uploaded! First photo set as main RV image.`);
+                        showToast(uploaded + ' photo(s) uploaded — first photo set as main RV image.', 'success');
                     } else {
                         currentData[originalIndex].photoLibrary = libraryJson;
                         await updatePhotoLibraryInSheet(libraryJson, originalIndex);
-                        alert(`✅ ${uploaded} photo(s) added to library! Use Manage Photos to set as main.`);
+                        showToast(uploaded + ' photo(s) added to library! Use Manage Photos to set as main.', 'success');
                     }
 
                     renderBoard();
                 } catch (error) {
                     console.error('Upload error:', error);
-                    alert('Error uploading photo: ' + error.message);
+                    showToast('Error uploading photo: ' + error.message, 'error');
                     if (uploadBtn) { uploadBtn.textContent = originalText; uploadBtn.disabled = false; }
                 }
             };
@@ -3852,7 +4010,7 @@
             if (!file) return;
 
             if (!getSB() || !supabaseSession) {
-                alert('Session expired or not logged in. Please refresh the page and sign in again.');
+                showToast('Session expired — please refresh the page and sign in again.', 'warning');
                 input.value = '';
                 return;
             }
@@ -3882,7 +4040,7 @@
                 if (currentFilteredData[index]) {
                     currentFilteredData[index].photoLibrary = currentData[originalIndex].photoLibrary;
                 }
-                alert('✅ Document uploaded successfully!\n\nNote: It may take up to 60 seconds for the document to appear in the list. If you don\'t see it right away, close and reopen Photos & Docs shortly.');
+                showToast('Document uploaded! It may take up to 60 seconds to appear in the list.', 'success', { duration: 8000 });
                 closePhotoLibrary();
                 // Reopen directly on the Documents tab so the new doc is immediately visible
                 setTimeout(() => openPhotoLibrary(index, 'docs'), 100);
@@ -3890,9 +4048,9 @@
                 console.error('Document upload error:', err);
                 const msg = err.message || '';
                 if (msg.toLowerCase().includes('mime type') || msg.toLowerCase().includes('not supported')) {
-                    alert('Upload failed: This file type is not yet allowed in storage.\n\nFix: Go to Supabase → Storage → rv-media bucket → Edit → remove the MIME type restriction (or add application/octet-stream). Then try again.');
+                    showToast('Upload failed: File type blocked by storage. Go to Supabase → Storage → rv-media → remove MIME type restriction, then retry.', 'error');
                 } else {
-                    alert('Upload failed: ' + msg);
+                    showToast('Upload failed: ' + msg, 'error');
                 }
                 if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = '📎 Upload Document'; }
             }
@@ -3919,7 +4077,7 @@
             
             closePhotoLibrary();
             renderBoard();
-            alert('✅ Main photo updated!');
+            showToast('Main photo updated!', 'success');
         }
 
         // ── PHOTO LIGHTBOX ────────────────────────────────────────────────
@@ -3982,7 +4140,7 @@
             const ro = currentFilteredData[index];
             if (!ro) return;
             const photos = window._libPhotos || [];
-            if (!photos.length) { alert('No photos to send.'); return; }
+            if (!photos.length) { showToast('No photos to send.', 'warning'); return; }
 
             const existing = document.getElementById('photoEmailModal');
             if (existing) existing.remove();
@@ -4034,10 +4192,10 @@
             if (!ro) return;
 
             const toEmail = document.getElementById('photoEmailTo')?.value?.trim();
-            if (!toEmail) { alert('Please enter a recipient email address.'); return; }
+            if (!toEmail) { showToast('Please enter a recipient email address.', 'warning'); return; }
 
             const checked = [...document.querySelectorAll('input[name="emailPhoto"]:checked')].map(cb => cb.value);
-            if (!checked.length) { alert('Please select at least one photo to send.'); return; }
+            if (!checked.length) { showToast('Please select at least one photo to send.', 'warning'); return; }
 
             const message = document.getElementById('photoEmailMsg')?.value?.trim() || '';
 
@@ -4066,10 +4224,10 @@
                 if (!resp.ok || result.error) throw new Error(result.error || result.message || `HTTP ${resp.status}`);
 
                 document.getElementById('photoEmailModal')?.remove();
-                alert(`✅ ${checked.length} photo(s) sent to ${toEmail} successfully!`);
+                showToast(checked.length + ' photo(s) sent to ' + toEmail + ' successfully!', 'success');
             } catch (err) {
                 console.error('Email photos error:', err);
-                alert('❌ Failed to send photos: ' + (err.message || 'Unknown error'));
+                showToast('Failed to send photos: ' + (err.message || 'Unknown error'), 'error');
                 if (btn) { btn.disabled = false; btn.textContent = '📧 Send Photos'; }
             }
         }
@@ -4149,7 +4307,7 @@
         // Archive an RO to the Cashiered sheet tab and remove from Sheet1
         async function archiveRO(filteredIndex) {
             if (!isAdmin()) {
-                alert('Admin access required to archive ROs.');
+                showToast('Admin access required to archive ROs.', 'warning');
                 return;
             }
 
@@ -4162,7 +4320,7 @@
                 item.dateReceived === ro.dateReceived
             );
             if (originalIndex === -1) {
-                alert('Error: Could not match this RO in local data.');
+                showToast('Error: Could not match this RO in local data.', 'error');
                 return;
             }
 
@@ -4180,7 +4338,7 @@
 
             } catch (err) {
                 console.error('Error archiving RO:', err);
-                alert('Error archiving RO. Check console for details.');
+                showToast('Error archiving RO. Check console for details.', 'error');
             }
         }
 
@@ -4300,11 +4458,11 @@
 
         async function saveCustomField(mode) {
             const label = document.getElementById('newFieldLabel_' + mode).value.trim();
-            if (!label) { alert('Please enter a field label.'); return; }
+            if (!label) { showToast('Please enter a field label.', 'warning'); return; }
             const type = document.getElementById('newFieldType_' + mode).value;
             const key = label.toLowerCase().replace(/[^a-z0-9]+(.)/g, (m, c) => c.toUpperCase()).replace(/[^a-z0-9]/g, '');
             if (customInsuranceFields.some(f => f.key === key)) {
-                alert('A field with a similar name already exists. Please use a different label.');
+                showToast('A field with a similar name already exists.', 'warning');
                 return;
             }
             const newField = { key, label, type };
@@ -4322,7 +4480,7 @@
 
         function openManageFieldsModal() {
             if (customInsuranceFields.length === 0) {
-                alert('No custom fields defined yet. Use "+ Add Field" to create one.');
+                showToast('No custom fields defined yet. Use "+ Add Field" to create one.', 'info');
                 return;
             }
             const rowsHtml = customInsuranceFields.map((field, i) => `
@@ -4603,7 +4761,7 @@
             const MAX_ESTIMATE_SIZE = 4.5 * 1024 * 1024; // 4.5 MB — Edge Function proxy limit
             if (file.size > MAX_ESTIMATE_SIZE) {
                 console.error('Estimate file too large:', (file.size / 1024 / 1024).toFixed(1), 'MB (max 4.5 MB)');
-                alert('This file is too large for the estimate scanner (max 4.5 MB). Please compress the PDF or use a smaller scan.');
+                showToast('File too large for estimate scanner (max 4.5 MB). Compress the PDF or use a smaller scan.', 'warning');
                 return;
             }
 
@@ -4668,7 +4826,7 @@
                 console.error('Scan error:', err);
                 btn.textContent = '❌ Scan Failed — Try Again';
                 btn.disabled = false;
-                alert('Scan failed: ' + (err.message || 'Unknown error. Check console for details.'));
+                showToast('Scan failed: ' + (err.message || 'Unknown error — check console.'), 'error');
             }
 
             // Reset file input so same file can be re-selected
@@ -4984,10 +5142,11 @@ Always prefer mapping to a standard key over creating a new one.`;
                 if (mode === 'new' && currentROType === 'standard') {
                     setROType('insurance');
                 } else if (mode === 'edit' && currentROType === 'standard') {
-                    const convert = confirm('Insurance fields were detected in this estimate.\n\nConvert this RO to an Insurance Claim?\n\nClick OK for Insurance Claim, Cancel to keep Standard RO.');
-                    if (convert) {
-                        setROType('insurance', 'edit');
-                    }
+                    showToast('Insurance fields detected. Convert this RO to an Insurance Claim?', 'info', {
+                        persistent: true,
+                        actionLabel: 'Convert to Insurance',
+                        actionCallback: function() { setROType('insurance', 'edit'); }
+                    });
                 }
             }
 
@@ -5550,7 +5709,7 @@ Always prefer mapping to a standard key over creating a new one.`;
             const conflictsEl = document.getElementById('scheduleConflicts');
 
             const startInput = document.getElementById('scheduleStart').value;
-            if (!startInput) { alert('Please select a start date and time.'); return; }
+            if (!startInput) { showToast('Please select a start date and time.', 'warning'); return; }
 
             const durationSel = document.getElementById('scheduleDuration').value;
             let durationMins;
@@ -5569,7 +5728,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
             // Which calendars selected
             const selectedCals = Array.from(document.querySelectorAll('input[name="schedCalendar"]:checked')).map(c => c.value);
-            if (selectedCals.length === 0) { alert('Please select at least one service calendar.'); return; }
+            if (selectedCals.length === 0) { showToast('Please select at least one service calendar.', 'warning'); return; }
 
             btn.disabled = true;
             btn.textContent = '🔍 Checking conflicts...';
@@ -6171,7 +6330,7 @@ Notes: ${notes}` : '',
 
         async function savePartForm(filteredIndex) {
             const partName = document.getElementById('pf_partName').value.trim();
-            if (!partName) { alert('Part Name is required.'); return; }
+            if (!partName) { showToast('Part Name is required.', 'warning'); return; }
 
             const ctx = window._partsModalContext;
             const roId = ctx.roId;
@@ -6269,7 +6428,7 @@ Notes: ${notes}` : '',
                 }
             } catch(e) {
                 console.error('Error saving part:', e);
-                alert('Error saving part: ' + e.message);
+                showToast('Error saving part: ' + e.message, 'error');
                 if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save Part'; }
             }
         }
@@ -6295,7 +6454,7 @@ Notes: ${notes}` : '',
                 setTimeout(() => openPartsModal(filteredIndex), 50);
             } catch(e) {
                 console.error('Error deleting part:', e);
-                alert('Error deleting part: ' + e.message);
+                showToast('Error deleting part: ' + e.message, 'error');
             }
         }
 
@@ -6324,7 +6483,7 @@ Notes: ${notes}` : '',
                 setTimeout(() => openPartsModal(filteredIndex), 50);
             } catch(e) {
                 console.error('Error marking received:', e);
-                alert('Error: ' + e.message);
+                showToast('Error marking part received: ' + e.message, 'error');
             }
         }
 
@@ -6416,6 +6575,142 @@ Notes: ${notes}` : '',
                 setTimeout(pulse, 300); // small delay to let scroll settle
             }, 80);
         }
+
+        /* ── Toast Notification System ──────────────────────────────────────
+         *
+         *  showToast(message, type, options)
+         *
+         *  @param {string} message       — Text to display. Plain text only (no HTML).
+         *  @param {string} [type]        — 'success' | 'error' | 'warning' | 'info'
+         *                                   Defaults to 'info'.
+         *  @param {object} [options]
+         *    @param {number}   [options.duration]        — Override auto-dismiss ms.
+         *                                                  Pass 0 to force persistent.
+         *    @param {boolean}  [options.persistent]      — If true, never auto-dismisses.
+         *                                                  Errors are persistent by default.
+         *    @param {string}   [options.actionLabel]     — Label for optional action button.
+         *    @param {Function} [options.actionCallback]  — Called when action button is clicked.
+         *                                                  Toast dismisses after callback.
+         *  @returns {HTMLElement} The created toast element (useful for manual dismiss).
+         *
+         *  Maximum 3 toasts visible at once. When a 4th arrives, the oldest is
+         *  forcibly dismissed. Errors are persistent (no auto-dismiss, must click ×).
+         * ─────────────────────────────────────────────────────────────────── */
+
+        (function () {
+          const TOAST_MAX    = 3;
+          const TOAST_ICONS  = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+          const TOAST_DEFAULTS = {
+            success : 4000,
+            info    : 4000,
+            warning : 8000,
+            error   : 0,
+          };
+
+          let _container = null;
+          const _active  = [];
+
+          function _getContainer() {
+            if (!_container) {
+              _container = document.createElement('div');
+              _container.id = 'toast-container';
+              document.body.appendChild(_container);
+            }
+            return _container;
+          }
+
+          function _dismiss(el) {
+            if (el.dataset.dismissed === '1') return;
+            el.dataset.dismissed = '1';
+
+            if (el._toastTimer) {
+              clearTimeout(el._toastTimer);
+              el._toastTimer = null;
+            }
+
+            const idx = _active.indexOf(el);
+            if (idx !== -1) _active.splice(idx, 1);
+
+            el.classList.add('toast-exiting');
+            el.addEventListener('animationend', () => el.remove(), { once: true });
+
+            setTimeout(() => { if (el.parentNode) el.remove(); }, 350);
+          }
+
+          function showToast(message, type, options) {
+            type    = type    || 'info';
+            options = options || {};
+
+            const container = _getContainer();
+
+            if (_active.length >= TOAST_MAX) {
+              _dismiss(_active[0]);
+            }
+
+            const el = document.createElement('div');
+            el.className = 'toast toast--' + type;
+            el.setAttribute('role', 'alert');
+            el.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+
+            const escapedMsg = String(message)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
+
+            const hasAction = options.actionLabel && typeof options.actionCallback === 'function';
+
+            el.innerHTML =
+              '<button class="toast__close" aria-label="Dismiss notification">×</button>' +
+              '<div class="toast__body">' +
+                '<span class="toast__icon">' + (TOAST_ICONS[type] || 'ℹ') + '</span>' +
+                '<span class="toast__message">' + escapedMsg + '</span>' +
+              '</div>' +
+              (hasAction
+                ? '<button class="toast__action">' +
+                    String(options.actionLabel).replace(/</g, '&lt;') +
+                  '</button>'
+                : '') +
+              '<div class="toast__progress"></div>';
+
+            el.querySelector('.toast__close').addEventListener('click', () => _dismiss(el));
+
+            if (hasAction) {
+              el.querySelector('.toast__action').addEventListener('click', () => {
+                options.actionCallback();
+                _dismiss(el);
+              });
+            }
+
+            let persistent = options.persistent === true || type === 'error';
+            let duration   = options.duration;
+            if (duration === undefined) duration = TOAST_DEFAULTS[type] !== undefined ? TOAST_DEFAULTS[type] : 4000;
+            if (duration === 0) persistent = true;
+
+            const progressBar = el.querySelector('.toast__progress');
+            if (persistent) {
+              progressBar.style.display = 'none';
+            } else {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  progressBar.style.transition = 'width ' + duration + 'ms linear';
+                  progressBar.style.width = '0%';
+                });
+              });
+            }
+
+            container.appendChild(el);
+            _active.push(el);
+
+            if (!persistent) {
+              el._toastTimer = setTimeout(() => _dismiss(el), duration);
+            }
+
+            return el;
+          }
+
+          window.showToast = showToast;
+        })();
 
         // Initialize
         function init() {
@@ -6793,7 +7088,7 @@ Notes: ${notes}` : '',
 
         async function addToWorkList(supabaseId) {
             const ro = currentData.find(r => r._supabaseId === supabaseId);
-            if (!ro) { alert('Could not find RO data. Try refreshing.'); return; }
+            if (!ro) { showToast('Could not find RO data. Try refreshing.', 'warning'); return; }
             const myEmail = supabaseSession?.user?.email || '';
             const roId = supabaseId;
             const roName = (ro.customerName || 'Unknown') + ' — ' + (ro.roNumber || '');
@@ -6812,7 +7107,7 @@ Notes: ${notes}` : '',
 
             // If ALL 8 silos already have this RO, nothing left to add
             if (existingSilos.size >= SERVICE_SILOS.length) {
-                alert('This RO is already on your Work List in every silo.');
+                showToast('This RO is already on your Work List in every silo.', 'info');
                 return;
             }
 
@@ -6890,7 +7185,7 @@ Notes: ${notes}` : '',
                 else if (!_workListViewEmail) await loadWorkList(null);
             } catch (err) {
                 console.error('[WorkList] add error:', err);
-                alert('Error adding to Work List: ' + (err.message || err));
+                showToast('Error adding to Work List: ' + (err.message || err), 'error');
             }
         }
 
@@ -6905,7 +7200,7 @@ Notes: ${notes}` : '',
                 renderWorkList();
             } catch (err) {
                 console.error('[WorkList] remove error:', err);
-                alert('Error removing item: ' + (err.message || err));
+                showToast('Error removing Work List item: ' + (err.message || err), 'error');
             }
         }
 
@@ -7100,7 +7395,7 @@ Notes: ${notes}` : '',
                     return;
                 }
             }
-            alert('RO not visible in current view — it may be filtered out.');
+            showToast('RO not visible — it may be filtered out.', 'warning', { duration: 12000, actionLabel: 'Clear Filters', actionCallback: function() { currentStatusFilters = []; currentRepairFilter = 'all'; currentPartsFilter = 'all'; currentROTypeFilter = 'all'; currentDaysFilter = null; currentSearchFilter = ''; document.getElementById('customerSearch').value = ''; renderBoard(); } });
         }
 
         function renderBoard() {
@@ -8920,7 +9215,7 @@ Notes: ${notes}` : '',
                 authButton.textContent = 'Connect to PRVS';
                 authButton.onclick = () => {
                     if (!gapiInited || !gisInited) {
-                        alert('Google APIs are still loading. Please wait a moment and try again.');
+                        showToast('Google APIs are still loading. Please wait and try again.', 'info', { duration: 6000 });
                         return;
                     }
                     handleAuthClick();
@@ -9039,7 +9334,7 @@ Notes: ${notes}` : '',
 
             } catch(err) {
                 console.error('Error loading from Supabase:', err);
-                alert('Error loading data from database: ' + err.message);
+                showToast('Error loading data from database: ' + err.message, 'error');
             }
         }
 
@@ -9561,7 +9856,7 @@ Notes: ${notes}` : '',
                 renderBoard();
             } catch (err) {
                 console.error('Error loading from Sheets:', err);
-                alert('Error loading data from Google Sheets. Check console for details.');
+                showToast('Error loading data. Check console for details.', 'error');
             }
         }
 
@@ -9714,7 +10009,7 @@ Notes: ${notes}` : '',
         
         function startVoiceDictationForModal() {
             if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                alert('Voice dictation is not supported in this browser. Please use Chrome or Safari.');
+                showToast('Voice dictation is not supported in this browser. Use Chrome or Safari.', 'warning', { duration: 10000 });
                 return;
             }
             
@@ -9876,10 +10171,10 @@ Notes: ${notes}` : '',
 
         // ── DUPLICATE MANAGER MODAL ──────────────────────────────────────────
         function openDuplicateManager() {
-            if (!isAdmin()) { alert('Admin access required.'); return; }
+            if (!isAdmin()) { showToast('Admin access required.', 'warning'); return; }
             const groups = findDuplicateGroups();
             if (!groups.length) {
-                alert('No duplicate ROs found.');
+                showToast('No duplicate ROs found.', 'info');
                 const btn = document.getElementById('manageDupesBtn');
                 if (btn) btn.style.display = 'none';
                 return;
@@ -10028,7 +10323,7 @@ Notes: ${notes}` : '',
                 }
 
                 document.getElementById('dupeMgrOverlay')?.remove();
-                alert(`✅ Done! Merged and deleted ${totalDeleted} duplicate RO${totalDeleted !== 1 ? 's' : ''}.\n\nReloading data...`);
+                showToast('Done! Merged and deleted ' + totalDeleted + ' duplicate RO' + (totalDeleted !== 1 ? 's' : '') + '. Reloading…', 'success', { duration: 6000 });
                 await loadDataFromSupabase();
 
                 // Hide the Merge Dupes button if no more duplicates
@@ -10038,7 +10333,7 @@ Notes: ${notes}` : '',
 
             } catch (err) {
                 console.error('Merge error:', err);
-                alert('Error during merge: ' + (err.message || JSON.stringify(err)));
+                showToast('Error during merge: ' + (err.message || 'Unknown error'), 'error');
                 if (btn) { btn.disabled = false; btn.textContent = '🔗 Merge & Delete Duplicates'; }
             }
         }
@@ -10114,7 +10409,7 @@ Notes: ${notes}` : '',
             try {
                 const rowNumber = await getSheetRowNumber(roIndex);
                 if (!rowNumber) {
-                    alert('Error: Could not locate this RO in the spreadsheet. Please refresh and try again.');
+                    showToast('Error: Could not locate this RO. Please refresh and try again.', 'error');
                     return false;
                 }
                 log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
@@ -10181,7 +10476,7 @@ Notes: ${notes}` : '',
                 return true;
             } catch (err) {
                 console.error('Error updating RO in Sheets:', err);
-                alert('Error updating RO. Check console for details.');
+                showToast('Error updating RO. Check console for details.', 'error');
                 return false;
             }
         }
@@ -10234,7 +10529,7 @@ Notes: ${notes}` : '',
         async function notifyPartsRequester(filteredIndex) {
             const ro = currentFilteredData[filteredIndex];
             if (!ro || !ro.requestedByEmail) {
-                alert('No requester email on file for this RO.\nParts must be requested via the dashboard “Request Parts” button to capture the requester.');
+                showToast('No requester email on file. Parts must be requested via the “Request Parts” button to capture the requester.', 'warning', { duration: 10000 });
                 return;
             }
             const roPartsData = partsData[ro.roId] || [];
@@ -10242,7 +10537,14 @@ Notes: ${notes}` : '',
             const partsPreview = orderedParts.length
                 ? '\n\nParts being ordered:\n' + orderedParts.map(p => '\u2022 ' + p.partName + (p.eta ? ' (ETA: ' + p.eta + ')' : '')).join('\n')
                 : '\n\n(No parts in Ordered/In Transit/Backordered status — sending general notification)';
-            if (!confirm('Send “Parts Ordered” notification to ' + ro.requestedByEmail + '?' + partsPreview)) return;
+            showToast('Send “Parts Ordered” notification to ' + ro.requestedByEmail + '?', 'info', {
+                persistent: true,
+                actionLabel: 'Send Notification',
+                actionCallback: function() { _doNotifyPartsRequester(filteredIndex); }
+            });
+        }
+        async function _doNotifyPartsRequester(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
             try {
                 const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
@@ -10265,10 +10567,10 @@ Notes: ${notes}` : '',
                 });
                 if (!resp.ok) { const t = await resp.text(); throw new Error('HTTP ' + resp.status + ': ' + t); }
                 document.getElementById('partsStatusModal')?.remove();
-                alert('\u2705 Notification sent to ' + ro.requestedByEmail);
+                showToast('Notification sent to ' + ro.requestedByEmail, 'success');
             } catch(err) {
                 console.error('notifyPartsRequester error:', err);
-                alert('Error sending notification: ' + err.message);
+                showToast('Error sending notification: ' + err.message, 'error');
             }
         }
 
@@ -10299,9 +10601,9 @@ Notes: ${notes}` : '',
 
         // Open the parts request submission modal
         function openPartsRequestModal(filteredIndex) {
-            if (!getSB()) { alert('Please connect to PRVS database first!'); return; }
+            if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
             const ro = currentFilteredData[filteredIndex];
-            if (!ro) { alert('Error: RO not found.'); return; }
+            if (!ro) { showToast('Error: RO not found.', 'error'); return; }
 
             // Reset photo list and remove any existing modal
             _partsRequestFiles = [];
@@ -10397,13 +10699,13 @@ Notes: ${notes}` : '',
 
         // Submit the parts request
         async function submitPartsRequest(filteredIndex) {
-            if (!getSB() || !supabaseSession) { alert('Session expired — please refresh the page and try again.'); return; }
+            if (!getSB() || !supabaseSession) { showToast('Session expired — please refresh the page and try again.', 'warning'); return; }
 
             const description = (document.getElementById('partsRequestText')?.value || '').trim();
-            if (!description) { alert('Please describe the parts needed before sending.'); return; }
+            if (!description) { showToast('Please describe the parts needed before sending.', 'warning'); return; }
 
             const ro = currentFilteredData[filteredIndex];
-            if (!ro || !ro._supabaseId) { alert('Error: RO not found.'); return; }
+            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
 
             const btn = document.getElementById('partsRequestSubmitBtn');
             if (btn) { btn.disabled = true; btn.textContent = '⏳ Sending...'; }
@@ -10520,11 +10822,11 @@ Notes: ${notes}` : '',
                 document.getElementById('partsRequestModal')?.remove();
                 renderBoard();
                 const photoMsg = photoUrls.length ? ` ${photoUrls.length} photo(s) saved to RO library.` : '';
-                alert(`✅ Parts request sent! Management has been notified and the RO has been flagged.${photoMsg}`);
+                showToast('Parts request sent! Management has been notified.' + (photoMsg ? ' ' + photoMsg.trim() : ''), 'success', { duration: 6000 });
 
             } catch(err) {
                 console.error('Parts request submission error:', err);
-                alert('Error sending parts request: ' + err.message);
+                showToast('Error sending parts request: ' + err.message, 'error');
                 if (btn) { btn.disabled = false; btn.textContent = '📤 Send Parts Request'; }
             }
         }
@@ -10588,12 +10890,18 @@ Notes: ${notes}` : '',
 
         // Mark parts as ordered — clears the pulse indicator and logs the action
         async function markPartsOrdered(filteredIndex) {
-            if (!getSB()) { alert('Please connect to PRVS database first!'); return; }
+            if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
             const ro = currentFilteredData[filteredIndex];
-            if (!ro || !ro._supabaseId) { alert('Error: RO not found.'); return; }
+            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
 
-            if (!confirm(`Confirm parts have been ORDERED for ${ro.customerName}'s RO?\n\nThis will clear the Parts Requested indicator and log the action in RO Status notes.`)) return;
-
+            showToast('Confirm parts ordered for ' + (ro.customerName || 'this RO') + '? This clears the Parts Requested indicator.', 'warning', {
+                persistent: true,
+                actionLabel: 'Confirm Ordered',
+                actionCallback: function() { _doMarkPartsOrdered(filteredIndex); }
+            });
+        }
+        async function _doMarkPartsOrdered(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
             try {
                 const userName = currentUser?.name || 'Unknown';
                 const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
@@ -10626,11 +10934,11 @@ Notes: ${notes}` : '',
                 }
 
                 renderBoard();
-                alert('✅ Parts marked as ordered. The indicator has been cleared.');
+                showToast('Parts marked as ordered. The indicator has been cleared.', 'success');
 
             } catch(err) {
                 console.error('Mark parts ordered error:', err);
-                alert('Error: ' + err.message);
+                showToast('Error marking parts ordered: ' + err.message, 'error');
             }
         }
 
@@ -10638,7 +10946,7 @@ Notes: ${notes}` : '',
         // Opens a modal for Manager/Admin to set Parts status: Sourcing / Outstanding / Received / Clear
         function openPartsStatusModal(filteredIndex) {
             if (!isAdmin() && !hasRole('Manager')) {
-                alert('Only Managers and Admins can change parts status.');
+                showToast('Only Managers and Admins can change parts status.', 'warning');
                 return;
             }
             const ro = currentFilteredData[filteredIndex];
@@ -10693,9 +11001,9 @@ Notes: ${notes}` : '',
 
         // Set parts_status on an RO — used by openPartsStatusModal and auto-flip
         async function setPartsStatus(filteredIndex, newStatus) {
-            if (!getSB()) { alert('Please connect to PRVS database first!'); return; }
+            if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
             const ro = currentFilteredData[filteredIndex];
-            if (!ro || !ro._supabaseId) { alert('Error: RO not found.'); return; }
+            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
 
             const oldStatus = ro.partsStatus || (ro.hasOpenPartsRequest ? 'outstanding' : null);
             const userName = currentUser?.name || 'Unknown';
@@ -10746,7 +11054,7 @@ Notes: ${notes}` : '',
 
             } catch(err) {
                 console.error('Set parts status error:', err);
-                alert('Error updating parts status: ' + err.message);
+                showToast('Error updating parts status: ' + err.message, 'error');
             }
         }
 
@@ -10846,7 +11154,7 @@ Notes: ${notes}` : '',
                 return true;
             } catch (err) {
                 console.error('Error appending to Sheets:', err);
-                alert('Error saving to Google Sheets. Check console for details.');
+                showToast('Error saving time log data. Check console for details.', 'error');
                 return false;
             }
         }
@@ -10867,7 +11175,7 @@ Notes: ${notes}` : '',
             const timeStats = calculateTotalHours(roId);
             
             if (logs.length === 0) {
-                alert('No time logs found for this RO');
+                showToast('No time logs found for this RO.', 'info');
                 return;
             }
             
@@ -11246,7 +11554,7 @@ Notes: ${notes}` : '',
             const ro = currentData[roIndex];
             if (!ro) return;
             const phone = normalisePhone(ro.customerPhone);
-            if (!phone) { alert('No valid phone number on this RO'); return; }
+            if (!phone) { showToast('No valid phone number on this RO.', 'warning'); return; }
 
             const input = document.getElementById('kenectSendInput');
             const statusEl = document.getElementById('kenectSendStatus');
@@ -11288,7 +11596,7 @@ Notes: ${notes}` : '',
             const ro = currentData[roIndex];
             if (!ro) return;
             const phone = normalisePhone(ro.customerPhone);
-            if (!phone) { alert('No valid phone number on this RO'); return; }
+            if (!phone) { showToast('No valid phone number on this RO.', 'warning'); return; }
 
             const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
             const btn = document.getElementById('kenectReviewBtn');
@@ -11301,12 +11609,12 @@ Notes: ${notes}` : '',
                     name: ro.customerName || '',
                 });
                 if (result.ok) {
-                    alert(`✅ Review request sent to ${ro.customerName || phone}`);
+                    showToast('Review request sent to ' + (ro.customerName || phone), 'success');
                 } else {
-                    alert(`❌ Review request failed: ${result.data?.error || result.data?.message || JSON.stringify(result.data)}`);
+                    showToast('Review request failed: ' + (result.data?.error || result.data?.message || 'Unknown error'), 'error');
                 }
             } catch (e) {
-                alert(`❌ Error: ${e}`);
+                showToast('Error sending review request: ' + e, 'error');
             } finally {
                 if (btn) btn.disabled = false;
             }
@@ -11331,7 +11639,7 @@ Notes: ${notes}` : '',
 
         function openAdminSettingsModal() {
             if (!isAdmin()) {
-                alert('Admin access required');
+                showToast('Admin access required.', 'warning');
                 return;
             }
             
@@ -11567,7 +11875,7 @@ Notes: ${notes}` : '',
         function openEditRO(index) {
             try {
                 const ro = currentFilteredData[index];
-                if (!ro) { alert('Error: Could not find the repair order.'); return; }
+                if (!ro) { showToast('Error: Could not find the repair order.', 'error'); return; }
 
                 editingROIndex = currentData.findIndex(item =>
                     item.customerName === ro.customerName &&
@@ -11630,7 +11938,7 @@ Notes: ${notes}` : '',
                 document.getElementById('editROOverlay').classList.add('active');
             } catch (error) {
                 console.error('Error in openEditRO:', error);
-                alert('Error opening edit form: ' + error.message);
+                showToast('Error opening edit form: ' + error.message, 'error');
             }
         }
 
@@ -11656,18 +11964,22 @@ Notes: ${notes}` : '',
             // Connect to Google Sheets button in header
             connectSheetsBtn.addEventListener('click', async () => {
                 if (!gapiInited || !gisInited) {
-                    alert('Google APIs are still loading. Please wait a moment and try again.');
+                    showToast('Google APIs are still loading. Please wait and try again.', 'info', { duration: 6000 });
                     return;
                 }
                 if (supabaseSession) {
                     // Already connected via Supabase — offer to disconnect
-                    if (confirm('You are already connected. Do you want to disconnect?')) {
-                        await getSB().auth.signOut(); // ends Supabase session
-                        clearToken();                 // clears Google OAuth token + localStorage
-                        updateAuthStatus(false);
-                        currentData = sampleData;
-                        renderBoard();
-                    }
+                    showToast('You are already connected. Disconnect?', 'warning', {
+                        persistent: true,
+                        actionLabel: 'Disconnect',
+                        actionCallback: async function() {
+                            await getSB().auth.signOut();
+                            clearToken();
+                            updateAuthStatus(false);
+                            currentData = sampleData;
+                            renderBoard();
+                        }
+                    });
                 } else {
                     handleAuthClick();
                 }
@@ -11703,7 +12015,7 @@ Notes: ${notes}` : '',
                 e.preventDefault();
 
                 if (!getSB()) {
-                    alert('Please connect to PRVS database first!');
+                    showToast('Please connect to the PRVS database first.', 'warning');
                     return;
                 }
 
@@ -11712,7 +12024,7 @@ Notes: ${notes}` : '',
                 
                 const repairTypes = formData.getAll('repairType');
                 if (repairTypes.length === 0) {
-                    alert('Please select at least one Repair Type');
+                    showToast('Please select at least one Repair Type.', 'warning');
                     return;
                 }
                 data.repairType = repairTypes.join(', ');
@@ -11726,7 +12038,7 @@ Notes: ${notes}` : '',
                     success = await appendToSheets(data);
                 } catch (err) {
                     console.error('New RO save error:', err);
-                    alert('Error saving Repair Order: ' + (err.message || JSON.stringify(err)));
+                    showToast('Error saving Repair Order: ' + (err.message || 'Unknown error'), 'error');
                     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save RO'; }
                     return;
                 }
@@ -11759,7 +12071,7 @@ Notes: ${notes}` : '',
                     }
                     window._lastEstimateScan = null;
                     closeModal();
-                    alert('Repair Order saved successfully!');
+                    showToast('Repair Order saved successfully!', 'success');
                 }
             });
 
@@ -11775,7 +12087,7 @@ Notes: ${notes}` : '',
                         repairTypes.push(cb.value);
                     });
                     if (repairTypes.length === 0) {
-                        alert('Please select at least one Repair Type');
+                        showToast('Please select at least one Repair Type.', 'warning');
                         return;
                     }
 
@@ -12098,7 +12410,7 @@ function toggleWOTasks(tasksId, chevId) {
             const ro = currentData[roIndex];
             if (!ro?._supabaseId) return;
             const sb = getSB();
-            if (!sb || !supabaseSession) { alert('Session expired — please refresh.'); return; }
+            if (!sb || !supabaseSession) { showToast('Session expired — please refresh the page.', 'warning'); return; }
             // Add the new service label to repair_type on the RO
             const newLabel = SILO_TO_REPAIR_TYPE[siloKey];
             const existing = (ro.repairType || '').split(',').map(t => t.trim()).filter(Boolean);
@@ -12108,7 +12420,7 @@ function toggleWOTasks(tasksId, chevId) {
                 const { error } = await sb.from('repair_orders')
                     .update({ repair_type: newRepairType })
                     .eq('id', ro._supabaseId);
-                if (error) { alert('Failed to update service type: ' + error.message); return; }
+                if (error) { showToast('Failed to update service type: ' + error.message, 'error'); return; }
                 currentData[roIndex].repairType = newRepairType;
             }
             // Open Build WO form for the new silo
@@ -12118,7 +12430,7 @@ function toggleWOTasks(tasksId, chevId) {
         async function openBuildWOForm(roIndex, silo) {
             const ro = currentData[roIndex];
             if (!ro) return;
-            if (!canManageSilo(silo)) { alert('You do not have permission to manage this silo.'); return; }
+            if (!canManageSilo(silo)) { showToast('You do not have permission to manage this silo.', 'warning'); return; }
 
             const siloInfo = SERVICE_SILOS.find(s => s.key === silo);
             const cached = _workOrderCache[ro._supabaseId] || { orders: [], tasks: [] };
@@ -12232,7 +12544,7 @@ function toggleWOTasks(tasksId, chevId) {
                 .select('*')
                 .eq('service_silo', silo)
                 .order('template_name');
-            if (error) { alert('Error loading templates: ' + error.message); return; }
+            if (error) { showToast('Error loading templates: ' + error.message, 'error'); return; }
             const siloInfo = SERVICE_SILOS.find(s => s.key === silo) || { emoji: '\u{1F4CB}', label: silo };
             let listHtml = '';
             if (!templates || templates.length === 0) {
@@ -12297,8 +12609,8 @@ function toggleWOTasks(tasksId, chevId) {
                 .select('*')
                 .eq('template_id', templateId)
                 .order('sort_order');
-            if (error) { alert('Error loading template tasks: ' + error.message); return; }
-            if (!tasks || tasks.length === 0) { alert('This template has no tasks saved.'); return; }
+            if (error) { showToast('Error loading template tasks: ' + error.message, 'error'); return; }
+            if (!tasks || tasks.length === 0) { showToast('This template has no tasks saved yet.', 'info'); return; }
             const container = document.getElementById('woTaskRows');
             if (!container) return;
             const techs = getStaffTechs();
@@ -12330,7 +12642,7 @@ function toggleWOTasks(tasksId, chevId) {
                     sort_order: i
                 });
             });
-            if (tasks.length === 0) { alert('Add at least one task before saving as a template.'); return; }
+            if (tasks.length === 0) { showToast('Add at least one task before saving as a template.', 'warning'); return; }
             window._pendingTemplateTasks = tasks;
             const sb = getSB();
             if (!sb || !supabaseSession) return;
@@ -12365,7 +12677,7 @@ function toggleWOTasks(tasksId, chevId) {
             document.getElementById('woTmplNameInput')?.focus();
           } catch(err) {
             console.error('[Template] saveWOTemplate error:', err);
-            alert('Error preparing template: ' + (err.message || err));
+            showToast('Error preparing template: ' + (err.message || err), 'error');
           }
         }
 
@@ -12401,13 +12713,9 @@ function toggleWOTasks(tasksId, chevId) {
                 if (taskErr) throw taskErr;
                 document.getElementById('woTemplateOverlay')?.remove();
                 window._pendingTemplateTasks = null;
-                const flash = document.createElement('div');
-                flash.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:white;padding:12px 22px;border-radius:10px;font-weight:700;z-index:9999;font-size:0.9rem;box-shadow:0 4px 20px rgba(0,0,0,0.25);';
-                flash.textContent = overwriteId ? '\u2705 Template updated!' : '\u2705 Template saved!';
-                document.body.appendChild(flash);
-                setTimeout(() => flash.remove(), 2500);
+                showToast(overwriteId ? 'Template updated!' : 'Template saved!', 'success', { duration: 2500 });
             } catch(err) {
-                alert('Error saving template: ' + err.message);
+                showToast('Error saving template: ' + err.message, 'error');
             }
         }
 
@@ -12415,7 +12723,7 @@ function toggleWOTasks(tasksId, chevId) {
             const ro = currentData[roIndex];
             if (!ro?._supabaseId) return;
             const sb = getSB();
-            if (!sb || !supabaseSession) { alert('Session expired — please refresh.'); return; }
+            if (!sb || !supabaseSession) { showToast('Session expired — please refresh the page.', 'warning'); return; }
 
             const status     = document.getElementById('woFormStatus').value;
             const dollar     = parseFloat(document.getElementById('woFormDollar').value) || 0;
@@ -12486,7 +12794,7 @@ function toggleWOTasks(tasksId, chevId) {
 
             } catch (err) {
                 console.error('❌ submitWOForm:', err);
-                alert('Failed to save: ' + (err.message || err));
+                showToast('Failed to save work order: ' + (err.message || err), 'error');
                 if (btn) { btn.disabled = false; btn.textContent = '💾 Save Work Order'; }
             }
         }
@@ -12505,7 +12813,7 @@ function toggleWOTasks(tasksId, chevId) {
                 renderWorkOrderView(roIndex, currentData[roIndex], orders, tasks);
             } catch (err) {
                 console.error('❌ updateTaskStatusWO:', err);
-                alert('Failed to update task status.');
+                showToast('Failed to update task status.', 'error');
             }
         }
 
@@ -13371,7 +13679,7 @@ function toggleWOTasks(tasksId, chevId) {
             if (typeof gapiInited !== 'undefined' && typeof gisInited !== 'undefined') {
                 if (!gapiInited || !gisInited) {
                     console.error('Google APIs failed to load within 10 seconds');
-                    alert('Google APIs are taking too long to load. Please:\n1. Clear your browser cache (Cmd+Shift+R)\n2. Refresh the page\n3. If that doesn\'t work, try a different browser or incognito mode');
+                    showToast('Google APIs timed out. Clear browser cache (Cmd+Shift+R), then refresh. Try incognito if this persists.', 'error');
                 }
             }
         }, 10000);
@@ -13489,7 +13797,7 @@ function closeERModal() {
 
 function startERDictation() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        alert('Voice dictation is not supported in this browser. Please use Chrome or Safari.');
+        showToast('Voice dictation is not supported in this browser. Use Chrome or Safari.', 'warning', { duration: 10000 });
         return;
     }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -13522,9 +13830,9 @@ function startERDictation() {
 async function submitEnhancementRequest() {
     const description = document.getElementById('erDescription').value.trim();
     const category = document.getElementById('erCategory').value;
-    if (!description) { alert('Please describe your enhancement request.'); return; }
+    if (!description) { showToast('Please describe your enhancement request.', 'warning'); return; }
     const sb = getSB();
-    if (!sb || !supabaseSession) { alert('You must be signed in to submit a request.'); return; }
+    if (!sb || !supabaseSession) { showToast('You must be signed in to submit a request.', 'warning'); return; }
     const userEmail = supabaseSession.user?.email || 'unknown';
     const userName = currentUser?.name || supabaseSession.user?.user_metadata?.full_name || userEmail;
     const sourcePage = (window.location.pathname.split('/').pop() || 'index.html').replace('.html', '');
@@ -13538,15 +13846,10 @@ async function submitEnhancementRequest() {
         });
         if (error) throw error;
         closeERModal();
-        // Success toast
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;bottom:90px;left:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:#1a1a2e;padding:12px 20px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);animation:slideIn 0.3s ease;';
-        toast.textContent = '🪔 Wish submitted! Roland will review it.';
-        document.body.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+        showToast('Wish submitted! Roland will review it.', 'success');
     } catch (err) {
         console.error('ER submit error:', err);
-        alert('Error submitting request: ' + (err.message || err));
+        showToast('Error submitting enhancement request: ' + (err.message || err), 'error');
     }
 }
 
@@ -13638,7 +13941,7 @@ async function updateERStatus(id, status) {
         if (er) er.status = status;
         renderERAdminList();
         loadERUnreviewedCount();
-    } catch(err) { alert('Error updating status: ' + (err.message || err)); }
+    } catch(err) { showToast('Error updating status: ' + (err.message || err), 'error'); }
 }
 
 async function saveERNote(id) {
@@ -13649,7 +13952,7 @@ async function saveERNote(id) {
         const er = _erData.find(e => e.id === id);
         if (er) er.admin_notes = note;
         renderERAdminList();
-    } catch(err) { alert('Error saving note: ' + (err.message || err)); }
+    } catch(err) { showToast('Error saving note: ' + (err.message || err), 'error'); }
 }
 </script>
 
