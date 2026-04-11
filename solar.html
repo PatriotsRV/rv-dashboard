@@ -4979,45 +4979,6 @@ function App() {
                 label: ov.label !== undefined ? ov.label : defaults.label,
             };
         };
-        const WireConn = ({ wireKey, fromId, fromSide = "right", toId, toSide = "left", color, awg, label, dashed, yOff = 0, colorType }) => {
-            const props = wireKey ? resolveWireProps(wireKey, { awg, colorType, dashed, label }) : { awg, colorType, dashed, label };
-            const effAwg = props.awg !== undefined ? props.awg : awg;
-            const effDashed = props.dashed !== undefined ? props.dashed : dashed;
-            const effLabel = props.label !== undefined ? props.label : label;
-            const effColorType = props.colorType || colorType;
-            const f = getAnchor(fromId, fromSide);
-            const t = getAnchor(toId, toSide);
-            const fx = f.x, fy = f.y + yOff, tx = t.x, ty = t.y + yOff;
-            const mx = (fx + tx) / 2, my = (fy + ty) / 2;
-            const col = effColorType ? (COLOR_TYPES[effColorType] || C_POS) : color || (effAwg === "N/A" ? C_DATA : awgColor(effAwg || "4/0"));
-            const lbl = effAwg === "N/A" ? (effLabel || "data") : (effLabel || (effAwg ? effAwg + " " + ampForAwg(effAwg) + "A" : ""));
-            const isSelected = diagEditWire === wireKey;
-            return (React.createElement("g", { style: { cursor: "pointer" }, onClick: wireKey ? () => setDiagEditWire(isSelected ? null : wireKey) : undefined },
-                React.createElement("polyline", { points: fx + "," + fy + " " + mx + "," + fy + " " + mx + "," + ty + " " + tx + "," + ty, fill: "none", stroke: col, strokeWidth: isSelected ? 4 : (effAwg === "N/A" ? 1.5 : 2.5), strokeDasharray: effDashed || (effAwg === "N/A") ? "5 3" : undefined, opacity: isSelected ? 1 : 0.85 }),
-                isSelected && React.createElement("polyline", { points: fx + "," + fy + " " + mx + "," + fy + " " + mx + "," + ty + " " + tx + "," + ty, fill: "none", stroke: "#fff", strokeWidth: 1, strokeDasharray: "8 4", opacity: 0.4 }),
-                React.createElement("circle", { cx: fx, cy: fy, r: 3, fill: col, opacity: 0.7 }),
-                React.createElement("circle", { cx: tx, cy: ty, r: 3, fill: col, opacity: 0.7 }),
-                React.createElement("rect", { x: mx - 28, y: my - 9, width: 56, height: 12, rx: 3, fill: "var(--panel)", opacity: 0.92 }),
-                React.createElement("text", { x: mx, y: my, textAnchor: "middle", fill: isSelected ? "#fff" : col, fontSize: 7, fontFamily: "'Roboto Mono',monospace", fontWeight: "600" },
-                    lbl,
-                    diagWireOverrides[wireKey] ? " *" : "")));
-        };
-        const DiagNode = ({ id, color, title, rows, children }) => {
-            const pos = getPos(id);
-            const note = diagNotes[id] || "";
-            const isEditing = diagEditNote === id;
-            const w = nodeW[id] || 170;
-            return (React.createElement("div", { style: { position: "absolute", left: pos.x, top: pos.y, width: w, cursor: "grab", userSelect: "none", zIndex: 10 }, onMouseDown: makeDragHandler(id) },
-                React.createElement("div", { style: { background: "var(--panel2)", border: "2px solid " + color, borderRadius: 10, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.45)" } },
-                    React.createElement("div", { style: { background: color, padding: "5px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 } },
-                        React.createElement("span", { style: { fontSize: 10, fontWeight: 800, color: "#fff", letterSpacing: ".06em" } }, title),
-                        React.createElement("button", { onClick: (e) => { e.stopPropagation(); setDiagEditNote(isEditing ? null : id); }, style: { background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 4, color: "#fff", fontSize: 9, padding: "1px 7px", cursor: "pointer", fontWeight: 700, flexShrink: 0 } }, note ? "note" : "+ note")),
-                    React.createElement("div", { style: { padding: "8px 10px" } },
-                        (rows || []).map((r, i) => (React.createElement("div", { key: i, style: { fontSize: r.big ? 12 : 10, color: r.col || "var(--muted)", fontWeight: r.big ? "700" : "400", fontFamily: r.big ? "inherit" : "'Roboto Mono',monospace", marginBottom: r.big ? 3 : 1, lineHeight: 1.35 } }, r.t))),
-                        children,
-                        note && !isEditing && (React.createElement("div", { style: { marginTop: 6, padding: "5px 7px", background: "rgba(33,150,243,0.1)", borderRadius: 5, border: "1px solid rgba(33,150,243,0.25)", fontSize: 10, color: "var(--text2)", lineHeight: 1.4, cursor: "text", whiteSpace: "pre-wrap" }, onClick: () => setDiagEditNote(id) }, note)),
-                        isEditing && (React.createElement("textarea", { autoFocus: true, value: note, placeholder: "Add install note...", onChange: e => setDiagNotes(p => ({ ...p, [id]: e.target.value })), onBlur: () => setDiagEditNote(null), onMouseDown: e => e.stopPropagation(), style: { marginTop: 6, width: "100%", minHeight: 52, background: "var(--bg2)", border: "1px solid var(--accent)", borderRadius: 5, color: "var(--text)", fontSize: 10, padding: "5px 7px", resize: "vertical", outline: "none", fontFamily: "'Source Sans 3',sans-serif" } }))))));
-        };
         const busModules = [
             hasLynxPowerIn && { id: "pi", label: "Lynx Power In" },
             hasLynxShunt && { id: "sh", label: "Lynx Shunt" },
