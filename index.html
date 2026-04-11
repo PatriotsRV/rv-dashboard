@@ -22,6 +22,7 @@
     v1.293: QR Print Sheet Phase 2 (GH#15) — dual-sticker print window: 3"×3" windshield sticker (customer name, RV, RO#, parking spot chip) + 1"×1" key tag; both generated fresh via QRCode.js in print window; proper @media print CSS with dashed cut borders and physical inch sizing
     v1.292: Remap parking spot positions to hand-drawn lot designations — Rear Lot R1–R20, Interior Bays B1–B14, Wash Bay 17/18 + W1–W4, Front Lot F1–F12; replaces old Bay#/Breeze Way naming
     v1.291: Parking Spot field (GH#15 Phase 1) — 📍 lot location on every RO card; dropdown of all named lot positions; shown in New RO + Edit RO forms; stored as parking_spot column in repair_orders; SQL migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS parking_spot TEXT
+    v1.290: Kenect messaging integration (GH#10) — 💬 Messages button on each RO card; conversation modal with chat-style thread (inbound left, outbound right); send message from dashboard; review request button; Admin Settings: Kenect Location ID config + Test Connection; kenect-proxy Supabase Edge Function (Bearer auth, actions: test_credentials, get_locations, get_conversation, send_message, send_review_request)
     v1.289: Move Supplier Contact section to top of Add/Edit Part form
     v1.288: Add Sourcing to individual part row status dropdown (neon orange, matches RO-level chip color)
     v1.287: Add Wholesale and Retail Price columns to Manage Parts table
@@ -315,6 +316,59 @@
             transform: translateY(-1px);
         }
 
+        .upload-area {
+            flex: 1;
+            min-width: 300px;
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            background: var(--bg-surface);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: var(--accent-info);
+            background: var(--bg-elevated);
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(10, 132, 255, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .upload-area:hover::before {
+            left: 100%;
+        }
+
+        .upload-content {
+            text-align: center;
+        }
+
+        .upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 5px;
+        }
+
+        .upload-subtext {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
         input[type="file"] {
             display: none;
         }
@@ -448,43 +502,66 @@
         }
 
         .ro-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-lg);
-            border-color: var(--accent-info);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            border-color: rgba(10, 132, 255, 0.5);
         }
 
         .ro-card.ro-card-status-waiting-for-qa-qc {
-            border-color: #FF1493;
-            box-shadow: 0 0 12px rgba(255, 20, 147, 0.3);
+            border-color: rgba(255, 20, 147, 0.5);
+            box-shadow: 0 0 8px rgba(255, 20, 147, 0.15);
         }
 
         .ro-card.ro-card-status-waiting-for-qa-qc:hover {
-            border-color: #FF1493;
-            box-shadow: 0 0 24px rgba(255, 20, 147, 0.5);
+            border-color: rgba(255, 20, 147, 0.7);
+            box-shadow: 0 0 12px rgba(255, 20, 147, 0.25);
         }
 
-        /* ── Parts Request Pulse ───────────────────────────────────────── */
+        /* ── Parts Request Indicator ───────────────────────────────────── */
         @keyframes parts-request-border-pulse {
             0%, 100% {
-                border-color: rgba(255, 20, 147, 0.4);
-                box-shadow: 0 0 8px rgba(255, 20, 147, 0.2);
+                border-color: rgba(255, 20, 147, 0.35);
+                box-shadow: none;
             }
             50% {
-                border-color: rgba(255, 20, 147, 1);
-                box-shadow: 0 0 22px rgba(255, 20, 147, 0.65), 0 0 6px rgba(255, 20, 147, 0.4) inset;
+                border-color: rgba(255, 20, 147, 0.75);
+                box-shadow: 0 0 6px rgba(255, 20, 147, 0.15);
             }
         }
         .ro-card.has-parts-request {
-            animation: parts-request-border-pulse 2.4s ease-in-out infinite;
+            animation: parts-request-border-pulse 3s ease-in-out infinite;
             border-width: 2px;
         }
         .ro-card.has-parts-request:hover {
-            animation: parts-request-border-pulse 1.4s ease-in-out infinite;
+            animation: parts-request-border-pulse 2s ease-in-out infinite;
         }
 
         @keyframes chip-pulse {
-            0%, 100% { opacity: 0.85; box-shadow: 0 0 5px rgba(255, 20, 147, 0.4); }
-            50%       { opacity: 1;    box-shadow: 0 0 14px rgba(255, 20, 147, 0.85); }
+            0%, 100% { opacity: 0.9; }
+            50%       { opacity: 1; }
+        }
+        .parts-request-chip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            border: 1.5px solid #FF1493;
+            background: rgba(255, 20, 147, 0.10);
+            color: #FF1493;
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            cursor: pointer;
+            margin-bottom: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            transition: background 0.2s;
+        }
+        .parts-request-chip:hover {
+            background: rgba(255, 20, 147, 0.20);
         }
 
         /* ── Parts Status Chips (GH#14) ─────────────────────────────── */
@@ -509,32 +586,28 @@
         }
         .parts-status-chip.sourcing {
             border-color: #ff6a00;
-            background: rgba(255, 106, 0, 0.13);
+            background: rgba(255, 106, 0, 0.10);
             color: #ff6a00;
-            animation: chip-pulse 2.0s ease-in-out infinite;
-            text-shadow: 0 0 8px rgba(255,106,0,0.5);
         }
-        .parts-status-chip.sourcing:hover { background: rgba(255, 106, 0, 0.25); }
+        .parts-status-chip.sourcing:hover { background: rgba(255, 106, 0, 0.20); }
         .parts-status-chip.outstanding {
             border-color: #f59e0b;
-            background: rgba(245, 158, 11, 0.13);
+            background: rgba(245, 158, 11, 0.10);
             color: #f59e0b;
-            animation: chip-pulse 2.4s ease-in-out infinite;
         }
-        .parts-status-chip.outstanding:hover { background: rgba(245, 158, 11, 0.25); }
+        .parts-status-chip.outstanding:hover { background: rgba(245, 158, 11, 0.20); }
         .parts-status-chip.received {
             border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.13);
+            background: rgba(34, 197, 94, 0.10);
             color: #22c55e;
         }
-        .parts-status-chip.received:hover { background: rgba(34, 197, 94, 0.25); }
+        .parts-status-chip.received:hover { background: rgba(34, 197, 94, 0.20); }
         .parts-status-chip.estimate {
             border-color: #3b82f6;
-            background: rgba(59, 130, 246, 0.13);
+            background: rgba(59, 130, 246, 0.10);
             color: #3b82f6;
-            animation: chip-pulse 2.6s ease-in-out infinite;
         }
-        .parts-status-chip.estimate:hover { background: rgba(59, 130, 246, 0.25); }
+        .parts-status-chip.estimate:hover { background: rgba(59, 130, 246, 0.20); }
 
         .parts-status-modal-btn {
             flex: 1;
@@ -614,6 +687,19 @@
             border-color: #34c759;
         }
 
+        .priority-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 8px 16px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-family: 'JetBrains Mono', monospace;
+            border-bottom-left-radius: 12px;
+        }
+
         .urgency-selector-badge {
             position: absolute;
             top: 0;
@@ -690,19 +776,19 @@
         .photo-upload-btn {
             width: 100%;
             padding: 10px;
-            background: var(--accent-info);
-            border: 1px solid var(--accent-info);
+            background: var(--bg-elevated);
+            border: 1px solid rgba(10, 132, 255, 0.35);
             border-radius: 8px;
-            color: white;
+            color: var(--accent-info);
             font-family: 'Barlow Condensed', sans-serif;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             transition: all 0.2s ease;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -728,19 +814,17 @@
         .edit-ro-btn:hover {
             background: var(--accent-medium);
             color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 204, 0, 0.3);
         }
         .schedule-ro-btn {
             width: 100%;
             padding: 10px;
-            background: linear-gradient(135deg,rgba(57,255,110,0.15),rgba(57,255,110,0.08));
+            background: var(--bg-elevated);
             border: 1px solid rgba(57,255,110,0.4);
             border-radius: 8px;
             color: #39ff6e;
             font-family: 'Barlow Condensed', sans-serif;
             font-size: 0.95rem;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
             text-transform: uppercase;
@@ -748,11 +832,8 @@
             margin-top: 6px;
         }
         .schedule-ro-btn:hover {
-            background: rgba(57,255,110,0.3);
+            background: rgba(57,255,110,0.15);
             border-color: #39ff6e;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(57,255,110,0.3);
         }
 
         .archive-ro-btn {
@@ -780,17 +861,13 @@
         .archive-ro-btn:hover {
             background: #FFD700;
             color: #0d0f12;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
         }
 
 
 
         .photo-upload-btn:hover {
-            background: var(--accent-low);
-            border-color: var(--accent-low);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
+            background: rgba(10, 132, 255, 0.12);
+            border-color: var(--accent-info);
         }
 
         .photo-upload-btn:active {
@@ -804,31 +881,30 @@
         
         .checkin-btn {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             background: #39FF14;
-            border: 2px solid #39FF14;
+            border: 1px solid #39FF14;
             border-radius: 8px;
             color: #000;
             font-family: 'Barlow Condensed', sans-serif;
-            font-size: 1.1rem;
+            font-size: 0.95rem;
             font-weight: 700;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
             transition: all 0.2s ease;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5);
         }
-        
+
         .checkin-btn:hover {
             background: #2EE010;
             border-color: #2EE010;
-            transform: translateY(-2px);
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.8);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(57, 255, 20, 0.3);
         }
         
         .checkin-btn:active {
@@ -1117,13 +1193,7 @@
 
         .progress-fill::after {
             content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-            animation: shimmer 2s infinite;
+            display: none; /* shimmer removed — clean gradient is sufficient */
         }
 
         @keyframes shimmer {
@@ -1193,10 +1263,11 @@
         
         .time-logs-section {
             margin-bottom: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 14px;
-            color: white;
+            color: var(--text-primary);
         }
         
         .time-logs-header {
@@ -1225,19 +1296,19 @@
         .view-time-logs-btn {
             width: 100%;
             padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(102, 126, 234, 0.15);
+            color: #a5b4fc;
+            border: 1px solid rgba(102, 126, 234, 0.3);
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 600;
             transition: all 0.2s ease;
         }
-        
+
         .view-time-logs-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-1px);
+            background: rgba(102, 126, 234, 0.25);
+            border-color: rgba(102, 126, 234, 0.5);
         }
 
         .status-badge {
@@ -1758,6 +1829,172 @@
             grid-column: 1 / -1;
         }
         
+        .time-logs-summary {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 24px;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+        }
+        
+        .summary-stat {
+            flex: 1;
+            text-align: center;
+        }
+        
+        .summary-label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.9;
+            margin-bottom: 4px;
+        }
+        
+        .summary-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .time-logs-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        
+        .time-log-entry {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px;
+        }
+        
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .log-tech {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .log-duration {
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: #667eea;
+        }
+        
+        .log-details {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .log-time {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .log-active {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+        
+        .modal-close-btn {
+            width: 100%;
+            padding: 12px 24px;
+            background: var(--border-color);
+            color: var(--text-primary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .modal-close-btn:hover {
+            background: var(--text-secondary);
+            transform: translateY(-1px);
+        }
+        
+        .custom-view-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 16px;
+            background: var(--bg-elevated);
+            border-radius: 8px;
+        }
+        
+        .custom-view-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .custom-view-checkbox:hover {
+            background: var(--bg-elevated);
+            border-color: #667eea;
+        }
+        
+        .custom-view-checkbox input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .custom-view-checkbox span {
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+        
+        .custom-view-actions {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .custom-view-btn {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .custom-view-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+            transform: translateY(-1px);
+        }
+
         .form-label {
             font-size: 0.85rem;
             color: var(--text-secondary);
@@ -2086,6 +2323,35 @@
         }
         .extra-field-add-btn:hover { background: rgba(110,231,160,0.3); }
         .extra-field-add-btn.added { background: rgba(110,231,160,0.08); color: var(--text-muted); cursor: default; border-color: transparent; }
+        .scan-api-key-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(139,92,246,0.08);
+            border: 1px solid rgba(139,92,246,0.25);
+            border-radius: 8px;
+            margin-bottom: 14px;
+        }
+        .scan-api-key-bar label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #a78bfa;
+            white-space: nowrap;
+        }
+        .scan-api-key-bar input {
+            flex: 1;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            padding: 6px 10px;
+            outline: none;
+        }
 
         /* ── Insurance Claim Mode ── */
         .ro-type-toggle {
@@ -2358,8 +2624,6 @@
         .parts-btn:hover {
             background: #ff9500;
             color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255,149,0,0.3);
         }
 
         /* ── Collapsible Filter Sections ── */
@@ -2452,16 +2716,59 @@
         .work-order-btn {
             width: 100%;
             padding: 10px 16px;
-            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8e 100%);
-            color: white;
-            border: none;
+            background: var(--bg-elevated);
+            color: var(--accent-info);
+            border: 1px solid rgba(10, 132, 255, 0.35);
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.9rem;
             font-weight: 600;
             margin-top: 6px;
+            transition: all 0.2s;
         }
-        .work-order-btn:hover { opacity: 0.9; }
+        .work-order-btn:hover { background: rgba(10, 132, 255, 0.12); border-color: var(--accent-info); }
+
+        /* ── Card Utility Classes (v1.400 cleanup) ─────────────────────── */
+        .card-ro-id {
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-info);
+            letter-spacing: 0.05em;
+            margin-top: -4px;
+            margin-bottom: 4px;
+        }
+        .card-parking-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(254, 249, 195, 0.12);
+            border: 1px solid rgba(253, 224, 71, 0.35);
+            border-radius: 6px;
+            padding: 3px 10px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #fde047;
+            margin-bottom: 5px;
+            cursor: pointer;
+        }
+        .card-parking-badge:hover { background: rgba(254, 249, 195, 0.18); }
+        .card-secondary-btn {
+            width: 100%;
+            padding: 10px 16px;
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-top: 6px;
+            transition: all 0.2s;
+        }
+        .card-secondary-btn:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.2); }
+        .card-actions-primary { margin-top: 16px; }
+        .card-actions-secondary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); }
 
         .wo-silo-card {
             background: white;
@@ -3998,6 +4305,25 @@
         }
 
         async function updatePhotoInSheet(photoUrl, originalIndex, libraryJson) { return updatePhotoInSupabase(photoUrl, originalIndex, libraryJson); }
+        async function updatePhotoInSheet_SHEETS(photoUrl, originalIndex, libraryJson) {
+            try {
+                const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
+                await gapi.client.sheets.spreadsheets.values.batchUpdate({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    resource: {
+                        valueInputOption: 'RAW',
+                        data: [
+                            { range: `Sheet1!F${rowNumber}`, values: [[photoUrl]] },
+                            { range: `Sheet1!T${rowNumber}`, values: [[libraryJson || '']] }
+                        ]
+                    }
+                });
+                log('✅ Photo and library updated in sheet');
+            } catch (error) {
+                console.error('Error updating sheet:', error);
+                throw error;
+            }
+        }
 
         // Archive an RO to the Cashiered sheet tab and remove from Sheet1
         async function archiveRO(filteredIndex) {
@@ -4046,8 +4372,43 @@
         let customInsuranceFields = [];
 
         async function loadCustomFieldConfig() { return loadCustomFieldConfigFromSupabase(); }
+        async function loadCustomFieldConfig_SHEETS() {
+            if (!accessToken) return;
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: GOOGLE_CONFIG.CONFIG_RANGE,
+                });
+                const val = response.result.values?.[0]?.[0];
+                if (val) {
+                    const config = JSON.parse(val);
+                    customInsuranceFields = config.insuranceCustomFields || [];
+                    log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields');
+                }
+            } catch(e) {
+                log('No Config tab found or empty — custom fields starting fresh');
+                customInsuranceFields = [];
+            }
+            renderCustomFields('new');
+            renderCustomFields('edit');
+        }
 
         async function saveCustomFieldConfig() { return saveCustomFieldConfigToSupabase(); }
+        async function saveCustomFieldConfig_SHEETS() {
+            if (!accessToken) return;
+            try {
+                const config = { insuranceCustomFields: customInsuranceFields };
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: GOOGLE_CONFIG.CONFIG_RANGE,
+                    valueInputOption: 'RAW',
+                    resource: { values: [[JSON.stringify(config)]] }
+                });
+                log('✅ Custom field config saved');
+            } catch(e) {
+                warn('Could not save custom field config:', e);
+            }
+        }
 
         function renderCustomFields(mode, savedValues) {
             const grid = document.getElementById('customFieldsGrid_' + mode);
@@ -5639,6 +6000,63 @@ Notes: ${notes}` : '',
         }
 
         // Load all parts from the Parts tab
+        async function loadPartsFromSheet() { return loadPartsFromSupabase(); }
+        async function loadPartsFromSheet_SHEETS() {
+            if (!accessToken) return;
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: GOOGLE_CONFIG.PARTS_RANGE,
+                });
+                const rows = response.result.values || [];
+                partsData = {};
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    const roId = row[0] || '';
+                    if (!roId) continue;
+                    if (!partsData[roId]) partsData[roId] = [];
+                    partsData[roId].push({
+                        rowIndex:        i + 1,
+                        roId:            row[0]  || '',
+                        partName:        row[1]  || '',
+                        partNumber:      row[2]  || '',
+                        condition:       row[3]  || '',
+                        qty:             row[4]  || '1',
+                        status:          row[5]  || 'Ordered',
+                        notes:           row[6]  || '',
+                        // Order Info
+                        partsSource:     row[7]  || '',
+                        poNumber:        row[8]  || '',
+                        orderedBy:       row[9]  || '',
+                        dateOrdered:     row[10] || '',
+                        eta:             row[11] || '',
+                        trackingNumber:  row[12] || '',
+                        partUrl:         row[13] || '',
+                        returnDeadline:  row[14] || '',
+                        // Pricing
+                        wholesalePrice:  row[15] || '',
+                        retailPrice:     row[16] || '',
+                        coreCharge:      row[17] || '',
+                        laborHours:      row[18] || '',
+                        // Supplier Contact
+                        supplier:        row[19] || '',
+                        salesAssocName:  row[20] || '',
+                        salesAssocPhone: row[21] || '',
+                        salesAssocEmail: row[22] || '',
+                        // Receipt
+                        dateReceived:    row[23] || '',
+                        receivedBy:      row[24] || '',
+                        warrantyPeriod:  row[25] || '',
+                    });
+                }
+                log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
+                // Update partsJson on currentData for badge rendering
+                updatePartsJsonOnData();
+                renderBoard();
+            } catch(e) {
+                warn('Could not load Parts tab:', e);
+            }
+        }
 
         // Update partsJson field on each RO in currentData for fast badge rendering
         function updatePartsJsonOnData() {
@@ -5652,15 +6070,83 @@ Notes: ${notes}` : '',
 
         // Write partsJson to Sheet1 Column X for an RO
         async function updatePartsJsonInSheet(originalIndex) { return updatePartsJsonInSupabase(originalIndex); }
+        async function updatePartsJsonInSheet_SHEETS(originalIndex) {
+            const ro = currentData[originalIndex];
+            const roId = ro.roId;
+            if (!roId) return;
+            const parts = partsData[roId] || [];
+            const json = parts.length > 0 ? JSON.stringify(parts) : '';
+            ro.partsJson = json;
+            try {
+                const rowNumber = await getSheetRowNumber(originalIndex);
+                if (!rowNumber) return;
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: `Sheet1!X${rowNumber}`,
+                    valueInputOption: 'RAW',
+                    resource: { values: [[json]] }
+                });
+                log('✅ PartsJSON updated in Sheet1 col X');
+            } catch(e) {
+                warn('Could not update PartsJSON:', e);
+            }
+        }
 
         // Append a new part row to the Parts tab
         async function appendPartToSheet(part, roSupabaseId) { return appendPartToSupabase(part, roSupabaseId); }
+        async function appendPartToSheet_SHEETS(part) {
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                range: GOOGLE_CONFIG.PARTS_RANGE,
+                valueInputOption: 'RAW',
+                resource: { values: [[
+                    part.roId, part.partName, part.partNumber, part.condition, part.qty, part.status, part.notes,
+                    part.partsSource, part.poNumber, part.orderedBy, part.dateOrdered, part.eta, part.trackingNumber, part.partUrl, part.returnDeadline,
+                    part.wholesalePrice, part.retailPrice, part.coreCharge, part.laborHours,
+                    part.supplier, part.salesAssocName, part.salesAssocPhone, part.salesAssocEmail,
+                    part.dateReceived, part.receivedBy, part.warrantyPeriod
+                ]] }
+            });
+        }
 
         // Update an existing part row in the Parts tab
         async function updatePartInSheet(part) { return updatePartInSupabase(part); }
+        async function updatePartInSheet_SHEETS(part) {
+            if (!part.rowIndex) return;
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                range: `Parts!A${part.rowIndex}:AA${part.rowIndex}`,
+                valueInputOption: 'RAW',
+                resource: { values: [[
+                    part.roId, part.partName, part.partNumber, part.condition, part.qty, part.status, part.notes,
+                    part.partsSource, part.poNumber, part.orderedBy, part.dateOrdered, part.eta, part.trackingNumber, part.partUrl, part.returnDeadline,
+                    part.wholesalePrice, part.retailPrice, part.coreCharge, part.laborHours,
+                    part.supplier, part.salesAssocName, part.salesAssocPhone, part.salesAssocEmail,
+                    part.dateReceived, part.receivedBy, part.warrantyPeriod
+                ]] }
+            });
+        }
 
         // Delete a part row from the Parts tab
         async function deletePartFromSheet(rowIndex, supabaseId) { if (supabaseId) return deletePartFromSupabase(supabaseId); }
+        async function deletePartFromSheet_SHEETS(rowIndex) {
+            const spreadsheetMeta = await gapi.client.sheets.spreadsheets.get({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+            });
+            const partsSheet = spreadsheetMeta.result.sheets.find(s => s.properties.title === 'Parts');
+            if (!partsSheet) throw new Error('Parts tab not found');
+            await gapi.client.sheets.spreadsheets.batchUpdate({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                resource: { requests: [{ deleteDimension: {
+                    range: {
+                        sheetId: partsSheet.properties.sheetId,
+                        dimension: 'ROWS',
+                        startIndex: rowIndex - 1,
+                        endIndex: rowIndex
+                    }
+                }}]}
+            });
+        }
 
         // Open the Parts modal for an RO
         function openPartsModal(filteredIndex) {
@@ -6253,7 +6739,6 @@ Notes: ${notes}` : '',
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
-            localStorage.removeItem('prvs_kenect_location_id'); // Kenect removed — Twilio replacing
 
             loadSampleData();
             loadViewPreferences(); // Load tile view settings
@@ -6389,6 +6874,7 @@ Notes: ${notes}` : '',
                     case 'request-parts':     openPartsRequestModal(idx);         break;
                     case 'work-orders':       openWorkOrderModal(idx);            break;
                     case 'add-to-list':       addToWorkList(btn.dataset.sid);     break;
+                    case 'messages':          openKenectModal(idx);               break;
                     case 'set-parts-status':  openPartsStatusModal(idx);          break;
                     case 'schedule':          openScheduleModal(idx);             break;
                     case 'archive':           archiveRO(idx);                     break;
@@ -6410,6 +6896,31 @@ Notes: ${notes}` : '',
                     updateROProgress(idx, parseInt(el.value));
                 }
             });
+        }
+
+        function parseCSV(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                const lines = text.split('\n').filter(line => line.trim());
+                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                
+                const data = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        const key = toCamelCase(header);
+                        row[key] = values[index] || '';
+                    });
+                    
+                    data.push(row);
+                }
+                
+                currentData = data;
+                renderBoard();
+            };
+            reader.readAsText(file);
         }
 
         function toCamelCase(str) {
@@ -7057,8 +7568,8 @@ Notes: ${notes}` : '',
                         
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${escapeHtml(ro.customerName) || t('Unknown Customer')}</div>
-                        ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${escapeHtml(ro.roId)}</div>` : ''}
-                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
+                        ${ro.roId ? `<div class="card-ro-id">${escapeHtml(ro.roId)}</div>` : ''}
+                        ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
@@ -7239,7 +7750,7 @@ Notes: ${notes}` : '',
                                         ${t('View Time Logs')}
                                     </button>
                                     ${isAdmin() ? `
-                                    <button class="view-time-logs-btn" data-action="refresh-logs" data-idx="${index}" title="Admin: Force refresh time logs from Google Sheets" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-top: 8px;">
+                                    <button class="view-time-logs-btn" data-action="refresh-logs" data-idx="${index}" title="Admin: Force refresh time logs from Google Sheets" style="margin-top: 8px;">
                                         ${t('🔄 Refresh Time Logs')}
                                     </button>
                                     ` : ''}
@@ -7249,6 +7760,7 @@ Notes: ${notes}` : '',
                             return '';
                         })() : ''}
                         
+                        <div class="card-actions-primary">
                         ${shouldShow('editButton') ? `
                         <button class="edit-ro-btn" data-action="edit-ro" data-idx="${index}">
                             ${t('✏️ Edit RO')}
@@ -7263,7 +7775,14 @@ Notes: ${notes}` : '',
                         <button class="work-order-btn" data-action="work-orders" data-idx="${index}">
                             🔧 ${t('Work Orders')}
                         </button>
-                        ${canSeeWorkList() ? `<button data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
+                        </div>
+                        <div class="card-actions-secondary">
+                        ${canSeeWorkList() ? `<button class="card-secondary-btn" data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
+                        ${ro.customerPhone ? `
+                        <button class="card-secondary-btn kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer">
+                            💬 ${t('Messages')}
+                        </button>
+                        ` : ''}
                         ${(isAdmin() || hasRole('Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
                         <button class="mark-ordered-btn" data-action="set-parts-status" data-idx="${index}" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}
@@ -7273,12 +7792,12 @@ Notes: ${notes}` : '',
                         <button class="schedule-ro-btn" data-action="schedule" data-idx="${index}">
                             📅 ${ro.status === 'Scheduled' ? t('Reschedule') : t('Schedule')}
                         </button>` : ''}
-
                         ${isAdmin() && (ro.status === 'Delivered/Cashed Out') ? `
                         <button class="archive-ro-btn visible" data-action="archive" data-idx="${index}">
                             ${t('📦 Archive to Cashiered')}
                         </button>
                         ` : ''}
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -7381,6 +7900,31 @@ Notes: ${notes}` : '',
             } catch (error) {
                 console.error('Error generating QR code:', error);
             }
+        }
+
+        // Fallback QR placeholder (in case library fails)
+        function drawQRPlaceholder(ctx, width, height, text) {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = 'black';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(5, 5, width - 10, height - 10);
+            
+            // Draw simple pattern
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 5; j++) {
+                    if ((i + j) % 2 === 0) {
+                        ctx.fillRect(10 + i * 18, 10 + j * 18, 16, 16);
+                    }
+                }
+            }
+            
+            // Add text indicator
+            ctx.fillStyle = 'black';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('QR', width / 2, height - 10);
         }
 
         // Open QR modal for printing
@@ -8095,6 +8639,23 @@ Notes: ${notes}` : '',
             }
         }
 
+        // Ensure user exists in Supabase users table after login
+        async function upsertUser(session) {
+            if (!session) return;
+            try {
+                const { user } = session;
+                await getSB().from('users').upsert({
+                    id: user.id,
+                    email: user.email,
+                    name: user.user_metadata?.full_name || user.email,
+                    avatar_url: user.user_metadata?.avatar_url || null,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch(e) {
+                warn('Could not upsert user:', e);
+            }
+        }
+        
         function updateViewModeDropdown() {
             const selector = document.getElementById('viewModeSelector');
             const adminBtn = document.getElementById('adminSettingsBtn');
@@ -8881,6 +9442,10 @@ Notes: ${notes}` : '',
                 updatePartsJsonOnData();
                 renderBoard();
 
+                // Refresh Merge Dupes button — isAdmin() may return false here if currentUser
+                // was set to 'unknown@user.com' before the Supabase session email arrived,
+                // so also check supabaseSession.user.email directly as a reliable fallback.
+                const _sessionEmail = (supabaseSession?.user?.email || '').toLowerCase();
                 const _isAdminNow = isAdmin();
                 if (_isAdminNow) {
                     const dupeGroups = findDuplicateGroups();
@@ -9227,6 +9792,20 @@ Notes: ${notes}` : '',
             }
         }
 
+        // Insurance scan log to Supabase
+        async function logInsuranceScanToSupabase(roSupabaseId, rawData) {
+            try {
+                await getSB().from('insurance_scans').insert({
+                    ro_id:      roSupabaseId,
+                    user_id:    supabaseSession?.user?.id || null,
+                    raw_data:   typeof rawData === 'string' ? JSON.parse(rawData) : rawData,
+                    scanned_at: new Date().toISOString(),
+                });
+            } catch(e) {
+                warn('Could not log insurance scan:', e);
+            }
+        }
+
         async function loadDataFromSheets() {
             log('=== loadDataFromSheets called ===');
             try {
@@ -9367,6 +9946,15 @@ Notes: ${notes}` : '',
             }, 30000); // 30 seconds
             
             log('✅ Time logs auto-refresh started (30s interval)');
+        }
+        
+        // Stop auto-refresh (useful for cleanup)
+        function stopTimeLogsAutoRefresh() {
+            if (timeLogsRefreshInterval) {
+                clearInterval(timeLogsRefreshInterval);
+                timeLogsRefreshInterval = null;
+                log('⏹️ Time logs auto-refresh stopped');
+            }
         }
         
         // Manual refresh function for admin button
@@ -9531,6 +10119,27 @@ Notes: ${notes}` : '',
         // Drive thumbnail URLs (sz=w200, sz=w400) load fine directly as <img src> tags.
         // fetch() is blocked by CORS on the thumbnail endpoint, so we just return the URL as-is.
         // Only use the Drive API (alt=media) for non-thumbnail full file downloads if ever needed.
+
+        // Convert Google Drive thumbnail URL to direct open URL (works without auth)
+        function driveImgUrl(url) {
+            if (!url) return url;
+            // Already a thumbnail URL: extract file ID and use uc?export=view format
+            const match = url.match(/[?&]id=([^&]+)/);
+            if (match) {
+                return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+            }
+            // Handle /file/d/FILE_ID/view format
+            const match2 = url.match(/\/file\/d\/([^/]+)/);
+            if (match2) {
+                return `https://drive.google.com/uc?export=view&id=${match2[1]}`;
+            }
+            return url;
+        }
+
+        function loadDriveImage(url) {
+            // Thumbnails load natively in <img> tags — no fetch needed
+            return Promise.resolve(url);
+        }
 
         // Apply Drive thumbnail URLs directly to img tags — no fetch, no CORS issues
         function loadAllDriveImages() {
@@ -9753,6 +10362,45 @@ Notes: ${notes}` : '',
             }
         }
 
+        // Backfill roId for any RO that doesn't have one, writing to column U in the sheet
+        async function backfillROIds() { log("backfillROIds skipped — using Supabase"); return; // Sheets-only function
+
+            const response = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                range: 'Sheet1!A:X',
+            });
+            const rows = response.result.values || [];
+            const updates = [];
+
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const customerName = row[0] || '';
+                const rv = row[4] || '';
+                const dateReceived = row[9] || '';
+                const existingId = row[20] || ''; // Column U (index 20)
+
+                if (!existingId && customerName && dateReceived) {
+                    const roId = generateROId(customerName, rv, dateReceived);
+                    updates.push({ range: `Sheet1!U${i + 1}`, values: [[roId]] });
+                    // Also update in-memory
+                    const dataIdx = currentData.findIndex(d =>
+                        d.customerName === customerName && d.dateReceived === dateReceived
+                    );
+                    if (dataIdx !== -1) currentData[dataIdx].roId = roId;
+                }
+            }
+
+            if (updates.length > 0) {
+                await gapi.client.sheets.spreadsheets.values.batchUpdate({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    resource: { valueInputOption: 'RAW', data: updates }
+                });
+                log(`✅ Backfilled ${updates.length} RO IDs`);
+            } else {
+                log('✅ All ROs already have IDs');
+            }
+        }
+
         // Find the actual 1-indexed sheet row — uses roId in column U if available,
         // falls back to customerName + dateReceived match
         async function getSheetRowNumber(dataIndex) {
@@ -9781,6 +10429,81 @@ Notes: ${notes}` : '',
         }
 
         async function updateROInSheets(roIndex, formData) { return updateROInSupabase(roIndex, formData); }
+        async function updateROInSheets_SHEETS(roIndex, formData) {
+            try {
+                const rowNumber = await getSheetRowNumber(roIndex);
+                if (!rowNumber) {
+                    showToast('Error: Could not locate this RO. Please refresh and try again.', 'error');
+                    return false;
+                }
+                log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
+                
+                const existing = currentData[roIndex];
+                const values = [[
+                    formData.customerName,                    // A - editable
+                    formData.customerPhone || '',             // B - editable
+                    formData.customerEmail || '',             // C - editable
+                    formData.customerAddress || '',           // D - editable
+                    formData.rv,                              // E - editable
+                    existing.rvPhotoUrl || '',                // F - preserved
+                    formData.repairType,                      // G - editable
+                    existing.repairDescription || '',         // H - preserved
+                    formData.technicianAssigned || '',        // I - editable
+                    existing.dateReceived,                    // J - preserved
+                    existing.percentComplete || 0,            // K - preserved
+                    formData.dollarValue || 0,                // L - editable
+                    existing.status || '',                    // M - preserved
+                    existing.urgency || '',                   // N - preserved
+                    existing.customerType || '',              // O - preserved
+                    formData.promisedDate || existing.promisedDate || '', // P - editable via Edit RO
+                    existing.roStatusNotes || '',             // Q - preserved
+                    existing.customerCommunicationNotes || '',// R - preserved
+                    formData.dateArrived || existing.dateArrived || '', // S - editable via Edit RO
+                    existing.photoLibrary || '',              // T - preserved
+                    existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived), // U - preserved
+                    formData.vin || existing.vin || '',  // V - editable
+                    existing.insuranceData || '',            // W - preserved
+                    existing.partsJson || ''                  // X - preserved
+                ]];
+
+                const range = `Sheet1!A${rowNumber}:X${rowNumber}`;
+                
+                const response = await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: range,
+                    valueInputOption: 'RAW',
+                    resource: { values }
+                });
+
+                log('RO updated in sheet:', response);
+                
+                // Update local data — only overwrite editable fields, preserve the rest
+                const userName = currentUser ? currentUser.name : 'Unknown User';
+                currentData[roIndex] = {
+                    ...existing,                                        // preserve all fields
+                    customerName: formData.customerName,                // editable
+                    customerPhone: formData.customerPhone || '',        // editable
+                    customerEmail: formData.customerEmail || '',        // editable
+                    customerAddress: formData.customerAddress || '',    // editable
+                    rv: formData.rv,                                    // editable
+                    repairType: formData.repairType,                    // editable
+                    technicianAssigned: formData.technicianAssigned || '', // editable
+                    dollarValue: parseFloat(formData.dollarValue) || 0, // editable
+                    promisedDate: formData.promisedDate || existing.promisedDate || '', // editable
+                    dateArrived: formData.dateArrived || existing.dateArrived || '',   // editable
+                    vin: formData.vin || existing.vin || '',                               // editable
+                };
+                
+                log('✓ RO updated by', userName);
+                log('Updated RO data:', currentData[roIndex]);
+                renderBoard();
+                return true;
+            } catch (err) {
+                console.error('Error updating RO in Sheets:', err);
+                showToast('Error updating RO. Check console for details.', 'error');
+                return false;
+            }
+        }
 
         // ══════════════════════════════════════════════════════════════
         // PARTS REQUEST SYSTEM
@@ -10132,6 +10855,117 @@ Notes: ${notes}` : '',
             }
         }
 
+        // Open modal showing the open parts request details with option to mark as ordered
+        async function openPartsRequestDetails(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro) return;
+
+            document.getElementById('partsRequestDetailsModal')?.remove();
+
+            let notesHtml = '<em style="color:var(--text-secondary);">No request details found.</em>';
+            try {
+                const { data: notes } = await getSB()
+                    .from('notes')
+                    .select('body, created_at')
+                    .eq('ro_id', ro._supabaseId)
+                    .eq('type', 'ro_status')
+                    .ilike('body', '%PARTS REQUESTED%')
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+                if (notes?.length) {
+                    notesHtml = notes.map(n => `<div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--border-color);">${n.body}</div>`).join('');
+                }
+            } catch(e) { warn('Could not load parts request notes:', e); }
+
+            const modal = document.createElement('div');
+            modal.id = 'partsRequestDetailsModal';
+            modal.className = 'modal-overlay active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width:500px;">
+                    <div class="modal-header">
+                        <h2 class="modal-title">🔩 Open Parts Request</h2>
+                        <button class="modal-close" onclick="document.getElementById('partsRequestDetailsModal').remove()">×</button>
+                    </div>
+                    <div style="padding:0 0 14px; color:var(--text-secondary); font-size:0.85rem; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
+                        <strong style="color:var(--text-primary);">${escapeHtml(ro.customerName)}</strong>
+                        &nbsp;·&nbsp; ${escapeHtml(ro.rv) || ''}
+                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.8rem;">${escapeHtml(ro.roId)}</span>` : ''}
+                    </div>
+                    <div style="background:var(--bg-tertiary); border-radius:8px; padding:14px; font-size:0.85rem; color:var(--text-primary); line-height:1.6; border:1px solid var(--border-color); max-height:260px; overflow-y:auto;">
+                        ${notesHtml}
+                    </div>
+                    <div style="margin-top:6px; margin-bottom:16px; font-size:0.75rem; color:var(--text-secondary);">
+                        Update the parts status for this RO, or close to dismiss.
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="document.getElementById('partsRequestDetailsModal').remove(); openPartsStatusModal(${filteredIndex});"
+                            style="flex:1; padding:12px; border-radius:8px; border:none; background:linear-gradient(135deg,#f59e0b,#d97706); color:white; font-weight:700; cursor:pointer; font-size:0.9rem;">
+                            🔩 Update Parts Status
+                        </button>
+                        <button onclick="document.getElementById('partsRequestDetailsModal').remove()"
+                            style="flex:0 0 auto; padding:12px 18px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        // Mark parts as ordered — clears the pulse indicator and logs the action
+        async function markPartsOrdered(filteredIndex) {
+            if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
+
+            showToast('Confirm parts ordered for ' + (ro.customerName || 'this RO') + '? This clears the Parts Requested indicator.', 'warning', {
+                persistent: true,
+                actionLabel: 'Confirm Ordered',
+                actionCallback: function() { _doMarkPartsOrdered(filteredIndex); }
+            });
+        }
+        async function _doMarkPartsOrdered(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
+            try {
+                const userName = currentUser?.name || 'Unknown';
+                const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                const noteText = `[${ts} - ${userName}] ✅ PARTS ORDERED — request fulfilled`;
+
+                // 1. Clear the flag on the RO
+                const { error: updErr } = await getSB().from('repair_orders').update({
+                    has_open_parts_request: false,
+                    updated_at: new Date().toISOString(),
+                }).eq('id', ro._supabaseId);
+                if (updErr) throw updErr;
+
+                // 2. Log to RO status notes
+                const { error: noteErr } = await getSB().from('notes').insert({
+                    ro_id:      ro._supabaseId,
+                    type:       'ro_status',
+                    body:       noteText,
+                    created_at: new Date().toISOString(),
+                });
+                if (noteErr) throw noteErr;
+
+                // 3. Audit log
+                await writeAuditLog(ro.roId, [{ field: 'partsRequest', oldValue: 'PENDING', newValue: 'ORDERED' }]);
+
+                // 4. Update local data
+                const origIdx = currentData.findIndex(d => d._supabaseId === ro._supabaseId);
+                if (origIdx !== -1) {
+                    currentData[origIdx].hasOpenPartsRequest = false;
+                    currentData[origIdx].roStatusNotes = (currentData[origIdx].roStatusNotes ? currentData[origIdx].roStatusNotes + '\n' : '') + noteText;
+                }
+
+                renderBoard();
+                showToast('Parts marked as ordered. The indicator has been cleared.', 'success');
+
+            } catch(err) {
+                console.error('Mark parts ordered error:', err);
+                showToast('Error marking parts ordered: ' + err.message, 'error');
+            }
+        }
+
         // ── Parts Status Modal (GH#14) ────────────────────────────────────────
         // Opens a modal for Manager/Admin to set Parts status: Sourcing / Outstanding / Received / Clear
         function openPartsStatusModal(filteredIndex) {
@@ -10279,6 +11113,75 @@ Notes: ${notes}` : '',
         }
 
         async function appendToSheets(formData) { return appendToSupabase(formData); }
+        async function appendToSheets_SHEETS(formData) {
+            try {
+                // Use today's date as the received date for new entries
+                const today = new Date().toISOString().split('T')[0];
+                const newRoId = generateROId(formData.customerName, formData.rv || '', today);
+                
+                const values = [[
+                    formData.customerName,
+                    formData.customerPhone || '',
+                    formData.customerEmail || '',
+                    formData.customerAddress || '',
+                    formData.rv,
+                    formData.rvPhotoUrl || '',
+                    formData.repairType,
+                    formData.repairDescription,
+                    formData.technicianAssigned || '',
+                    today, // Date Received (today's date)
+                    formData.percentComplete || 0,
+                    formData.dollarValue || 0,
+                    formData.status,
+                    formData.urgency,
+                    formData.customerType,
+                    formData.promisedDate || '',
+                    formData.roStatusNotes || '',
+                    formData.customerCommunicationNotes || '',
+                    formData.dateArrived || '',
+                    '',        // photoLibrary starts empty
+                    newRoId,   // Column U — RO ID
+                    formData.vin || '',  // Column V — VIN
+                    ''                  // Column W — InsuranceData (set by scanner after save)
+                ]];
+
+                // Find the true last populated row by reading column A only,
+                // then write directly to the next row — immune to blank rows or stray data
+                const colAResponse = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: 'Sheet1!A:A',
+                });
+                const colARows = colAResponse.result.values || [];
+                // Find last row that has a customer name (skip header at index 0)
+                let lastDataRow = 1; // default to row 1 (header)
+                for (let i = colARows.length - 1; i >= 1; i--) {
+                    if (colARows[i] && colARows[i][0] && colARows[i][0].toString().trim() !== '') {
+                        lastDataRow = i + 1; // convert to 1-indexed sheet row
+                        break;
+                    }
+                }
+                const newRow = lastDataRow + 1;
+                log(`Appending new RO to row ${newRow} (last data was row ${lastDataRow})`);
+
+                const response = await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
+                    range: `Sheet1!A${newRow}:X${newRow}`,
+                    valueInputOption: 'RAW',
+                    resource: { values }
+                });
+
+                log('Row added:', response);
+                
+                // Reload data from sheets
+                await loadDataFromSheets();
+                
+                return true;
+            } catch (err) {
+                console.error('Error appending to Sheets:', err);
+                showToast('Error saving time log data. Check console for details.', 'error');
+                return false;
+            }
+        }
 
         // Modal Controls
         let editingROIndex = null; // Track which RO is being edited
@@ -10499,6 +11402,263 @@ Notes: ${notes}` : '',
         }
         
         // ═══════════════════════════════════════════════════════════════
+        // KENECT MESSAGING INTEGRATION (GH#10)
+        // ═══════════════════════════════════════════════════════════════
+
+        const KENECT_PROXY_URL = `${SUPABASE_URL}/functions/v1/kenect-proxy`;
+
+        /** Normalise a phone number to E.164 (+1XXXXXXXXXX) for Kenect */
+        function normalisePhone(raw) {
+            if (!raw) return null;
+            const digits = raw.replace(/\D/g, '');
+            if (digits.length === 10) return `+1${digits}`;
+            if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+            return digits.length >= 7 ? digits : null;
+        }
+
+        /** Call the kenect-proxy Edge Function */
+        async function kenectCall(action, params = {}, payload = {}) {
+            const resp = await fetch(KENECT_PROXY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+                    'apikey': SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({ action, params, payload }),
+            });
+            const json = await resp.json();
+            return json;
+        }
+
+        // ── Open Kenect conversation modal ─────────────────────────────
+        async function openKenectModal(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+
+            const phone = normalisePhone(ro.customerPhone);
+            const displayPhone = ro.customerPhone || '(no phone)';
+            const customerName = ro.customerName || 'Customer';
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+
+            // Build and inject modal
+            const existing = document.getElementById('kenectModalOverlay');
+            if (existing) existing.remove();
+
+            const modalHTML = `
+            <div id="kenectModalOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:11000;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closeKenectModal(event)">
+                <div style="background:white;border-radius:16px;width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;" onclick="event.stopPropagation()">
+
+                    <!-- Header -->
+                    <div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                        <div>
+                            <div style="font-size:1.1rem;font-weight:700;">💬 ${customerName}</div>
+                            <div style="font-size:0.85rem;opacity:0.85;">${displayPhone}</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button id="kenectReviewBtn" onclick="sendKenectReview(${roIndex})" title="Send review request" style="padding:6px 12px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">⭐ Review</button>
+                            <button onclick="closeKenectModal()" style="background:rgba(255,255,255,0.2);border:none;color:white;font-size:1.2rem;cursor:pointer;padding:4px 10px;border-radius:6px;">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- Message thread -->
+                    <div id="kenectMessages" style="flex:1;overflow-y:auto;padding:16px;background:#f8fafc;display:flex;flex-direction:column;gap:10px;min-height:200px;">
+                        <div style="text-align:center;color:#94a3b8;font-size:0.9rem;padding:20px;">
+                            <div style="font-size:2rem;margin-bottom:8px;">💬</div>
+                            Loading conversation…
+                        </div>
+                    </div>
+
+                    <!-- Send bar -->
+                    <div style="padding:12px 16px;border-top:1px solid #e2e8f0;background:white;flex-shrink:0;">
+                        <div style="display:flex;gap:8px;align-items:flex-end;">
+                            <textarea id="kenectSendInput" placeholder="Type a message…" rows="2"
+                                style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:0.9rem;resize:none;font-family:inherit;line-height:1.4;"
+                                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendKenectMessage(${roIndex});}"></textarea>
+                            <button onclick="sendKenectMessage(${roIndex})" style="padding:10px 16px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:white;border:none;border-radius:10px;cursor:pointer;font-size:0.9rem;font-weight:600;height:42px;white-space:nowrap;">Send ➤</button>
+                        </div>
+                        <div id="kenectSendStatus" style="font-size:0.8rem;color:#64748b;margin-top:6px;display:none;"></div>
+                    </div>
+                </div>
+            </div>`;
+
+            const div = document.createElement('div');
+            div.innerHTML = modalHTML;
+            document.body.appendChild(div);
+
+            // Load conversation
+            if (phone) {
+                await refreshKenectMessages(phone, locationId);
+            } else {
+                document.getElementById('kenectMessages').innerHTML =
+                    '<div style="text-align:center;color:#ef4444;padding:20px;">⚠️ No valid phone number on this RO</div>';
+            }
+        }
+
+        /** Fetch and render the conversation thread */
+        async function refreshKenectMessages(phone, locationId) {
+            const container = document.getElementById('kenectMessages');
+            if (!container) return;
+
+            container.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:0.9rem;padding:20px;"><div style="font-size:2rem;margin-bottom:8px;">⏳</div>Loading…</div>';
+
+            try {
+                const result = await kenectCall('get_conversation', { phoneNumber: phone, locationId });
+
+                if (!result.ok) {
+                    // Fallback: try simpler endpoint
+                    const fallback = await kenectCall('get_messages_by_phone', { phoneNumber: phone, locationId });
+                    if (!fallback.ok) {
+                        container.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">❌ ${result.data?.error || 'Could not load conversation'}</div>`;
+                        return;
+                    }
+                    renderKenectMessages(container, fallback.data);
+                    return;
+                }
+                renderKenectMessages(container, result.data);
+            } catch (e) {
+                container.innerHTML = `<div style="text-align:center;color:#ef4444;padding:20px;">❌ Network error: ${e}</div>`;
+            }
+        }
+
+        /** Render message bubbles from Kenect API response */
+        function renderKenectMessages(container, data) {
+            // Handle various response shapes from Kenect
+            let messages = [];
+            if (Array.isArray(data)) {
+                messages = data;
+            } else if (data && Array.isArray(data.messages)) {
+                messages = data.messages;
+            } else if (data && Array.isArray(data.content)) {
+                messages = data.content;
+            } else if (data && data.conversation && Array.isArray(data.conversation.messages)) {
+                messages = data.conversation.messages;
+            }
+
+            if (messages.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">No messages yet</div>';
+                return;
+            }
+
+            // Sort oldest → newest
+            messages.sort((a, b) => {
+                const tA = a.createdAt || a.created_at || a.timestamp || a.id || 0;
+                const tB = b.createdAt || b.created_at || b.timestamp || b.id || 0;
+                return String(tA).localeCompare(String(tB));
+            });
+
+            container.innerHTML = messages.map(msg => {
+                const isOutbound = msg.outbound === true || msg.direction === 'outbound' || msg.type === 'outbound';
+                const body = msg.messageBody || msg.body || msg.text || msg.message || '(media)';
+                const rawTs = msg.createdAt || msg.created_at || msg.timestamp || msg.sentAt;
+                const ts = rawTs ? new Date(rawTs).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+
+                return `
+                <div style="display:flex;flex-direction:column;align-items:${isOutbound ? 'flex-end' : 'flex-start'};">
+                    <div style="
+                        max-width:75%;
+                        padding:10px 14px;
+                        border-radius:${isOutbound ? '16px 16px 4px 16px' : '16px 16px 16px 4px'};
+                        background:${isOutbound ? 'linear-gradient(135deg,#0ea5e9,#0284c7)' : '#e2e8f0'};
+                        color:${isOutbound ? 'white' : '#1e293b'};
+                        font-size:0.9rem;
+                        line-height:1.45;
+                        word-break:break-word;
+                    ">${escapeHtml(body).replace(/\n/g, '<br>')}</div>
+                    ${ts ? `<div style="font-size:0.72rem;color:#94a3b8;margin-top:2px;padding:0 4px;">${ts}${isOutbound ? ' · Sent' : ''}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        /** Send a message from the input box */
+        async function sendKenectMessage(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const phone = normalisePhone(ro.customerPhone);
+            if (!phone) { showToast('No valid phone number on this RO.', 'warning'); return; }
+
+            const input = document.getElementById('kenectSendInput');
+            const statusEl = document.getElementById('kenectSendStatus');
+            const messageBody = (input?.value || '').trim();
+            if (!messageBody) return;
+
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+
+            input.disabled = true;
+            if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Sending…'; statusEl.style.color = '#64748b'; }
+
+            try {
+                const result = await kenectCall('send_message', {}, {
+                    contactPhone: phone,
+                    messageBody,
+                    locationId,
+                });
+
+                if (result.ok) {
+                    input.value = '';
+                    if (statusEl) { statusEl.textContent = '✓ Message sent'; statusEl.style.color = '#10b981'; }
+                    // Refresh the thread
+                    await refreshKenectMessages(phone, locationId);
+                    setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 3000);
+                } else {
+                    const errMsg = result.data?.error || result.data?.message || JSON.stringify(result.data);
+                    if (statusEl) { statusEl.textContent = `❌ ${errMsg}`; statusEl.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (statusEl) { statusEl.textContent = `❌ ${e}`; statusEl.style.color = '#ef4444'; }
+            } finally {
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        /** Send a review request to the customer */
+        async function sendKenectReview(roIndex) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const phone = normalisePhone(ro.customerPhone);
+            if (!phone) { showToast('No valid phone number on this RO.', 'warning'); return; }
+
+            const locationId = localStorage.getItem('prvs_kenect_location_id') || '';
+            const btn = document.getElementById('kenectReviewBtn');
+            if (btn) btn.disabled = true;
+
+            try {
+                const result = await kenectCall('send_review_request', {}, {
+                    contactPhone: phone,
+                    locationId,
+                    name: ro.customerName || '',
+                });
+                if (result.ok) {
+                    showToast('Review request sent to ' + (ro.customerName || phone), 'success');
+                } else {
+                    showToast('Review request failed: ' + (result.data?.error || result.data?.message || 'Unknown error'), 'error');
+                }
+            } catch (e) {
+                showToast('Error sending review request: ' + e, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function closeKenectModal(event) {
+            if (event && event.target !== document.getElementById('kenectModalOverlay')) return;
+            const modal = document.getElementById('kenectModalOverlay');
+            if (modal) modal.closest('div').remove();
+        }
+        // Override to handle the close button click (no event target check needed)
+        window.closeKenectModal = function(event) {
+            const overlay = document.getElementById('kenectModalOverlay');
+            if (!overlay) return;
+            if (event && event.target && event.target !== overlay) return;
+            overlay.closest('div').remove();
+        };
+
+        // ═══════════════════════════════════════════════════════════════
+        // END KENECT
         // ═══════════════════════════════════════════════════════════════
 
         function openAdminSettingsModal() {
@@ -10560,6 +11720,22 @@ Notes: ${notes}` : '',
                             📤 Export Configuration Code
                         </button>
                         
+                        <div style="border-top:1px solid #e2e8f0;margin:16px 0;padding-top:16px;">
+                            <div style="font-size:0.85rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">💬 Kenect Messaging</div>
+                            <p style="font-size:0.85rem;color:#64748b;margin:0 0 10px 0;">
+                                Set the Kenect Location ID for this account. The API key is stored securely as a Supabase Edge Function secret (<code>KENECT_API_KEY</code>).
+                            </p>
+                            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                                <input id="kenectLocationIdInput" type="text" placeholder="e.g. 12345" value="${localStorage.getItem('prvs_kenect_location_id') || ''}"
+                                    style="flex:1;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:0.9rem;" />
+                                <button onclick="saveKenectLocationId()" style="padding:10px 16px;background:#0ea5e9;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Save</button>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-bottom:4px;">
+                                <button onclick="testKenectCredentials()" style="flex:1;padding:10px;background:#f8fafc;border:2px solid #0ea5e9;color:#0284c7;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem;">🔍 Test Connection</button>
+                                <button onclick="loadKenectLocations()" style="flex:1;padding:10px;background:#f8fafc;border:2px solid #e2e8f0;color:#475569;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem;">📍 Load Locations</button>
+                            </div>
+                            <div id="kenectSettingsStatus" style="font-size:0.82rem;color:#64748b;margin-top:6px;min-height:18px;"></div>
+                        </div>
 
                         <div style="border-top:1px solid #e2e8f0;margin:16px 0;padding-top:16px;">
                             <div style="font-size:0.85rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">🗄️ Database Tools</div>
@@ -10585,6 +11761,51 @@ Notes: ${notes}` : '',
             const modal = document.getElementById('adminSettingsModalOverlay');
             if (modal) {
                 modal.remove();
+            }
+        }
+
+        function saveKenectLocationId() {
+            const val = (document.getElementById('kenectLocationIdInput')?.value || '').trim();
+            localStorage.setItem('prvs_kenect_location_id', val);
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = val ? `✅ Location ID saved: ${val}` : '✅ Location ID cleared'; s.style.color = '#10b981'; }
+        }
+
+        async function testKenectCredentials() {
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = '⏳ Testing connection…'; s.style.color = '#64748b'; }
+            try {
+                const result = await kenectCall('test_credentials');
+                if (result.ok) {
+                    if (s) { s.textContent = `✅ Connected — ${JSON.stringify(result.data).substring(0, 120)}`; s.style.color = '#10b981'; }
+                } else {
+                    if (s) { s.textContent = `❌ ${result.data?.error || result.data?.message || result.status}`; s.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (s) { s.textContent = `❌ ${e}`; s.style.color = '#ef4444'; }
+            }
+        }
+
+        async function loadKenectLocations() {
+            const s = document.getElementById('kenectSettingsStatus');
+            if (s) { s.textContent = '⏳ Loading locations…'; s.style.color = '#64748b'; }
+            try {
+                const result = await kenectCall('get_locations');
+                if (result.ok) {
+                    const locs = Array.isArray(result.data) ? result.data :
+                                 Array.isArray(result.data?.content) ? result.data.content :
+                                 Array.isArray(result.data?.locations) ? result.data.locations : [];
+                    if (locs.length === 0) {
+                        if (s) { s.textContent = '⚠️ No locations returned'; s.style.color = '#f59e0b'; }
+                        return;
+                    }
+                    const lines = locs.map(l => `${l.id || l.locationId || l.partnerLocationId} — ${l.name || l.locationName || ''}`).join('\n');
+                    if (s) { s.textContent = `📍 ${locs.length} location(s):\n${lines}`; s.style.color = '#0284c7'; s.style.whiteSpace = 'pre'; }
+                } else {
+                    if (s) { s.textContent = `❌ ${result.data?.error || result.data?.message || result.status}`; s.style.color = '#ef4444'; }
+                }
+            } catch (e) {
+                if (s) { s.textContent = `❌ ${e}`; s.style.color = '#ef4444'; }
             }
         }
 
