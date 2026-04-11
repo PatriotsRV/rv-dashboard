@@ -3999,25 +3999,6 @@
         }
 
         async function updatePhotoInSheet(photoUrl, originalIndex, libraryJson) { return updatePhotoInSupabase(photoUrl, originalIndex, libraryJson); }
-        async function updatePhotoInSheet_SHEETS(photoUrl, originalIndex, libraryJson) {
-            try {
-                const rowNumber = await getSheetRowNumber(originalIndex); if (!rowNumber) return;
-                await gapi.client.sheets.spreadsheets.values.batchUpdate({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    resource: {
-                        valueInputOption: 'RAW',
-                        data: [
-                            { range: `Sheet1!F${rowNumber}`, values: [[photoUrl]] },
-                            { range: `Sheet1!T${rowNumber}`, values: [[libraryJson || '']] }
-                        ]
-                    }
-                });
-                log('✅ Photo and library updated in sheet');
-            } catch (error) {
-                console.error('Error updating sheet:', error);
-                throw error;
-            }
-        }
 
         // Archive an RO to the Cashiered sheet tab and remove from Sheet1
         async function archiveRO(filteredIndex) {
@@ -4066,43 +4047,8 @@
         let customInsuranceFields = [];
 
         async function loadCustomFieldConfig() { return loadCustomFieldConfigFromSupabase(); }
-        async function loadCustomFieldConfig_SHEETS() {
-            if (!accessToken) return;
-            try {
-                const response = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: GOOGLE_CONFIG.CONFIG_RANGE,
-                });
-                const val = response.result.values?.[0]?.[0];
-                if (val) {
-                    const config = JSON.parse(val);
-                    customInsuranceFields = config.insuranceCustomFields || [];
-                    log('✅ Loaded', customInsuranceFields.length, 'custom insurance fields');
-                }
-            } catch(e) {
-                log('No Config tab found or empty — custom fields starting fresh');
-                customInsuranceFields = [];
-            }
-            renderCustomFields('new');
-            renderCustomFields('edit');
-        }
 
         async function saveCustomFieldConfig() { return saveCustomFieldConfigToSupabase(); }
-        async function saveCustomFieldConfig_SHEETS() {
-            if (!accessToken) return;
-            try {
-                const config = { insuranceCustomFields: customInsuranceFields };
-                await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: GOOGLE_CONFIG.CONFIG_RANGE,
-                    valueInputOption: 'RAW',
-                    resource: { values: [[JSON.stringify(config)]] }
-                });
-                log('✅ Custom field config saved');
-            } catch(e) {
-                warn('Could not save custom field config:', e);
-            }
-        }
 
         function renderCustomFields(mode, savedValues) {
             const grid = document.getElementById('customFieldsGrid_' + mode);
@@ -5694,63 +5640,6 @@ Notes: ${notes}` : '',
         }
 
         // Load all parts from the Parts tab
-        async function loadPartsFromSheet() { return loadPartsFromSupabase(); }
-        async function loadPartsFromSheet_SHEETS() {
-            if (!accessToken) return;
-            try {
-                const response = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: GOOGLE_CONFIG.PARTS_RANGE,
-                });
-                const rows = response.result.values || [];
-                partsData = {};
-                for (let i = 1; i < rows.length; i++) {
-                    const row = rows[i];
-                    const roId = row[0] || '';
-                    if (!roId) continue;
-                    if (!partsData[roId]) partsData[roId] = [];
-                    partsData[roId].push({
-                        rowIndex:        i + 1,
-                        roId:            row[0]  || '',
-                        partName:        row[1]  || '',
-                        partNumber:      row[2]  || '',
-                        condition:       row[3]  || '',
-                        qty:             row[4]  || '1',
-                        status:          row[5]  || 'Ordered',
-                        notes:           row[6]  || '',
-                        // Order Info
-                        partsSource:     row[7]  || '',
-                        poNumber:        row[8]  || '',
-                        orderedBy:       row[9]  || '',
-                        dateOrdered:     row[10] || '',
-                        eta:             row[11] || '',
-                        trackingNumber:  row[12] || '',
-                        partUrl:         row[13] || '',
-                        returnDeadline:  row[14] || '',
-                        // Pricing
-                        wholesalePrice:  row[15] || '',
-                        retailPrice:     row[16] || '',
-                        coreCharge:      row[17] || '',
-                        laborHours:      row[18] || '',
-                        // Supplier Contact
-                        supplier:        row[19] || '',
-                        salesAssocName:  row[20] || '',
-                        salesAssocPhone: row[21] || '',
-                        salesAssocEmail: row[22] || '',
-                        // Receipt
-                        dateReceived:    row[23] || '',
-                        receivedBy:      row[24] || '',
-                        warrantyPeriod:  row[25] || '',
-                    });
-                }
-                log('✅ Parts loaded for', Object.keys(partsData).length, 'ROs');
-                // Update partsJson on currentData for badge rendering
-                updatePartsJsonOnData();
-                renderBoard();
-            } catch(e) {
-                warn('Could not load Parts tab:', e);
-            }
-        }
 
         // Update partsJson field on each RO in currentData for fast badge rendering
         function updatePartsJsonOnData() {
@@ -5764,83 +5653,15 @@ Notes: ${notes}` : '',
 
         // Write partsJson to Sheet1 Column X for an RO
         async function updatePartsJsonInSheet(originalIndex) { return updatePartsJsonInSupabase(originalIndex); }
-        async function updatePartsJsonInSheet_SHEETS(originalIndex) {
-            const ro = currentData[originalIndex];
-            const roId = ro.roId;
-            if (!roId) return;
-            const parts = partsData[roId] || [];
-            const json = parts.length > 0 ? JSON.stringify(parts) : '';
-            ro.partsJson = json;
-            try {
-                const rowNumber = await getSheetRowNumber(originalIndex);
-                if (!rowNumber) return;
-                await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!X${rowNumber}`,
-                    valueInputOption: 'RAW',
-                    resource: { values: [[json]] }
-                });
-                log('✅ PartsJSON updated in Sheet1 col X');
-            } catch(e) {
-                warn('Could not update PartsJSON:', e);
-            }
-        }
 
         // Append a new part row to the Parts tab
         async function appendPartToSheet(part, roSupabaseId) { return appendPartToSupabase(part, roSupabaseId); }
-        async function appendPartToSheet_SHEETS(part) {
-            await gapi.client.sheets.spreadsheets.values.append({
-                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: GOOGLE_CONFIG.PARTS_RANGE,
-                valueInputOption: 'RAW',
-                resource: { values: [[
-                    part.roId, part.partName, part.partNumber, part.condition, part.qty, part.status, part.notes,
-                    part.partsSource, part.poNumber, part.orderedBy, part.dateOrdered, part.eta, part.trackingNumber, part.partUrl, part.returnDeadline,
-                    part.wholesalePrice, part.retailPrice, part.coreCharge, part.laborHours,
-                    part.supplier, part.salesAssocName, part.salesAssocPhone, part.salesAssocEmail,
-                    part.dateReceived, part.receivedBy, part.warrantyPeriod
-                ]] }
-            });
-        }
 
         // Update an existing part row in the Parts tab
         async function updatePartInSheet(part) { return updatePartInSupabase(part); }
-        async function updatePartInSheet_SHEETS(part) {
-            if (!part.rowIndex) return;
-            await gapi.client.sheets.spreadsheets.values.update({
-                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: `Parts!A${part.rowIndex}:AA${part.rowIndex}`,
-                valueInputOption: 'RAW',
-                resource: { values: [[
-                    part.roId, part.partName, part.partNumber, part.condition, part.qty, part.status, part.notes,
-                    part.partsSource, part.poNumber, part.orderedBy, part.dateOrdered, part.eta, part.trackingNumber, part.partUrl, part.returnDeadline,
-                    part.wholesalePrice, part.retailPrice, part.coreCharge, part.laborHours,
-                    part.supplier, part.salesAssocName, part.salesAssocPhone, part.salesAssocEmail,
-                    part.dateReceived, part.receivedBy, part.warrantyPeriod
-                ]] }
-            });
-        }
 
         // Delete a part row from the Parts tab
         async function deletePartFromSheet(rowIndex, supabaseId) { if (supabaseId) return deletePartFromSupabase(supabaseId); }
-        async function deletePartFromSheet_SHEETS(rowIndex) {
-            const spreadsheetMeta = await gapi.client.sheets.spreadsheets.get({
-                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-            });
-            const partsSheet = spreadsheetMeta.result.sheets.find(s => s.properties.title === 'Parts');
-            if (!partsSheet) throw new Error('Parts tab not found');
-            await gapi.client.sheets.spreadsheets.batchUpdate({
-                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                resource: { requests: [{ deleteDimension: {
-                    range: {
-                        sheetId: partsSheet.properties.sheetId,
-                        dimension: 'ROWS',
-                        startIndex: rowIndex - 1,
-                        endIndex: rowIndex
-                    }
-                }}]}
-            });
-        }
 
         // Open the Parts modal for an RO
         function openPartsModal(filteredIndex) {
@@ -6590,31 +6411,6 @@ Notes: ${notes}` : '',
                     updateROProgress(idx, parseInt(el.value));
                 }
             });
-        }
-
-        function parseCSV(file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const text = e.target.result;
-                const lines = text.split('\n').filter(line => line.trim());
-                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                
-                const data = [];
-                for (let i = 1; i < lines.length; i++) {
-                    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-                    const row = {};
-                    headers.forEach((header, index) => {
-                        const key = toCamelCase(header);
-                        row[key] = values[index] || '';
-                    });
-                    
-                    data.push(row);
-                }
-                
-                currentData = data;
-                renderBoard();
-            };
-            reader.readAsText(file);
         }
 
         function toCamelCase(str) {
@@ -7593,31 +7389,6 @@ Notes: ${notes}` : '',
             }
         }
 
-        // Fallback QR placeholder (in case library fails)
-        function drawQRPlaceholder(ctx, width, height, text) {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, width, height);
-            ctx.fillStyle = 'black';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(5, 5, width - 10, height - 10);
-            
-            // Draw simple pattern
-            for (let i = 0; i < 5; i++) {
-                for (let j = 0; j < 5; j++) {
-                    if ((i + j) % 2 === 0) {
-                        ctx.fillRect(10 + i * 18, 10 + j * 18, 16, 16);
-                    }
-                }
-            }
-            
-            // Add text indicator
-            ctx.fillStyle = 'black';
-            ctx.font = '10px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('QR', width / 2, height - 10);
-        }
-
         // Open QR modal for printing
         function openQRModal(index) {
             const ro = currentFilteredData[index];
@@ -8330,23 +8101,6 @@ Notes: ${notes}` : '',
             }
         }
 
-        // Ensure user exists in Supabase users table after login
-        async function upsertUser(session) {
-            if (!session) return;
-            try {
-                const { user } = session;
-                await getSB().from('users').upsert({
-                    id: user.id,
-                    email: user.email,
-                    name: user.user_metadata?.full_name || user.email,
-                    avatar_url: user.user_metadata?.avatar_url || null,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'id' });
-            } catch(e) {
-                warn('Could not upsert user:', e);
-            }
-        }
-        
         function updateViewModeDropdown() {
             const selector = document.getElementById('viewModeSelector');
             const adminBtn = document.getElementById('adminSettingsBtn');
@@ -9483,20 +9237,6 @@ Notes: ${notes}` : '',
             }
         }
 
-        // Insurance scan log to Supabase
-        async function logInsuranceScanToSupabase(roSupabaseId, rawData) {
-            try {
-                await getSB().from('insurance_scans').insert({
-                    ro_id:      roSupabaseId,
-                    user_id:    supabaseSession?.user?.id || null,
-                    raw_data:   typeof rawData === 'string' ? JSON.parse(rawData) : rawData,
-                    scanned_at: new Date().toISOString(),
-                });
-            } catch(e) {
-                warn('Could not log insurance scan:', e);
-            }
-        }
-
         async function loadDataFromSheets() {
             log('=== loadDataFromSheets called ===');
             try {
@@ -9637,15 +9377,6 @@ Notes: ${notes}` : '',
             }, 30000); // 30 seconds
             
             log('✅ Time logs auto-refresh started (30s interval)');
-        }
-        
-        // Stop auto-refresh (useful for cleanup)
-        function stopTimeLogsAutoRefresh() {
-            if (timeLogsRefreshInterval) {
-                clearInterval(timeLogsRefreshInterval);
-                timeLogsRefreshInterval = null;
-                log('⏹️ Time logs auto-refresh stopped');
-            }
         }
         
         // Manual refresh function for admin button
@@ -9810,27 +9541,6 @@ Notes: ${notes}` : '',
         // Drive thumbnail URLs (sz=w200, sz=w400) load fine directly as <img src> tags.
         // fetch() is blocked by CORS on the thumbnail endpoint, so we just return the URL as-is.
         // Only use the Drive API (alt=media) for non-thumbnail full file downloads if ever needed.
-
-        // Convert Google Drive thumbnail URL to direct open URL (works without auth)
-        function driveImgUrl(url) {
-            if (!url) return url;
-            // Already a thumbnail URL: extract file ID and use uc?export=view format
-            const match = url.match(/[?&]id=([^&]+)/);
-            if (match) {
-                return `https://drive.google.com/uc?export=view&id=${match[1]}`;
-            }
-            // Handle /file/d/FILE_ID/view format
-            const match2 = url.match(/\/file\/d\/([^/]+)/);
-            if (match2) {
-                return `https://drive.google.com/uc?export=view&id=${match2[1]}`;
-            }
-            return url;
-        }
-
-        function loadDriveImage(url) {
-            // Thumbnails load natively in <img> tags — no fetch needed
-            return Promise.resolve(url);
-        }
 
         // Apply Drive thumbnail URLs directly to img tags — no fetch, no CORS issues
         function loadAllDriveImages() {
@@ -10053,45 +9763,6 @@ Notes: ${notes}` : '',
             }
         }
 
-        // Backfill roId for any RO that doesn't have one, writing to column U in the sheet
-        async function backfillROIds() { log("backfillROIds skipped — using Supabase"); return; // Sheets-only function
-
-            const response = await gapi.client.sheets.spreadsheets.values.get({
-                spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                range: 'Sheet1!A:X',
-            });
-            const rows = response.result.values || [];
-            const updates = [];
-
-            for (let i = 1; i < rows.length; i++) {
-                const row = rows[i];
-                const customerName = row[0] || '';
-                const rv = row[4] || '';
-                const dateReceived = row[9] || '';
-                const existingId = row[20] || ''; // Column U (index 20)
-
-                if (!existingId && customerName && dateReceived) {
-                    const roId = generateROId(customerName, rv, dateReceived);
-                    updates.push({ range: `Sheet1!U${i + 1}`, values: [[roId]] });
-                    // Also update in-memory
-                    const dataIdx = currentData.findIndex(d =>
-                        d.customerName === customerName && d.dateReceived === dateReceived
-                    );
-                    if (dataIdx !== -1) currentData[dataIdx].roId = roId;
-                }
-            }
-
-            if (updates.length > 0) {
-                await gapi.client.sheets.spreadsheets.values.batchUpdate({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    resource: { valueInputOption: 'RAW', data: updates }
-                });
-                log(`✅ Backfilled ${updates.length} RO IDs`);
-            } else {
-                log('✅ All ROs already have IDs');
-            }
-        }
-
         // Find the actual 1-indexed sheet row — uses roId in column U if available,
         // falls back to customerName + dateReceived match
         async function getSheetRowNumber(dataIndex) {
@@ -10120,81 +9791,6 @@ Notes: ${notes}` : '',
         }
 
         async function updateROInSheets(roIndex, formData) { return updateROInSupabase(roIndex, formData); }
-        async function updateROInSheets_SHEETS(roIndex, formData) {
-            try {
-                const rowNumber = await getSheetRowNumber(roIndex);
-                if (!rowNumber) {
-                    showToast('Error: Could not locate this RO. Please refresh and try again.', 'error');
-                    return false;
-                }
-                log(`Matched "${currentData[roIndex].customerName}" to sheet row ${rowNumber}`);
-                
-                const existing = currentData[roIndex];
-                const values = [[
-                    formData.customerName,                    // A - editable
-                    formData.customerPhone || '',             // B - editable
-                    formData.customerEmail || '',             // C - editable
-                    formData.customerAddress || '',           // D - editable
-                    formData.rv,                              // E - editable
-                    existing.rvPhotoUrl || '',                // F - preserved
-                    formData.repairType,                      // G - editable
-                    existing.repairDescription || '',         // H - preserved
-                    formData.technicianAssigned || '',        // I - editable
-                    existing.dateReceived,                    // J - preserved
-                    existing.percentComplete || 0,            // K - preserved
-                    formData.dollarValue || 0,                // L - editable
-                    existing.status || '',                    // M - preserved
-                    existing.urgency || '',                   // N - preserved
-                    existing.customerType || '',              // O - preserved
-                    formData.promisedDate || existing.promisedDate || '', // P - editable via Edit RO
-                    existing.roStatusNotes || '',             // Q - preserved
-                    existing.customerCommunicationNotes || '',// R - preserved
-                    formData.dateArrived || existing.dateArrived || '', // S - editable via Edit RO
-                    existing.photoLibrary || '',              // T - preserved
-                    existing.roId || generateROId(existing.customerName, existing.rv || '', existing.dateReceived), // U - preserved
-                    formData.vin || existing.vin || '',  // V - editable
-                    existing.insuranceData || '',            // W - preserved
-                    existing.partsJson || ''                  // X - preserved
-                ]];
-
-                const range = `Sheet1!A${rowNumber}:X${rowNumber}`;
-                
-                const response = await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: range,
-                    valueInputOption: 'RAW',
-                    resource: { values }
-                });
-
-                log('RO updated in sheet:', response);
-                
-                // Update local data — only overwrite editable fields, preserve the rest
-                const userName = currentUser ? currentUser.name : 'Unknown User';
-                currentData[roIndex] = {
-                    ...existing,                                        // preserve all fields
-                    customerName: formData.customerName,                // editable
-                    customerPhone: formData.customerPhone || '',        // editable
-                    customerEmail: formData.customerEmail || '',        // editable
-                    customerAddress: formData.customerAddress || '',    // editable
-                    rv: formData.rv,                                    // editable
-                    repairType: formData.repairType,                    // editable
-                    technicianAssigned: formData.technicianAssigned || '', // editable
-                    dollarValue: parseFloat(formData.dollarValue) || 0, // editable
-                    promisedDate: formData.promisedDate || existing.promisedDate || '', // editable
-                    dateArrived: formData.dateArrived || existing.dateArrived || '',   // editable
-                    vin: formData.vin || existing.vin || '',                               // editable
-                };
-                
-                log('✓ RO updated by', userName);
-                log('Updated RO data:', currentData[roIndex]);
-                renderBoard();
-                return true;
-            } catch (err) {
-                console.error('Error updating RO in Sheets:', err);
-                showToast('Error updating RO. Check console for details.', 'error');
-                return false;
-            }
-        }
 
         // ══════════════════════════════════════════════════════════════
         // PARTS REQUEST SYSTEM
@@ -10546,117 +10142,6 @@ Notes: ${notes}` : '',
             }
         }
 
-        // Open modal showing the open parts request details with option to mark as ordered
-        async function openPartsRequestDetails(filteredIndex) {
-            const ro = currentFilteredData[filteredIndex];
-            if (!ro) return;
-
-            document.getElementById('partsRequestDetailsModal')?.remove();
-
-            let notesHtml = '<em style="color:var(--text-secondary);">No request details found.</em>';
-            try {
-                const { data: notes } = await getSB()
-                    .from('notes')
-                    .select('body, created_at')
-                    .eq('ro_id', ro._supabaseId)
-                    .eq('type', 'ro_status')
-                    .ilike('body', '%PARTS REQUESTED%')
-                    .order('created_at', { ascending: false })
-                    .limit(5);
-                if (notes?.length) {
-                    notesHtml = notes.map(n => `<div style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--border-color);">${n.body}</div>`).join('');
-                }
-            } catch(e) { warn('Could not load parts request notes:', e); }
-
-            const modal = document.createElement('div');
-            modal.id = 'partsRequestDetailsModal';
-            modal.className = 'modal-overlay active';
-            modal.innerHTML = `
-                <div class="modal-content" style="max-width:500px;">
-                    <div class="modal-header">
-                        <h2 class="modal-title">🔩 Open Parts Request</h2>
-                        <button class="modal-close" onclick="document.getElementById('partsRequestDetailsModal').remove()">×</button>
-                    </div>
-                    <div style="padding:0 0 14px; color:var(--text-secondary); font-size:0.85rem; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
-                        <strong style="color:var(--text-primary);">${escapeHtml(ro.customerName)}</strong>
-                        &nbsp;·&nbsp; ${escapeHtml(ro.rv) || ''}
-                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-info); font-size:0.8rem;">${escapeHtml(ro.roId)}</span>` : ''}
-                    </div>
-                    <div style="background:var(--bg-tertiary); border-radius:8px; padding:14px; font-size:0.85rem; color:var(--text-primary); line-height:1.6; border:1px solid var(--border-color); max-height:260px; overflow-y:auto;">
-                        ${notesHtml}
-                    </div>
-                    <div style="margin-top:6px; margin-bottom:16px; font-size:0.75rem; color:var(--text-secondary);">
-                        Update the parts status for this RO, or close to dismiss.
-                    </div>
-                    <div style="display:flex; gap:10px;">
-                        <button onclick="document.getElementById('partsRequestDetailsModal').remove(); openPartsStatusModal(${filteredIndex});"
-                            style="flex:1; padding:12px; border-radius:8px; border:none; background:linear-gradient(135deg,#f59e0b,#d97706); color:white; font-weight:700; cursor:pointer; font-size:0.9rem;">
-                            🔩 Update Parts Status
-                        </button>
-                        <button onclick="document.getElementById('partsRequestDetailsModal').remove()"
-                            style="flex:0 0 auto; padding:12px 18px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        // Mark parts as ordered — clears the pulse indicator and logs the action
-        async function markPartsOrdered(filteredIndex) {
-            if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
-            const ro = currentFilteredData[filteredIndex];
-            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
-
-            showToast('Confirm parts ordered for ' + (ro.customerName || 'this RO') + '? This clears the Parts Requested indicator.', 'warning', {
-                persistent: true,
-                actionLabel: 'Confirm Ordered',
-                actionCallback: function() { _doMarkPartsOrdered(filteredIndex); }
-            });
-        }
-        async function _doMarkPartsOrdered(filteredIndex) {
-            const ro = currentFilteredData[filteredIndex];
-            try {
-                const userName = currentUser?.name || 'Unknown';
-                const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
-                const noteText = `[${ts} - ${userName}] ✅ PARTS ORDERED — request fulfilled`;
-
-                // 1. Clear the flag on the RO
-                const { error: updErr } = await getSB().from('repair_orders').update({
-                    has_open_parts_request: false,
-                    updated_at: new Date().toISOString(),
-                }).eq('id', ro._supabaseId);
-                if (updErr) throw updErr;
-
-                // 2. Log to RO status notes
-                const { error: noteErr } = await getSB().from('notes').insert({
-                    ro_id:      ro._supabaseId,
-                    type:       'ro_status',
-                    body:       noteText,
-                    created_at: new Date().toISOString(),
-                });
-                if (noteErr) throw noteErr;
-
-                // 3. Audit log
-                await writeAuditLog(ro.roId, [{ field: 'partsRequest', oldValue: 'PENDING', newValue: 'ORDERED' }]);
-
-                // 4. Update local data
-                const origIdx = currentData.findIndex(d => d._supabaseId === ro._supabaseId);
-                if (origIdx !== -1) {
-                    currentData[origIdx].hasOpenPartsRequest = false;
-                    currentData[origIdx].roStatusNotes = (currentData[origIdx].roStatusNotes ? currentData[origIdx].roStatusNotes + '\n' : '') + noteText;
-                }
-
-                renderBoard();
-                showToast('Parts marked as ordered. The indicator has been cleared.', 'success');
-
-            } catch(err) {
-                console.error('Mark parts ordered error:', err);
-                showToast('Error marking parts ordered: ' + err.message, 'error');
-            }
-        }
-
         // ── Parts Status Modal (GH#14) ────────────────────────────────────────
         // Opens a modal for Manager/Admin to set Parts status: Sourcing / Outstanding / Received / Clear
         function openPartsStatusModal(filteredIndex) {
@@ -10804,75 +10289,6 @@ Notes: ${notes}` : '',
         }
 
         async function appendToSheets(formData) { return appendToSupabase(formData); }
-        async function appendToSheets_SHEETS(formData) {
-            try {
-                // Use today's date as the received date for new entries
-                const today = new Date().toISOString().split('T')[0];
-                const newRoId = generateROId(formData.customerName, formData.rv || '', today);
-                
-                const values = [[
-                    formData.customerName,
-                    formData.customerPhone || '',
-                    formData.customerEmail || '',
-                    formData.customerAddress || '',
-                    formData.rv,
-                    formData.rvPhotoUrl || '',
-                    formData.repairType,
-                    formData.repairDescription,
-                    formData.technicianAssigned || '',
-                    today, // Date Received (today's date)
-                    formData.percentComplete || 0,
-                    formData.dollarValue || 0,
-                    formData.status,
-                    formData.urgency,
-                    formData.customerType,
-                    formData.promisedDate || '',
-                    formData.roStatusNotes || '',
-                    formData.customerCommunicationNotes || '',
-                    formData.dateArrived || '',
-                    '',        // photoLibrary starts empty
-                    newRoId,   // Column U — RO ID
-                    formData.vin || '',  // Column V — VIN
-                    ''                  // Column W — InsuranceData (set by scanner after save)
-                ]];
-
-                // Find the true last populated row by reading column A only,
-                // then write directly to the next row — immune to blank rows or stray data
-                const colAResponse = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: 'Sheet1!A:A',
-                });
-                const colARows = colAResponse.result.values || [];
-                // Find last row that has a customer name (skip header at index 0)
-                let lastDataRow = 1; // default to row 1 (header)
-                for (let i = colARows.length - 1; i >= 1; i--) {
-                    if (colARows[i] && colARows[i][0] && colARows[i][0].toString().trim() !== '') {
-                        lastDataRow = i + 1; // convert to 1-indexed sheet row
-                        break;
-                    }
-                }
-                const newRow = lastDataRow + 1;
-                log(`Appending new RO to row ${newRow} (last data was row ${lastDataRow})`);
-
-                const response = await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_CONFIG.SPREADSHEET_ID,
-                    range: `Sheet1!A${newRow}:X${newRow}`,
-                    valueInputOption: 'RAW',
-                    resource: { values }
-                });
-
-                log('Row added:', response);
-                
-                // Reload data from sheets
-                await loadDataFromSheets();
-                
-                return true;
-            } catch (err) {
-                console.error('Error appending to Sheets:', err);
-                showToast('Error saving time log data. Check console for details.', 'error');
-                return false;
-            }
-        }
 
         // Modal Controls
         let editingROIndex = null; // Track which RO is being edited
