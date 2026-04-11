@@ -95,24 +95,6 @@
             border-color: var(--accent-info);
         }
 
-        .login-btn {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, var(--accent-info) 0%, #0070d9 100%);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-family: 'Barlow Condensed', sans-serif;
-            font-size: 1.1rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-
         .login-error {
             color: var(--accent-urgent);
             font-size: 0.9rem;
@@ -405,21 +387,6 @@
 
         .connect-prompt p { color: var(--text-secondary); margin-bottom: 16px; }
 
-        .connect-sheets-btn {
-            padding: 12px 28px;
-            background: linear-gradient(135deg, #4285f4 0%, #2563eb 100%);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-family: 'Barlow Condensed', sans-serif;
-            font-size: 1rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .connect-sheets-btn:hover { opacity: 0.9; }
     </style>
 </head>
 <body>
@@ -585,10 +552,6 @@
                 userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
             }
         }
-    }
-
-    function hasRole(role) {
-        return userRoles.includes(role);
     }
 
     function isAdmin() {

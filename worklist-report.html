@@ -403,10 +403,6 @@ async function loadUserRoles() {
     }
 }
 
-function hasRole(role) {
-    return userRoles.includes(role);
-}
-
 function getSB() {
     if (!_sb) {
         _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

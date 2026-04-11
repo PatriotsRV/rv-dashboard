@@ -1464,25 +1464,6 @@ const RV_ROOF_DB = [
     { make: "Grand Design", model: "Imagine", types: ["Travel Trailer"], lIn: 264, wIn: 96, obs: [{ name: "A/C", xIn: 80, yIn: 22, lIn: 36, wIn: 28 }, { name: "Vent", xIn: 195, yIn: 28, lIn: 18, wIn: 18 }] },
     { make: "Forest River", model: "Cardinal", types: ["Travel Trailer"], lIn: 336, wIn: 96, obs: [{ name: "A/C", xIn: 90, yIn: 22, lIn: 38, wIn: 28 }, { name: "Vent 1", xIn: 200, yIn: 28, lIn: 20, wIn: 20 }, { name: "Vent 2", xIn: 280, yIn: 28, lIn: 20, wIn: 20 }] },
 ];
-async function fetchRoofInfo(rvType, make, model, year) {
-    try {
-        const response = await fetch("https://axfejhudchdejoiwaetq.supabase.co/functions/v1/roof-lookup", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY"
-            },
-            body: JSON.stringify({ rvType: rvType, make: make, model: model, year: year, detailed: true })
-        });
-        const data = await response.json();
-        const text = (data.content || []).map(function (b) { return b.text || ""; }).join("");
-        const clean = text.replace(/```json|```/g, "").trim();
-        return JSON.parse(clean);
-    }
-    catch (e) {
-        throw new Error("Roof lookup failed: " + e.message);
-    }
-}
 function RoofPlannerTab({ theme, coachInfo, rvType: intakeRvType, obstacles, setObstacles, panels, setPanels, starlinkItems, setStarlinkItems }) {
     const RULER = 22;
     const SVG_W = 800;
