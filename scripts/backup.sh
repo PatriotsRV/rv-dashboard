@@ -62,6 +62,7 @@ FILES=(
   "supabase/functions/kenect-proxy/index.ts"
   "supabase/functions/send-er-report/index.ts"
   "supabase/functions/send-parts-report/index.ts"
+  "supabase/functions/claude-vision-proxy/index.ts"
 )
 
 echo "📦 PRVS Backup — $TIMESTAMP"
@@ -78,6 +79,7 @@ mkdir -p "$SNAPSHOT_DIR/supabase/functions/roof-lookup"
 mkdir -p "$SNAPSHOT_DIR/supabase/functions/kenect-proxy"
 mkdir -p "$SNAPSHOT_DIR/supabase/functions/send-er-report"
 mkdir -p "$SNAPSHOT_DIR/supabase/functions/send-parts-report"
+mkdir -p "$SNAPSHOT_DIR/supabase/functions/claude-vision-proxy"
 
 # Copy each file
 for FILE in "${FILES[@]}"; do

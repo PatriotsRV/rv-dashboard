@@ -78,7 +78,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 | Spec File | Description | Sessions | Priority | Status |
 |---|---|---|---|---|
-| `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | 🔄 S2 complete (Phases 1-6) — S3 next |
+| `docs/specs/SECURITY_REMEDIATION.md` | 10 security issues: XSS, hardcoded RBAC emails, analytics auth gap, Anthropic key in localStorage, console.log cleanup, inline onclick migration, CORS wildcards, anon key duplication, calendar ID hardcoding, search_path fix | S1–S7 (7 sessions) | 🔴 **ASAP — First weekend priority** | 🔄 S3 complete — S4 next |
 | `docs/specs/TWILIO_SMS_SPEC.md` | Full Twilio SMS integration: number port guide, `sms_log` + `sms_templates` tables, `twilio-sms` Edge Function, SMS compose modal (repurposes Kenect modal), 6 message templates, A2P 10DLC registration, inbound webhook | Phase 1–3 (3 phases) | 🔴 Blocks after number port | ⏳ Not started |
 | `docs/specs/TOAST_SYSTEM_SPEC.md` | Replace all `alert()` calls with non-blocking toast notifications: success/warning/danger/info types, auto-dismiss, stack management | 1 session | 🟠 High | ⏳ Not started |
 | `docs/specs/UNIFIED_SEARCH_SPEC.md` | Global search bar: search across customer name, RO ID, VIN, RV, phone, parking spot with debounced input and highlight | 1 session | 🟠 High | ⏳ Not started |
@@ -87,7 +87,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 ### Spec Execution Order (Recommended)
 1. **Security Remediation S1** (XSS) — zero regression risk, prerequisite for safe rendering
 2. ~~**Security Remediation S2** (RBAC) — removes hardcoded emails, uses staff table~~ ✅ Done 2026-04-11
-3. **Security Remediation S3** (analytics auth) — depends on S2
+3. ~~**Security Remediation S3** (analytics auth) — depends on S2~~ ✅ Done 2026-04-11
 4. **Toast System** — can run anytime, independent
 5. **Unified Search** — can run anytime, independent
 6. **Security Remediation S4–S7** — remaining security items
@@ -139,6 +139,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | 🟡 | GH#21 | **checkin.html Auth Persistence Fix** | Supabase client created with no auth options — no `persistSession`, `autoRefreshToken`, or `storageKey`. Authenticated session lost on every page reload (falls back to anon key). Fix: add `SB_AUTH_OPTIONS` matching index.html + `getSession()` restore on load. | ⏳ Open |
 | ✅ | — | **Run SQL migration: service_silo column** | `service_silo TEXT` column confirmed on `manager_work_lists`. Migration ran by Roland. | ✅ Done — Session 37 |
 | ✅ | — | **Security Remediation S2 — RBAC migration** | **2026-04-11:** Phase 1 (DB migration: users, user_roles, roles tables + 15 role entries). Phase 2 (index.html: Steps 2.1-2.13, solar access fix). Phases 3-6 (worklist-report, closed-ros, analytics, checkin: loadUserRoles + isAdmin rewrite + constant deletion). All hardcoded ADMIN_EMAILS/MANAGER_EMAILS/SR_MANAGER_EMAILS removed from all 5 HTML files. Commits: 0c04416, ee1c91e, 28c52f8, c920277. QA verified by Perplexity. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Security Remediation S3 — analytics + solar auth patch** | **2026-04-11:** analytics.html: supabaseSession guard on submitEnhancementRequest (replaces currentUser check). solar.html: Supabase client configured with persistSession + storageKey (prvs_solar_auth), session restore via getSession(), submitEnhancementRequest rewritten with session guard + real user identity from supabaseSession. GH#17 created for full solar.html sign-in flow. Commit: 350bf35. QA verified by Perplexity. | ✅ Done — 2026-04-11 |
 | 🟡 | — | **GitHub Release v1.305** | GH#16 Sr Manager silo work lists + Work List Report page. github.com/PatriotsRV/rv-dashboard/releases/new — tag `v1.305` | ⏳ Roland action |
 | ✅ | — | **Batch-invite remaining techs in Supabase Auth** | All techs invited. Zak Wombles fixed Session 36; remaining techs (ignacio@, tipton@, rod@, travis@, cooper@, rudy@, tommy@) batch-invited by Roland. | ✅ Done — Session 37 |
 | ✅ | GH#22 | **Closed/Cashiered RO View** | **Session 37:** `closed-ros.html` v1.0 built — card grid with photos, search/filter (customer, RO ID, RV, VIN, technician), sort options, detail modal, reactivation (Managers+Admins insert back to `repair_orders`, delete from `cashiered`). Bright yellow "🗃 Closed ROs" header button on main dashboard (all users). Genie lamp ER button included. RLS auth fix — requires real Supabase session, no localStorage fallback. | ✅ Done — Session 37 |
@@ -160,7 +161,7 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | `supabase/functions/kenect-proxy/index.ts` | **v1.0** | Edge Function — Kenect API proxy (actions: test_credentials, get_locations, get_conversation, get_conversations, get_messages_by_phone, send_message, send_review_request). Requires `KENECT_API_KEY` Supabase secret. |
 | `checkin.html` | **v1.29** | Technician clock-in/out, offline-first IndexedDB queue, Spanish language toggle. **v1.28:** Proper Supabase auth — `signInWithIdToken()`, `getSession()` restore, `onAuthStateChange`, `clockIn()` session guard, `persistSession: true`. **S2 Phase 6: Dead ADMIN_EMAILS constant removed.** |
 | `analytics.html` | **v1.1** | Analytics/reporting view. **S2 Phase 5: RBAC migration — loadUserRoles, async DOMContentLoaded/handleSignIn with signInWithIdToken, role-based isAdmin gate, hardcoded ADMIN_EMAILS removed.** |
-| `solar.html` | **v2.0** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes |
+| `solar.html` | **v2.1** | Solar installation tracking — React 18, roof planner, AI lookup, PDF quotes. **S3: Supabase client with persistSession + storageKey, session restore, session-guarded ER submit.** |
 | `supabase/functions/roof-lookup/index.ts` | **v1.0** | Edge Function — Anthropic API proxy for AI roof lookup (⚠️ needs CLI deploy) |
 | `supabase/functions/send-quote-email/index.ts` | **v1.5** | Edge Function — solar quote email + parts request email + photo share email + parts ordered notification + ETA update notification (types: 'solar_quote', 'parts_request', 'photo_share', 'parts_ordered', 'parts_eta_update') |
 | `supabase/functions/send-parts-report/index.ts` | **v1.1** | Edge Function — GH#18 scheduled parts status report: 4 sections (open requests, ordered/in-transit, overdue, received 24h). Queries DB via service role, emails all sr_managers + managers + parts_managers. **v1.1 (Session 37): Fixed `ro_id` FK bug in sections 2/3/4. CLI deployed ✅.** |
@@ -220,6 +221,11 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - **`loadUserRoles()`** must be awaited before any `isAdmin()` / `isManagerOrAdmin()` / `hasRole()` call. All auth flows (DOMContentLoaded, handleSignIn/handleGoogleSignIn) already do this.
 - **`_allStaff`** (from `staff` table) used for operational role lookups (sr_manager badge, silo grouping, admin exclusion from reports). Separate from `userRoles` (which is RBAC permissions).
 - **Old fallback pattern `isAdmin() || ADMIN_EMAILS.includes(...)` is dead** — do not reintroduce.
+
+### solar.html Auth — Partial (S3, GH#17 pending)
+- solar.html has NO login gate and NO Google sign-in flow. It creates a Supabase client with `storageKey: 'prvs_solar_auth'` and attempts to restore an existing session via `getSession()`, but there is no way to CREATE a session on this page.
+- The ER genie lamp submit is guarded with `!supabaseSession` and shows a clear error message directing the user to sign in on the main dashboard first.
+- GH#17 tracks adding full Google sign-in to solar.html. Until then, solar's core features (quoting, PDF, projects) work without auth via permissive anon RLS on `solar_project_store` and `solar_settings`.
 
 ### Kenect — ON HOLD
 - Zapier has no inbound message trigger → can't support conversation thread view. Direct partner API access still possible. `kenect-proxy` Edge Function committed but not deployed.
