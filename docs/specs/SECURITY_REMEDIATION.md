@@ -37,35 +37,40 @@ Items 4–10 are lower urgency — they don't represent immediate exploits but s
 
 > **Claude: Run these steps at the start of the first Security Remediation session (S1), before writing any code.** This creates a known-good restore point for the entire remediation effort.
 
-### Step 1 — Supabase Data Backup
-```bash
-bash scripts/backup.sh
-```
-Confirm the backup completes successfully and report the output to Roland.
+### Step 1 — Full Backup (files + Supabase data + git tag)
 
-### Step 2 — Git Tag the Current State
+> `backup.sh` supports `--supabase` (exports all 20 Supabase tables to JSON) and `--tag <name>` (creates + pushes a named git tag). Both are optional flags — without them it only snapshots local files.
+
 ```bash
-git tag -a pre-security-remediation -m "Snapshot before Security Remediation spec execution — v1.308"
-git push origin pre-security-remediation
+bash scripts/backup.sh --supabase --tag pre-security-remediation
 ```
-This creates a permanent, named restore point. If anything goes wrong during any session (S1–S7), Roland can restore to exactly this state with:
+
+This single command will:
+1. Snapshot all HTML pages + Edge Functions into `.backups/<timestamp>/`
+2. Export all 20 Supabase tables to `.backups/<timestamp>/supabase-data/*.json` (requires `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in environment or `.env`)
+3. Create and push git tag `pre-security-remediation` — a permanent restore point
+
+If anything goes wrong during any session (S1–S7), Roland can restore to exactly this state with:
 ```bash
 git checkout pre-security-remediation
 ```
 
-### Step 3 — Local HTML Backup
+### Step 2 — Local HTML Backup
 ```bash
 cp index.html index.html.backup-pre-security
 ```
 This keeps a side-by-side copy of the monolith in the working directory. Do **not** commit this file — it's a local safety net only.
 
 ### Verification
-Before proceeding to S1, confirm all three:
-- [ ] `backup.sh` ran successfully
+Before proceeding to S1, confirm all of these:
+- [ ] `backup.sh` ran successfully (file snapshot saved)
+- [ ] Supabase export completed (20 tables exported, check output for failures)
 - [ ] `pre-security-remediation` tag exists on GitHub (`git tag -l | grep pre-security`)
 - [ ] `index.html.backup-pre-security` exists in the repo root (`ls -la index.html.backup*`)
 
 Report the verification results to Roland before starting any code changes.
+
+> **Note:** For routine session backups (pause/end), just run `bash scripts/backup.sh` without flags — it will only snapshot files, no Supabase export or tagging.
 
 ---
 
