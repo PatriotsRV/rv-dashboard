@@ -2727,6 +2727,7 @@ Run this migration in the Supabase SQL Editor (it replaces the function in-place
 
 | File | Session | Contents |
 |---|---|---|
+| `supabase/migrations/s2_sync_auth_users.sql` | S2 | Syncs 6 missing auth.users → public.users (prerequisite for Steps 1.1–1.6) |
 | `supabase/migrations/s2_add_sr_manager_role.sql` | S2 | Adds "Sr Manager" to roles table |
 | `supabase/migrations/s2_assign_admin_roles.sql` | S2 | Assigns Admin role to Roland + Lynn in user_roles |
 | `supabase/migrations/s2_assign_sr_manager_roles.sql` | S2 | Assigns Sr Manager to Ryan, Kevin, Sofia in user_roles |
