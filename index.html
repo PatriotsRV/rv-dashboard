@@ -316,6 +316,13 @@
             transform: translateY(-1px);
         }
 
+        .search-highlight {
+            background: rgba(250, 204, 21, 0.35);
+            color: inherit;
+            border-radius: 2px;
+            padding: 0 1px;
+        }
+
         .upload-area {
             flex: 1;
             min-width: 300px;
@@ -3114,12 +3121,16 @@
             </div>
             
             <div class="search-section">
-                <label class="search-label">🔍 Search by Customer Name:</label>
-                <input type="text" 
-                       id="customerSearch" 
-                       class="search-input" 
-                       placeholder="Type customer name to filter..."
-                       autocomplete="off">
+                <label class="search-label">🔍 Search:</label>
+                <div style="flex:1; position:relative;">
+                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#6b7280; pointer-events:none; font-size:1rem;">🔍</span>
+                    <input type="text"
+                           id="customerSearch"
+                           class="search-input"
+                           style="padding-left:36px; width:100%; box-sizing:border-box; flex:unset;"
+                           placeholder="Search name, RO ID, VIN, tech, description, phone…"
+                           autocomplete="off">
+                </div>
                 <button id="clearSearch" class="clear-search-btn" style="display: none;">✕ Clear</button>
             </div>
 
@@ -7640,6 +7651,31 @@ Notes: ${notes}` : '',
             showToast('RO not visible — it may be filtered out.', 'warning', { duration: 12000, actionLabel: 'Clear Filters', actionCallback: function() { currentStatusFilters = []; currentRepairFilter = 'all'; currentPartsFilter = 'all'; currentROTypeFilter = 'all'; currentDaysFilter = null; currentSearchFilter = ''; document.getElementById('customerSearch').value = ''; renderBoard(); } });
         }
 
+        // Post-render search highlight — walks text nodes, wraps matches in <mark>
+        function highlightSearchMatches(container, needle) {
+            if (!needle) return;
+            const lowerNeedle = needle.toLowerCase();
+            const skip = { SCRIPT: 1, STYLE: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, MARK: 1 };
+            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+            const matches = [];
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                if (skip[node.parentElement?.tagName]) continue;
+                const idx = node.textContent.toLowerCase().indexOf(lowerNeedle);
+                if (idx !== -1) matches.push({ node, idx });
+            }
+            // Process in reverse so DOM mutations don't shift positions
+            for (let i = matches.length - 1; i >= 0; i--) {
+                const { node, idx } = matches[i];
+                const mark = document.createElement('mark');
+                mark.className = 'search-highlight';
+                const range = document.createRange();
+                range.setStart(node, idx);
+                range.setEnd(node, idx + needle.length);
+                range.surroundContents(mark);
+            }
+        }
+
         function renderBoard() {
             const grid = document.getElementById('boardGrid');
             
@@ -7652,11 +7688,23 @@ Notes: ${notes}` : '',
             // Apply all filters
             let filtered = sorted;
             
-            // Customer name search filter
+            // Unified multi-field search filter
             if (currentSearchFilter) {
+                const needle = currentSearchFilter.toLowerCase();
                 filtered = filtered.filter(ro => {
-                    const customerName = (ro.customerName || '').toLowerCase();
-                    return customerName.includes(currentSearchFilter.toLowerCase());
+                    const haystack = [
+                        ro.customerName,
+                        ro.roId,
+                        ro.rv,
+                        ro.vin,
+                        ro.technicianAssigned,
+                        ro.repairDescription,
+                        ro.parkingSpot,
+                        ro.customerPhone,
+                        ro.customerEmail,
+                        ro.repairType,
+                    ].filter(Boolean).join(' ').toLowerCase();
+                    return haystack.includes(needle);
                 });
             }
             
@@ -8085,7 +8133,12 @@ Notes: ${notes}` : '',
                     </div>
                 `;
             }).join('');
-            
+
+            // Highlight search matches in rendered cards
+            if (currentSearchFilter) {
+                highlightSearchMatches(grid, currentSearchFilter);
+            }
+
             // QR codes now render on-demand when toggle is clicked
             // Just load Drive images for RV photos
             if (accessToken) {
@@ -8562,8 +8615,8 @@ Notes: ${notes}` : '',
             'Live': 'En Vivo',
             'RVs on Lot': 'RVs en el Lote',
             // Search & filters
-            '🔍 Search by Customer Name:': '🔍 Buscar por Nombre:',
-            'Type customer name to filter...': 'Escriba el nombre del cliente...',
+            '🔍 Search:': '🔍 Buscar:',
+            'Search name, RO ID, VIN, tech, description, phone…': 'Buscar nombre, OR, VIN, técnico, descripción, teléfono…',
             '✕ Clear': '✕ Limpiar',
             'Filter by Days on Lot ≥': 'Días en el Lote ≥',
             'Filter by Parts Status': 'Filtrar por Partes',
@@ -8713,9 +8766,9 @@ Notes: ${notes}` : '',
             const liveSpan = document.querySelector('.live-indicator span:last-child');
             if (liveSpan) liveSpan.dataset.i18n = 'Live';
             const searchLabel = document.querySelector('.search-label');
-            if (searchLabel) searchLabel.dataset.i18n = '🔍 Search by Customer Name:';
+            if (searchLabel) searchLabel.dataset.i18n = '🔍 Search:';
             const searchInput = document.getElementById('customerSearch');
-            if (searchInput) searchInput.dataset.i18nPh = 'Type customer name to filter...';
+            if (searchInput) searchInput.dataset.i18nPh = 'Search name, RO ID, VIN, tech, description, phone…';
             const clearBtn = document.getElementById('clearSearch');
             if (clearBtn) clearBtn.dataset.i18n = '✕ Clear';
             // Tag filter section labels (preserve child spans)
