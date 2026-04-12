@@ -3,6 +3,7 @@ import nodemailer from "npm:nodemailer@6";
 
 // GH#18: Parts status report — called by Supabase pg_cron at 8 AM + 3 PM CDT Mon-Fri
 // v1.3: Added contextual action prompts above each section + end-of-day checklist on 3 PM send
+// v1.4: Fixed action prompt rendering — merged into single table per section
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
@@ -147,9 +148,10 @@ Deno.serve(async (req: Request) => {
         <td colspan="6" style="padding: 10px 16px; color: #888; font-style: italic; font-size: 13px;">${msg}</td>
       </tr>`;
 
-    const tableWrap = (rows: string, cols: string[]) => `
+    const tableWrap = (rows: string, cols: string[], headerRows: string = "") => `
       <table style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">
         <thead>
+          ${headerRows}
           <tr>
             ${cols.map(c => `<th style="${thStyle}">${c}</th>`).join("")}
           </tr>
@@ -349,40 +351,28 @@ Deno.serve(async (req: Request) => {
   ${morningBanner}
 
   <!-- Section 1: Open Parts Requests -->
-  <table style="width:100%; border-collapse:collapse;">
-    <tbody>
-      ${sectionHeader("Section 1", "Open Requests — Not Yet Ordered", openROs?.length || 0, "#fff3f8")}
-      ${actionPrompt(s1Action, s1ActionColor, s1ActionTColor)}
-    </tbody>
-  </table>
-  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}
+  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"],
+    sectionHeader("Section 1", "Open Requests — Not Yet Ordered", openROs?.length || 0, "#fff3f8") +
+    actionPrompt(s1Action, s1ActionColor, s1ActionTColor)
+  )}
 
   <!-- Section 2: Ordered / In Transit / Backordered -->
-  <table style="width:100%; border-collapse:collapse;">
-    <tbody>
-      ${sectionHeader("Section 2", "Ordered — Not Yet Received", orderedParts?.length || 0, "#eff6ff")}
-      ${actionPrompt(s2Action, s2ActionColor, s2ActionTColor)}
-    </tbody>
-  </table>
-  ${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}
+  ${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"],
+    sectionHeader("Section 2", "Ordered — Not Yet Received", orderedParts?.length || 0, "#eff6ff") +
+    actionPrompt(s2Action, s2ActionColor, s2ActionTColor)
+  )}
 
   <!-- Section 3: Overdue -->
-  <table style="width:100%; border-collapse:collapse;">
-    <tbody>
-      ${sectionHeader("Section 3", "Overdue Parts — ETA Has Passed", overdueParts?.length || 0, "#fef2f2")}
-      ${actionPrompt(s3Action, s3ActionColor, s3ActionTColor)}
-    </tbody>
-  </table>
-  ${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}
+  ${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"],
+    sectionHeader("Section 3", "Overdue Parts — ETA Has Passed", overdueParts?.length || 0, "#fef2f2") +
+    actionPrompt(s3Action, s3ActionColor, s3ActionTColor)
+  )}
 
   <!-- Section 4: Received in Last 24h -->
-  <table style="width:100%; border-collapse:collapse;">
-    <tbody>
-      ${sectionHeader("Section 4", "Received in Last 24 Hours", receivedParts?.length || 0, "#f0fdf4")}
-      ${actionPrompt(s4Action, s4ActionColor, s4ActionTColor)}
-    </tbody>
-  </table>
-  ${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"])}
+  ${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"],
+    sectionHeader("Section 4", "Received in Last 24 Hours", receivedParts?.length || 0, "#f0fdf4") +
+    actionPrompt(s4Action, s4ActionColor, s4ActionTColor)
+  )}
 
   ${eodChecklist}
 
@@ -435,7 +425,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:        true,
-      version:        "v1.3",
+      version:        "v1.4",
       timeLabel,
       recipients:     recipients.length,
       openRequests:   openROs?.length || 0,
