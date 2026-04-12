@@ -6,6 +6,7 @@ import nodemailer from "npm:nodemailer@6";
 // v1.4: Fixed action prompt rendering — merged into single table per section
 // v1.5: Action prompts as standalone div blocks — email client safe
 // v1.6: Larger fonts, numbered action steps per section
+// v1.7: Minified inline styles to fix Gmail clipping
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
@@ -125,58 +126,27 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Shared style constants ───────────────────────────────────────────
-    const thStyle = `padding: 7px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #555; border-bottom: 1px solid #e5e7eb; background: #f9fafb;`;
-    const tdStyle = `padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; vertical-align: top;`;
+    const thStyle = `padding:6px 10px;text-align:left;font-size:12px;font-weight:600;color:#555;border-bottom:1px solid #e5e7eb;background:#f9fafb`;
+    const tdStyle = `padding:7px 10px;font-size:13px;border-bottom:1px solid #f0f0f0;vertical-align:top`;
 
-    const emptyRow = (msg: string) => `
-      <tr>
-        <td colspan="6" style="padding: 10px 16px; color: #888; font-style: italic; font-size: 13px;">${msg}</td>
-      </tr>`;
+    const emptyRow = (msg: string) => `<tr><td colspan="6" style="padding:10px 16px;color:#888;font-style:italic;font-size:13px">${msg}</td></tr>`;
 
-    const tableWrap = (rows: string, cols: string[]) => `
-      <table style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid #e5e7eb; border-top:none; border-radius:0 0 6px 6px; overflow:hidden;">
-        <thead>
-          <tr>
-            ${cols.map(c => `<th style="${thStyle}">${c}</th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>`;
+    const tableWrap = (rows: string, cols: string[]) => `<table style="width:100%;border-collapse:collapse;margin-bottom:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;overflow:hidden"><thead><tr>${cols.map(c => `<th style="${thStyle}">${c}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
 
     // ── Section 1 rows: Open Parts Requests ─────────────────────────────
     const openROsRows = openROs?.length
       ? openROs.map((ro: any) => {
           const roParts = openROPartsMap[ro.id] || [];
           const partsHtml = roParts.length
-            ? roParts.map(p => `<div style="font-size:12px; color:#374151; line-height:1.7;">• ${p}</div>`).join("")
-            : `<span style="color:#aaa; font-style:italic; font-size:12px;">No parts logged yet</span>`;
-          return `
-          <tr>
-            <td style="${tdStyle} font-family:monospace;">${ro.ro_id || "—"}</td>
-            <td style="${tdStyle} font-weight:600;">${ro.customer_name || "—"}</td>
-            <td style="${tdStyle}">${ro.rv || "—"}</td>
-            <td style="${tdStyle}">${partsHtml}</td>
-            <td style="${tdStyle}">
-              <span style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">
-                ${ro.parts_status || "outstanding"}
-              </span>
-            </td>
-            <td style="${tdStyle} color:#666; font-size:12px;">${ro.requested_by_email || "—"}</td>
-          </tr>`;
+            ? roParts.map(p => `<div style="font-size:12px;color:#374151;line-height:1.7">• ${p}</div>`).join("")
+            : `<span style="color:#aaa;font-style:italic;font-size:12px">No parts logged yet</span>`;
+          return `<tr><td style="${tdStyle};font-family:monospace">${ro.ro_id || "—"}</td><td style="${tdStyle};font-weight:600">${ro.customer_name || "—"}</td><td style="${tdStyle}">${ro.rv || "—"}</td><td style="${tdStyle}">${partsHtml}</td><td style="${tdStyle}"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${ro.parts_status || "outstanding"}</span></td><td style="${tdStyle};color:#666;font-size:12px">${ro.requested_by_email || "—"}</td></tr>`;
         }).join("")
       : emptyRow("No open parts requests — nothing to source right now.");
 
     // Action prompt text for section 1
     const s1Action = openROs?.length
-      ? `<p style="margin:0 0 6px; font-size:15px; font-weight:700; color:#92400e;">For each open request below:</p>
-<ol style="margin:4px 0 0; padding-left:20px; font-size:15px; color:#92400e; line-height:1.8;">
-  <li>Find the part and place the order with the supplier</li>
-  <li>Update the status to <strong>Ordered</strong> in the dashboard</li>
-  <li>Fill in <strong>Supplier, PO Number, Date Ordered, and ETA</strong></li>
-  <li>Click <strong>"Notify Requester"</strong> to email whoever submitted the request</li>
-</ol>`
+      ? `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#92400e">For each open request below:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#92400e;line-height:1.8"><li>Find the part and place the order with the supplier</li><li>Update the status to <strong>Ordered</strong> in the dashboard</li><li>Fill in <strong>Supplier, PO Number, Date Ordered, and ETA</strong></li><li>Click <strong>"Notify Requester"</strong> to email whoever submitted the request</li></ol>`
       : `Nothing to do here — no open requests.`;
     const s1ActionColor  = openROs?.length ? "#fffbeb" : "#f0fdf4";
     const s1ActionTColor = openROs?.length ? "#92400e" : "#15803d";
@@ -188,18 +158,7 @@ Deno.serve(async (req: Request) => {
           const etaMissing = !p.eta;
           const etaColor = etaMissing ? "#dc2626" : "#374151";
           const etaWeight = etaMissing ? "700" : "600";
-          return `
-          <tr>
-            <td style="${tdStyle} font-family:monospace;">${p.repair_orders?.ro_id || "—"}</td>
-            <td style="${tdStyle} font-weight:600;">${p.repair_orders?.customer_name || "—"}</td>
-            <td style="${tdStyle}">${p.part_name || "—"}</td>
-            <td style="${tdStyle}">
-              <span style="background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">
-                ${p.status}
-              </span>
-            </td>
-            <td style="${tdStyle} color:${etaColor}; font-weight:${etaWeight};">${etaText}</td>
-          </tr>`;
+          return `<tr><td style="${tdStyle};font-family:monospace">${p.repair_orders?.ro_id || "—"}</td><td style="${tdStyle};font-weight:600">${p.repair_orders?.customer_name || "—"}</td><td style="${tdStyle}">${p.part_name || "—"}</td><td style="${tdStyle}"><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${p.status}</span></td><td style="${tdStyle};color:${etaColor};font-weight:${etaWeight}">${etaText}</td></tr>`;
         }).join("")
       : emptyRow("No parts currently in Ordered / In Transit / Backordered status.");
 
@@ -208,46 +167,20 @@ Deno.serve(async (req: Request) => {
     if (!orderedParts?.length) {
       s2Action = "Nothing to do here — no parts currently on order.";
     } else if (missingEtaCount > 0) {
-      s2Action = `<p style="margin:0 0 6px; font-size:15px; font-weight:700; color:#1e40af;">For each part on order:</p>
-<ol style="margin:4px 0 0; padding-left:20px; font-size:15px; color:#1e40af; line-height:1.8;">
-  <li>Check the ETA date — if today or already past, <strong>call the supplier now</strong></li>
-  <li>Get a new ETA and update it in the dashboard</li>
-  <li><strong>${missingEtaCount} part${missingEtaCount > 1 ? "s are" : " is"} missing an ETA entirely</strong> — open the dashboard and add it now</li>
-</ol>`;
+      s2Action = `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1e40af">For each part on order:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#1e40af;line-height:1.8"><li>Check the ETA date — if today or already past, <strong>call the supplier now</strong></li><li>Get a new ETA and update it in the dashboard</li><li><strong>${missingEtaCount} part${missingEtaCount > 1 ? "s are" : " is"} missing an ETA entirely</strong> — open the dashboard and add it now</li></ol>`;
     } else {
-      s2Action = `<p style="margin:0 0 6px; font-size:15px; font-weight:700; color:#1e40af;">For each part on order:</p>
-<ol style="margin:4px 0 0; padding-left:20px; font-size:15px; color:#1e40af; line-height:1.8;">
-  <li>Check the ETA date — if today or already past, <strong>call the supplier now</strong></li>
-  <li>Get a new ETA and update it in the dashboard</li>
-</ol>`;
+      s2Action = `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1e40af">For each part on order:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#1e40af;line-height:1.8"><li>Check the ETA date — if today or already past, <strong>call the supplier now</strong></li><li>Get a new ETA and update it in the dashboard</li></ol>`;
     }
     const s2ActionColor  = orderedParts?.length ? "#eff6ff" : "#f0fdf4";
     const s2ActionTColor = orderedParts?.length ? "#1e40af" : "#15803d";
 
     // ── Section 3 rows: Overdue ──────────────────────────────────────────
     const overdueRows = overdueParts?.length
-      ? overdueParts.map((p: any) => `
-          <tr>
-            <td style="${tdStyle} font-family:monospace;">${p.repair_orders?.ro_id || "—"}</td>
-            <td style="${tdStyle} font-weight:600;">${p.repair_orders?.customer_name || "—"}</td>
-            <td style="${tdStyle}">${p.part_name || "—"}</td>
-            <td style="${tdStyle}">
-              <span style="background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">
-                ${p.status}
-              </span>
-            </td>
-            <td style="${tdStyle} color:#dc2626; font-weight:700;">${p.eta} — OVERDUE</td>
-          </tr>`).join("")
+      ? overdueParts.map((p: any) => `<tr><td style="${tdStyle};font-family:monospace">${p.repair_orders?.ro_id || "—"}</td><td style="${tdStyle};font-weight:600">${p.repair_orders?.customer_name || "—"}</td><td style="${tdStyle}">${p.part_name || "—"}</td><td style="${tdStyle}"><span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${p.status}</span></td><td style="${tdStyle};color:#dc2626;font-weight:700">${p.eta} — OVERDUE</td></tr>`).join("")
       : emptyRow("No overdue parts — you are on top of it.");
 
     const s3Action = overdueParts?.length
-      ? `<p style="margin:0 0 6px; font-size:15px; font-weight:700; color:#991b1b;">These parts are LATE — act today:</p>
-<ol style="margin:4px 0 0; padding-left:20px; font-size:15px; color:#991b1b; line-height:1.8;">
-  <li><strong>Call the supplier</strong> for every overdue part</li>
-  <li>Get a new ETA and <strong>update it in the dashboard</strong></li>
-  <li>If they still can't deliver — change status to <strong>Backordered</strong></li>
-  <li>Let the manager on that RO know right away</li>
-</ol>`
+      ? `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#991b1b">These parts are LATE — act today:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#991b1b;line-height:1.8"><li><strong>Call the supplier</strong> for every overdue part</li><li>Get a new ETA and <strong>update it in the dashboard</strong></li><li>If they still can't deliver — change status to <strong>Backordered</strong></li><li>Let the manager on that RO know right away</li></ol>`
       : `Nothing overdue — keep it that way.`;
     const s3ActionColor  = overdueParts?.length ? "#fef2f2" : "#f0fdf4";
     const s3ActionTColor = overdueParts?.length ? "#991b1b" : "#15803d";
@@ -262,154 +195,40 @@ Deno.serve(async (req: Request) => {
                 timeZone: "America/Chicago",
               })
             : "—";
-          return `
-          <tr>
-            <td style="${tdStyle} font-family:monospace;">${p.repair_orders?.ro_id || "—"}</td>
-            <td style="${tdStyle} font-weight:600;">${p.repair_orders?.customer_name || "—"}</td>
-            <td style="${tdStyle}">${p.part_name || "—"}</td>
-            <td style="${tdStyle}">
-              <span style="background:#dcfce7; color:#14532d; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">
-                Received
-              </span>
-            </td>
-            <td style="${tdStyle} color:#16a34a; font-weight:600;">${recvDate}</td>
-          </tr>`;
+          return `<tr><td style="${tdStyle};font-family:monospace">${p.repair_orders?.ro_id || "—"}</td><td style="${tdStyle};font-weight:600">${p.repair_orders?.customer_name || "—"}</td><td style="${tdStyle}">${p.part_name || "—"}</td><td style="${tdStyle}"><span style="background:#dcfce7;color:#14532d;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">Received</span></td><td style="${tdStyle};color:#16a34a;font-weight:600">${recvDate}</td></tr>`;
         }).join("")
       : emptyRow("No parts received in the last 24 hours.");
 
     const s4Action = receivedParts?.length
-      ? `<p style="margin:0 0 6px; font-size:15px; font-weight:700; color:#15803d;">For each part received:</p>
-<ol style="margin:4px 0 0; padding-left:20px; font-size:15px; color:#15803d; line-height:1.8;">
-  <li>Make sure it is marked <strong>Received</strong> in the dashboard with today's date</li>
-  <li>Let the tech or manager on that RO know their part is in</li>
-</ol>`
+      ? `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#15803d">For each part received:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#15803d;line-height:1.8"><li>Make sure it is marked <strong>Received</strong> in the dashboard with today's date</li><li>Let the tech or manager on that RO know their part is in</li></ol>`
       : `Nothing received yet — when parts arrive, mark them Received in the dashboard right away.`;
     const s4ActionColor  = receivedParts?.length ? "#f0fdf4" : "#f9fafb";
     const s4ActionTColor = receivedParts?.length ? "#15803d" : "#6b7280";
 
     // ── Morning banner (8 AM only) ───────────────────────────────────────
-    const morningBanner = isMorning ? `
-  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #c8102e; border-radius:6px; padding:12px 16px; margin-bottom:20px;">
-    <p style="margin:0 0 6px; font-size:15px; font-weight:700; color:#1e293b;">Good morning, Bobby. Work through this report in order:</p>
-    <ol style="margin:0; padding-left:20px; font-size:15px; color:#374151; line-height:2;">
-      <li><strong>Overdue (Section 3)</strong> — call suppliers, get new ETAs, mark Backordered if needed</li>
-      <li><strong>Open Requests (Section 1)</strong> — order everything you can today</li>
-      <li><strong>Ordered/In Transit (Section 2)</strong> — check ETAs, chase anything due today</li>
-      <li><strong>Received (Section 4)</strong> — confirm each is logged and notify the tech</li>
-    </ol>
-  </div>` : "";
+    const morningBanner = isMorning ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #c8102e;border-radius:6px;padding:12px 16px;margin-bottom:20px"><p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1e293b">Good morning, Bobby. Work through this report in order:</p><ol style="margin:0;padding-left:20px;font-size:15px;color:#374151;line-height:2"><li><strong>Overdue (Section 3)</strong> — call suppliers, get new ETAs, mark Backordered if needed</li><li><strong>Open Requests (Section 1)</strong> — order everything you can today</li><li><strong>Ordered/In Transit (Section 2)</strong> — check ETAs, chase anything due today</li><li><strong>Received (Section 4)</strong> — confirm each is logged and notify the tech</li></ol></div>` : "";
 
     // ── End-of-day checklist (3 PM only) ────────────────────────────────
-    const eodChecklist = !isMorning ? `
-  <div style="background:#fff7ed; border:1px solid #fed7aa; border-left:4px solid #f97316; border-radius:6px; padding:14px 18px; margin-top:24px; margin-bottom:8px;">
-    <p style="margin:0 0 10px; font-size:14px; font-weight:700; color:#9a3412;">Before You Leave Today — Check These Off:</p>
-    <table style="width:100%; border-collapse:collapse;">
-      <tr>
-        <td style="width:24px; vertical-align:top; padding:3px 8px 3px 0; font-size:18px;">&#9744;</td>
-        <td style="font-size:15px; color:#374151; padding:3px 0; line-height:1.5;">Every part that arrived today is marked <strong>Received</strong> in the dashboard with today's date and your name in "Received By."</td>
-      </tr>
-      <tr>
-        <td style="width:24px; vertical-align:top; padding:3px 8px 3px 0; font-size:18px;">&#9744;</td>
-        <td style="font-size:15px; color:#374151; padding:3px 0; line-height:1.5;">Every part you ordered today has a <strong>PO Number, ETA, and your name</strong> filled in under Manage Parts.</td>
-      </tr>
-      <tr>
-        <td style="width:24px; vertical-align:top; padding:3px 8px 3px 0; font-size:18px;">&#9744;</td>
-        <td style="font-size:15px; color:#374151; padding:3px 0; line-height:1.5;">Every part in <strong>Ordered or In Transit</strong> status has an ETA date. If any are missing — add it now.</td>
-      </tr>
-      <tr>
-        <td style="width:24px; vertical-align:top; padding:3px 8px 3px 0; font-size:18px;">&#9744;</td>
-        <td style="font-size:15px; color:#374151; padding:3px 0; line-height:1.5;">Any part still in <strong>Sourcing</strong> that you couldn't order today — write it on your notepad so it's first on your list tomorrow morning.</td>
-      </tr>
-      <tr>
-        <td style="width:24px; vertical-align:top; padding:3px 8px 3px 0; font-size:18px;">&#9744;</td>
-        <td style="font-size:15px; color:#374151; padding:3px 0; line-height:1.5;">Check for any parts with a <strong>Return Deadline of today or tomorrow</strong> — flag those to management before you leave.</td>
-      </tr>
-      <tr>
-        <td style="width:24px; vertical-align:top; padding:3px 8px 3px 0; font-size:18px;">&#9744;</td>
-        <td style="font-size:15px; color:#374151; padding:3px 0; line-height:1.5;">Any phone calls with suppliers that changed an ETA or status today — make sure those are <strong>updated in the dashboard</strong> before you go.</td>
-      </tr>
-    </table>
-  </div>` : "";
+    const cbTd = `width:22px;vertical-align:top;padding:3px 6px 3px 0;font-size:18px`;
+    const txtTd = `font-size:15px;color:#374151;padding:3px 0;line-height:1.5`;
+    const eodRow = (text: string) => `<tr><td style="${cbTd}">&#9744;</td><td style="${txtTd}">${text}</td></tr>`;
+    const eodChecklist = !isMorning ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #f97316;border-radius:6px;padding:14px 18px;margin-top:24px;margin-bottom:8px"><p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#9a3412">Before You Leave Today — Check These Off:</p><table style="width:100%;border-collapse:collapse">${eodRow('Every part that arrived today is marked <strong>Received</strong> in the dashboard with today\'s date and your name in "Received By."')}${eodRow('Every part you ordered today has a <strong>PO Number, ETA, and your name</strong> filled in under Manage Parts.')}${eodRow('Every part in <strong>Ordered or In Transit</strong> status has an ETA date. If any are missing — add it now.')}${eodRow('Any part still in <strong>Sourcing</strong> that you couldn\'t order today — write it on your notepad so it\'s first on your list tomorrow morning.')}${eodRow('Check for any parts with a <strong>Return Deadline of today or tomorrow</strong> — flag those to management before you leave.')}${eodRow('Any phone calls with suppliers that changed an ETA or status today — make sure those are <strong>updated in the dashboard</strong> before you go.')}</table></div>` : "";
 
     // ── Overdue alert banner (shown on both sends if overdue exists) ─────
-    const overdueAlert = overdueParts?.length ? `
-  <div style="background:#fef2f2; border:2px solid #ef4444; border-radius:8px; padding:10px 16px; margin-bottom:18px;">
-    <strong style="color:#b91c1c; font-size:14px;">ACTION REQUIRED: ${overdueParts.length} overdue part${overdueParts.length > 1 ? "s" : ""} — ETA has passed. See Section 3. Call the supplier today.</strong>
-  </div>` : "";
+    const overdueAlert = overdueParts?.length ? `<div style="background:#fef2f2;border:2px solid #ef4444;border-radius:8px;padding:10px 16px;margin-bottom:18px"><strong style="color:#b91c1c;font-size:14px">ACTION REQUIRED: ${overdueParts.length} overdue part${overdueParts.length > 1 ? "s" : ""} — ETA has passed. See Section 3. Call the supplier today.</strong></div>` : "";
 
     // ── Assemble full HTML email ─────────────────────────────────────────
     const hasSomething = (openROs?.length || 0) + (orderedParts?.length || 0) +
                          (overdueParts?.length || 0) + (receivedParts?.length || 0) > 0;
 
-    const htmlBody = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 20px; color: #1a1a1a; background: #fff;">
+    // Shared minified styles for section headers and badges
+    const secHdr = (bg: string) => `margin-bottom:4px;padding:12px 16px 10px;background:${bg};border-radius:6px 6px 0 0;border:1px solid #e5e7eb;border-bottom:none`;
+    const secAct = (bg: string) => `padding:9px 16px 10px;background:${bg};border:1px solid #e5e7eb;border-top:none;border-bottom:2px solid #e5e7eb;margin-bottom:0`;
+    const badge = `margin-left:8px;background:rgba(0,0,0,0.12);color:#333;font-size:11px;padding:2px 7px;border-radius:10px;font-weight:600`;
+    const secTitle = `font-size:15px;font-weight:700;color:#111`;
+    const actSpan = (color: string, text: string) => `<span style="font-size:15px;font-weight:600;color:${color}">→ ${text}</span>`;
 
-  <div style="border-bottom: 3px solid #c8102e; padding-bottom: 14px; margin-bottom: 20px;">
-    <h1 style="color: #c8102e; margin: 0; font-size: 20px;">Patriots RV Services</h1>
-    <p style="margin: 4px 0 0; color: #555; font-size: 13px;">
-      Parts Status Report &nbsp;&middot;&nbsp; <strong>${timeLabel}</strong> &nbsp;&middot;&nbsp; ${dateStr}
-    </p>
-  </div>
-
-  ${!hasSomething ? `<p style="color: #16a34a; font-weight:600; font-size:15px;">All clear — no open parts issues to report.</p>` : ""}
-
-  ${overdueAlert}
-  ${morningBanner}
-
-  <!-- Section 1: Open Parts Requests -->
-  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#fff3f8; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
-    <span style="font-size:15px; font-weight:700; color:#111;">🔩 Open Parts Requests</span>
-    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${openROs?.length || 0}</span>
-  </div>
-  <div style="padding:9px 16px 10px; background:${s1ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
-    ${openROs?.length ? s1Action : `<span style="font-size:15px; font-weight:600; color:${s1ActionTColor};">→ ${s1Action}</span>`}
-  </div>
-  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}
-
-  <!-- Section 2: Ordered / In Transit / Backordered -->
-  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#eff6ff; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
-    <span style="font-size:15px; font-weight:700; color:#111;">📦 Ordered — Not Yet Received</span>
-    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${orderedParts?.length || 0}</span>
-  </div>
-  <div style="padding:9px 16px 10px; background:${s2ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
-    ${orderedParts?.length ? s2Action : `<span style="font-size:15px; font-weight:600; color:${s2ActionTColor};">→ ${s2Action}</span>`}
-  </div>
-  ${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}
-
-  <!-- Section 3: Overdue -->
-  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#fef2f2; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
-    <span style="font-size:15px; font-weight:700; color:#111;">⚠️ Overdue Parts — ETA Has Passed</span>
-    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${overdueParts?.length || 0}</span>
-  </div>
-  <div style="padding:9px 16px 10px; background:${s3ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
-    ${overdueParts?.length ? s3Action : `<span style="font-size:15px; font-weight:600; color:${s3ActionTColor};">→ ${s3Action}</span>`}
-  </div>
-  ${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}
-
-  <!-- Section 4: Received in Last 24h -->
-  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#f0fdf4; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
-    <span style="font-size:15px; font-weight:700; color:#111;">✅ Received in Last 24 Hours</span>
-    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${receivedParts?.length || 0}</span>
-  </div>
-  <div style="padding:9px 16px 10px; background:${s4ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
-    ${receivedParts?.length ? s4Action : `<span style="font-size:15px; font-weight:600; color:${s4ActionTColor};">→ ${s4Action}</span>`}
-  </div>
-  ${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"])}
-
-  ${eodChecklist}
-
-  <div style="margin-top: 24px; padding-top: 14px; border-top: 1px solid #e5e7eb;">
-    <p style="margin: 0; color: #888; font-size: 11px;">
-      Patriots RV Services &nbsp;&middot;&nbsp; Denton, TX &nbsp;&middot;&nbsp;
-      <a href="tel:9404885047" style="color:#c8102e;">(940) 488-5047</a><br>
-      Automated ${timeLabel.toLowerCase()} report from the PRVS Dashboard &nbsp;&middot;&nbsp; Mon–Fri at 8 AM and 3 PM CDT
-    </p>
-  </div>
-</body>
-</html>`;
+    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:14px;margin-bottom:20px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV Services</h1><p style="margin:4px 0 0;color:#555;font-size:13px">Parts Status Report &nbsp;&middot;&nbsp; <strong>${timeLabel}</strong> &nbsp;&middot;&nbsp; ${dateStr}</p></div>${!hasSomething ? `<p style="color:#16a34a;font-weight:600;font-size:15px">All clear — no open parts issues to report.</p>` : ""}${overdueAlert}${morningBanner}<div style="${secHdr("#fff3f8")}"><span style="${secTitle}">🔩 Open Parts Requests</span><span style="${badge}">${openROs?.length || 0}</span></div><div style="${secAct(s1ActionColor)}">${openROs?.length ? s1Action : actSpan(s1ActionTColor, s1Action)}</div>${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}<div style="${secHdr("#eff6ff")}"><span style="${secTitle}">📦 Ordered — Not Yet Received</span><span style="${badge}">${orderedParts?.length || 0}</span></div><div style="${secAct(s2ActionColor)}">${orderedParts?.length ? s2Action : actSpan(s2ActionTColor, s2Action)}</div>${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}<div style="${secHdr("#fef2f2")}"><span style="${secTitle}">⚠️ Overdue Parts — ETA Has Passed</span><span style="${badge}">${overdueParts?.length || 0}</span></div><div style="${secAct(s3ActionColor)}">${overdueParts?.length ? s3Action : actSpan(s3ActionTColor, s3Action)}</div>${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}<div style="${secHdr("#f0fdf4")}"><span style="${secTitle}">✅ Received in Last 24 Hours</span><span style="${badge}">${receivedParts?.length || 0}</span></div><div style="${secAct(s4ActionColor)}">${receivedParts?.length ? s4Action : actSpan(s4ActionTColor, s4Action)}</div>${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"])}${eodChecklist}<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Patriots RV Services &nbsp;&middot;&nbsp; Denton, TX &nbsp;&middot;&nbsp; <a href="tel:9404885047" style="color:#c8102e">(940) 488-5047</a><br>Automated ${timeLabel.toLowerCase()} report from the PRVS Dashboard &nbsp;&middot;&nbsp; Mon–Fri at 8 AM and 3 PM CDT</p></div></body></html>`;
 
     // ── Send email ──────────────────────────────────────────────────────
     const transporter = nodemailer.createTransport({
@@ -450,7 +269,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:        true,
-      version:        "v1.6",
+      version:        "v1.7",
       timeLabel,
       recipients:     recipients.length,
       openRequests:   openROs?.length || 0,
