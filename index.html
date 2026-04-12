@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.400
-    Released: 2026-04-11
+    PRVS Dashboard v1.402
+    Released: 2026-04-12
+    v1.402: Warranty RO Type — 4th RO type with auto-Critical urgency, red warranty badge, $0 No Charge badge, Original RO# and Warranty Reason fields, filter button, compact chip. Warranty data stored in ro_type column + notes prefix.
     v1.401: Compact View Mobile Inline Expansion — tap row body to expand/collapse inline panel (mobile ≤768px). Chevron affordance, one-at-a-time, status/urgency/tech/spot/quick-actions. Desktop compact unchanged.
     v1.400: Security Remediation Complete — S1-S7: XSS escapeHtml (44 calls), RBAC migration (5 files), analytics+solar auth guards, Anthropic API key to server-side proxy, DEBUG-gated console logging, inline onclick event delegation, CORS origin lockdown, session-token auth, calendar config table, search_path fix
     v1.308: GH#22 Closed RO Archive — header button linking to closed-ros.html (visible to all users)
@@ -2452,6 +2453,29 @@
             background: linear-gradient(135deg, rgba(52,199,89,0.3) 0%, rgba(16,185,129,0.3) 100%);
             color: #34c759;
         }
+        .ro-type-btn.warranty {
+            background: linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.15) 100%);
+            color: #ef4444;
+        }
+        .ro-type-btn.warranty.active {
+            background: linear-gradient(135deg, rgba(239,68,68,0.35) 0%, rgba(220,38,38,0.35) 100%);
+            color: #ef4444;
+        }
+        .warranty-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(239,68,68,0.15);
+            border: 1px solid rgba(239,68,68,0.4);
+            border-radius: 12px;
+            color: #ef4444;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 2px;
+        }
         .customer-pay-section {
             display: none;
             grid-column: 1 / -1;
@@ -2940,6 +2964,7 @@
         .compact-chip.ch-estimate    { color: #3b82f6; border-color: #3b82f6; background: rgba(59,130,246,0.08); }
         .compact-chip.ch-request     { color: #FF1493; border-color: #FF1493; background: rgba(255,20,147,0.08); }
         .compact-chip.ch-insurance   { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(251,146,60,0.08); }
+        .compact-chip.ch-warranty    { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3); }
         .compact-chip.ch-parts-badge { color: var(--text-secondary); border-color: var(--border-color); background: var(--bg-elevated); }
 
         .compact-col-actions {
@@ -3382,6 +3407,7 @@
                             <button class="filter-btn" data-filter="insurance" data-type="rotype" onclick="toggleROTypeFilter('insurance')">🛡️ Insurance</button>
                             <button class="filter-btn" data-filter="hybrid" data-type="rotype" onclick="toggleROTypeFilter('hybrid')">🔀 Hybrid</button>
                             <button class="filter-btn" data-filter="standard" data-type="rotype" onclick="toggleROTypeFilter('standard')">🔧 Standard</button>
+                            <button class="filter-btn" data-filter="warranty" data-type="rotype" onclick="toggleROTypeFilter('warranty')">🔄 Warranty</button>
                         </div>
                     </div>
                 </div>
@@ -3672,7 +3698,7 @@
         let currentSearchFilter = ''; // Customer name search
         let currentDaysFilter = null; // Days on lot >= filter
         let currentPartsFilter = 'all'; // 'all', 'outstanding', 'backordered'
-        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard'
+        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard', 'warranty'
         let timeLogsData = []; // Store time logs from Google Sheets
         let timeLogsRefreshInterval = null; // Auto-refresh timer
         
@@ -5004,8 +5030,8 @@
             const isEdit = prefix === 'edit';
 
             // Toggle buttons — may be in either modal
-            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn',
-             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn'].forEach(id => {
+            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn', 'warrantyROBtn',
+             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn', 'editWarrantyROBtn'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.remove('active');
             });
@@ -5013,8 +5039,10 @@
             const stdId  = isEdit ? 'editStandardROBtn'  : 'standardROBtn';
             const insId  = isEdit ? 'editInsuranceROBtn' : 'insuranceROBtn';
             const hybId  = isEdit ? 'editHybridROBtn'    : 'hybridROBtn';
+            const warId  = isEdit ? 'editWarrantyROBtn'  : 'warrantyROBtn';
             const insSec = document.getElementById(isEdit ? 'editInsuranceFieldsSection' : 'insuranceFieldsSection');
             const cpSec  = document.getElementById(isEdit ? 'editCustomerPaySection'     : 'customerPaySection');
+            const warSec = document.getElementById(isEdit ? 'editWarrantyFieldsSection'  : 'warrantyFieldsSection');
             const modalTitle = isEdit
                 ? document.querySelector('#editROOverlay h2')
                 : document.querySelector('#modalOverlay h2');
@@ -5023,16 +5051,34 @@
                 document.getElementById(insId)?.classList.add('active');
                 if (insSec) insSec.classList.add('visible');
                 if (cpSec)  cpSec.classList.remove('visible');
+                if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = '🛡️ Insurance Claim RO';
             } else if (type === 'hybrid') {
                 document.getElementById(hybId)?.classList.add('active');
                 if (insSec) insSec.classList.add('visible');
                 if (cpSec)  cpSec.classList.add('visible');
+                if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? '🔀 Hybrid RO' : '🔀 Insurance + Customer Pay RO';
+            } else if (type === 'warranty') {
+                document.getElementById(warId)?.classList.add('active', 'warranty');
+                if (insSec) insSec.classList.remove('visible');
+                if (cpSec)  cpSec.classList.remove('visible');
+                if (warSec) warSec.classList.add('visible');
+                if (modalTitle) modalTitle.textContent = '🔄 Warranty RO';
+                // Auto-set urgency to Critical for warranty ROs
+                const urgencySelect = isEdit
+                    ? document.querySelector('#editROForm select[name="urgency"], #editROForm .form-select[name="editUrgency"]')
+                    : document.querySelector('#newROForm select[name="urgency"]');
+                if (urgencySelect && urgencySelect.value !== 'Critical') {
+                    urgencySelect.value = 'Critical';
+                    urgencySelect.classList.remove('urgency-high','urgency-medium','urgency-low');
+                    urgencySelect.classList.add('urgency-critical');
+                }
             } else {
                 document.getElementById(stdId)?.classList.add('active');
                 if (insSec) insSec.classList.remove('visible');
                 if (cpSec)  cpSec.classList.remove('visible');
+                if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? 'Edit Repair Order' : 'New Repair Order';
             }
             // Show/hide custom fields section with insurance sections
@@ -5048,7 +5094,7 @@
 
         function collectInsuranceFields(context) {
             const isEdit = context === 'edit';
-            if (currentROType === 'standard') return null;
+            if (currentROType === 'standard' || currentROType === 'warranty') return null;
             const cpPrefix = isEdit ? 'editCp_' : 'cp_';
             const insPrefix = isEdit ? 'editIns_' : 'ins_';
             const base = {
@@ -7982,8 +8028,8 @@ Notes: ${notes}` : '',
             // RO Type filter
             if (currentROTypeFilter !== 'all') {
                 filtered = filtered.filter(ro => {
-                    let roType = 'standard';
-                    if (ro.insuranceData) {
+                    let roType = ro.roType || 'standard';
+                    if (roType === 'standard' && ro.insuranceData) {
                         try {
                             const d = JSON.parse(ro.insuranceData);
                             if (d.isInsuranceClaim) roType = d.roType || 'insurance';
@@ -7992,6 +8038,7 @@ Notes: ${notes}` : '',
                     if (currentROTypeFilter === 'insurance') return roType === 'insurance';
                     if (currentROTypeFilter === 'hybrid') return roType === 'hybrid';
                     if (currentROTypeFilter === 'standard') return roType === 'standard';
+                    if (currentROTypeFilter === 'warranty') return roType === 'warranty';
                     return true;
                 });
             }
@@ -8063,6 +8110,7 @@ Notes: ${notes}` : '',
                         const ins = ro.insuranceData ? JSON.parse(ro.insuranceData) : null;
                         if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
                     } catch(e) {}
+                    if (ro.roType === 'warranty') chips += '<span class="compact-chip ch-warranty">Warranty</span>';
 
                     try {
                         const parts = ro.partsJson ? JSON.parse(ro.partsJson) : [];
@@ -8193,6 +8241,7 @@ Notes: ${notes}` : '',
                         ${ro.roId ? `<div class="card-ro-id">${escapeHtml(ro.roId)}</div>` : ''}
                         ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
+                        ${ro.roType === 'warranty' ? '<div class="warranty-badge">🔄 Warranty</div><div class="warranty-badge" style="background:rgba(0,0,0,0.08);border-color:rgba(0,0,0,0.15);color:#6b7280;margin-top:2px;">$0 — No Charge</div>' : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
                         <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" data-action="parts-status" data-idx="${index}" title="Parts status — click to update">
@@ -10200,7 +10249,7 @@ Notes: ${notes}` : '',
                     status:         formData.status || 'Not On Lot',
                     urgency:        formData.urgency || null,
                     customer_type:  formData.customerType || null,
-                    ro_type:        'standard',
+                    ro_type:        currentROType || 'standard',
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -10253,6 +10302,7 @@ Notes: ${notes}` : '',
                 date_arrived:   formData.dateArrived || null,
                 dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
                 parking_spot:   formData.parkingSpot || null,
+                ro_type:        currentROType || 'standard',
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -12549,7 +12599,18 @@ Notes: ${notes}` : '',
                 // Restore RO type and insurance fields from Column W JSON
                 let savedInsData = null;
                 try { savedInsData = ro.insuranceData ? JSON.parse(ro.insuranceData) : null; } catch(e) {}
-                if (savedInsData && savedInsData.roType) {
+                if (ro.roType === 'warranty') {
+                    setROType('warranty', 'edit');
+                    // Restore warranty fields from notes prefix
+                    const notes = ro.roStatusNotes || '';
+                    const warMatch = notes.match(/\[WARRANTY: Original RO: ([^\|]*)\| Reason: ([^\]]*)\]/);
+                    if (warMatch) {
+                        const origEl = document.getElementById('editWarrantyOriginalRO');
+                        const reasonEl = document.getElementById('editWarrantyReason');
+                        if (origEl) origEl.value = warMatch[1].trim();
+                        if (reasonEl) reasonEl.value = warMatch[2].trim();
+                    }
+                } else if (savedInsData && savedInsData.roType) {
                     setROType(savedInsData.roType, 'edit');
                     // Populate insurance fields
                     const insFields = ['claimNumber','policyNumber','insuranceCompany','coverageType',
@@ -12680,6 +12741,14 @@ Notes: ${notes}` : '',
                 data.repairType = repairTypes.join(', ');
                 if (data.vin) data.vin = data.vin.toUpperCase();
 
+                // Prepend warranty details to notes if warranty RO
+                if (currentROType === 'warranty') {
+                    const wOrigRO = document.getElementById('warrantyOriginalRO')?.value || '';
+                    const wReason = document.getElementById('warrantyReason')?.value || '';
+                    const warPrefix = '[WARRANTY: Original RO: ' + wOrigRO + ' | Reason: ' + wReason + ']\n';
+                    data.roStatusNotes = warPrefix + (data.roStatusNotes || '');
+                }
+
                 const submitBtn = document.getElementById('newROSubmitBtn');
                 if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '⏳ Saving...'; }
 
@@ -12779,6 +12848,23 @@ Notes: ${notes}` : '',
                         const newVal = String(data[key] || '').trim();
                         if (oldVal !== newVal) {
                             changes.push({ field: label, oldValue: oldVal, newValue: newVal });
+                        }
+                    }
+
+                    // Update warranty notes prefix if warranty RO
+                    if (currentROType === 'warranty') {
+                        const wOrigRO = document.getElementById('editWarrantyOriginalRO')?.value || '';
+                        const wReason = document.getElementById('editWarrantyReason')?.value || '';
+                        const warPrefix = '[WARRANTY: Original RO: ' + wOrigRO + ' | Reason: ' + wReason + ']';
+                        const existingNotes = existing.roStatusNotes || '';
+                        // Replace existing warranty prefix or prepend
+                        const cleaned = existingNotes.replace(/\[WARRANTY: Original RO: [^\]]*\]\n?/, '');
+                        const supaId = existing._supabaseId;
+                        if (supaId) {
+                            const newNotes = warPrefix + (cleaned ? '\n' + cleaned : '');
+                            await getSB().from('notes').upsert({
+                                ro_id: supaId, type: 'ro_status', body: newNotes,
+                            }, { onConflict: 'ro_id,type' }).then(() => {});
                         }
                     }
 
@@ -13513,6 +13599,7 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn active" id="standardROBtn" onclick="setROType('standard')">🔧 Standard RO</button>
                 <button type="button" class="ro-type-btn insurance" id="insuranceROBtn" onclick="setROType('insurance')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="hybridROBtn" onclick="setROType('hybrid')">🔀 Insurance + Customer Pay</button>
+                <button type="button" class="ro-type-btn warranty" id="warrantyROBtn" onclick="setROType('warranty')">🔄 Warranty RO</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -13768,6 +13855,19 @@ function toggleWOTasks(tasksId, chevId) {
                         <div class="form-field full-width">
                             <label class="form-label">Customer Pay Description</label>
                             <textarea class="form-textarea" name="customerPayDescription" id="cp_customerPayDescription" placeholder="Describe what the customer is paying for separately..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Warranty Details (hidden until Warranty mode activated) -->
+                    <div class="insurance-section" id="warrantyFieldsSection" style="border-top:1px solid rgba(239,68,68,0.3);">
+                        <div class="insurance-section-header" style="color:#ef4444;">🔄 Warranty Details</div>
+                        <div class="form-field">
+                            <label class="form-label">Original RO #</label>
+                            <input type="text" class="form-input" id="warrantyOriginalRO" placeholder="e.g. PRVS-1234-ABCD">
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Warranty Reason</label>
+                            <input type="text" class="form-input" id="warrantyReason" placeholder="e.g. Repair failed, wrong part installed">
                         </div>
                     </div>
 
@@ -14034,6 +14134,7 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn active" id="editStandardROBtn" onclick="setROType('standard','edit')">🔧 Standard RO</button>
                 <button type="button" class="ro-type-btn insurance" id="editInsuranceROBtn" onclick="setROType('insurance','edit')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="editHybridROBtn" onclick="setROType('hybrid','edit')">🔀 Insurance + Customer Pay</button>
+                <button type="button" class="ro-type-btn warranty" id="editWarrantyROBtn" onclick="setROType('warranty','edit')">🔄 Warranty RO</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -14270,6 +14371,19 @@ function toggleWOTasks(tasksId, chevId) {
                         <div class="form-field"><label class="form-label">Customer Invoice Number</label><input type="text" class="form-input" id="editCp_customerInvoiceNumber"></div>
                         <div class="form-field"><label class="form-label">Date Paid</label><input type="date" class="form-input" id="editCp_datePaid"></div>
                         <div class="form-field full-width"><label class="form-label">Customer Pay Description</label><textarea class="form-textarea" id="editCp_customerPayDescription"></textarea></div>
+                    </div>
+
+                    <!-- Warranty Details (Edit mode, hidden until Warranty mode activated) -->
+                    <div class="insurance-section" id="editWarrantyFieldsSection" style="border-top:1px solid rgba(239,68,68,0.3);">
+                        <div class="insurance-section-header" style="color:#ef4444;">🔄 Warranty Details</div>
+                        <div class="form-field">
+                            <label class="form-label">Original RO #</label>
+                            <input type="text" class="form-input" id="editWarrantyOriginalRO" placeholder="e.g. PRVS-1234-ABCD">
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Warranty Reason</label>
+                            <input type="text" class="form-input" id="editWarrantyReason" placeholder="e.g. Repair failed, wrong part installed">
+                        </div>
                     </div>
 
                     <!-- Custom Insurance Fields (Edit RO) -->
