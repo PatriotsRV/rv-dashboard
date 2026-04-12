@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.402 |
+| **Current Version** | v1.403 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -48,12 +48,14 @@
 - **GH#4 — Twilio SMS build** — Full spec in `docs/specs/TWILIO_SMS_SPEC.md`. Replaces Kenect. ⏳ Waiting on number port
 
 ### 🟠 High Priority
+- **GH#20 — Slack Integration (remaining triggers)** — Test `ro_urgency_critical`, `part_received`, `warranty_ro_opened`. Audit & configure all 5 event types. Deploy final. 🔄 In Progress
 - **GH#5c — Polish Work Orders UI** — Mobile layout, remaining bugs. 🔄 In Progress
-- **GH#17 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. ⏳ Open
+- **GH#17/GH#19 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. Next session build target. ⏳ Open
 - **GH#6 — Employee Time Clock** — Full time clock in dashboard. ⏳ Open
 
 ### 🟡 Medium Priority / Roland Actions
 - **GitHub Releases v1.283–v1.308** — Backlog of unpublished releases. ⏳ Roland action
+- **GitHub Release v1.402/v1.403** — Warranty RO + Slack integration. ⏳ Roland action
 - **Supabase: Maximize log retention** — Settings → Logs. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts notifications. ⏳ Roland action
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah. ⏳ Open
@@ -64,6 +66,7 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **Slack Integration GH#20 — v1.403 (2026-04-12)** — `slack-notify` Edge Function v1.2 + 5 trigger points in index.html. Fires to #ro-updates, #parts-alerts, #warranty-flags. ro_created + ro_ready_pickup confirmed working. 3 triggers remaining to verify.
 - ✅ **Warranty RO Type v1.402 (2026-04-12)** — 4th RO type for comeback jobs fixed at no charge. Auto-Critical urgency, red badge, $0 No Charge badge, Original RO# field. Commits: b241df3, 35c1c88.
 - ✅ **send-parts-report v1.7 (2026-04-12)** — Contextual numbered action prompts, EOD checklist, Gmail clipping fix.
 - ✅ **Unified Search V1 (2026-04-12)** — 10-field haystack search (name, RO ID, VIN, RV, tech, description, spot, phone, email, repair type) + post-render highlight. Works in standard + compact views. Commit: 7a355a4.
@@ -100,7 +103,7 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 - **Database:** Supabase (PostgreSQL) — project ref `axfejhudchdejoiwaetq`
 - **Auth:** Google Identity Services → Supabase `signInWithIdToken`
 - **Storage:** Supabase Storage (`rv-media` bucket)
-- **Edge Functions:** `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner)
+- **Edge Functions:** `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner), `slack-notify` (Slack webhooks)
 - **SMS:** Twilio (planned — full spec in `docs/specs/TWILIO_SMS_SPEC.md`)
 - **Roles:** Supabase RBAC via `user_roles` table — Admin, Sr Manager, Manager, Parts Manager, Tech (all hardcoded email arrays removed S2)
 
@@ -116,4 +119,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-12 — v1.402 — Session 41/42: send-parts-report v1.7, Warranty RO type*
+*Last updated: 2026-04-12 — v1.403 — Session 43: Slack integration GH#20 (slack-notify v1.2 + 5 triggers)*
