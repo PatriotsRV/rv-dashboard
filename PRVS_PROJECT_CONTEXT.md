@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.400 |
+| **Current Version** | v1.402 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -64,6 +64,8 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **Warranty RO Type v1.402 (2026-04-12)** — 4th RO type for comeback jobs fixed at no charge. Auto-Critical urgency, red badge, $0 No Charge badge, Original RO# field. Commits: b241df3, 35c1c88.
+- ✅ **send-parts-report v1.7 (2026-04-12)** — Contextual numbered action prompts, EOD checklist, Gmail clipping fix.
 - ✅ **Unified Search V1 (2026-04-12)** — 10-field haystack search (name, RO ID, VIN, RV, tech, description, spot, phone, email, repair type) + post-render highlight. Works in standard + compact views. Commit: 7a355a4.
 - ✅ **v1.400 Session (2026-04-11)** — Version bumped v1.308→v1.400. Toast System complete (116 alert→showToast, 4 confirm→toast-action). Visual cleanup pass (calmed animations, utility classes). Dead code cleanup (968 lines removed). Kenect removal (550 lines). Compact Manager View (dense 6-column row layout with RV photo thumbnail). slideIn keyframe fix.
 - ✅ **Security Remediation — ALL COMPLETE (2026-04-11)** — 10 security issues across 7 sessions (S1–S7) + 2 hotfixes. 5 Edge Functions redeployed with CORS. 2 SQL migrations run.
@@ -114,4 +116,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-12 — v1.400 — Session 40: Unified Search V1 (10-field haystack + highlight)*
+*Last updated: 2026-04-12 — v1.402 — Session 41/42: send-parts-report v1.7, Warranty RO type*
