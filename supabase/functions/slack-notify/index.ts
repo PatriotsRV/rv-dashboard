@@ -1,6 +1,6 @@
 // GH#20: Slack notifications — routes dashboard events to #parts-alerts, #ro-updates, #warranty-flags
 // v1.0: Initial implementation — part received, new RO, status→Ready, urgency→Critical, warranty RO opened
-// v1.1: Fix 401 — switch from user JWT validation to anon/service key check
+// v1.2: Fix 401 — origin-only validation, no token check needed for internal webhook
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 
@@ -57,16 +57,10 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    // Accept requests from the dashboard (anon key or service role key)
-    const authHeader = req.headers.get('Authorization');
+    // Origin-based auth — only accept requests from the dashboard domain
+    // (No token check needed; webhook URLs are server-side secrets)
     const origin = req.headers.get('Origin') || '';
-    const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
-    const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    const token = authHeader?.replace('Bearer ', '') || '';
-    const validToken = token === ANON_KEY || token === SERVICE_KEY;
-    const validOrigin = origin === ALLOWED_ORIGIN;
-
-    if (!validToken && !validOrigin) {
+    if (origin !== ALLOWED_ORIGIN) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }
 
