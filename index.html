@@ -3,6 +3,7 @@
 <!--
     PRVS Dashboard v1.400
     Released: 2026-04-11
+    v1.401: Compact View Mobile Inline Expansion — tap row body to expand/collapse inline panel (mobile ≤768px). Chevron affordance, one-at-a-time, status/urgency/tech/spot/quick-actions. Desktop compact unchanged.
     v1.400: Security Remediation Complete — S1-S7: XSS escapeHtml (44 calls), RBAC migration (5 files), analytics+solar auth guards, Anthropic API key to server-side proxy, DEBUG-gated console logging, inline onclick event delegation, CORS origin lockdown, session-token auth, calendar config table, search_path fix
     v1.308: GH#22 Closed RO Archive — header button linking to closed-ros.html (visible to all users)
     v1.307: GH#19 Enhancement Request — floating genie lamp button on all pages, modal with category dropdown + voice dictation, Supabase enhancement_requests table, daily email report via pg_cron
@@ -2974,6 +2975,194 @@
             letter-spacing: 0.06em;
             border-bottom: 1px solid var(--border-color);
             margin-bottom: 2px;
+        }
+
+
+        /* ── Compact chevron (mobile expand affordance) ── */
+        .compact-chevron {
+            display: none;
+            width: 24px;
+            height: 24px;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+            pointer-events: none;
+            align-self: center;
+        }
+        .ro-card-compact.is-expanded .compact-chevron {
+            transform: rotate(90deg);
+            color: var(--accent-info);
+        }
+
+        /* ── Compact inline expand panel ── */
+        .compact-expand-panel {
+            display: none;
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.25s ease, opacity 0.2s ease;
+            opacity: 0;
+        }
+        .compact-expand-panel.is-open {
+            max-height: 400px;
+            opacity: 1;
+        }
+        .compact-expand-inner {
+            display: none;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            padding: 10px 12px 14px;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .compact-mobile-summary { display: none; }
+
+        @media (max-width: 768px) {
+            /* Show chevron */
+            .compact-chevron { display: flex; }
+
+            /* Collapse 6-col grid to 3-col: photo | summary | chevron */
+            .ro-card-compact {
+                cursor: pointer;
+                grid-template-columns: 44px 1fr 24px;
+                gap: 8px;
+                align-items: center;
+                padding: 8px 10px;
+            }
+            /* Hide desktop columns */
+            .compact-col-id,
+            .compact-col-status,
+            .compact-col-meta,
+            .compact-col-chips,
+            .compact-col-actions {
+                display: none;
+            }
+            /* Show mobile summary */
+            .compact-mobile-summary {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                min-width: 0;
+                overflow: hidden;
+            }
+            .compact-mobile-name {
+                font-size: 0.92rem;
+                font-weight: 700;
+                color: var(--text-primary);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .compact-mobile-sub {
+                font-size: 0.73rem;
+                color: var(--text-secondary);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .compact-mobile-badges {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                margin-top: 2px;
+            }
+            /* Expand panel on mobile */
+            .compact-expand-panel { display: block; }
+            .compact-expand-inner { display: flex; }
+
+            /* Expanded row highlight */
+            .ro-card-compact.is-expanded {
+                border-color: var(--accent-info);
+                background: var(--bg-elevated);
+                border-radius: 6px 6px 0 0;
+            }
+
+            /* Panel layout */
+            .cep-fields {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .cep-row {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .cep-label {
+                font-size: 0.6rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.07em;
+                color: var(--text-secondary);
+            }
+            .cep-value {
+                font-size: 0.82rem;
+                color: var(--text-primary);
+                font-weight: 500;
+            }
+            /* Status dropdown in panel */
+            .cep-status-dropdown {
+                width: 100%;
+                padding: 6px 8px;
+                border-radius: 6px;
+                font-size: 0.7rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                font-family: 'JetBrains Mono', monospace;
+                cursor: pointer;
+                border: 2px solid;
+            }
+            /* Urgency dropdown in panel */
+            .cep-urgency-dropdown {
+                width: 100%;
+                padding: 6px 8px;
+                border-radius: 6px;
+                font-size: 0.7rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                font-family: 'JetBrains Mono', monospace;
+                cursor: pointer;
+                border: 2px solid transparent;
+            }
+            .cep-urgency-dropdown.urgency-critical { background: var(--accent-urgent); color: white; }
+            .cep-urgency-dropdown.urgency-high     { background: var(--accent-high);   color: white; }
+            .cep-urgency-dropdown.urgency-medium   { background: var(--accent-medium); color: white; }
+            .cep-urgency-dropdown.urgency-low      { background: var(--accent-low);    color: white; }
+            /* Action buttons row */
+            .cep-actions {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                padding-top: 8px;
+                border-top: 1px solid var(--border-color);
+            }
+            .cep-action-btn {
+                flex: 1;
+                min-width: 0;
+                padding: 9px 4px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                font-family: 'Barlow Condensed', sans-serif;
+                border-radius: 6px;
+                border: 1px solid var(--border-color);
+                background: var(--bg-surface);
+                color: var(--text-primary);
+                cursor: pointer;
+                text-align: center;
+                letter-spacing: 0.02em;
+                transition: background 0.15s;
+                white-space: nowrap;
+            }
+            .cep-action-btn:active { background: var(--bg-elevated); }
+            /* Hide compact-grid-header on mobile — columns don't match 3-col layout */
+            .compact-grid-header { display: none; }
         }
 
         .wo-silo-card {
@@ -7085,6 +7274,42 @@ Notes: ${notes}` : '',
 
             // --- S6: Delegated event handlers for RO card grid ---
             document.getElementById('boardGrid').addEventListener('click', function(e) {
+                // ── Compact row mobile expand/collapse ───────────────────────────
+                if (window.innerWidth <= 768 && !e.target.closest('[data-action]')) {
+                    var compactRow = e.target.closest('[data-compact-row="1"]');
+                    if (compactRow) {
+                        var isExpanded = compactRow.classList.contains('is-expanded');
+                        // Collapse all other open rows first
+                        document.querySelectorAll('.ro-card-compact.is-expanded').forEach(function(other) {
+                            if (other !== compactRow) {
+                                other.classList.remove('is-expanded');
+                                var otherPanel = other.nextElementSibling;
+                                if (otherPanel && otherPanel.classList.contains('compact-expand-panel')) {
+                                    otherPanel.classList.remove('is-open');
+                                    setTimeout(function() { otherPanel.style.display = 'none'; }, 260);
+                                }
+                            }
+                        });
+                        var panel = compactRow.nextElementSibling;
+                        if (isExpanded) {
+                            compactRow.classList.remove('is-expanded');
+                            if (panel && panel.classList.contains('compact-expand-panel')) {
+                                panel.classList.remove('is-open');
+                                setTimeout(function() { panel.style.display = 'none'; }, 260);
+                            }
+                        } else {
+                            compactRow.classList.add('is-expanded');
+                            if (panel && panel.classList.contains('compact-expand-panel')) {
+                                panel.style.display = 'block';
+                                panel.offsetHeight; // force reflow
+                                panel.classList.add('is-open');
+                                compactRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            }
+                        }
+                        return;
+                    }
+                }
+                // ── End compact expand/collapse ──────────────────────────────────
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
@@ -7120,9 +7345,16 @@ Notes: ${notes}` : '',
                 const idx = parseInt(card.dataset.roIndex, 10);
                 if (el.classList.contains('urgency-dropdown')) {
                     updateROUrgency(idx, el.value);
+                    // Sync urgency color class on the select itself
+                    el.className = el.className.replace(/urgency-(critical|high|medium|low)/g, '').trim();
+                    el.classList.add('urgency-' + el.value.toLowerCase());
                 }
                 if (el.classList.contains('status-dropdown')) {
                     updateROStatus(idx, el.value);
+                    // Sync status color class on the select itself
+                    var newSC = el.value.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-');
+                    el.className = el.className.replace(/status-[a-z-]+/g, '').trim();
+                    el.classList.add('status-dropdown', 'status-' + newSC);
                 }
                 if (el.classList.contains('progress-input')) {
                     updateROProgress(idx, parseInt(el.value));
@@ -7836,7 +8068,7 @@ Notes: ${notes}` : '',
                     } catch(e) {}
 
                     return `
-                    <div class="ro-card-compact ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
+                    <div class="ro-card-compact ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}" data-compact-row="1">
                         <div class="compact-col-photo">${ro.rvPhotoUrl ? '<img src="' + ro.rvPhotoUrl + '" alt="RV" onerror="this.style.opacity=\'0.3\'">' : '<span class="compact-no-photo">No Photo</span>'}</div>
                         <div class="compact-col-id">
                             <span class="compact-customer">${escapeHtml(ro.customerName) || t('Unknown')}</span>
@@ -7858,6 +8090,59 @@ Notes: ${notes}` : '',
                             <button class="compact-action-btn" data-action="manage-parts" data-idx="${index}" title="Manage Parts">🔩</button>
                             <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
                             ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
+                        </div>
+                        <div class="compact-mobile-summary">
+                            <span class="compact-mobile-name">${escapeHtml(ro.customerName) || t('Unknown')}</span>
+                            <span class="compact-mobile-sub">${escapeHtml(ro.rv) || t('RV not specified')}${ro.roId ? ' &middot; ' + escapeHtml(ro.roId) : ''}</span>
+                            <span class="compact-mobile-sub" style="color:var(--text-primary);font-weight:600;">${escapeHtml(ro.status)} &middot; <span class="compact-urgency u-${urgencyLc}">${urgency}</span></span>
+                            <div class="compact-mobile-badges">${chips || ''}</div>
+                        </div>
+                        <span class="compact-chevron">&#8250;</span>
+                    </div>
+                    <div class="compact-expand-panel" data-expand-for="${index}">
+                        <div class="compact-expand-inner">
+                            <div class="cep-fields">
+                                <div class="cep-row">
+                                    <span class="cep-label">Status</span>
+                                    <select class="cep-status-dropdown status-dropdown status-${statusClass}" data-ro-index="${index}">
+                                        <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>Not On Lot</option>
+                                        <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
+                                        <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
+                                        <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>Awaiting Parts</option>
+                                        <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
+                                        <option value="In progress" ${ro.status === 'In progress' ? 'selected' : ''}>In Progress</option>
+                                        <option value="Repairs Completed" ${ro.status === 'Repairs Completed' ? 'selected' : ''}>Repairs Completed</option>
+                                        <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>Waiting for QA/QC</option>
+                                        <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>Ready for Pickup</option>
+                                        <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
+                                    </select>
+                                </div>
+                                <div class="cep-row">
+                                    <span class="cep-label">Urgency</span>
+                                    <select class="cep-urgency-dropdown urgency-dropdown urgency-${urgencyLc}" data-ro-index="${index}">
+                                        <option value="Critical" ${urgency === 'Critical' ? 'selected' : ''}>Critical</option>
+                                        <option value="High" ${urgency === 'High' ? 'selected' : ''}>High</option>
+                                        <option value="Medium" ${urgency === 'Medium' ? 'selected' : ''}>Medium</option>
+                                        <option value="Low" ${urgency === 'Low' ? 'selected' : ''}>Low</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="cep-fields">
+                                <div class="cep-row">
+                                    <span class="cep-label">Technician</span>
+                                    <span class="cep-value">${escapeHtml(ro.technicianAssigned) || 'Unassigned'}</span>
+                                </div>
+                                <div class="cep-row">
+                                    <span class="cep-label">Parking Spot</span>
+                                    <span class="cep-value">${ro.parkingSpot ? '📍 ' + escapeHtml(ro.parkingSpot) : '—'}</span>
+                                </div>
+                            </div>
+                            <div class="cep-actions">
+                                <button class="cep-action-btn" data-action="edit-ro" data-idx="${index}">✏️ Edit RO</button>
+                                <button class="cep-action-btn" data-action="manage-parts" data-idx="${index}">🔩 Parts</button>
+                                <button class="cep-action-btn" data-action="work-orders" data-idx="${index}">🔧 WO</button>
+                                ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="cep-action-btn" data-action="schedule" data-idx="' + index + '">📅 Schedule</button>' : ''}
+                            </div>
                         </div>
                     </div>`;
                 }
