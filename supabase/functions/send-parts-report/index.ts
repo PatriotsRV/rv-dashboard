@@ -4,6 +4,7 @@ import nodemailer from "npm:nodemailer@6";
 // GH#18: Parts status report — called by Supabase pg_cron at 8 AM + 3 PM CDT Mon-Fri
 // v1.3: Added contextual action prompts above each section + end-of-day checklist on 3 PM send
 // v1.4: Fixed action prompt rendering — merged into single table per section
+// v1.5: Action prompts as standalone div blocks — email client safe
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
@@ -126,32 +127,14 @@ Deno.serve(async (req: Request) => {
     const thStyle = `padding: 7px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #555; border-bottom: 1px solid #e5e7eb; background: #f9fafb;`;
     const tdStyle = `padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; vertical-align: top;`;
 
-    // ── Helper: section header row ───────────────────────────────────────
-    const sectionHeader = (emoji: string, title: string, count: number, color: string) => `
-      <tr>
-        <td colspan="6" style="padding: 14px 16px 8px; background: ${color}; border-radius: 6px 6px 0 0;">
-          <span style="font-size: 15px; font-weight: 700; color: #111;">${emoji} ${title}</span>
-          <span style="margin-left: 8px; background: rgba(0,0,0,0.12); color: #333; font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600;">${count}</span>
-        </td>
-      </tr>`;
-
-    // ── Helper: action prompt row (sits between header and column labels) ─
-    const actionPrompt = (text: string, bgColor: string, textColor: string) => `
-      <tr>
-        <td colspan="6" style="padding: 9px 16px 10px; background: ${bgColor}; border-bottom: 2px solid #e5e7eb;">
-          <span style="font-size: 13px; font-weight: 600; color: ${textColor};">&#8594; ${text}</span>
-        </td>
-      </tr>`;
-
     const emptyRow = (msg: string) => `
       <tr>
         <td colspan="6" style="padding: 10px 16px; color: #888; font-style: italic; font-size: 13px;">${msg}</td>
       </tr>`;
 
-    const tableWrap = (rows: string, cols: string[], headerRows: string = "") => `
-      <table style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">
+    const tableWrap = (rows: string, cols: string[]) => `
+      <table style="width:100%; border-collapse:collapse; margin-bottom:24px; border:1px solid #e5e7eb; border-top:none; border-radius:0 0 6px 6px; overflow:hidden;">
         <thead>
-          ${headerRows}
           <tr>
             ${cols.map(c => `<th style="${thStyle}">${c}</th>`).join("")}
           </tr>
@@ -351,28 +334,44 @@ Deno.serve(async (req: Request) => {
   ${morningBanner}
 
   <!-- Section 1: Open Parts Requests -->
-  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"],
-    sectionHeader("Section 1", "Open Requests — Not Yet Ordered", openROs?.length || 0, "#fff3f8") +
-    actionPrompt(s1Action, s1ActionColor, s1ActionTColor)
-  )}
+  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#fff3f8; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
+    <span style="font-size:15px; font-weight:700; color:#111;">🔩 Open Parts Requests</span>
+    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${openROs?.length || 0}</span>
+  </div>
+  <div style="padding:9px 16px 10px; background:${s1ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
+    <span style="font-size:13px; font-weight:600; color:${s1ActionTColor};">→ ${s1Action}</span>
+  </div>
+  ${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}
 
   <!-- Section 2: Ordered / In Transit / Backordered -->
-  ${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"],
-    sectionHeader("Section 2", "Ordered — Not Yet Received", orderedParts?.length || 0, "#eff6ff") +
-    actionPrompt(s2Action, s2ActionColor, s2ActionTColor)
-  )}
+  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#eff6ff; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
+    <span style="font-size:15px; font-weight:700; color:#111;">📦 Ordered — Not Yet Received</span>
+    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${orderedParts?.length || 0}</span>
+  </div>
+  <div style="padding:9px 16px 10px; background:${s2ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
+    <span style="font-size:13px; font-weight:600; color:${s2ActionTColor};">→ ${s2Action}</span>
+  </div>
+  ${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}
 
   <!-- Section 3: Overdue -->
-  ${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"],
-    sectionHeader("Section 3", "Overdue Parts — ETA Has Passed", overdueParts?.length || 0, "#fef2f2") +
-    actionPrompt(s3Action, s3ActionColor, s3ActionTColor)
-  )}
+  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#fef2f2; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
+    <span style="font-size:15px; font-weight:700; color:#111;">⚠️ Overdue Parts — ETA Has Passed</span>
+    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${overdueParts?.length || 0}</span>
+  </div>
+  <div style="padding:9px 16px 10px; background:${s3ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
+    <span style="font-size:13px; font-weight:600; color:${s3ActionTColor};">→ ${s3Action}</span>
+  </div>
+  ${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}
 
   <!-- Section 4: Received in Last 24h -->
-  ${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"],
-    sectionHeader("Section 4", "Received in Last 24 Hours", receivedParts?.length || 0, "#f0fdf4") +
-    actionPrompt(s4Action, s4ActionColor, s4ActionTColor)
-  )}
+  <div style="margin-bottom:4px; padding:12px 16px 10px; background:#f0fdf4; border-radius:6px 6px 0 0; border:1px solid #e5e7eb; border-bottom:none;">
+    <span style="font-size:15px; font-weight:700; color:#111;">✅ Received in Last 24 Hours</span>
+    <span style="margin-left:8px; background:rgba(0,0,0,0.12); color:#333; font-size:11px; padding:2px 7px; border-radius:10px; font-weight:600;">${receivedParts?.length || 0}</span>
+  </div>
+  <div style="padding:9px 16px 10px; background:${s4ActionColor}; border:1px solid #e5e7eb; border-top:none; border-bottom:2px solid #e5e7eb; margin-bottom:0;">
+    <span style="font-size:13px; font-weight:600; color:${s4ActionTColor};">→ ${s4Action}</span>
+  </div>
+  ${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"])}
 
   ${eodChecklist}
 
@@ -425,7 +424,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:        true,
-      version:        "v1.4",
+      version:        "v1.5",
       timeLabel,
       recipients:     recipients.length,
       openRequests:   openROs?.length || 0,
