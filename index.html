@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.402
+    PRVS Dashboard v1.403
     Released: 2026-04-12
+    v1.403: Slack integration (GH#20) — notifySlack() helper, triggers on part received, new RO, ready for pickup, urgency→Critical, warranty RO opened
     v1.402: Warranty RO Type — 4th RO type with auto-Critical urgency, red warranty badge, $0 No Charge badge, Original RO# and Warranty Reason fields, filter button, compact chip. Warranty data stored in ro_type column + notes prefix.
     v1.401: Compact View Mobile Inline Expansion — tap row body to expand/collapse inline panel (mobile ≤768px). Chevron affordance, one-at-a-time, status/urgency/tech/spot/quick-actions. Desktop compact unchanged.
     v1.400: Security Remediation Complete — S1-S7: XSS escapeHtml (44 calls), RBAC migration (5 files), analytics+solar auth guards, Anthropic API key to server-side proxy, DEBUG-gated console logging, inline onclick event delegation, CORS origin lockdown, session-token auth, calendar config table, search_path fix
@@ -3304,7 +3305,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.400</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.403</span>
             </div>
         </header>
 
@@ -3961,6 +3962,16 @@
                 await writeAuditLog(ro.roId, [{ field: 'urgency', oldValue: ro.urgency, newValue: newUrgency }]);
                 log('✓ Urgency updated in Supabase');
 
+                // GH#20: Slack — urgency changed to Critical
+                if (newUrgency === 'Critical') {
+                    notifySlack('ro_urgency_critical', {
+                        customerName: ro?.customerName || '',
+                        rv: ro?.rv || '',
+                        roId: ro?.roId || '',
+                        technicianAssigned: ro?.technicianAssigned || '',
+                    });
+                }
+
                 // Show success feedback
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
@@ -4193,10 +4204,20 @@
                 }
                 log('✓ Status and progress updated in Supabase');
 
+                // GH#20: Slack — Ready for Pickup
+                if (newStatus === 'Ready for pickup') {
+                    notifySlack('ro_ready_pickup', {
+                        customerName: ro?.customerName || '',
+                        rv: ro?.rv || '',
+                        roId: ro?.roId || '',
+                        parkingSpot: ro?.parkingSpot || '',
+                    });
+                }
+
                 // Show success feedback
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
-                
+
                 // Brief flash to show success
                 dropdown.style.boxShadow = '0 0 0 3px rgba(52, 199, 89, 0.5)';
                 setTimeout(() => {
@@ -6961,9 +6982,17 @@ Notes: ${notes}` : '',
                 await updatePartInSheet(part);
                 await updatePartsJsonInSheet(ctx.originalIndex);
 
+                // GH#20: Slack — part received
+                const ro = currentFilteredData[filteredIndex];
+                notifySlack('part_received', {
+                    partName: part.partName || 'Part',
+                    customerName: ro?.customerName || '',
+                    roId: ro?.roId || '',
+                    technicianAssigned: ro?.technicianAssigned || '',
+                });
+
                 // Auto-flip parts_status to 'received' if ALL parts are now Received or Installed
                 const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed');
-                const ro = currentFilteredData[filteredIndex];
                 if (allDone && ro && ro.partsStatus !== 'received') {
                     log('🔩 All parts received — auto-flipping parts_status to received');
                     await setPartsStatus(filteredIndex, 'received');
@@ -11299,6 +11328,24 @@ Notes: ${notes}` : '',
             }
         }
 
+        // GH#20: Fire-and-forget Slack notification helper — errors are caught and logged, never surface to user
+        async function notifySlack(event, data = {}) {
+            try {
+                const token = supabaseSession?.access_token;
+                if (!token) return; // silently skip if not authenticated
+                await fetch(`${SUPABASE_URL}/functions/v1/slack-notify`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ event, ...data }),
+                });
+            } catch (e) {
+                console.warn('Slack notify failed (non-fatal):', e);
+            }
+        }
+
         // Open the parts request submission modal
         function openPartsRequestModal(filteredIndex) {
             if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
@@ -12789,8 +12836,33 @@ Notes: ${notes}` : '',
                         window._pendingEstimateDoc = null;
                     }
                     window._lastEstimateScan = null;
+
+                    // GH#20: Slack — capture warranty fields before closeModal resets the form
+                    const _slackROType = currentROType;
+                    const _slackWarOrigRO = document.getElementById('warrantyOriginalRO')?.value || '';
+                    const _slackWarReason = document.getElementById('warrantyReason')?.value || '';
+
                     closeModal();
                     showToast('Repair Order saved successfully!', 'success');
+
+                    // GH#20: Slack — new RO created
+                    notifySlack('ro_created', {
+                        customerName: data.customerName || '',
+                        rv: data.rv || '',
+                        roId: success.ro_id || '',
+                        technicianAssigned: data.technicianAssigned || '',
+                        urgency: data.urgency || 'Medium',
+                    });
+                    // GH#20: Slack — warranty RO opened
+                    if (_slackROType === 'warranty') {
+                        notifySlack('warranty_ro_opened', {
+                            customerName: data.customerName || '',
+                            rv: data.rv || '',
+                            roId: success.ro_id || '',
+                            originalRO: _slackWarOrigRO,
+                            warrantyReason: _slackWarReason,
+                        });
+                    }
                 }
             });
 
