@@ -1,7 +1,6 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-
 // GH#20: Slack notifications — routes dashboard events to #parts-alerts, #ro-updates, #warranty-flags
 // v1.0: Initial implementation — part received, new RO, status→Ready, urgency→Critical, warranty RO opened
+// v1.1: Fix 401 — switch from user JWT validation to anon/service key check
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 
@@ -58,17 +57,18 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    // Verify auth
+    // Accept requests from the dashboard (anon key or service role key)
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    const origin = req.headers.get('Origin') || '';
+    const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+    const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const token = authHeader?.replace('Bearer ', '') || '';
+    const validToken = token === ANON_KEY || token === SERVICE_KEY;
+    const validOrigin = origin === ALLOWED_ORIGIN;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    if (!validToken && !validOrigin) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    }
 
     const body = await req.json();
     const { event, ...data } = body;

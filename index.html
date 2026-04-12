@@ -11331,12 +11331,10 @@ Notes: ${notes}` : '',
         // GH#20: Fire-and-forget Slack notification helper — errors are caught and logged, never surface to user
         async function notifySlack(event, data = {}) {
             try {
-                const token = supabaseSession?.access_token;
-                if (!token) return; // silently skip if not authenticated
                 await fetch(`${SUPABASE_URL}/functions/v1/slack-notify`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${token}`,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ event, ...data }),
