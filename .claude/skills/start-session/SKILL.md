@@ -7,7 +7,7 @@ description: "PRVS Dashboard session startup. Triggers when Roland says 'Start S
 
 When this skill is triggered, execute the following session startup protocol exactly:
 
-1. **Read both context files** from the local workspace folder (not GitHub):
+1. **Read both context files** — if the repo is already cloned in the workspace, read from disk. If not, run `git clone https://github.com/PatriotsRV/rv-dashboard.git` first (or `git pull` if partially cloned). Do NOT attempt to read from GitHub raw URLs via fetch:
    - `CLAUDE_CONTEXT.md`
    - `CLAUDE_CONTEXT_HISTORY.md`
 
@@ -19,10 +19,9 @@ When this skill is triggered, execute the following session startup protocol exa
    - 🔴 items that are still open
    - Any pending Roland-action items (marked "Roland action")
 
-5. **Check GitHub Actions cron health:**
-   - Go to `github.com/PatriotsRV/rv-dashboard/actions` and check whether the **Parts Status Report** and **Daily Backup** workflows have been running on schedule.
-   - If either workflow shows failures or hasn't run recently, flag it to Roland.
-   - Verify that the required GitHub secrets exist: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SERVICE_KEY`, `GH_BACKUP_PAT`. If any are missing or if runs show auth errors, flag it.
+5. **Check cron health:**
+   - **Daily Backup** — go to `github.com/PatriotsRV/rv-dashboard/actions` and confirm the Daily Backup workflow has been running on schedule. If it shows failures or hasn't run recently, flag it. Verify GitHub secrets exist: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_SERVICE_KEY`, `GH_BACKUP_PAT`.
+   - **Parts Status Report** — this runs via **Supabase pg_cron** (NOT GitHub Actions — migrated in Session 37). Check the Supabase Dashboard → Edge Functions → `send-parts-report` → Logs to confirm it fired at 8 AM and 3 PM CDT on the last weekday. Do NOT look for it in GitHub Actions.
 
 6. **Ask for iPhone updates:**
    > "Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start."

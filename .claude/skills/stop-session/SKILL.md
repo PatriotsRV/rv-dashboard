@@ -11,7 +11,7 @@ When this skill is triggered, execute the **complete** End of Session Checklist.
    ```bash
    bash scripts/backup.sh
    ```
-   Run this from the repo root (`rv-dashboard/`).
+   Run this from the repo root (`rv-dashboard/`). **Cloud session caveat:** `backup.sh` only runs correctly on Roland's Mac. If running in a cloud agent session (Perplexity/Comet), skip this step and push to GitHub directly in step 7 instead.
 
 2. **Update CLAUDE_CONTEXT.md:**
    - **Active TODO List** — mark completed items ✅, add any new items discovered
