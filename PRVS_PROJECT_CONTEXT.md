@@ -29,10 +29,10 @@
 | `SECURITY_REMEDIATION.md` — 10 security issues (XSS, RBAC, auth gaps, API key exposure, etc.) | S1–S7 | 🔴 **ASAP** | ✅ **ALL COMPLETE** — 2026-04-11 |
 | `TWILIO_SMS_SPEC.md` — Full SMS integration replacing Kenect | Phase 1–3 | 🔴 After port | ⏳ Not started |
 | `TOAST_SYSTEM_SPEC.md` — Replace alert() with toast notifications | 1 session | 🟠 High | ✅ **COMPLETE** — 2026-04-11 |
-| `UNIFIED_SEARCH_SPEC.md` — Global search bar | 1 session | 🟠 High | ⏳ Not started |
+| `UNIFIED_SEARCH_SPEC.md` — Global search bar | 1 session | 🟠 High | ✅ **COMPLETE** — 2026-04-12 |
 | `MODULARIZATION_ROADMAP.md` — Split index.html into 18 ES modules | Phase 0–19 | 🟡 Long-term | ⏳ Not started |
 
-**Next up:** Unified Search (1 session), then Twilio SMS after number port
+**Next up:** Twilio SMS after number port, then Modularization long-term
 
 **Workflow:** Perplexity researches/writes specs → pushes to `docs/specs/` → Claude Cowork reads and executes
 
@@ -48,7 +48,6 @@
 - **GH#4 — Twilio SMS build** — Full spec in `docs/specs/TWILIO_SMS_SPEC.md`. Replaces Kenect. ⏳ Waiting on number port
 
 ### 🟠 High Priority
-- **Unified Search** — Spec ready in `docs/specs/UNIFIED_SEARCH_SPEC.md`. 1 session. ⏳ Not started
 - **GH#5c — Polish Work Orders UI** — Mobile layout, remaining bugs. 🔄 In Progress
 - **GH#17 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. ⏳ Open
 - **GH#6 — Employee Time Clock** — Full time clock in dashboard. ⏳ Open
@@ -65,6 +64,7 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **Unified Search V1 (2026-04-12)** — 10-field haystack search (name, RO ID, VIN, RV, tech, description, spot, phone, email, repair type) + post-render highlight. Works in standard + compact views. Commit: 7a355a4.
 - ✅ **v1.400 Session (2026-04-11)** — Version bumped v1.308→v1.400. Toast System complete (116 alert→showToast, 4 confirm→toast-action). Visual cleanup pass (calmed animations, utility classes). Dead code cleanup (968 lines removed). Kenect removal (550 lines). Compact Manager View (dense 6-column row layout with RV photo thumbnail). slideIn keyframe fix.
 - ✅ **Security Remediation — ALL COMPLETE (2026-04-11)** — 10 security issues across 7 sessions (S1–S7) + 2 hotfixes. 5 Edge Functions redeployed with CORS. 2 SQL migrations run.
 - ✅ **Perplexity scan + specs (2026-04-10)** — Full project scan. 5 implementation specs written, reviewed, merged.
@@ -114,4 +114,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-11 — v1.400 — Session 39: Toast System, Visual Cleanup, Dead Code, Kenect Removal, Compact Manager View*
+*Last updated: 2026-04-12 — v1.400 — Session 40: Unified Search V1 (10-field haystack + highlight)*
