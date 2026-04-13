@@ -6,6 +6,7 @@ import nodemailer from "npm:nodemailer@6";
 // Each manager receives a personalized report for their silo(s) only.
 // Sr. Managers receive one email per silo (all 5 service silos).
 // v1.1 — 60-day overdue threshold, RO Name display
+// v1.2 — data quality warning banner when all dollar values are $0
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -268,6 +269,7 @@ Deno.serve(async (req: Request) => {
 
         // ── Build sections per silo ───────────────────────────────────
         let siloSections = "";
+        const allDollarValues: number[] = [];  // track every RO dollar value for data-quality check
 
         for (const { silo, siloLabel } of group.silos) {
           // ── Section 1: Work List for this manager + silo ────────────
@@ -290,6 +292,7 @@ Deno.serve(async (req: Request) => {
               const days = daysOnLot(ro);
               const val = Number(ro.dollar_value) || 0;
               wlTotal += val;
+              allDollarValues.push(ro.dollar_value == null ? 0 : Number(ro.dollar_value));
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const roName = wl.ro_name || `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               wlRows += `<tr><td style="${td};font-weight:600">${roName}</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td};${dayColor}">${days}d</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td></tr>`;
@@ -331,7 +334,9 @@ Deno.serve(async (req: Request) => {
             waitingROs.forEach((ro: any, idx: number) => {
               const days = daysOnLot(ro);
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
-              const val = silo !== "parts_insurance" ? (Number(ro._woDollar) || 0) : (Number(ro.dollar_value) || 0);
+              const rawVal = silo !== "parts_insurance" ? ro._woDollar : ro.dollar_value;
+              const val = Number(rawVal) || 0;
+              allDollarValues.push(rawVal == null ? 0 : Number(rawVal));
               const roName = `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
             });
@@ -381,8 +386,14 @@ Deno.serve(async (req: Request) => {
           siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">Your Active Work List</p><p style="margin:0;font-size:12px;color:#64748b">This is what you actively have in your Work List — keep this list current daily.</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:4px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">RO Name</th><th style="${th}">Urgency</th><th style="${th}">Days</th><th style="${th};text-align:right">Value</th></tr></thead><tbody>${wlTableRows}</tbody></table>${wlRowCount > 0 ? `<div style="text-align:right;padding:4px 10px 14px;font-size:15px;font-weight:700;color:#1e293b">Total: ${fmtDollars(wlTotal)}</div>` : `<div style="height:14px"></div>`}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
         }
 
+        // ── Data quality warning banner (all values $0) ────────────
+        const allZero = allDollarValues.length > 0 && allDollarValues.every(v => v === 0);
+        const dataQualityBanner = allZero
+          ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:6px;padding:12px 16px;margin-bottom:20px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#991b1b">⚠️ Data Quality Notice</p><p style="margin:0;font-size:13px;color:#7f1d1d">All RO dollar values in this report are $0.00. The financial totals and Work List value summary will not be meaningful until dollar values are entered on active ROs in the dashboard. Please update RO values to get accurate financial visibility.</p></div>`
+          : "";
+
         // ── Assemble full email HTML ──────────────────────────────────
-        const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="background:#1e293b;padding:16px 20px;border-radius:8px 8px 0 0"><h1 style="color:#fff;margin:0;font-size:18px">Patriots RV Services</h1><p style="margin:4px 0 0;color:#94a3b8;font-size:13px">Morning Manager Report &nbsp;&middot;&nbsp; ${dateStr}</p></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:14px 20px;margin-bottom:20px"><p style="margin:0;font-size:15px;color:#1e293b">Good morning <strong>${firstName}</strong> — Your <strong>${siloNames}</strong> Manager Report</p></div>${siloSections}<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Patriots RV Services &nbsp;&middot;&nbsp; Denton, TX &nbsp;&middot;&nbsp; <a href="tel:9404885047" style="color:#c8102e">(940) 488-5047</a><br>Automated morning report from the PRVS Dashboard &nbsp;&middot;&nbsp; Mon–Fri at 8 AM CDT</p></div></body></html>`;
+        const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="background:#1e293b;padding:16px 20px;border-radius:8px 8px 0 0"><h1 style="color:#fff;margin:0;font-size:18px">Patriots RV Services</h1><p style="margin:4px 0 0;color:#94a3b8;font-size:13px">Morning Manager Report &nbsp;&middot;&nbsp; ${dateStr}</p></div><div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:14px 20px;margin-bottom:20px"><p style="margin:0;font-size:15px;color:#1e293b">Good morning <strong>${firstName}</strong> — Your <strong>${siloNames}</strong> Manager Report</p></div>${dataQualityBanner}${siloSections}<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Patriots RV Services &nbsp;&middot;&nbsp; Denton, TX &nbsp;&middot;&nbsp; <a href="tel:9404885047" style="color:#c8102e">(940) 488-5047</a><br>Automated morning report from the PRVS Dashboard &nbsp;&middot;&nbsp; Mon–Fri at 8 AM CDT</p></div></body></html>`;
 
         // ── Plain text fallback ───────────────────────────────────────
         const plainText = [
@@ -415,7 +426,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:    true,
-      version:    "v1.1",
+      version:    "v1.2",
       emailsSent,
       totalManagers: Object.keys(emailGroups).length,
       errors:     errors.length > 0 ? errors : undefined,
