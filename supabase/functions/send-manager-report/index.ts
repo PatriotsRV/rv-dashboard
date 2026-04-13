@@ -359,7 +359,7 @@ Deno.serve(async (req: Request) => {
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const rawVal = silo !== "parts_insurance" ? ro._woDollar : ro.dollar_value;
               const val = Number(rawVal) || 0;
-              if (parseFloat(rawVal || 0) > 0) hasAnyDollarValue = true;
+              if (parseFloat(ro.dollar_value || 0) > 0) hasAnyDollarValue = true;
               const roName = `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
             });
