@@ -5,7 +5,7 @@ import nodemailer from "npm:nodemailer@6";
 // Called by Supabase pg_cron at 8 AM CDT (13:00 UTC) Mon-Fri
 // Each manager receives a personalized report for their silo(s) only.
 // Sr. Managers receive one email per silo (all 5 service silos).
-// v1.0
+// v1.1 — 60-day overdue threshold, RO Name display
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -290,13 +290,14 @@ Deno.serve(async (req: Request) => {
               const days = daysOnLot(ro);
               const val = Number(ro.dollar_value) || 0;
               wlTotal += val;
-              const dayColor = days > 14 ? "color:#dc2626;font-weight:700" : "color:#374151";
-              wlRows += `<tr><td style="${td};font-weight:600">${ro.customer_name || "—"}</td><td style="${td}">${ro.rv || "—"}</td><td style="${td};font-family:monospace;font-size:12px">${ro.ro_id || "—"}</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td};${dayColor}">${days}d</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td></tr>`;
+              const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
+              const roName = wl.ro_name || `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
+              wlRows += `<tr><td style="${td};font-weight:600">${roName}</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td};${dayColor}">${days}d</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td></tr>`;
             }
           }
 
           const wlRowCount = managerWL.filter((wl: any) => roMap[wl.ro_id]).length;
-          const wlTableRows = wlRows || emptyRow("Your work list is empty — add ROs from the dashboard.", 6);
+          const wlTableRows = wlRows || emptyRow("Your work list is empty — add ROs from the dashboard.", 4);
 
           // ── Section 2: RVs Waiting for this silo's work ─────────────
           let waitingRows = "";
@@ -329,12 +330,13 @@ Deno.serve(async (req: Request) => {
           if (waitingROs.length > 0) {
             waitingROs.forEach((ro: any, idx: number) => {
               const days = daysOnLot(ro);
-              const dayColor = days > 14 ? "color:#dc2626;font-weight:700" : "color:#374151";
+              const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const val = silo !== "parts_insurance" ? (Number(ro._woDollar) || 0) : (Number(ro.dollar_value) || 0);
-              waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${ro.customer_name || "—"}</td><td style="${td}">${ro.rv || "—"}</td><td style="${td};font-family:monospace;font-size:12px">${ro.ro_id || "—"}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
+              const roName = `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
+              waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
             });
           }
-          const waitingTableRows = waitingRows || emptyRow("No RVs waiting — all caught up.", 9);
+          const waitingTableRows = waitingRows || emptyRow("No RVs waiting — all caught up.", 7);
 
           // ── Section 3: Key Flags ────────────────────────────────────
           const flagItems: string[] = [];
@@ -345,13 +347,13 @@ Deno.serve(async (req: Request) => {
             return ro && ro.urgency === "Critical";
           });
           if (criticalWL.length > 0) {
-            flagItems.push(`<span style="color:#991b1b;font-weight:700">CRITICAL:</span> ${criticalWL.length} RO${criticalWL.length > 1 ? "s" : ""} on your list marked Critical — ${criticalWL.map((wl: any) => roMap[wl.ro_id]?.ro_id || "?").join(", ")}`);
+            flagItems.push(`<span style="color:#991b1b;font-weight:700">CRITICAL:</span> ${criticalWL.length} RO${criticalWL.length > 1 ? "s" : ""} on your list marked Critical — ${criticalWL.map((wl: any) => { const r = roMap[wl.ro_id]; return wl.ro_name || (r ? `${r.customer_name || "Unknown"} — ${r.rv || ""}` : "?"); }).join(", ")}`);
           }
 
-          // Overdue ROs (on lot > 14 days) in their silo
-          const overdueROs = waitingROs.filter((ro: any) => daysOnLot(ro) > 14);
+          // Overdue ROs (on lot > 60 days) in their silo
+          const overdueROs = waitingROs.filter((ro: any) => daysOnLot(ro) > 60);
           if (overdueROs.length > 0) {
-            flagItems.push(`<span style="color:#dc2626;font-weight:700">OVERDUE:</span> ${overdueROs.length} RV${overdueROs.length > 1 ? "s" : ""} on lot more than 14 days — ${overdueROs.map((ro: any) => `${ro.ro_id || "?"} (${daysOnLot(ro)}d)`).join(", ")}`);
+            flagItems.push(`<span style="color:#dc2626;font-weight:700">OVERDUE:</span> ${overdueROs.length} RV${overdueROs.length > 1 ? "s" : ""} on lot more than 60 days — ${overdueROs.map((ro: any) => `${ro.customer_name || "Unknown"} — ${ro.rv || ""} (${daysOnLot(ro)}d)`).join(", ")}`);
           }
 
           // Parts blocking this silo's work
@@ -376,7 +378,7 @@ Deno.serve(async (req: Request) => {
             ? `<div style="background:#1e293b;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;margin-top:24px;margin-bottom:0"><span style="font-size:16px;font-weight:700">${siloLabel}</span></div>`
             : "";
 
-          siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">Your Active Work List</p><p style="margin:0;font-size:12px;color:#64748b">This is what you actively have in your Work List — keep this list current daily.</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:4px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">Customer</th><th style="${th}">Vehicle</th><th style="${th}">RO #</th><th style="${th}">Urgency</th><th style="${th}">Days</th><th style="${th};text-align:right">Value</th></tr></thead><tbody>${wlTableRows}</tbody></table>${wlRowCount > 0 ? `<div style="text-align:right;padding:4px 10px 14px;font-size:15px;font-weight:700;color:#1e293b">Total: ${fmtDollars(wlTotal)}</div>` : `<div style="height:14px"></div>`}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">Customer</th><th style="${th}">Vehicle</th><th style="${th}">RO #</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
+          siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">Your Active Work List</p><p style="margin:0;font-size:12px;color:#64748b">This is what you actively have in your Work List — keep this list current daily.</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:4px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">RO Name</th><th style="${th}">Urgency</th><th style="${th}">Days</th><th style="${th};text-align:right">Value</th></tr></thead><tbody>${wlTableRows}</tbody></table>${wlRowCount > 0 ? `<div style="text-align:right;padding:4px 10px 14px;font-size:15px;font-weight:700;color:#1e293b">Total: ${fmtDollars(wlTotal)}</div>` : `<div style="height:14px"></div>`}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
         }
 
         // ── Assemble full email HTML ──────────────────────────────────
@@ -413,7 +415,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:    true,
-      version:    "v1.0",
+      version:    "v1.1",
       emailsSent,
       totalManagers: Object.keys(emailGroups).length,
       errors:     errors.length > 0 ? errors : undefined,
