@@ -11280,10 +11280,11 @@ Notes: ${notes}` : '',
             });
         }
         async function _doNotifyPartsRequester(filteredIndex) {
-            const ro = currentFilteredData[filteredIndex];
-            const roPartsData = partsData[ro.roId] || [];
-            const orderedParts = roPartsData.filter(p => ['Ordered','In Transit','Backordered'].includes(p.status));
             try {
+                const ro = currentFilteredData[filteredIndex];
+                if (!ro) { showToast('RO not found — the view may have changed. Please try again.', 'warning'); return; }
+                const roPartsData = partsData[ro.roId] || [];
+                const orderedParts = roPartsData.filter(p => ['Ordered','In Transit','Backordered'].includes(p.status));
                 const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
                     headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
