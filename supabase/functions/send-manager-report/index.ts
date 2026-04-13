@@ -8,6 +8,7 @@ import nodemailer from "npm:nodemailer@6";
 // v1.1 — 60-day overdue threshold, RO Name display
 // v1.2 — data quality warning banner when all dollar values are $0
 // v1.3 — stale/empty Work List warning banners
+// v1.3b — fix data quality banner (simple flag approach)
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -270,7 +271,7 @@ Deno.serve(async (req: Request) => {
 
         // ── Build sections per silo ───────────────────────────────────
         let siloSections = "";
-        const allDollarValues: number[] = [];  // track every RO dollar value for data-quality check
+        let hasAnyDollarValue = false;
 
         for (const { silo, siloLabel } of group.silos) {
           // ── Section 1: Work List for this manager + silo ────────────
@@ -293,7 +294,7 @@ Deno.serve(async (req: Request) => {
               const days = daysOnLot(ro);
               const val = Number(ro.dollar_value) || 0;
               wlTotal += val;
-              allDollarValues.push(parseFloat(ro.dollar_value || 0));
+              if (parseFloat(ro.dollar_value || 0) > 0) hasAnyDollarValue = true;
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const roName = wl.ro_name || `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               wlRows += `<tr><td style="${td};font-weight:600">${roName}</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td};${dayColor}">${days}d</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td></tr>`;
@@ -358,7 +359,7 @@ Deno.serve(async (req: Request) => {
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const rawVal = silo !== "parts_insurance" ? ro._woDollar : ro.dollar_value;
               const val = Number(rawVal) || 0;
-              allDollarValues.push(parseFloat(rawVal || 0));
+              if (parseFloat(rawVal || 0) > 0) hasAnyDollarValue = true;
               const roName = `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
             });
@@ -421,8 +422,7 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── Data quality warning banner (all values $0) ────────────
-        const hasAnyValue = allDollarValues.some(v => v > 0);
-        const dataQualityBanner = !hasAnyValue
+        const dataQualityBanner = !hasAnyDollarValue
           ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:6px;padding:12px 16px;margin-bottom:20px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#991b1b">⚠️ Data Quality Notice</p><p style="margin:0;font-size:13px;color:#7f1d1d">All RO dollar values in this report are $0.00. The financial totals and Work List value summary will not be meaningful until dollar values are entered on active ROs in the dashboard. Please update RO values to get accurate financial visibility.</p></div>`
           : "";
 
