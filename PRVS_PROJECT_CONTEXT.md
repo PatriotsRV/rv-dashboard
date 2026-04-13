@@ -48,6 +48,8 @@
 - **GH#4 — Twilio SMS build** — Full spec in `docs/specs/TWILIO_SMS_SPEC.md`. Replaces Kenect. ⏳ Waiting on number port
 
 ### 🟠 High Priority
+- **GH#23 — Morning Manager Report (data quality banner fix)** — Data quality banner ($0.00 warning) not firing for sr_manager reports. Multi-silo work list lookup needs fresh investigation. Deferred from Session 44. 🔄 In Progress
+- **GH#23 — Map service_silo values to each manager in staff table** — Needed for per-silo RV filtering in send-manager-report to work correctly. ⏳ Open
 - **GH#20 — Slack Integration (remaining triggers)** — Test `ro_urgency_critical`, `part_received`, `warranty_ro_opened`. Audit & configure all 5 event types. Deploy final. 🔄 In Progress
 - **GH#5c — Polish Work Orders UI** — Mobile layout, remaining bugs. 🔄 In Progress
 - **GH#17/GH#19 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. Next session build target. ⏳ Open
@@ -55,7 +57,7 @@
 
 ### 🟡 Medium Priority / Roland Actions
 - **GitHub Releases v1.283–v1.308** — Backlog of unpublished releases. ⏳ Roland action
-- **GitHub Release v1.402/v1.403** — Warranty RO + Slack integration. ⏳ Roland action
+- **GitHub Release v1.402/v1.403/v1.404** — Warranty RO + Slack integration + Morning Manager Report. ⏳ Roland action
 - **Supabase: Maximize log retention** — Settings → Logs. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts notifications. ⏳ Roland action
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah. ⏳ Open
@@ -66,6 +68,8 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **GH#23 Morning Manager Report — send-manager-report v1.5 (2026-04-13)** — Per-silo personalized email to all managers. Work List + dollar total, RVs Waiting sorted by days/urgency, Key Flags (Critical, >60d, blocking parts). Red/yellow data quality banners. pg_cron Mon–Fri 8 AM CDT. Deployed + confirmed sending. 9 commits (f875bc4→4c3e9a7).
+- ✅ **GH#18 orderedParts scope fix (2026-04-13)** — Fixed `orderedParts is not defined` error in Email Requestor / Part Ordered flow. Commit: fc25a93.
 - ✅ **Slack Integration GH#20 — v1.403 (2026-04-12)** — `slack-notify` Edge Function v1.2 + 5 trigger points in index.html. Fires to #ro-updates, #parts-alerts, #warranty-flags. ro_created + ro_ready_pickup confirmed working. 3 triggers remaining to verify.
 - ✅ **Warranty RO Type v1.402 (2026-04-12)** — 4th RO type for comeback jobs fixed at no charge. Auto-Critical urgency, red badge, $0 No Charge badge, Original RO# field. Commits: b241df3, 35c1c88.
 - ✅ **send-parts-report v1.7 (2026-04-12)** — Contextual numbered action prompts, EOD checklist, Gmail clipping fix.
@@ -103,7 +107,7 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 - **Database:** Supabase (PostgreSQL) — project ref `axfejhudchdejoiwaetq`
 - **Auth:** Google Identity Services → Supabase `signInWithIdToken`
 - **Storage:** Supabase Storage (`rv-media` bucket)
-- **Edge Functions:** `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner), `slack-notify` (Slack webhooks)
+- **Edge Functions:** `roof-lookup` (AI), `send-quote-email` (email), `send-parts-report` (cron), `send-er-report` (cron), `claude-vision-proxy` (estimate scanner), `slack-notify` (Slack webhooks), `send-manager-report` (cron — GH#23 morning manager report)
 - **SMS:** Twilio (planned — full spec in `docs/specs/TWILIO_SMS_SPEC.md`)
 - **Roles:** Supabase RBAC via `user_roles` table — Admin, Sr Manager, Manager, Parts Manager, Tech (all hardcoded email arrays removed S2)
 
@@ -119,4 +123,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-12 — v1.403 — Session 43: Slack integration GH#20 (slack-notify v1.2 + 5 triggers)*
+*Last updated: 2026-04-13 — v1.403 — Session 44: GH#23 Morning Manager Report (send-manager-report v1.5) + GH#18 orderedParts scope fix*
