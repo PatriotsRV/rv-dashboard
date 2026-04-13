@@ -11274,6 +11274,8 @@ Notes: ${notes}` : '',
         }
         async function _doNotifyPartsRequester(filteredIndex) {
             const ro = currentFilteredData[filteredIndex];
+            const roPartsData = partsData[ro.roId] || [];
+            const orderedParts = roPartsData.filter(p => ['Ordered','In Transit','Backordered'].includes(p.status));
             try {
                 const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
