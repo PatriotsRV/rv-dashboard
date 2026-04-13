@@ -292,7 +292,7 @@ Deno.serve(async (req: Request) => {
               const days = daysOnLot(ro);
               const val = Number(ro.dollar_value) || 0;
               wlTotal += val;
-              allDollarValues.push(ro.dollar_value == null ? 0 : Number(ro.dollar_value));
+              allDollarValues.push(parseFloat(ro.dollar_value || 0));
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const roName = wl.ro_name || `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               wlRows += `<tr><td style="${td};font-weight:600">${roName}</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td};${dayColor}">${days}d</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td></tr>`;
@@ -336,7 +336,7 @@ Deno.serve(async (req: Request) => {
               const dayColor = days > 60 ? "color:#dc2626;font-weight:700" : "color:#374151";
               const rawVal = silo !== "parts_insurance" ? ro._woDollar : ro.dollar_value;
               const val = Number(rawVal) || 0;
-              allDollarValues.push(rawVal == null ? 0 : Number(rawVal));
+              allDollarValues.push(parseFloat(rawVal || 0));
               const roName = `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
               waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
             });
@@ -387,8 +387,8 @@ Deno.serve(async (req: Request) => {
         }
 
         // ── Data quality warning banner (all values $0) ────────────
-        const allZero = allDollarValues.length > 0 && allDollarValues.every(v => v === 0);
-        const dataQualityBanner = allZero
+        const hasAnyValue = allDollarValues.some(v => v > 0);
+        const dataQualityBanner = !hasAnyValue
           ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:6px;padding:12px 16px;margin-bottom:20px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#991b1b">⚠️ Data Quality Notice</p><p style="margin:0;font-size:13px;color:#7f1d1d">All RO dollar values in this report are $0.00. The financial totals and Work List value summary will not be meaningful until dollar values are entered on active ROs in the dashboard. Please update RO values to get accurate financial visibility.</p></div>`
           : "";
 
