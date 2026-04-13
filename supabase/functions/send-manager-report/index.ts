@@ -7,6 +7,7 @@ import nodemailer from "npm:nodemailer@6";
 // Sr. Managers receive one email per silo (all 5 service silos).
 // v1.1 — 60-day overdue threshold, RO Name display
 // v1.2 — data quality warning banner when all dollar values are $0
+// v1.3 — stale/empty Work List warning banners
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -115,7 +116,7 @@ Deno.serve(async (req: Request) => {
     // ── 4. Get all manager work list entries ────────────────────────────
     const { data: allWorkLists, error: wlErr } = await sb
       .from("manager_work_lists")
-      .select("id, manager_email, ro_id, ro_name, priority, service_silo")
+      .select("id, manager_email, ro_id, ro_name, priority, service_silo, created_at")
       .order("priority", { ascending: true });
     if (wlErr) console.error("Error fetching work lists:", wlErr);
 
@@ -300,7 +301,28 @@ Deno.serve(async (req: Request) => {
           }
 
           const wlRowCount = managerWL.filter((wl: any) => roMap[wl.ro_id]).length;
-          const wlTableRows = wlRows || emptyRow("Your work list is empty — add ROs from the dashboard.", 4);
+          const isEmptyWL = !wlRows;
+
+          // ── Empty Work List red banner ──────────────────────────────
+          const emptyWLBanner = `<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:16px 20px;margin:8px 0 16px;text-align:center"><p style="margin:0 0 6px;font-size:18px;font-weight:800;color:#dc2626">\u{1F6A8} YOUR WORK LIST IS EMPTY</p><p style="margin:0;font-size:13px;color:#7f1d1d;line-height:1.5">You have no ROs on your Work List. Add the ROs your team is actively working on to your Work List in the dashboard — <strong>right now, before you start your day.</strong></p></div>`;
+
+          // ── Stale Work List detection (3+ days since newest item) ───
+          let isStaleWL = false;
+          if (wlRowCount > 0) {
+            const threeDaysAgo = new Date(now.getTime() - 3 * 86_400_000);
+            const timestamps = managerWL
+              .filter((wl: any) => roMap[wl.ro_id])
+              .map((wl: any) => new Date(wl.created_at).getTime())
+              .filter((t: number) => !isNaN(t));
+            if (timestamps.length > 0) {
+              const newest = Math.max(...timestamps);
+              isStaleWL = newest < threeDaysAgo.getTime();
+            }
+          }
+
+          const staleWLBanner = `<div style="background:#fffbeb;border:2px solid #f59e0b;border-radius:8px;padding:16px 20px;margin:8px 0 16px;text-align:center"><p style="margin:0 0 6px;font-size:16px;font-weight:800;color:#b45309">\u{26A0}\u{FE0F} YOUR WORK LIST APPEARS STALE</p><p style="margin:0;font-size:13px;color:#78350f;line-height:1.5">Your Work List hasn't been updated in <strong>3+ days</strong>. Review it now — remove completed ROs and add new ones. <strong>Your list should reflect what your team is working on today.</strong></p></div>`;
+
+          const wlTableRows = wlRows;
 
           // ── Section 2: RVs Waiting for this silo's work ─────────────
           let waitingRows = "";
@@ -383,7 +405,19 @@ Deno.serve(async (req: Request) => {
             ? `<div style="background:#1e293b;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;margin-top:24px;margin-bottom:0"><span style="font-size:16px;font-weight:700">${siloLabel}</span></div>`
             : "";
 
-          siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px"><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">Your Active Work List</p><p style="margin:0;font-size:12px;color:#64748b">This is what you actively have in your Work List — keep this list current daily.</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:4px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">RO Name</th><th style="${th}">Urgency</th><th style="${th}">Days</th><th style="${th};text-align:right">Value</th></tr></thead><tbody>${wlTableRows}</tbody></table>${wlRowCount > 0 ? `<div style="text-align:right;padding:4px 10px 14px;font-size:15px;font-weight:700;color:#1e293b">Total: ${fmtDollars(wlTotal)}</div>` : `<div style="height:14px"></div>`}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
+          // Build Work List content: table with rows, empty banner, or table + stale banner
+          const wlHeader = `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">Your Active Work List</p><p style="margin:0;font-size:12px;color:#64748b">This is what you actively have in your Work List — keep this list current daily.</p></div>`;
+
+          let wlContent: string;
+          if (isEmptyWL) {
+            // Empty work list — show red banner instead of table
+            wlContent = `${wlHeader}${emptyWLBanner}`;
+          } else {
+            // Has items — show table + total + optional stale banner
+            wlContent = `${wlHeader}<table style="width:100%;border-collapse:collapse;margin-bottom:4px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">RO Name</th><th style="${th}">Urgency</th><th style="${th}">Days</th><th style="${th};text-align:right">Value</th></tr></thead><tbody>${wlTableRows}</tbody></table><div style="text-align:right;padding:4px 10px 14px;font-size:15px;font-weight:700;color:#1e293b">Total: ${fmtDollars(wlTotal)}</div>${isStaleWL ? staleWLBanner : ""}`;
+          }
+
+          siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px">${wlContent}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
         }
 
         // ── Data quality warning banner (all values $0) ────────────
@@ -426,7 +460,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:    true,
-      version:    "v1.2",
+      version:    "v1.3",
       emailsSent,
       totalManagers: Object.keys(emailGroups).length,
       errors:     errors.length > 0 ? errors : undefined,
