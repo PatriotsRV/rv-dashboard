@@ -274,13 +274,14 @@ Deno.serve(async (req: Request) => {
         let siloSections = "";
         let hasAnyDollarValue = false;
 
+        let isFirstSilo = true;
         for (const { silo, siloLabel } of group.silos) {
           // ── Section 1: Work List for this manager + silo ────────────
           const managerWL = (workListByManager[email] || [])
             .filter((wl: any) => {
               // For sr_managers, filter by silo; for regular managers, show all their entries
               if (group.silos.length > 1 && wl.service_silo) return wl.service_silo === silo;
-              if (group.silos.length > 1 && !wl.service_silo) return false;
+              if (group.silos.length > 1 && !wl.service_silo) return isFirstSilo;
               return true;
             })
             .sort((a: any, b: any) => (a.priority || 999) - (b.priority || 999));
@@ -420,6 +421,7 @@ Deno.serve(async (req: Request) => {
           }
 
           siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px">${wlContent}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
+          isFirstSilo = false;
         }
 
         // ── Data quality warning banner (all values $0) ────────────
