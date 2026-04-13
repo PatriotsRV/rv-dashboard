@@ -94,10 +94,11 @@ Deno.serve(async (req: Request) => {
       .select("id, ro_id, customer_name, rv, dollar_value, urgency, ro_type, status, date_received, date_arrived, technician, has_open_parts_request, parts_status");
     if (roErr) console.error("Error fetching ROs:", roErr);
 
-    // Build RO lookup by UUID
+    // Build RO lookup by UUID and by text ro_id (e.g. PRVS-XXXX)
     const roMap: Record<string, any> = {};
     for (const ro of (allROs || [])) {
-      roMap[ro.id] = ro;
+      roMap[ro.id] = ro;       // UUID key (for WO joins)
+      if (ro.ro_id) roMap[ro.ro_id] = ro; // text key (for work list joins)
     }
 
     // ── 3. Get all service work orders (non-completed) ──────────────────
