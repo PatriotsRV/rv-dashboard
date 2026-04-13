@@ -1,40 +1,31 @@
 /**
  * claude-vision-proxy — Supabase Edge Function
  * Proxies Claude Vision API calls so the Anthropic key never leaves the server.
- * The ANTHROPIC_API_KEY secret is already set (shared with roof-lookup).
- * Requires authenticated Supabase session.
+ * Auth: origin-only (same pattern as slack-notify v1.2, send-quote-email v1.1)
  */
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://patriotsrv.github.io',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get('Origin') || '';
+  return {
+    'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: getCorsHeaders(req) });
   }
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  // Origin-only auth — Anthropic key never leaves the server
+  const origin = req.headers.get('Origin') || '';
+  if (origin !== ALLOWED_ORIGIN) {
     return new Response(
-      JSON.stringify({ error: 'Unauthorized — valid Supabase session required' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Verify JWT resolves to a real authenticated user
-  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } }
-  });
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid or expired session' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: 'Forbidden' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
     );
   }
 
@@ -42,7 +33,7 @@ Deno.serve(async (req: Request) => {
   if (!anthropicKey) {
     return new Response(
       JSON.stringify({ error: 'ANTHROPIC_API_KEY secret not set' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
   }
 
@@ -63,12 +54,12 @@ Deno.serve(async (req: Request) => {
     const data = await response.json();
     return new Response(JSON.stringify(data), {
       status: response.status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
     });
   } catch (err) {
     return new Response(
       JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
   }
 });
