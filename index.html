@@ -5493,6 +5493,9 @@
 
         // S4: Anthropic API key moved to server-side Edge Function (claude-vision-proxy). Client no longer handles API key.
         async function callClaudeVision(base64Data, mediaType, isPDF) {
+            // Refresh session to ensure a fresh access_token (prevents 401 on expired JWT)
+            const { data: { session: freshSession } } = await getSB().auth.getSession();
+            if (freshSession) supabaseSession = freshSession;
             if (!supabaseSession) throw new Error('You must be signed in to use the estimate scanner.');
             const systemPrompt = `You are an insurance estimate data extractor for an RV repair shop.
 Extract all field/value pairs from the provided insurance estimate document.
@@ -5624,8 +5627,12 @@ Always prefer mapping to a standard key over creating a new one.`;
             });
 
             if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.error?.message || err.error || `Proxy error ${response.status}`);
+                let msg = `Proxy error ${response.status}`;
+                try {
+                    const err = await response.json();
+                    msg = err.error?.message || err.error || err.msg || msg;
+                } catch (_) { /* non-JSON response from gateway */ }
+                throw new Error(msg);
             }
 
             const data = await response.json();
