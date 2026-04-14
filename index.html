@@ -5134,6 +5134,9 @@
                 if (cpSec)  cpSec.classList.remove('visible');
                 if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = '🏪 Shop Operations RO';
+                // Hide scan estimate button
+                const scanBtn = document.getElementById(isEdit ? 'editScanBtn' : 'newScanBtn');
+                if (scanBtn) scanBtn.style.display = 'none';
                 // Hide customer-specific fields, show shop-relevant ones
                 const formId = isEdit ? 'editROForm' : 'newROForm';
                 const formEl = document.getElementById(formId);
@@ -5181,6 +5184,9 @@
                         delete el.dataset.wasRequired;
                     });
                 }
+                // Restore scan estimate button
+                const scanBtn = document.getElementById(isEdit ? 'editScanBtn' : 'newScanBtn');
+                if (scanBtn) scanBtn.style.display = '';
             }
             // Show/hide custom fields section with insurance sections
             const customSec = document.getElementById((isEdit ? 'edit' : 'new') + 'CustomFieldsSection');
@@ -12919,6 +12925,9 @@ Notes: ${notes}` : '',
                     data.rv = '';
                     data.vin = '';
                     data.dollarValue = '';
+                    data.status = data.status || 'On Lot';
+                    data.urgency = data.urgency || 'Low';
+                    data.customerType = data.customerType || '';
                 } else {
                     const repairTypes = formData.getAll('repairType');
                     if (repairTypes.length === 0) {
@@ -13865,7 +13874,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">RV Photo URL</label>
                         <input type="url" class="form-input" name="rvPhotoUrl">
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Repair Type *</label>
                         <div class="checkbox-group">
                             <label class="checkbox-label">
@@ -13916,7 +13925,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <input type="number" class="form-input" name="dollarValue" id="new_dollarValue" min="0" step="0.01">
                         <div id="sug_new_dollarValue"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">📍 Parking Spot</label>
                         <select class="form-select" name="parkingSpot" id="new_parkingSpot">
                             <option value="">— Not assigned —</option>
@@ -13982,7 +13991,7 @@ function toggleWOTasks(tasksId, chevId) {
                             </optgroup>
                         </select>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Status *</label>
                         <select class="form-select" name="status" required>
                             <option value="">Select Status</option>
@@ -13997,7 +14006,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Delivered/Cashed Out">Delivered/Cashed Out</option>
                         </select>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Urgency *</label>
                         <select class="form-select" name="urgency" required>
                             <option value="">Select Urgency</option>
@@ -14007,7 +14016,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Low">Low</option>
                         </select>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Type *</label>
                         <select class="form-select" name="customerType" required>
                             <option value="">Select Type</option>
@@ -14015,11 +14024,11 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Regular">Regular</option>
                         </select>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Promised Date</label>
                         <input type="date" class="form-input" name="promisedDate">
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Date RV Arrived on Lot</label>
                         <input type="date" class="form-input" name="dateArrived">
                         <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">Leave blank if RV is Not On Lot yet. Set when RV physically arrives.</div>
@@ -14028,7 +14037,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">RO Status Notes</label>
                         <textarea class="form-textarea" name="roStatusNotes"></textarea>
                     </div>
-                    <div class="form-field full-width">
+                    <div class="form-field full-width shop-hide">
                         <label class="form-label">Customer Communication Notes</label>
                         <textarea class="form-textarea" name="customerCommunicationNotes"></textarea>
                     </div>
@@ -14409,7 +14418,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Repair Description</label>
                         <textarea class="form-input" id="editRepairDescription" rows="3" style="resize:vertical; min-height:64px;"></textarea>
                     </div>
-                    <div class="form-field full-width">
+                    <div class="form-field full-width shop-hide">
                         <label class="form-label">Repair Type *</label>
                         <div class="checkbox-group">
                             <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Roof"><span>Roof</span></label>
@@ -14431,7 +14440,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">📍 Parking Spot</label>
                         <select class="form-select" id="editParkingSpot">
                             <option value="">— Not assigned —</option>
@@ -14497,11 +14506,11 @@ function toggleWOTasks(tasksId, chevId) {
                             </optgroup>
                         </select>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Promised Date</label>
                         <input type="date" class="form-input" id="editPromisedDate">
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Date RV Arrived on Lot</label>
                         <input type="date" class="form-input" id="editDateArrived">
                     </div>
