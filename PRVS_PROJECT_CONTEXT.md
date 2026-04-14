@@ -68,6 +68,9 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **Worklist Report v1.2 — clickable tech tile expand (2026-04-14)** — Tech tiles in Staff Status section are now clickable. Expands to show daily time log per tech: sessions, gaps, duration, ACTIVE badge, summary. Commit: 3d62840.
+- ✅ **send-manager-report v1.8 (2026-04-14)** — v1.7: ≥30 days filter (was ≥60). v1.8: red PARTS HOLD badge on individual RO line items + named ROs in Key Flags. Deployed as Supabase version 13. Commits: b0c3e5d, 26d36e4.
+- ✅ **GitHub Issue #20 — pg_cron DST update (2026-04-14)** — Track UTC offset change needed November 2026 (CDT→CST).
 - ✅ **GH#23 Morning Manager Report — send-manager-report v1.5 (2026-04-13)** — Per-silo personalized email to all managers. Work List + dollar total, RVs Waiting sorted by days/urgency, Key Flags (Critical, >60d, blocking parts). Red/yellow data quality banners. pg_cron Mon–Fri 8 AM CDT. Deployed + confirmed sending. 9 commits (f875bc4→4c3e9a7).
 - ✅ **GH#18 orderedParts scope fix (2026-04-13)** — Fixed `orderedParts is not defined` error in Email Requestor / Part Ordered flow. Commit: fc25a93.
 - ✅ **Slack Integration GH#20 — v1.403 (2026-04-12)** — `slack-notify` Edge Function v1.2 + 5 trigger points in index.html. Fires to #ro-updates, #parts-alerts, #warranty-flags. ro_created + ro_ready_pickup confirmed working. 3 triggers remaining to verify.
@@ -123,4 +126,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-13 — v1.403 — Session 44: GH#23 Morning Manager Report (send-manager-report v1.5) + GH#18 orderedParts scope fix*
+*Last updated: 2026-04-14 — v1.404 — Session 45: send-manager-report v1.8 + worklist-report v1.2 tech tile expand + GH Issue #20*
