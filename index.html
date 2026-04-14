@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.404
+    PRVS Dashboard v1.405
     Released: 2026-04-14
+    v1.405: Shop RO Type (GH#24 Phase 1) — 🏪 Shop Operations RO type for non-customer parts ordering/returns. Simplified New/Edit modal (customer fields hidden). Shop badge on standard + compact cards. RO Type filter button. Slack notifications skipped for shop ROs. Spanish translations.
     v1.404: Training RO flag (GH#24) — is_training badge, filter, Slack/report exclusions
            DB migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS is_training BOOLEAN DEFAULT FALSE;
     v1.403: Slack integration (GH#20) — notifySlack() helper, triggers on part received, new RO, ready for pickup, urgency→Critical, warranty RO opened
@@ -2456,6 +2457,25 @@
             background: linear-gradient(135deg, rgba(52,199,89,0.3) 0%, rgba(16,185,129,0.3) 100%);
             color: #34c759;
         }
+        .ro-type-btn.shop {
+            border-color: #8b5cf6;
+            color: #8b5cf6;
+        }
+        .ro-type-btn.shop.active {
+            background: #8b5cf6;
+            color: #fff;
+        }
+        .shop-badge {
+            display: inline-block;
+            background: rgba(139,92,246,0.15);
+            color: #8b5cf6;
+            border: 1px solid rgba(139,92,246,0.3);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            margin-top: 2px;
+        }
         .ro-type-btn.warranty {
             background: linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.15) 100%);
             color: #ef4444;
@@ -2983,6 +3003,7 @@
         .compact-chip.ch-request     { color: #FF1493; border-color: #FF1493; background: rgba(255,20,147,0.08); }
         .compact-chip.ch-insurance   { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(251,146,60,0.08); }
         .compact-chip.ch-warranty    { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3); }
+        .compact-chip.ch-shop        { background: rgba(139,92,246,0.15); color: #8b5cf6; border-color: rgba(139,92,246,0.3); }
         .compact-chip.ch-training   { color: #6b7280; border-color: rgba(107,114,128,0.4); background: rgba(107,114,128,0.10); }
         .compact-chip.ch-parts-badge { color: var(--text-secondary); border-color: var(--border-color); background: var(--bg-elevated); }
 
@@ -3323,7 +3344,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.404</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.405</span>
             </div>
         </header>
 
@@ -3427,6 +3448,7 @@
                             <button class="filter-btn" data-filter="hybrid" data-type="rotype" onclick="toggleROTypeFilter('hybrid')">🔀 Hybrid</button>
                             <button class="filter-btn" data-filter="standard" data-type="rotype" onclick="toggleROTypeFilter('standard')">🔧 Standard</button>
                             <button class="filter-btn" data-filter="warranty" data-type="rotype" onclick="toggleROTypeFilter('warranty')">🔄 Warranty</button>
+                            <button class="filter-btn" data-filter="shop" data-type="rotype" onclick="toggleROTypeFilter('shop')">🏪 Shop</button>
                             <button class="filter-btn" data-filter="training" data-type="rotype" onclick="toggleROTypeFilter('training')">🎓 Training</button>
                         </div>
                         <div id="trainingToggleWrap" style="display:none;padding:6px 0 0;">
@@ -3723,7 +3745,7 @@
         let currentSearchFilter = ''; // Customer name search
         let currentDaysFilter = null; // Days on lot >= filter
         let currentPartsFilter = 'all'; // 'all', 'outstanding', 'backordered'
-        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard', 'warranty', 'training'
+        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard', 'warranty', 'shop', 'training'
         let showTrainingROs = false; // GH#24: training ROs hidden by default
         let timeLogsData = []; // Store time logs from Google Sheets
         let timeLogsRefreshInterval = null; // Auto-refresh timer
@@ -5076,8 +5098,8 @@
             const isEdit = prefix === 'edit';
 
             // Toggle buttons — may be in either modal
-            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn', 'warrantyROBtn',
-             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn', 'editWarrantyROBtn'].forEach(id => {
+            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn', 'warrantyROBtn', 'shopROBtn',
+             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn', 'editWarrantyROBtn', 'editShopROBtn'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.remove('active');
             });
@@ -5105,6 +5127,25 @@
                 if (cpSec)  cpSec.classList.add('visible');
                 if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? '🔀 Hybrid RO' : '🔀 Insurance + Customer Pay RO';
+            } else if (type === 'shop') {
+                const shopId = isEdit ? 'editShopROBtn' : 'shopROBtn';
+                document.getElementById(shopId)?.classList.add('active', 'shop');
+                if (insSec) insSec.classList.remove('visible');
+                if (cpSec)  cpSec.classList.remove('visible');
+                if (warSec) warSec.classList.remove('visible');
+                if (modalTitle) modalTitle.textContent = '🏪 Shop Operations RO';
+                // Hide customer-specific fields, show shop-relevant ones
+                const formId = isEdit ? 'editROForm' : 'newROForm';
+                const formEl = document.getElementById(formId);
+                if (formEl) {
+                    formEl.querySelectorAll('.shop-hide').forEach(el => el.style.display = 'none');
+                    formEl.querySelectorAll('.shop-only').forEach(el => el.style.display = '');
+                    // Remove required from hidden fields so form can submit
+                    formEl.querySelectorAll('.shop-hide input[required], .shop-hide textarea[required]').forEach(el => {
+                        el.dataset.wasRequired = 'true';
+                        el.removeAttribute('required');
+                    });
+                }
             } else if (type === 'warranty') {
                 document.getElementById(warId)?.classList.add('active', 'warranty');
                 if (insSec) insSec.classList.remove('visible');
@@ -5126,6 +5167,20 @@
                 if (cpSec)  cpSec.classList.remove('visible');
                 if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? 'Edit Repair Order' : 'New Repair Order';
+            }
+            // Restore shop-hidden fields when switching away from shop
+            if (type !== 'shop') {
+                const formId = isEdit ? 'editROForm' : 'newROForm';
+                const formEl = document.getElementById(formId);
+                if (formEl) {
+                    formEl.querySelectorAll('.shop-hide').forEach(el => el.style.display = '');
+                    formEl.querySelectorAll('.shop-only').forEach(el => el.style.display = 'none');
+                    // Restore required attributes that were removed for shop mode
+                    formEl.querySelectorAll('[data-was-required]').forEach(el => {
+                        el.setAttribute('required', '');
+                        delete el.dataset.wasRequired;
+                    });
+                }
             }
             // Show/hide custom fields section with insurance sections
             const customSec = document.getElementById((isEdit ? 'edit' : 'new') + 'CustomFieldsSection');
@@ -8118,6 +8173,7 @@ Notes: ${notes}` : '',
                     if (currentROTypeFilter === 'hybrid') return roType === 'hybrid';
                     if (currentROTypeFilter === 'standard') return roType === 'standard';
                     if (currentROTypeFilter === 'warranty') return roType === 'warranty';
+                    if (currentROTypeFilter === 'shop') return roType === 'shop';
                     return true;
                 });
             }
@@ -8190,6 +8246,7 @@ Notes: ${notes}` : '',
                         if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
                     } catch(e) {}
                     if (ro.roType === 'warranty') chips += '<span class="compact-chip ch-warranty">Warranty</span>';
+                    if (ro.roType === 'shop') chips += '<span class="compact-chip ch-shop">🏪 Shop</span>';
                     if (ro.isTraining) chips += '<span class="compact-chip ch-training">🎓 Training</span>';
 
                     try {
@@ -8283,7 +8340,7 @@ Notes: ${notes}` : '',
                 /* ── Standard Card View (condensed / regular / expanded) ─ */
                 return `
                     <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
-                        ${shouldShow('urgencySelector') ? `
+                        ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
                                     title="Change urgency level">
@@ -8322,6 +8379,7 @@ Notes: ${notes}` : '',
                         ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.roType === 'warranty' ? '<div class="warranty-badge">🔄 Warranty</div><div class="warranty-badge" style="background:rgba(0,0,0,0.08);border-color:rgba(0,0,0,0.15);color:#6b7280;margin-top:2px;">$0 — No Charge</div>' : ''}
+                        ${ro.roType === 'shop' ? '<div class="shop-badge">🏪 Shop Operations</div>' : ''}
                         ${ro.isTraining ? '<div class="training-badge">🎓 Training</div>' : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
@@ -9050,6 +9108,8 @@ Notes: ${notes}` : '',
             '🛡️ Insurance': '🛡️ Seguro',
             '🔀 Hybrid': '🔀 Híbrido',
             '🔧 Standard': '🔧 Estándar',
+            '🏪 Shop': '🏪 Taller',
+            '🏪 Shop Operations': '🏪 Operaciones de Taller',
             // RO status values
             'Not On Lot': 'No en el Lote',
             'On Lot': 'En el Lote',
@@ -12702,7 +12762,9 @@ Notes: ${notes}` : '',
                 // Restore RO type and insurance fields from Column W JSON
                 let savedInsData = null;
                 try { savedInsData = ro.insuranceData ? JSON.parse(ro.insuranceData) : null; } catch(e) {}
-                if (ro.roType === 'warranty') {
+                if (ro.roType === 'shop') {
+                    setROType('shop', 'edit');
+                } else if (ro.roType === 'warranty') {
                     setROType('warranty', 'edit');
                     // Restore warranty fields from notes prefix
                     const notes = ro.roStatusNotes || '';
@@ -12846,13 +12908,25 @@ Notes: ${notes}` : '',
 
                 const formData = new FormData(newROForm);
                 const data = Object.fromEntries(formData.entries());
-                
-                const repairTypes = formData.getAll('repairType');
-                if (repairTypes.length === 0) {
-                    showToast('Please select at least one Repair Type.', 'warning');
-                    return;
+
+                // Shop RO: override customer fields with shop defaults
+                if (currentROType === 'shop') {
+                    data.customerName = 'PRVS - SHOP OPERATIONS';
+                    data.repairType = 'Shop';
+                    data.customerPhone = '';
+                    data.customerEmail = '';
+                    data.customerAddress = '';
+                    data.rv = '';
+                    data.vin = '';
+                    data.dollarValue = '';
+                } else {
+                    const repairTypes = formData.getAll('repairType');
+                    if (repairTypes.length === 0) {
+                        showToast('Please select at least one Repair Type.', 'warning');
+                        return;
+                    }
+                    data.repairType = repairTypes.join(', ');
                 }
-                data.repairType = repairTypes.join(', ');
                 if (data.vin) data.vin = data.vin.toUpperCase();
 
                 // GH#24: Training RO flag
@@ -12915,8 +12989,8 @@ Notes: ${notes}` : '',
                     closeModal();
                     showToast('Repair Order saved successfully!', 'success');
 
-                    // GH#20: Slack — new RO created (GH#24: skip training ROs)
-                    if (!data.isTraining) {
+                    // GH#20: Slack — new RO created (skip training + shop ROs)
+                    if (!data.isTraining && currentROType !== 'shop') {
                         notifySlack('ro_created', {
                             customerName: data.customerName || '',
                             rv: data.rv || '',
@@ -13745,6 +13819,7 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn insurance" id="insuranceROBtn" onclick="setROType('insurance')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="hybridROBtn" onclick="setROType('hybrid')">🔀 Insurance + Customer Pay</button>
                 <button type="button" class="ro-type-btn warranty" id="warrantyROBtn" onclick="setROType('warranty')">🔄 Warranty RO</button>
+                <button type="button" class="ro-type-btn shop" id="shopROBtn" onclick="setROType('shop')">🏪 Shop RO</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -13756,37 +13831,37 @@ function toggleWOTasks(tasksId, chevId) {
 
             <form id="newROForm">
                 <div class="form-grid">
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Name *</label>
                         <input type="text" class="form-input" name="customerName" id="new_customerName" required>
                         <div id="sug_new_customerName"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" name="customerPhone" id="new_customerPhone">
                         <div id="sug_new_customerPhone"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Email</label>
                         <input type="email" class="form-input" name="customerEmail" id="new_customerEmail">
                         <div id="sug_new_customerEmail"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">RV *</label>
                         <input type="text" class="form-input" name="rv" id="new_rv" placeholder="2019 Winnebago Vista" required>
                         <div id="sug_new_rv"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">VIN</label>
                         <input type="text" class="form-input" name="vin" id="new_vin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                         <div id="sug_new_vin"></div>
                     </div>
-                    <div class="form-field full-width">
+                    <div class="form-field full-width shop-hide">
                         <label class="form-label">Customer Address</label>
                         <input type="text" class="form-input" name="customerAddress" id="new_customerAddress">
                         <div id="sug_new_customerAddress"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">RV Photo URL</label>
                         <input type="url" class="form-input" name="rvPhotoUrl">
                     </div>
@@ -13836,7 +13911,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Technician Assigned</label>
                         <input type="text" class="form-input" name="technicianAssigned">
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Dollar Value</label>
                         <input type="number" class="form-input" name="dollarValue" id="new_dollarValue" min="0" step="0.01">
                         <div id="sug_new_dollarValue"></div>
@@ -14286,6 +14361,7 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn insurance" id="editInsuranceROBtn" onclick="setROType('insurance','edit')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="editHybridROBtn" onclick="setROType('hybrid','edit')">🔀 Insurance + Customer Pay</button>
                 <button type="button" class="ro-type-btn warranty" id="editWarrantyROBtn" onclick="setROType('warranty','edit')">🔄 Warranty RO</button>
+                <button type="button" class="ro-type-btn shop" id="editShopROBtn" onclick="setROType('shop','edit')">🏪 Shop RO</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -14299,32 +14375,32 @@ function toggleWOTasks(tasksId, chevId) {
                 <div style="font-size: 0.75rem; color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; margin-bottom: 16px;" id="editRoId"></div>
 
                 <div class="form-grid">
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Name *</label>
                         <input type="text" class="form-input" id="editCustomerName" required>
                         <div id="sug_edit_customerName"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" id="editCustomerPhone">
                         <div id="sug_edit_customerPhone"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">Customer Email</label>
                         <input type="email" class="form-input" id="editCustomerEmail">
                         <div id="sug_edit_customerEmail"></div>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">RV *</label>
                         <input type="text" class="form-input" id="editRv" required>
                         <div id="sug_edit_rv"></div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group shop-hide">
                         <label class="form-label">VIN</label>
                         <input type="text" class="form-input" id="editVin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                         <div id="sug_edit_vin"></div>
                     </div>
-                    <div class="form-field full-width">
+                    <div class="form-field full-width shop-hide">
                         <label class="form-label">Customer Address</label>
                         <input type="text" class="form-input" id="editCustomerAddress">
                         <div id="sug_edit_customerAddress"></div>
@@ -14350,7 +14426,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Technician Assigned</label>
                         <input type="text" class="form-input" id="editTechnicianAssigned">
                     </div>
-                    <div class="form-field">
+                    <div class="form-field shop-hide">
                         <label class="form-label">RO Value ($)</label>
                         <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
