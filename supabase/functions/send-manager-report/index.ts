@@ -88,10 +88,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── 2. Get all active repair orders ─────────────────────────────────
+    // ── 2. Get all active repair orders (GH#24: exclude training ROs) ───
     const { data: allROs, error: roErr } = await sb
       .from("repair_orders")
-      .select("id, ro_id, customer_name, rv, dollar_value, urgency, ro_type, status, date_received, date_arrived, technician, has_open_parts_request, parts_status");
+      .select("id, ro_id, customer_name, rv, dollar_value, urgency, ro_type, status, date_received, date_arrived, technician, has_open_parts_request, parts_status")
+      .not('is_training', 'eq', true);
     if (roErr) console.error("Error fetching ROs:", roErr);
 
     // Build RO lookup by UUID and by text ro_id (e.g. PRVS-XXXX)

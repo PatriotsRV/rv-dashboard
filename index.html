@@ -1,8 +1,10 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.403
-    Released: 2026-04-12
+    PRVS Dashboard v1.404
+    Released: 2026-04-14
+    v1.404: Training RO flag (GH#24) — is_training badge, filter, Slack/report exclusions
+           DB migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS is_training BOOLEAN DEFAULT FALSE;
     v1.403: Slack integration (GH#20) — notifySlack() helper, triggers on part received, new RO, ready for pickup, urgency→Critical, warranty RO opened
     v1.402: Warranty RO Type — 4th RO type with auto-Critical urgency, red warranty badge, $0 No Charge badge, Original RO# and Warranty Reason fields, filter button, compact chip. Warranty data stored in ro_type column + notes prefix.
     v1.401: Compact View Mobile Inline Expansion — tap row body to expand/collapse inline panel (mobile ≤768px). Chevron affordance, one-at-a-time, status/urgency/tech/spot/quick-actions. Desktop compact unchanged.
@@ -2477,6 +2479,21 @@
             letter-spacing: 0.06em;
             margin-top: 2px;
         }
+        .training-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: rgba(107,114,128,0.10);
+            border: 1px solid rgba(107,114,128,0.35);
+            border-radius: 12px;
+            color: #6b7280;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 2px;
+        }
         .customer-pay-section {
             display: none;
             grid-column: 1 / -1;
@@ -2966,6 +2983,7 @@
         .compact-chip.ch-request     { color: #FF1493; border-color: #FF1493; background: rgba(255,20,147,0.08); }
         .compact-chip.ch-insurance   { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(251,146,60,0.08); }
         .compact-chip.ch-warranty    { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3); }
+        .compact-chip.ch-training   { color: #6b7280; border-color: rgba(107,114,128,0.4); background: rgba(107,114,128,0.10); }
         .compact-chip.ch-parts-badge { color: var(--text-secondary); border-color: var(--border-color); background: var(--bg-elevated); }
 
         .compact-col-actions {
@@ -3305,7 +3323,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.403</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.404</span>
             </div>
         </header>
 
@@ -3409,6 +3427,12 @@
                             <button class="filter-btn" data-filter="hybrid" data-type="rotype" onclick="toggleROTypeFilter('hybrid')">🔀 Hybrid</button>
                             <button class="filter-btn" data-filter="standard" data-type="rotype" onclick="toggleROTypeFilter('standard')">🔧 Standard</button>
                             <button class="filter-btn" data-filter="warranty" data-type="rotype" onclick="toggleROTypeFilter('warranty')">🔄 Warranty</button>
+                            <button class="filter-btn" data-filter="training" data-type="rotype" onclick="toggleROTypeFilter('training')">🎓 Training</button>
+                        </div>
+                        <div id="trainingToggleWrap" style="display:none;padding:6px 0 0;">
+                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.75rem;color:#6b7280;cursor:pointer;">
+                                <input type="checkbox" id="showTrainingToggle" onchange="toggleShowTraining(this.checked)"> 👁 Show Training ROs alongside normal
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -3699,7 +3723,8 @@
         let currentSearchFilter = ''; // Customer name search
         let currentDaysFilter = null; // Days on lot >= filter
         let currentPartsFilter = 'all'; // 'all', 'outstanding', 'backordered'
-        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard', 'warranty'
+        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard', 'warranty', 'training'
+        let showTrainingROs = false; // GH#24: training ROs hidden by default
         let timeLogsData = []; // Store time logs from Google Sheets
         let timeLogsRefreshInterval = null; // Auto-refresh timer
         
@@ -3962,8 +3987,8 @@
                 await writeAuditLog(ro.roId, [{ field: 'urgency', oldValue: ro.urgency, newValue: newUrgency }]);
                 log('✓ Urgency updated in Supabase');
 
-                // GH#20: Slack — urgency changed to Critical
-                if (newUrgency === 'Critical') {
+                // GH#20: Slack — urgency changed to Critical (GH#24: skip training ROs)
+                if (newUrgency === 'Critical' && !ro.isTraining) {
                     notifySlack('ro_urgency_critical', {
                         customerName: ro?.customerName || '',
                         rv: ro?.rv || '',
@@ -4204,8 +4229,8 @@
                 }
                 log('✓ Status and progress updated in Supabase');
 
-                // GH#20: Slack — Ready for Pickup
-                if (newStatus === 'Ready for pickup') {
+                // GH#20: Slack — Ready for Pickup (GH#24: skip training ROs)
+                if (newStatus === 'Ready for pickup' && !ro.isTraining) {
                     notifySlack('ro_ready_pickup', {
                         customerName: ro?.customerName || '',
                         rv: ro?.rv || '',
@@ -6487,6 +6512,15 @@ Notes: ${notes}` : '',
             document.querySelectorAll('[data-type="rotype"]').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.filter === currentROTypeFilter);
             });
+            // GH#24: Show/hide the "Show Training" toggle for admin/sr_manager
+            const ttw = document.getElementById('trainingToggleWrap');
+            if (ttw) ttw.style.display = isSrOrAdmin() ? '' : 'none';
+            renderBoard();
+        }
+
+        // GH#24: Toggle visibility of training ROs alongside normal ROs
+        function toggleShowTraining(checked) {
+            showTrainingROs = !!checked;
             renderBoard();
         }
 
@@ -6989,14 +7023,16 @@ Notes: ${notes}` : '',
                 await updatePartInSheet(part);
                 await updatePartsJsonInSheet(ctx.originalIndex);
 
-                // GH#20: Slack — part received
+                // GH#20: Slack — part received (GH#24: skip training ROs)
                 const ro = currentFilteredData[filteredIndex];
-                notifySlack('part_received', {
-                    partName: part.partName || 'Part',
-                    customerName: ro?.customerName || '',
-                    roId: ro?.roId || '',
-                    technicianAssigned: ro?.technicianAssigned || '',
-                });
+                if (!ro?.isTraining) {
+                    notifySlack('part_received', {
+                        partName: part.partName || 'Part',
+                        customerName: ro?.customerName || '',
+                        roId: ro?.roId || '',
+                        technicianAssigned: ro?.technicianAssigned || '',
+                    });
+                }
 
                 // Auto-flip parts_status to 'received' if ALL parts are now Received or Installed
                 const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed');
@@ -8061,8 +8097,15 @@ Notes: ${notes}` : '',
                 });
             }
 
+            // GH#24: Training RO visibility — hidden by default unless filter is 'training' or toggle is on
+            if (currentROTypeFilter === 'training') {
+                filtered = filtered.filter(ro => ro.isTraining);
+            } else if (!showTrainingROs) {
+                filtered = filtered.filter(ro => !ro.isTraining);
+            }
+
             // RO Type filter
-            if (currentROTypeFilter !== 'all') {
+            if (currentROTypeFilter !== 'all' && currentROTypeFilter !== 'training') {
                 filtered = filtered.filter(ro => {
                     let roType = ro.roType || 'standard';
                     if (roType === 'standard' && ro.insuranceData) {
@@ -8147,6 +8190,7 @@ Notes: ${notes}` : '',
                         if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
                     } catch(e) {}
                     if (ro.roType === 'warranty') chips += '<span class="compact-chip ch-warranty">Warranty</span>';
+                    if (ro.isTraining) chips += '<span class="compact-chip ch-training">🎓 Training</span>';
 
                     try {
                         const parts = ro.partsJson ? JSON.parse(ro.partsJson) : [];
@@ -8278,6 +8322,7 @@ Notes: ${notes}` : '',
                         ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.roType === 'warranty' ? '<div class="warranty-badge">🔄 Warranty</div><div class="warranty-badge" style="background:rgba(0,0,0,0.08);border-color:rgba(0,0,0,0.15);color:#6b7280;margin-top:2px;">$0 — No Charge</div>' : ''}
+                        ${ro.isTraining ? '<div class="training-badge">🎓 Training</div>' : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
                         <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" data-action="parts-status" data-idx="${index}" title="Parts status — click to update">
@@ -10001,6 +10046,7 @@ Notes: ${notes}` : '',
                 hasOpenPartsRequest:      !!row.has_open_parts_request,
                 partsStatus:              row.parts_status || null,
                 requestedByEmail:         row.requested_by_email || null,
+                isTraining:               !!row.is_training,
                 _supabaseId:              row.id,  // keep uuid for updates
             };
         }
@@ -10286,6 +10332,7 @@ Notes: ${notes}` : '',
                     urgency:        formData.urgency || null,
                     customer_type:  formData.customerType || null,
                     ro_type:        currentROType || 'standard',
+                    is_training:    !!formData.isTraining,
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -10339,6 +10386,7 @@ Notes: ${notes}` : '',
                 dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
                 parking_spot:   formData.parkingSpot || null,
                 ro_type:        currentROType || 'standard',
+                is_training:    !!formData.isTraining,
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -12701,6 +12749,12 @@ Notes: ${notes}` : '',
                     cb.checked = repairTypes.includes(cb.value);
                 });
 
+                // GH#24: Training RO toggle — admin/sr_manager only
+                const etw = document.getElementById('editTrainingWrap');
+                if (etw) etw.style.display = isSrOrAdmin() ? '' : 'none';
+                const etc = document.getElementById('editIsTraining');
+                if (etc) etc.checked = !!ro.isTraining;
+
                 document.getElementById('editROOverlay').classList.add('active');
             } catch (error) {
                 console.error('Error in openEditRO:', error);
@@ -12758,6 +12812,11 @@ Notes: ${notes}` : '',
                 const submitBtn = document.getElementById('newROSubmitBtn');
                 modalTitle.textContent = 'New Repair Order';
                 submitBtn.textContent = 'Save RO';
+                // GH#24: Show training checkbox for admin/sr_manager only
+                const ntw = document.getElementById('newTrainingWrap');
+                if (ntw) { ntw.style.display = isSrOrAdmin() ? '' : 'none'; }
+                const ntc = document.getElementById('newIsTraining');
+                if (ntc) ntc.checked = false;
                 modalOverlay.classList.add('active');
             });
 
@@ -12795,6 +12854,9 @@ Notes: ${notes}` : '',
                 }
                 data.repairType = repairTypes.join(', ');
                 if (data.vin) data.vin = data.vin.toUpperCase();
+
+                // GH#24: Training RO flag
+                data.isTraining = !!document.getElementById('newIsTraining')?.checked;
 
                 // Prepend warranty details to notes if warranty RO
                 if (currentROType === 'warranty') {
@@ -12853,23 +12915,25 @@ Notes: ${notes}` : '',
                     closeModal();
                     showToast('Repair Order saved successfully!', 'success');
 
-                    // GH#20: Slack — new RO created
-                    notifySlack('ro_created', {
-                        customerName: data.customerName || '',
-                        rv: data.rv || '',
-                        roId: success.ro_id || '',
-                        technicianAssigned: data.technicianAssigned || '',
-                        urgency: data.urgency || 'Medium',
-                    });
-                    // GH#20: Slack — warranty RO opened
-                    if (_slackROType === 'warranty') {
-                        notifySlack('warranty_ro_opened', {
+                    // GH#20: Slack — new RO created (GH#24: skip training ROs)
+                    if (!data.isTraining) {
+                        notifySlack('ro_created', {
                             customerName: data.customerName || '',
                             rv: data.rv || '',
                             roId: success.ro_id || '',
-                            originalRO: _slackWarOrigRO,
-                            warrantyReason: _slackWarReason,
+                            technicianAssigned: data.technicianAssigned || '',
+                            urgency: data.urgency || 'Medium',
                         });
+                        // GH#20: Slack — warranty RO opened
+                        if (_slackROType === 'warranty') {
+                            notifySlack('warranty_ro_opened', {
+                                customerName: data.customerName || '',
+                                rv: data.rv || '',
+                                roId: success.ro_id || '',
+                                originalRO: _slackWarOrigRO,
+                                warrantyReason: _slackWarReason,
+                            });
+                        }
                     }
                 }
             });
@@ -12905,6 +12969,7 @@ Notes: ${notes}` : '',
                         repairType: repairTypes.join(', '),
                         vin: document.getElementById('editVin').value.toUpperCase(),
                         repairDescription: document.getElementById('editRepairDescription').value,
+                        isTraining: !!document.getElementById('editIsTraining')?.checked,
                     };
 
                     // Diff old vs new — only log fields that actually changed
@@ -14193,6 +14258,12 @@ function toggleWOTasks(tasksId, chevId) {
                         <div class="form-field"><label class="form-label">Arrived at Shop</label><input type="text" class="form-input" id="ins_arrivedAtShop"><div id="sug_new_arrivedAtShop"></div></div>
                     </div>
                 </div>
+                <div id="newTrainingWrap" class="form-field full-width" style="display:none; padding:8px 0;">
+                    <label style="display:inline-flex;align-items:center;gap:8px;font-size:0.85rem;color:#6b7280;cursor:pointer;">
+                        <input type="checkbox" id="newIsTraining"> 🎓 Training RO
+                    </label>
+                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">Training ROs are excluded from Slack notifications and manager reports.</div>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="newROSubmitBtn">Save Repair Order</button>
@@ -14505,6 +14576,12 @@ function toggleWOTasks(tasksId, chevId) {
                     </div>
 
                     <div id="sug_edit_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
+                </div>
+                <div id="editTrainingWrap" class="form-field full-width" style="display:none; padding:8px 0;">
+                    <label style="display:inline-flex;align-items:center;gap:8px;font-size:0.85rem;color:#6b7280;cursor:pointer;">
+                        <input type="checkbox" id="editIsTraining"> 🎓 Mark as Training RO
+                    </label>
+                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">Training ROs are excluded from Slack notifications and manager reports.</div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="editCancelBtn">Cancel</button>
