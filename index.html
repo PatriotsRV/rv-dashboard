@@ -5144,7 +5144,7 @@
                     formEl.querySelectorAll('.shop-hide').forEach(el => el.style.display = 'none');
                     formEl.querySelectorAll('.shop-only').forEach(el => el.style.display = '');
                     // Remove required from hidden fields so form can submit
-                    formEl.querySelectorAll('.shop-hide input[required], .shop-hide textarea[required]').forEach(el => {
+                    formEl.querySelectorAll('.shop-hide input[required], .shop-hide textarea[required], .shop-hide select[required]').forEach(el => {
                         el.dataset.wasRequired = 'true';
                         el.removeAttribute('required');
                     });
