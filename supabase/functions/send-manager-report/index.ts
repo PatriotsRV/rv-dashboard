@@ -11,6 +11,7 @@ import nodemailer from "npm:nodemailer@6";
 // v1.3b — fix data quality banner (simple flag approach)
 // v1.6 — GH#23 silo filtering uses repair_type instead of service_work_orders only
 // v1.7 — RVs Waiting section filtered to >= 30 days on lot only
+// v1.8 — Parts outstanding badge on each RO line item + named ROs in Key Flags
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -392,7 +393,12 @@ Deno.serve(async (req: Request) => {
               const val = Number(rawVal) || 0;
               if (parseFloat(ro.dollar_value || 0) > 0) hasAnyDollarValue = true;
               const roName = `${ro.customer_name || "Unknown"} — ${ro.rv || ""}`;
-              waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
+              // Parts outstanding badge for this RO
+              const roParts = blockingPartsByRO[ro.id] || [];
+              const partsBadge = roParts.length > 0
+                ? ` <span style="background:#fef2f2;color:#dc2626;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap">🔩 ${roParts.length} part${roParts.length > 1 ? 's' : ''} on hold</span>`
+                : '';
+              waitingRows += `<tr><td style="${td};color:#888;font-weight:600;text-align:center">${idx + 1}</td><td style="${td};font-weight:600">${roName}${partsBadge}</td><td style="${td};${dayColor}">${days}d</td><td style="${td}">${urgencyBadge(ro.urgency)}</td><td style="${td}">${roTypeBadge(ro.ro_type)}</td><td style="${td};text-align:right;font-weight:600">${fmtDollars(val)}</td><td style="${td};font-size:12px">${ro._techNames || "—"}</td></tr>`;
             });
           }
           const waitingTableRows = waitingRows || emptyRow("No RVs waiting — all caught up.", 7);
@@ -424,7 +430,19 @@ Deno.serve(async (req: Request) => {
               if (parts) blockedParts.push(...parts);
             }
             if (blockedParts.length > 0) {
-              flagItems.push(`<span style="color:#9a3412;font-weight:700">PARTS HOLD:</span> ${blockedParts.length} part${blockedParts.length > 1 ? "s" : ""} on order blocking your silo's work`);
+              // Group blocked parts by RO to list specific ROs
+              const partsRoNames: string[] = [];
+              const seenPartROs = new Set<string>();
+              for (const roId of siloROIds) {
+                const pts = blockingPartsByRO[roId];
+                if (pts && pts.length > 0 && !seenPartROs.has(roId)) {
+                  seenPartROs.add(roId);
+                  const r = roMap[roId];
+                  const rName = r ? `${r.customer_name || "Unknown"} — ${r.rv || ""}` : "Unknown RO";
+                  partsRoNames.push(`${rName} (${pts.length} part${pts.length > 1 ? "s" : ""})`);
+                }
+              }
+              flagItems.push(`<span style="color:#9a3412;font-weight:700">PARTS HOLD:</span> ${blockedParts.length} part${blockedParts.length > 1 ? "s" : ""} on order blocking work — ${partsRoNames.join(", ")}`);
             }
           }
 
@@ -492,7 +510,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:    true,
-      version:    "v1.7",
+      version:    "v1.8",
       emailsSent,
       totalManagers: Object.keys(emailGroups).length,
       errors:     errors.length > 0 ? errors : undefined,
