@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.1
+    PRVS Active Work List Report v1.2
     Released: 2026-04-07
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
     v1.1: Staff status tiles — red/green color-coded grid showing who is clocked in and what RO they're working on
+    v1.2: Clickable tech tiles — expand to show full daily time log (all clock-in/out sessions for the day)
 -->
 <html lang="en">
 <head>
@@ -273,6 +274,42 @@
         .dot-green { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
         .dot-red { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
 
+        /* ── Tech tile expand ──────────────────────── */
+        .staff-tile { cursor: pointer; position: relative; }
+        .tile-chevron {
+            position: absolute; top: 10px; right: 10px;
+            font-size: 0.6rem; color: rgba(255,255,255,0.4);
+            transition: transform 0.2s;
+        }
+        .tile-chevron.open { transform: rotate(180deg); }
+        .tile-detail {
+            display: none; margin-top: 8px; padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .tile-detail.open { display: block; }
+        .tile-detail-row {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.7rem; padding: 3px 0; color: #cbd5e1;
+        }
+        .tile-detail-row .td-time { font-family: 'SF Mono', monospace; color: #94a3b8; min-width: 58px; }
+        .tile-detail-row .td-ro { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tile-detail-row .td-dur { font-family: 'SF Mono', monospace; color: #6ee7b7; min-width: 40px; text-align: right; }
+        .tile-detail-row .td-active-badge {
+            background: #22c55e; color: #052e16; font-size: 0.6rem; font-weight: 700;
+            padding: 1px 6px; border-radius: 8px;
+        }
+        .tile-detail-row .td-gap {
+            color: #f59e0b; font-style: italic; font-size: 0.65rem;
+        }
+        .tile-detail-summary {
+            font-size: 0.68rem; color: #a78bfa; font-weight: 600;
+            margin-top: 6px; padding-top: 4px;
+            border-top: 1px dashed rgba(255,255,255,0.08);
+        }
+        .tile-detail-empty {
+            font-size: 0.7rem; color: #6b7280; font-style: italic; padding: 4px 0;
+        }
+
         /* ── Responsive ─────────────────────────────── */
         @media (max-width: 768px) {
             .ro-rv { display: none; }
@@ -361,6 +398,7 @@ let _allTimeLogs = [];    // time_logs for relevant ROs
 let _allROs = [];         // repair_orders for relevant ROs
 let _allStaff = [];       // all active staff members
 let _allActiveClockIns = []; // currently active time_log entries (clock_out IS NULL)
+let _allTodayTimeLogs = [];  // all time_log entries for today (completed + active)
 let _staffSectionOpen = true;
 let _refreshTimer = null;
 let _countdownSec = 180;
@@ -567,6 +605,17 @@ async function loadAllData() {
         if (acErr) throw acErr;
         _allActiveClockIns = activeClocks || [];
 
+        // 3b. Load ALL time logs for today (completed + active) — for tech tile expand
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const { data: todayLogs, error: tlTodayErr } = await getSB()
+            .from('time_logs')
+            .select('*, repair_orders(ro_id, customer_name, rv)')
+            .gte('clock_in', todayStart.toISOString())
+            .order('clock_in', { ascending: true });
+        if (tlTodayErr) throw tlTodayErr;
+        _allTodayTimeLogs = todayLogs || [];
+
         // 4. Collect unique RO UUIDs from work lists
         const roIds = [...new Set(_allWorkLists.map(w => w.ro_id).filter(Boolean))];
 
@@ -749,17 +798,25 @@ function renderStaffTiles() {
         tech: 'Tech',
     };
 
-    const tiles = staffToShow.map(staff => {
+    // Build today's time logs lookup by tech email
+    const todayByEmail = {};
+    _allTodayTimeLogs.forEach(log => {
+        const em = (log.tech_email || '').toLowerCase();
+        if (!todayByEmail[em]) todayByEmail[em] = [];
+        todayByEmail[em].push(log);
+    });
+
+    const tiles = staffToShow.map((staff, sIdx) => {
         const email = staff.email.toLowerCase();
         const activeLogs = activeByEmail[email] || [];
         const isActive = activeLogs.length > 0;
         const tileClass = isActive ? 'tile-active' : 'tile-inactive';
         const dotClass = isActive ? 'dot-green' : 'dot-red';
         const roleLabel = roleLabels[staff.role] || staff.role;
+        const tileId = 'techTile' + sIdx;
 
         let statusHtml = '';
         if (isActive) {
-            // Show each active clock-in (could be multiple — unlikely but handle it)
             statusHtml = activeLogs.map(log => {
                 const ro = log.repair_orders;
                 const roLabel = ro ? `${ro.customer_name || 'Unknown'} (${ro.ro_id || ''})` : 'Unknown RO';
@@ -781,13 +838,56 @@ function renderStaffTiles() {
             statusHtml = `<div class="tile-status"><span class="tile-status-dot ${dotClass}"></span>Not clocked in</div>`;
         }
 
+        // Build expandable daily time log detail
+        const todayLogs = todayByEmail[email] || [];
+        let detailHtml = '';
+        if (todayLogs.length > 0) {
+            let totalMinutes = 0;
+            const rows = [];
+            for (let i = 0; i < todayLogs.length; i++) {
+                const log = todayLogs[i];
+                const ro = log.repair_orders;
+                const roLabel = ro ? `${ro.customer_name || 'Unknown'} (${ro.ro_id || ''})` : 'Unknown RO';
+                const inTime = log.clock_in
+                    ? new Date(log.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                    : '';
+                if (log.clock_out) {
+                    const outTime = new Date(log.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    const mins = (new Date(log.clock_out) - new Date(log.clock_in)) / 60000;
+                    totalMinutes += mins;
+                    const durStr = mins >= 60 ? (mins / 60).toFixed(1) + 'h' : Math.round(mins) + 'm';
+                    rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-dur">${durStr}</span></div>`);
+                } else {
+                    // Currently active
+                    const elapsed = (Date.now() - new Date(log.clock_in).getTime()) / 60000;
+                    totalMinutes += elapsed;
+                    rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–now</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-active-badge">ACTIVE</span></div>`);
+                }
+                // Show gap between sessions
+                if (log.clock_out && i < todayLogs.length - 1) {
+                    const nextIn = new Date(todayLogs[i + 1].clock_in);
+                    const gapMins = (nextIn - new Date(log.clock_out)) / 60000;
+                    if (gapMins > 5) {
+                        const gapStr = gapMins >= 60 ? (gapMins / 60).toFixed(1) + 'h gap' : Math.round(gapMins) + 'm gap';
+                        rows.push(`<div class="tile-detail-row"><span class="td-gap">⏸ ${gapStr}</span></div>`);
+                    }
+                }
+            }
+            const totalStr = totalMinutes >= 60 ? (totalMinutes / 60).toFixed(1) + 'h' : Math.round(totalMinutes) + 'm';
+            detailHtml = `<div class="tile-detail" id="det_${tileId}">${rows.join('')}<div class="tile-detail-summary">${todayLogs.length} session${todayLogs.length > 1 ? 's' : ''} · ${totalStr} today</div></div>`;
+        } else {
+            detailHtml = `<div class="tile-detail" id="det_${tileId}"><div class="tile-detail-empty">No check-ins today</div></div>`;
+        }
+
         return `
-            <div class="staff-tile ${tileClass}">
+            <div class="staff-tile ${tileClass}" onclick="toggleTechTile('${tileId}')">
+                <span class="tile-chevron" id="chev_${tileId}">&#9660;</span>
                 <div class="tile-name">
                     ${escHtml(staff.name)}
                     <span class="tile-role">${roleLabel}</span>
                 </div>
                 ${statusHtml}
+                ${detailHtml}
             </div>
         `;
     }).join('');
@@ -818,6 +918,13 @@ function toggleStaffSection() {
     const body = document.getElementById('staffBody');
     const chev = document.getElementById('staffChev');
     if (body) body.classList.toggle('collapsed');
+    if (chev) chev.classList.toggle('open');
+}
+
+function toggleTechTile(tileId) {
+    const det = document.getElementById('det_' + tileId);
+    const chev = document.getElementById('chev_' + tileId);
+    if (det) det.classList.toggle('open');
     if (chev) chev.classList.toggle('open');
 }
 
