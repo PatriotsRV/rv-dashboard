@@ -9,6 +9,7 @@ import nodemailer from "npm:nodemailer@6";
 // v1.2 — data quality warning banner when all dollar values are $0
 // v1.3 — stale/empty Work List warning banners
 // v1.3b — fix data quality banner (simple flag approach)
+// v1.6 — GH#23 silo filtering uses repair_type instead of service_work_orders only
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -33,6 +34,18 @@ const SILO_LABELS: Record<string, string> = {
 
 // All service silos (those that appear in service_work_orders)
 const SERVICE_SILOS = ["repair", "vroom", "solar", "roof", "paint_body"];
+
+// repair_type keyword → silo key mapping (repair_type is comma-separated on repair_orders)
+const REPAIR_TYPE_TO_SILO: Record<string, string> = {
+  'Repairs': 'repair',
+  'Vroom': 'vroom',
+  'Roof': 'roof',
+  'Solar': 'solar',
+  'Paint and Body': 'paint_body',
+  'TrueTopper': 'truetopper',
+  'Detailing': 'detailing',
+  'Chassis': 'chassis',
+};
 
 // ── Urgency sort weight (higher = more urgent) ─────────────────────────
 const URGENCY_WEIGHT: Record<string, number> = {
@@ -91,7 +104,7 @@ Deno.serve(async (req: Request) => {
     // ── 2. Get all active repair orders (GH#24: exclude training ROs) ───
     const { data: allROs, error: roErr } = await sb
       .from("repair_orders")
-      .select("id, ro_id, customer_name, rv, dollar_value, urgency, ro_type, status, date_received, date_arrived, technician, has_open_parts_request, parts_status")
+      .select("id, ro_id, customer_name, rv, dollar_value, urgency, ro_type, status, date_received, date_arrived, technician, has_open_parts_request, parts_status, repair_type")
       .not('is_training', 'eq', true);
     if (roErr) console.error("Error fetching ROs:", roErr);
 
@@ -333,18 +346,30 @@ Deno.serve(async (req: Request) => {
           let waitingROs: any[] = [];
 
           if (silo !== "parts_insurance") {
-            // Get ROs that have non-completed WOs for this silo
-            const siloWOs = wosBySilo[silo] || [];
-            for (const wo of siloWOs) {
-              const ro = roMap[wo.ro_id];
-              if (ro) {
-                // Get assigned tech for this WO
-                const techEmails = techsByWO[wo.id];
-                const techNames = techEmails
-                  ? Array.from(techEmails).map(e => techNameMap[e] || e).join(", ")
-                  : "Unassigned";
-                waitingROs.push({ ...ro, _woStatus: wo.status, _woDollar: wo.dollar_value, _techNames: techNames });
-              }
+            // Get ALL active non-training ROs whose repair_type includes this silo
+            const siloROs = (allROs || []).filter((ro: any) => {
+              if (ro.is_training) return false;
+              if (ro.status === 'Delivered/Cashed Out') return false;
+              const types = (ro.repair_type || '').split(',').map((t: string) => t.trim());
+              return types.some((t: string) => REPAIR_TYPE_TO_SILO[t] === silo);
+            });
+
+            // Build WO lookup for this silo so we can enrich with tech names
+            const siloWOMap: Record<string, any> = {};
+            for (const wo of (wosBySilo[silo] || [])) {
+              siloWOMap[wo.ro_id] = wo;
+            }
+
+            // Deduplicate by RO id
+            const seen = new Set<string>();
+            for (const ro of siloROs) {
+              if (seen.has(ro.id)) continue;
+              seen.add(ro.id);
+              const wo = siloWOMap[ro.id];
+              const techNames = wo
+                ? (techsByWO[wo.id] ? Array.from(techsByWO[wo.id]).map((e: string) => techNameMap[e] || e).join(', ') : 'Unassigned')
+                : (ro.technician ? (techNameMap[ro.technician] || ro.technician) : '—');
+              waitingROs.push({ ...ro, _woStatus: wo?.status, _woDollar: wo?.dollar_value || ro.dollar_value, _techNames: techNames });
             }
             // Sort by priority spec
             waitingROs = sortROs(waitingROs);
@@ -464,7 +489,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:    true,
-      version:    "v1.3",
+      version:    "v1.6",
       emailsSent,
       totalManagers: Object.keys(emailGroups).length,
       errors:     errors.length > 0 ? errors : undefined,
