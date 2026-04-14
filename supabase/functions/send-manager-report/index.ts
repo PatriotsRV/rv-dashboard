@@ -10,6 +10,7 @@ import nodemailer from "npm:nodemailer@6";
 // v1.3 — stale/empty Work List warning banners
 // v1.3b — fix data quality banner (simple flag approach)
 // v1.6 — GH#23 silo filtering uses repair_type instead of service_work_orders only
+// v1.7 — RVs Waiting section filtered to >= 30 days on lot only
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -346,10 +347,12 @@ Deno.serve(async (req: Request) => {
           let waitingROs: any[] = [];
 
           if (silo !== "parts_insurance") {
-            // Get ALL active non-training ROs whose repair_type includes this silo
+            // Get active non-training ROs whose repair_type includes this silo AND >= 30 days on lot
+            const DAYS_ON_LOT_THRESHOLD = 30;
             const siloROs = (allROs || []).filter((ro: any) => {
               if (ro.is_training) return false;
               if (ro.status === 'Delivered/Cashed Out') return false;
+              if (daysOnLot(ro) < DAYS_ON_LOT_THRESHOLD) return false;
               const types = (ro.repair_type || '').split(',').map((t: string) => t.trim());
               return types.some((t: string) => REPAIR_TYPE_TO_SILO[t] === silo);
             });
@@ -446,7 +449,7 @@ Deno.serve(async (req: Request) => {
             wlContent = `${wlHeader}<table style="width:100%;border-collapse:collapse;margin-bottom:4px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">RO Name</th><th style="${th}">Urgency</th><th style="${th}">Days</th><th style="${th};text-align:right">Value</th></tr></thead><tbody>${wlTableRows}</tbody></table><div style="text-align:right;padding:4px 10px 14px;font-size:15px;font-weight:700;color:#1e293b">Total: ${fmtDollars(wlTotal)}</div>${isStaleWL ? staleWLBanner : ""}`;
           }
 
-          siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px">${wlContent}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
+          siloSections += `${siloHdr}<div style="margin-top:${group.silos.length > 1 ? "0" : "20"}px">${wlContent}<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;margin-bottom:12px"><p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1e293b">${silo === "parts_insurance" ? "ROs with Open Parts Requests" : `RVs Waiting for ${siloLabel} Work`}</p><p style="margin:0;font-size:12px;color:#64748b">RVs on lot 30+ days &nbsp;&middot;&nbsp; Sorted by: longest on lot → urgency → RO type</p></div><table style="width:100%;border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden"><thead><tr><th style="${th}">#</th><th style="${th}">RO Name</th><th style="${th}">Days</th><th style="${th}">Urgency</th><th style="${th}">Type</th><th style="${th};text-align:right">Value</th><th style="${th}">Tech</th></tr></thead><tbody>${waitingTableRows}</tbody></table><div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px"><p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#92400e">Key Flags</p>${flagsHtml}</div></div>`;
           isFirstSilo = false;
         }
 
@@ -489,7 +492,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:    true,
-      version:    "v1.6",
+      version:    "v1.7",
       emailsSent,
       totalManagers: Object.keys(emailGroups).length,
       errors:     errors.length > 0 ? errors : undefined,
