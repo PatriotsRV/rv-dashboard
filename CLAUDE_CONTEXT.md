@@ -164,6 +164,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 | ✅ | — | **slideIn keyframe fix** | **2026-04-11:** scanMilestoneBanner referenced non-existent `slideIn` keyframe (silent no-op). Rewired to `toast-slide-in` with matching 280ms cubic-bezier easing. Commit: 5d321ae. | ✅ Done — 2026-04-11 |
 | ✅ | — | **Dead Code Cleanup (DEAD_CODE_CLEANUP_SPEC.md)** | **2026-04-11:** 3 phases + cross-file audit. Phase 1: 285 lines dead CSS (7 class blocks) from index.html (ac105ed). Phase 2: 584 lines dead JS (22 functions) from index.html (cc8314a). Phase 3: 60 lines from analytics/solar/worklist-report (52686f4). Cross-file: 39 lines (WireConn+DiagNode) from solar.html (c1a8ccf). Total: **968 lines removed**. index.html 13,997→13,128. solar.html 6,393→6,354. | ✅ Done — 2026-04-11 |
 | ✅ | — | **Kenect Removal** | **2026-04-11:** Kenect refused API keys. Removed 329 lines from index.html (10 functions, messaging modal, card button, admin settings, event delegation case). Deleted kenect-proxy Edge Function (187 lines). Removed dead `_sessionEmail` variable (4 lines). Updated backup.sh, MODULARIZATION_ROADMAP.md Phase 16 marked REMOVED. Total: **550 lines removed**. index.html 13,128→12,800. Commit: c8bc2c8. | ✅ Done — 2026-04-11 |
+| ✅ | — | **Sr Manager Parts + Schedule Fix** | **Session 47 (Perplexity):** Kevin McHenry (Sr Manager) couldn't see Set Parts Status button or Schedule buttons. Root cause: 5 UI role gates only checked `isAdmin() || hasRole('Manager')` — did not include `Sr Manager`. Fix: added `hasRole('Sr Manager')` to all 5 gates (Set Parts Status button, 3 Schedule buttons in compact/expanded/card views, `openPartsStatusModal` guard). Backup ran. Commit: `d5ddc36`. | ✅ Done — Session 47 |
+| 🟡 | — | **Refactor: `isManagerOrAbove()` helper** | Consolidate scattered `isAdmin() \|\| hasRole('Manager') \|\| hasRole('Sr Manager')` checks into a single `isManagerOrAbove()` function. Currently 5+ locations with this pattern — adding a new role tier requires hunting through all of them. | ⏳ Open |
 | 🔵 | — | **Supabase PITR** | Enable Point-in-Time Recovery — requires Small compute upgrade (~$25/mo) + PITR add-on ($100/mo for 7 days). Deferred — existing GitHub Actions daily backup is sufficient for now. Revisit if data volume or compliance needs grow. | ⏳ Down the road |
 
 > Completed items moved to CLAUDE_CONTEXT_HISTORY.md
@@ -272,6 +274,12 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - **Session 45 changes:** v1.6 test fire confirmed multi-RV fix; v1.7 changed ≥60 → ≥30 days filter; v1.8 added per-RO parts outstanding red badge + named RO parts hold in Key Flags.
 - **Known issue (deferred):** Data quality banner ($0.00 warning) not firing for sr_manager reports — the multi-silo work list lookup does not fully resolve for sr_managers with NULL `service_silo` in the `staff` table. Needs `service_silo` values mapped to each manager in the `staff` table for correct per-silo filtering.
 - Commits: f875bc4→4c3e9a7 (v1.0–v1.5), b0c3e5d (v1.7), 26d36e4 (v1.8).
+
+### Sr Manager Role Gate Pattern (Session 47)
+- **5 UI role gates updated** (commit `d5ddc36`) to include `hasRole('Sr Manager')` alongside `isAdmin() || hasRole('Manager')`.
+- Affected locations: Set Parts Status button (card template), Schedule buttons (compact card, expanded mobile panel, standard card), `openPartsStatusModal()` guard.
+- **`isManagerOrAbove()` helper recommended** — consolidate the scattered 3-way check into one function. Currently 5+ locations with `isAdmin() || hasRole('Manager') || hasRole('Sr Manager')`.
+- Root cause: `Sr Manager` is a distinct role string from `Manager`. The `staffRoleMap` maps `sr_manager` → `'Sr Manager'` (not `'Manager'`), so Kevin's `userRoles` array was `['Sr Manager']` — which didn't match `hasRole('Manager')`.
 
 ### Template Literal Parser Bomb
 - Never put `</script>` inside a template literal assigned to `.innerHTML` — HTML parser closes the outer script block. Move JS to named functions and wire via `onclick`/`onchange` attributes.
