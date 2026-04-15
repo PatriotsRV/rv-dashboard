@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Signature Debug</title>
+<style>
+body { font-family: sans-serif; padding: 40px; background: #f0f0f0; }
+canvas { border: 2px dashed #999; background: #fff; display: block; margin: 10px 0; }
+#info { white-space: pre-wrap; font-family: monospace; background: #1e1e1e; color: #0f0; padding: 16px; border-radius: 8px; margin-top: 16px; font-size: 13px; }
+button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; }
+input { padding: 10px; font-size: 16px; width: 300px; }
+</style>
+</head>
+<body>
+<h2>Signature Canvas Debug</h2>
+
+<p>Name: <input id="nameInput" value="Roland Shepard"></p>
+
+<h3>Test 1: Simple canvas (no scale)</h3>
+<canvas id="c1" width="800" height="200" style="width:400px;height:100px;"></canvas>
+
+<h3>Test 2: 2x scaled canvas (matching sig pad)</h3>
+<canvas id="c2" width="800" height="360" style="width:400px;height:180px;"></canvas>
+
+<h3>Test 3: Offscreen → drawImage approach</h3>
+<canvas id="c3" width="800" height="360" style="width:400px;height:180px;"></canvas>
+
+<button onclick="runTests()">Run All Tests</button>
+
+<div id="info"></div>
+
+<script>
+function log(msg) {
+    document.getElementById('info').textContent += msg + '\n';
+}
+
+function runTests() {
+    document.getElementById('info').textContent = '';
+    const name = document.getElementById('nameInput').value.trim();
+    log('Name: "' + name + '"');
+    log('');
+
+    // Test 1: Simple unscaled canvas
+    const c1 = document.getElementById('c1');
+    const ctx1 = c1.getContext('2d');
+    ctx1.clearRect(0, 0, 800, 200);
+    ctx1.fillStyle = '#ffffff';
+    ctx1.fillRect(0, 0, 800, 200);
+    ctx1.font = 'italic 48px cursive';
+    ctx1.fillStyle = '#1e293b';
+    ctx1.textBaseline = 'alphabetic';
+    const m1 = ctx1.measureText(name);
+    log('Test 1 - measureText width: ' + m1.width);
+    log('Test 1 - font used: ' + ctx1.font);
+    ctx1.fillText(name, 50, 140);
+    log('Test 1 - fillText done at (50, 140)');
+    log('');
+
+    // Test 2: 2x scaled canvas (same as sig pad)
+    const c2 = document.getElementById('c2');
+    const ctx2 = c2.getContext('2d');
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.clearRect(0, 0, 800, 360);
+    ctx2.fillStyle = '#ffffff';
+    ctx2.fillRect(0, 0, 800, 360);
+    ctx2.scale(2, 2);
+    // Now in display coords (400x180)
+    ctx2.font = 'italic 36px "Brush Script MT", "Segoe Script", "Apple Chancery", cursive';
+    ctx2.fillStyle = '#1e293b';
+    ctx2.textBaseline = 'alphabetic';
+    const m2 = ctx2.measureText(name);
+    log('Test 2 - measureText width: ' + m2.width);
+    log('Test 2 - font used: ' + ctx2.font);
+    ctx2.fillText(name, 30, 120);
+    log('Test 2 - fillText done at (30, 120) in display coords');
+    log('');
+
+    // Test 3: Offscreen canvas approach
+    const c3 = document.getElementById('c3');
+    const ctx3 = c3.getContext('2d');
+    // First set up the 2x scale like sig pad does
+    ctx3.setTransform(1, 0, 0, 1, 0, 0);
+    ctx3.clearRect(0, 0, 800, 360);
+    ctx3.scale(2, 2);
+
+    // Now use offscreen
+    const temp = document.createElement('canvas');
+    temp.width = 800;
+    temp.height = 360;
+    const tc = temp.getContext('2d');
+    tc.fillStyle = '#ffffff';
+    tc.fillRect(0, 0, 800, 360);
+    tc.font = 'italic 72px "Brush Script MT", "Segoe Script", "Apple Chancery", "Snell Roundhand", cursive';
+    tc.fillStyle = '#1e293b';
+    tc.textBaseline = 'alphabetic';
+    const m3 = tc.measureText(name);
+    log('Test 3 - measureText width: ' + m3.width);
+    log('Test 3 - font used: ' + tc.font);
+    tc.fillText(name, Math.max(40, (800 - m3.width) / 2), 250);
+    log('Test 3 - fillText done on offscreen');
+
+    // Draw offscreen onto real canvas
+    ctx3.save();
+    ctx3.setTransform(1, 0, 0, 1, 0, 0);
+    ctx3.clearRect(0, 0, 800, 360);
+    ctx3.drawImage(temp, 0, 0);
+    ctx3.restore();
+    log('Test 3 - drawImage done');
+    log('');
+
+    // Check pixel data
+    const pixel1 = ctx1.getImageData(50, 140, 1, 1).data;
+    log('Test 1 pixel at (50,140): rgba(' + pixel1.join(',') + ')');
+    
+    const pixel2data = ctx2.getImageData(60, 240, 1, 1);
+    log('Test 2 pixel at (60,240): rgba(' + pixel2data.data.join(',') + ')');
+
+    const pixel3raw = ctx3.getImageData(400, 250, 1, 1).data;
+    log('Test 3 pixel at (400,250): rgba(' + pixel3raw.join(',') + ')');
+}
+
+// Auto-run
+window.onload = () => setTimeout(runTests, 500);
+</script>
+</body>
+</html>
