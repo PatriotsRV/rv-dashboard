@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.2
+    PRVS Customer Check-In v1.3
     Released: 2026-04-15
+    v1.3: GH#20 Fix generate-signature (draw in CSS-pixel space, not offscreen canvas)
     v1.2: GH#19 Professional marble visual redesign, wider form, version display
     v1.1: GH#18 Signature & photo hard validation, generate-signature feature, auth refresh fix
     v1.0: Initial build — GH#17 Customer Check-In Page
@@ -905,7 +906,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.2</div>
+<div class="version-badge">PRVS Customer Check-In v1.3</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1566,57 +1567,43 @@
             return;
         }
 
-        // Strategy: render signature on a temporary unscaled canvas,
-        // then draw it as an image onto the retina-scaled signature canvas.
-        // This avoids all 2x transform complications.
+        // Draw directly on the sig canvas in CSS-pixel coordinate space
+        // (the 2x scale transform is already active from initSignaturePad).
+        // This keeps coordinates identical to the hand-drawn path logic.
 
-        const tempCanvas = document.createElement('canvas');
-        const dw = _sigCanvas.width;   // actual pixel width (retina)
-        const dh = _sigCanvas.height;  // actual pixel height (retina)
-        tempCanvas.width = dw;
-        tempCanvas.height = dh;
-        const tc = tempCanvas.getContext('2d');
+        const cssW = _sigCanvas.width / 2;   // CSS-pixel width  (e.g. 480)
+        const cssH = _sigCanvas.height / 2;  // CSS-pixel height  (e.g. 180)
 
-        // White background
-        tc.fillStyle = '#ffffff';
-        tc.fillRect(0, 0, dw, dh);
-
-        // Draw baseline
-        tc.strokeStyle = '#e2e8f0';
-        tc.lineWidth = 2;
-        tc.setLineDash([8, 8]);
-        tc.beginPath();
-        const blY = dh * 0.72;
-        tc.moveTo(40, blY);
-        tc.lineTo(dw - 40, blY);
-        tc.stroke();
-        tc.setLineDash([]);
-
-        // Draw the name as signature
-        const fontSize = Math.min(72, Math.max(40, dw / (printedName.length * 0.6)));
-        tc.font = `italic ${fontSize}px "Brush Script MT", "Segoe Script", "Apple Chancery", "Lucida Handwriting", "Snell Roundhand", cursive`;
-        tc.fillStyle = '#1e293b';
-        tc.textBaseline = 'alphabetic';
-
-        const metrics = tc.measureText(printedName);
-        const tw = metrics.width;
-        const startX = Math.max(40, (dw - tw) / 2);
-
-        tc.save();
-        tc.translate(startX + tw / 2, blY - 8);
-        tc.rotate(-0.025);
-        tc.fillText(printedName, -tw / 2, 0);
-        tc.restore();
-
-        // Now paint the temp canvas onto the real sig canvas
-        // Reset the sig canvas transform, draw, then re-apply scale
+        // Clear & white fill
         _sigCtx.save();
-        _sigCtx.setTransform(1, 0, 0, 1, 0, 0); // reset to identity
-        _sigCtx.clearRect(0, 0, dw, dh);
-        _sigCtx.drawImage(tempCanvas, 0, 0);
-        _sigCtx.restore(); // restores the 2x scale
+        _sigCtx.fillStyle = '#ffffff';
+        _sigCtx.fillRect(0, 0, cssW, cssH);
 
-        // Restore main drawing settings on sig ctx
+        // Baseline
+        _sigCtx.strokeStyle = '#e2e8f0';
+        _sigCtx.lineWidth = 1;
+        _sigCtx.setLineDash([4, 4]);
+        _sigCtx.beginPath();
+        const blY = cssH * 0.72;
+        _sigCtx.moveTo(20, blY);
+        _sigCtx.lineTo(cssW - 20, blY);
+        _sigCtx.stroke();
+        _sigCtx.setLineDash([]);
+
+        // Signature text — use CSS-pixel font sizes (the 2x scale makes them sharp)
+        const fontSize = Math.min(48, Math.max(28, cssW / (printedName.length * 0.65)));
+        _sigCtx.font = `italic ${fontSize}px "Brush Script MT", "Segoe Script", "Apple Chancery", "Lucida Handwriting", cursive`;
+        _sigCtx.fillStyle = '#1e293b';
+        _sigCtx.textBaseline = 'alphabetic';
+        _sigCtx.textAlign = 'center';
+
+        _sigCtx.translate(cssW / 2, blY - 6);
+        _sigCtx.rotate(-0.025);
+        _sigCtx.fillText(printedName, 0, 0);
+
+        _sigCtx.restore();
+
+        // Restore main drawing context settings
         _sigCtx.strokeStyle = '#1e293b';
         _sigCtx.lineWidth = 2;
         _sigCtx.lineCap = 'round';
