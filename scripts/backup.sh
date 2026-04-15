@@ -53,6 +53,7 @@ done
 FILES=(
   "index.html"
   "checkin.html"
+  "customer-checkin.html"
   "solar.html"
   "analytics.html"
   "closed-ros.html"

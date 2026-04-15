@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<!--
+    PRVS Customer Check-In v1.0
+    Released: 2026-04-15
+    v1.0: Initial build — GH#17 Customer Check-In Page
+          Two-mode form: Drop-Off (customer at front desk) / Lead Conversion (staff entering committed lead)
+          Customer type: New Customer / Returning Customer (lookup by name/phone/email/VIN)
+          Work type: New Work / Warranty / Both (hybrid RO)
+          8-silo service selection
+          Voice dictation (Web Speech API)
+          Digital RAF with signature pad, photo capture, email delivery
+          Supabase auth (Google SSO + signInWithIdToken)
+          Creates RO in repair_orders table
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Customer Check-In — Patriots RV Services</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        /* ── RESET & BASE ─────────────────────────────────────────── */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #f0f4f8;
+            color: #1e293b;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        /* ── HEADER / BRANDING ────────────────────────────────────── */
+        .site-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%);
+            color: #fff;
+            text-align: center;
+            padding: 24px 20px 20px;
+            box-shadow: 0 4px 20px rgba(30,58,138,0.3);
+        }
+        .site-header img { height: 80px; width: auto; margin-bottom: 10px; border-radius: 12px; }
+        .site-header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .site-header .mission { font-size: 0.85rem; color: #bfdbfe; font-style: italic; max-width: 500px; margin: 0 auto; }
+
+        /* ── AUTH GATE ────────────────────────────────────────────── */
+        .auth-gate {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 60vh; padding: 40px 20px; text-align: center;
+        }
+        .auth-gate h2 { font-size: 1.3rem; color: #1e3a8a; margin-bottom: 8px; }
+        .auth-gate p { color: #64748b; margin-bottom: 24px; font-size: 0.95rem; }
+        #g_id_onload { margin-top: 12px; }
+
+        /* ── MAIN CONTAINER ───────────────────────────────────────── */
+        .main-container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 20px 16px 100px;
+        }
+
+        /* ── STAFF BAR ────────────────────────────────────────────── */
+        .staff-bar {
+            background: #1e293b; color: #94a3b8; font-size: 0.8rem;
+            padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .staff-bar .user-name { color: #e2e8f0; font-weight: 600; }
+        .staff-bar button {
+            background: #334155; color: #e2e8f0; border: none; padding: 5px 12px;
+            border-radius: 6px; font-size: 0.75rem; cursor: pointer;
+        }
+        .staff-bar button:hover { background: #475569; }
+
+        /* ── STEP INDICATOR ───────────────────────────────────────── */
+        .step-indicator {
+            display: flex; justify-content: center; gap: 8px;
+            padding: 16px; background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .step-dot {
+            width: 36px; height: 36px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; font-weight: 700;
+            background: #e2e8f0; color: #94a3b8;
+            transition: all 0.3s ease;
+        }
+        .step-dot.active { background: #1e3a8a; color: #fff; box-shadow: 0 2px 8px rgba(30,58,138,0.4); }
+        .step-dot.completed { background: #22c55e; color: #fff; }
+        .step-connector { width: 24px; height: 2px; background: #e2e8f0; align-self: center; }
+        .step-connector.completed { background: #22c55e; }
+
+        /* ── SECTIONS / CARDS ─────────────────────────────────────── */
+        .form-section {
+            background: #fff;
+            border-radius: 16px;
+            padding: 24px 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            border: 1px solid #e2e8f0;
+        }
+        .form-section.hidden { display: none; }
+        .section-title {
+            font-size: 1.1rem; font-weight: 700; color: #1e3a8a;
+            margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+        }
+        .section-title .icon { font-size: 1.3rem; }
+
+        /* ── MODE TOGGLE ──────────────────────────────────────────── */
+        .mode-toggle {
+            display: flex; gap: 12px; margin-bottom: 0;
+        }
+        .mode-btn {
+            flex: 1; padding: 16px 12px;
+            border: 2px solid #e2e8f0; border-radius: 14px;
+            background: #fff; cursor: pointer;
+            text-align: center; transition: all 0.25s ease;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+        }
+        .mode-btn:hover { border-color: #93c5fd; background: #eff6ff; }
+        .mode-btn.selected { border-color: #1e3a8a; background: #eff6ff; box-shadow: 0 0 0 3px rgba(30,58,138,0.15); }
+        .mode-btn .mode-icon { font-size: 2rem; }
+        .mode-btn .mode-label { font-size: 0.95rem; font-weight: 700; color: #1e293b; }
+        .mode-btn .mode-desc { font-size: 0.78rem; color: #64748b; line-height: 1.3; }
+
+        /* ── CUSTOMER TYPE SELECTOR ───────────────────────────────── */
+        .type-selector { display: flex; gap: 10px; margin-bottom: 16px; }
+        .type-btn {
+            flex: 1; padding: 12px;
+            border: 2px solid #e2e8f0; border-radius: 12px;
+            background: #fff; cursor: pointer;
+            text-align: center; font-size: 0.9rem; font-weight: 600;
+            transition: all 0.2s; color: #475569;
+        }
+        .type-btn:hover { border-color: #93c5fd; }
+        .type-btn.selected { border-color: #1e3a8a; background: #eff6ff; color: #1e3a8a; }
+        .type-btn .type-icon { font-size: 1.4rem; display: block; margin-bottom: 4px; }
+
+        /* ── WORK TYPE SELECTOR ────────────────────────────────────── */
+        .work-type-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .work-type-btn {
+            flex: 1; min-width: 130px; padding: 12px 10px;
+            border: 2px solid #e2e8f0; border-radius: 12px;
+            background: #fff; cursor: pointer;
+            text-align: center; font-size: 0.85rem; font-weight: 600;
+            transition: all 0.2s; color: #475569;
+        }
+        .work-type-btn:hover { border-color: #93c5fd; }
+        .work-type-btn.selected { border-color: #1e3a8a; background: #eff6ff; color: #1e3a8a; }
+        .work-type-btn .wt-icon { font-size: 1.3rem; display: block; margin-bottom: 2px; }
+
+        /* ── FORM FIELDS ──────────────────────────────────────────── */
+        .field-row { margin-bottom: 14px; }
+        .field-row label {
+            display: block; font-size: 0.82rem; font-weight: 600;
+            color: #475569; margin-bottom: 4px;
+        }
+        .field-row label .req { color: #ef4444; margin-left: 2px; }
+        .field-row input, .field-row select, .field-row textarea {
+            width: 100%; padding: 10px 12px;
+            border: 1.5px solid #cbd5e1; border-radius: 10px;
+            font-size: 0.95rem; color: #1e293b;
+            background: #fff; transition: border-color 0.2s;
+            font-family: inherit;
+        }
+        .field-row input:focus, .field-row select:focus, .field-row textarea:focus {
+            outline: none; border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+        }
+        .field-row textarea { min-height: 80px; resize: vertical; }
+        .field-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .field-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        @media (max-width: 500px) {
+            .field-grid-2, .field-grid-3 { grid-template-columns: 1fr; }
+        }
+
+        /* ── DICTATION BUTTON ─────────────────────────────────────── */
+        .dictation-wrap { position: relative; }
+        .dictation-wrap textarea { padding-right: 48px; }
+        .dictation-btn {
+            position: absolute; right: 8px; top: 34px;
+            width: 36px; height: 36px; border-radius: 50%;
+            border: none; background: #e2e8f0; color: #475569;
+            font-size: 1.1rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .dictation-btn:hover { background: #cbd5e1; }
+        .dictation-btn.recording { background: #ef4444; color: #fff; animation: pulse-record 1.2s infinite; }
+        @keyframes pulse-record { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+
+        /* ── RETURNING CUSTOMER SEARCH ─────────────────────────────── */
+        .search-wrap { position: relative; margin-bottom: 16px; }
+        .search-wrap input { padding-left: 38px; }
+        .search-wrap .search-icon {
+            position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+            color: #94a3b8; font-size: 1rem; pointer-events: none;
+        }
+        .search-results {
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            max-height: 260px; overflow-y: auto;
+            display: none;
+        }
+        .search-results.show { display: block; }
+        .search-result-item {
+            padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f1f5f9;
+            transition: background 0.15s;
+        }
+        .search-result-item:hover { background: #eff6ff; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item .sr-name { font-weight: 700; color: #1e293b; font-size: 0.95rem; }
+        .search-result-item .sr-detail { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+
+        /* ── SILO CHIPS ───────────────────────────────────────────── */
+        .silo-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .silo-chip {
+            padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px;
+            background: #fff; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+            color: #475569; transition: all 0.2s; user-select: none;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .silo-chip:hover { border-color: #93c5fd; background: #eff6ff; }
+        .silo-chip.selected { border-color: #1e3a8a; background: #dbeafe; color: #1e3a8a; }
+        .silo-chip .silo-emoji { font-size: 1.1rem; }
+
+        /* ── DROP-OFF QUESTION ─────────────────────────────────────── */
+        .dropoff-question {
+            background: #fffbeb; border: 2px solid #fbbf24; border-radius: 14px;
+            padding: 20px; text-align: center; margin-bottom: 16px;
+        }
+        .dropoff-question h3 { font-size: 1.05rem; color: #92400e; margin-bottom: 12px; }
+        .dropoff-options { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .dropoff-opt {
+            padding: 12px 20px; border: 2px solid #e2e8f0; border-radius: 12px;
+            background: #fff; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+            color: #475569; transition: all 0.2s; min-width: 160px;
+        }
+        .dropoff-opt:hover { border-color: #93c5fd; }
+        .dropoff-opt.selected { border-color: #1e3a8a; background: #eff6ff; color: #1e3a8a; }
+
+        /* ── RAF ──────────────────────────────────────────────────── */
+        .raf-container {
+            max-height: 400px; overflow-y: auto;
+            border: 1px solid #e2e8f0; border-radius: 12px;
+            padding: 20px; margin-bottom: 16px;
+            background: #fafbfc; font-size: 0.85rem; line-height: 1.7;
+        }
+        .raf-container h3 { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 16px 0 6px; border-bottom: 2px solid #1e3a8a; padding-bottom: 4px; }
+        .raf-container h3:first-child { margin-top: 0; }
+        .raf-container p { margin-bottom: 10px; color: #334155; }
+        .raf-container .raf-title { text-align: center; font-size: 1.15rem; font-weight: 800; color: #1e3a8a; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .raf-checkbox {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 12px; background: #fffbeb; border-radius: 10px;
+            border: 1px solid #fde68a; margin-top: 12px;
+        }
+        .raf-checkbox input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0; accent-color: #1e3a8a; }
+        .raf-checkbox label { font-size: 0.88rem; font-weight: 600; color: #92400e; cursor: pointer; }
+
+        /* ── SIGNATURE PAD ────────────────────────────────────────── */
+        .sig-pad-wrap {
+            border: 2px dashed #cbd5e1; border-radius: 12px;
+            padding: 8px; margin-bottom: 12px; background: #fff;
+            position: relative;
+        }
+        .sig-pad-wrap canvas {
+            width: 100%; height: 180px; display: block;
+            border-radius: 8px; cursor: crosshair;
+            touch-action: none;
+        }
+        .sig-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .sig-actions button {
+            padding: 8px 16px; border-radius: 8px; font-size: 0.82rem;
+            font-weight: 600; cursor: pointer; border: 1px solid #e2e8f0;
+            background: #f1f5f9; color: #475569; transition: all 0.2s;
+        }
+        .sig-actions button:hover { background: #e2e8f0; }
+
+        /* ── PHOTO CAPTURE ────────────────────────────────────────── */
+        .photo-capture-wrap { margin-bottom: 16px; text-align: center; }
+        .camera-preview {
+            width: 100%; max-width: 400px; border-radius: 12px;
+            background: #000; margin: 0 auto 10px; display: none;
+        }
+        .photo-captured {
+            width: 100%; max-width: 400px; border-radius: 12px;
+            margin: 0 auto 10px; display: none;
+        }
+        .camera-btn {
+            padding: 12px 24px; border-radius: 10px;
+            background: #1e3a8a; color: #fff; border: none;
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .camera-btn:hover { background: #1d4ed8; }
+        .camera-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        /* ── BUTTONS ──────────────────────────────────────────────── */
+        .btn-primary {
+            width: 100%; padding: 16px;
+            background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
+            color: #fff; border: none; border-radius: 14px;
+            font-size: 1.05rem; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; letter-spacing: 0.3px;
+            box-shadow: 0 4px 12px rgba(30,58,138,0.3);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(30,58,138,0.4); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .btn-secondary {
+            padding: 10px 20px; background: #f1f5f9; color: #475569;
+            border: 1.5px solid #e2e8f0; border-radius: 10px;
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover { background: #e2e8f0; }
+
+        .btn-back {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; background: transparent; color: #64748b;
+            border: none; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; margin-bottom: 12px;
+        }
+        .btn-back:hover { color: #1e3a8a; }
+
+        /* ── TOAST ────────────────────────────────────────────────── */
+        .toast-container {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 10000; display: flex; flex-direction: column; gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            padding: 12px 20px; border-radius: 10px; color: #fff;
+            font-size: 0.88rem; font-weight: 600;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            animation: toast-in 0.3s ease;
+            pointer-events: auto;
+        }
+        .toast.success { background: #16a34a; }
+        .toast.error { background: #dc2626; }
+        .toast.warning { background: #d97706; }
+        .toast.info { background: #2563eb; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── SUCCESS SCREEN ───────────────────────────────────────── */
+        .success-screen {
+            text-align: center; padding: 60px 20px;
+        }
+        .success-screen .checkmark { font-size: 4rem; margin-bottom: 16px; }
+        .success-screen h2 { font-size: 1.4rem; color: #16a34a; margin-bottom: 8px; }
+        .success-screen p { color: #64748b; margin-bottom: 24px; }
+        .success-screen .ro-id-display {
+            display: inline-block; padding: 10px 24px;
+            background: #f0fdf4; border: 2px solid #22c55e;
+            border-radius: 12px; font-size: 1.3rem; font-weight: 800;
+            color: #15803d; margin-bottom: 24px;
+        }
+
+        /* ── LEAD CONVERSION EXTRAS ───────────────────────────────── */
+        .comms-log { margin-top: 12px; }
+        .comms-entry {
+            display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start;
+        }
+        .comms-entry input[type="date"] { width: 150px; flex-shrink: 0; }
+        .comms-entry textarea { flex: 1; min-height: 50px; }
+        .comms-entry button {
+            width: 32px; height: 32px; flex-shrink: 0;
+            border: none; background: #fee2e2; color: #dc2626;
+            border-radius: 8px; cursor: pointer; font-size: 1rem;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* ── WARRANTY FIELDS ──────────────────────────────────────── */
+        .warranty-fields, .lead-fields { display: none; }
+        .warranty-fields.show, .lead-fields.show { display: block; }
+        .prev-ro-list { margin-top: 8px; }
+        .prev-ro-item {
+            padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px;
+            cursor: pointer; margin-bottom: 6px; transition: all 0.2s;
+        }
+        .prev-ro-item:hover { border-color: #93c5fd; background: #eff6ff; }
+        .prev-ro-item.selected { border-color: #1e3a8a; background: #dbeafe; }
+        .prev-ro-item .ro-label { font-weight: 700; font-size: 0.9rem; color: #1e293b; }
+        .prev-ro-item .ro-sub { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
+
+        /* ── UTILITIES ────────────────────────────────────────────── */
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.35s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .text-center { text-align: center; }
+        .mb-8 { margin-bottom: 8px; }
+        .mb-16 { margin-bottom: 16px; }
+        .mt-16 { margin-top: 16px; }
+
+        /* ── RESPONSIVE ───────────────────────────────────────────── */
+        @media (max-width: 600px) {
+            .site-header { padding: 16px 12px; }
+            .site-header img { height: 60px; }
+            .site-header h1 { font-size: 1.2rem; }
+            .main-container { padding: 12px 10px 80px; }
+            .form-section { padding: 18px 14px; }
+            .mode-toggle { flex-direction: column; }
+            .type-selector { flex-direction: column; }
+            .dropoff-options { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     HEADER
+     ════════════════════════════════════════════════════════════════ -->
+<header class="site-header">
+    <img src="logo.png" alt="Patriots RV Services" onerror="this.style.display='none'">
+    <h1>Patriots RV Services</h1>
+    <p class="mission">Dedicated to providing top-quality RV repair, upgrades, and service with integrity and precision.</p>
+</header>
+
+<!-- ═══ STAFF BAR (visible after auth) ═══ -->
+<div class="staff-bar hidden" id="staffBar">
+    <span>Signed in as <span class="user-name" id="staffName">—</span></span>
+    <button onclick="startNewCheckin()">+ New Check-In</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     AUTH GATE
+     ════════════════════════════════════════════════════════════════ -->
+<div id="authGate" class="auth-gate">
+    <h2>Staff Sign-In Required</h2>
+    <p>Sign in with your Patriots RV Google account to access the Customer Check-In system.</p>
+    <div id="g_id_onload"></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MAIN FORM AREA
+     ════════════════════════════════════════════════════════════════ -->
+<div id="formArea" class="main-container hidden">
+
+    <!-- ─── STEP INDICATOR ─── -->
+    <div class="step-indicator" id="stepIndicator">
+        <div class="step-dot active" data-step="1">1</div>
+        <div class="step-connector"></div>
+        <div class="step-dot" data-step="2">2</div>
+        <div class="step-connector"></div>
+        <div class="step-dot" data-step="3">3</div>
+        <div class="step-connector"></div>
+        <div class="step-dot" data-step="4">4</div>
+        <div class="step-connector" id="connStep5"></div>
+        <div class="step-dot" data-step="5" id="dotStep5">5</div>
+    </div>
+
+    <!-- ══════════════ STEP 1 — MODE ══════════════ -->
+    <div class="form-section fade-in" id="step1">
+        <div class="section-title"><span class="icon">👋</span> How can we help you today?</div>
+        <div class="mode-toggle">
+            <div class="mode-btn" data-mode="dropoff" onclick="selectMode('dropoff')">
+                <span class="mode-icon">🚐</span>
+                <span class="mode-label">RV Drop-Off</span>
+                <span class="mode-desc">Dropping off or scheduling a drop-off for your RV</span>
+            </div>
+            <div class="mode-btn" data-mode="lead" onclick="selectMode('lead')">
+                <span class="mode-icon">📋</span>
+                <span class="mode-label">Lead Conversion</span>
+                <span class="mode-desc">Staff: entering a committed lead with future drop-off</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════ STEP 2 — CUSTOMER TYPE + WORK TYPE ══════════════ -->
+    <div class="form-section hidden" id="step2">
+        <button class="btn-back" onclick="goToStep(1)">← Back</button>
+        <div class="section-title"><span class="icon">👤</span> Customer Information</div>
+
+        <!-- New vs Returning -->
+        <div class="type-selector mb-16">
+            <div class="type-btn" data-ctype="new" onclick="selectCustomerType('new')">
+                <span class="type-icon">🆕</span>
+                New Customer
+            </div>
+            <div class="type-btn" data-ctype="returning" onclick="selectCustomerType('returning')">
+                <span class="type-icon">🔄</span>
+                Returning Customer
+            </div>
+        </div>
+
+        <!-- Returning customer search -->
+        <div id="returningSearch" class="hidden">
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="customerSearch" placeholder="Search by name, phone, email, or VIN..." oninput="searchCustomers(this.value)">
+            </div>
+            <div class="search-results" id="searchResults"></div>
+        </div>
+
+        <!-- Contact fields -->
+        <div id="contactFields" class="hidden">
+            <div class="field-grid-2">
+                <div class="field-row">
+                    <label>First Name <span class="req">*</span></label>
+                    <input type="text" id="firstName" required autocomplete="given-name">
+                </div>
+                <div class="field-row">
+                    <label>Last Name <span class="req">*</span></label>
+                    <input type="text" id="lastName" required autocomplete="family-name">
+                </div>
+            </div>
+            <div class="field-grid-2">
+                <div class="field-row">
+                    <label>Phone <span class="req">*</span></label>
+                    <input type="tel" id="phone" required autocomplete="tel" placeholder="(555) 123-4567">
+                </div>
+                <div class="field-row">
+                    <label>Email</label>
+                    <input type="email" id="email" autocomplete="email">
+                </div>
+            </div>
+            <div class="field-row">
+                <label>Address</label>
+                <input type="text" id="address" autocomplete="street-address" placeholder="Street, City, State, ZIP">
+            </div>
+
+            <div style="height:16px"></div>
+
+            <!-- RV Info -->
+            <div class="section-title"><span class="icon">🚐</span> RV Information</div>
+            <div class="field-grid-3">
+                <div class="field-row">
+                    <label>Year</label>
+                    <input type="text" id="rvYear" placeholder="2024" maxlength="4">
+                </div>
+                <div class="field-row">
+                    <label>Make</label>
+                    <input type="text" id="rvMake" placeholder="Keystone">
+                </div>
+                <div class="field-row">
+                    <label>Model</label>
+                    <input type="text" id="rvModel" placeholder="Montana">
+                </div>
+            </div>
+            <div class="field-grid-2">
+                <div class="field-row">
+                    <label>VIN</label>
+                    <input type="text" id="rvVin" placeholder="Vehicle Identification Number" maxlength="17" style="text-transform: uppercase;">
+                </div>
+                <div class="field-row">
+                    <label>Color</label>
+                    <input type="text" id="rvColor">
+                </div>
+            </div>
+
+            <div style="height:16px"></div>
+
+            <!-- Work Type -->
+            <div class="section-title"><span class="icon">🔧</span> Type of Work</div>
+            <div class="work-type-group">
+                <div class="work-type-btn" data-work="new" onclick="toggleWorkType('new')">
+                    <span class="wt-icon">🔧</span> New Work
+                </div>
+                <div class="work-type-btn" data-work="warranty" onclick="toggleWorkType('warranty')">
+                    <span class="wt-icon">🛡️</span> Warranty Work
+                </div>
+            </div>
+            <p style="font-size:0.78rem;color:#94a3b8;margin-top:6px;">Select one or both</p>
+
+            <!-- Warranty extras -->
+            <div class="warranty-fields" id="warrantyFields">
+                <div class="field-row mt-16">
+                    <label>Original Repair Order #</label>
+                    <input type="text" id="warrantyOrigRO" placeholder="PRVS-XXXX-XXXX">
+                </div>
+                <div id="prevROList" class="prev-ro-list"></div>
+            </div>
+
+            <button class="btn-primary mt-16" onclick="goToStep(3)" id="toStep3Btn" disabled>Continue to Services →</button>
+        </div>
+    </div>
+
+    <!-- ══════════════ STEP 3 — SERVICES + DESCRIPTION ══════════════ -->
+    <div class="form-section hidden" id="step3">
+        <button class="btn-back" onclick="goToStep(2)">← Back</button>
+        <div class="section-title"><span class="icon">⚙️</span> Services Requested</div>
+        <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">Select all that apply:</p>
+        <div class="silo-grid" id="siloGrid"></div>
+
+        <div style="height:20px"></div>
+
+        <div class="section-title"><span class="icon">📝</span> Describe What You Need</div>
+
+        <!-- New Work description -->
+        <div id="newWorkDesc">
+            <div class="field-row dictation-wrap">
+                <label>Service Description <span class="req">*</span></label>
+                <textarea id="serviceDesc" placeholder="Tell us what's going on with your RV and what you'd like done..." rows="4"></textarea>
+                <button type="button" class="dictation-btn" onclick="toggleDictation('serviceDesc')" title="Voice input">🎙️</button>
+            </div>
+        </div>
+
+        <!-- Warranty Work description (shown if warranty selected) -->
+        <div id="warrantyWorkDesc" class="hidden">
+            <div class="field-row dictation-wrap">
+                <label>Warranty Issue Description</label>
+                <textarea id="warrantyDesc" placeholder="Describe the warranty issue — what was done previously and what's happening now..." rows="4"></textarea>
+                <button type="button" class="dictation-btn" onclick="toggleDictation('warrantyDesc')" title="Voice input">🎙️</button>
+            </div>
+        </div>
+
+        <!-- Lead conversion extras -->
+        <div class="lead-fields" id="leadFields">
+            <div style="height:16px"></div>
+            <div class="section-title"><span class="icon">📅</span> Scheduling</div>
+            <div class="field-grid-2">
+                <div class="field-row">
+                    <label>Planned Drop-Off Date</label>
+                    <input type="date" id="leadDropoffDate">
+                </div>
+                <div class="field-row">
+                    <label>Promised Completion Date</label>
+                    <input type="date" id="leadPromisedDate">
+                </div>
+            </div>
+            <div class="field-row dictation-wrap">
+                <label>Prior Communications / Customer Notes</label>
+                <textarea id="leadNotes" placeholder="Summarize all prior communications, agreements, and special requests..." rows="4"></textarea>
+                <button type="button" class="dictation-btn" onclick="toggleDictation('leadNotes')" title="Voice input">🎙️</button>
+            </div>
+        </div>
+
+        <button class="btn-primary mt-16" onclick="goToStep(4)" id="toStep4Btn">Continue →</button>
+    </div>
+
+    <!-- ══════════════ STEP 4 — DROP-OFF QUESTION + RAF ══════════════ -->
+    <div class="form-section hidden" id="step4">
+        <button class="btn-back" onclick="goToStep(3)">← Back</button>
+
+        <!-- Drop-off: are you leaving RV today? -->
+        <div id="dropoffQuestionWrap">
+            <div class="dropoff-question">
+                <h3>🚐 Are you dropping off your RV today?</h3>
+                <div class="dropoff-options">
+                    <div class="dropoff-opt" data-dropoff="today" onclick="selectDropoff('today')">
+                        ✅ Yes, it's here now
+                    </div>
+                    <div class="dropoff-opt" data-dropoff="scheduled" onclick="selectDropoff('scheduled')">
+                        📅 No, scheduling a future drop-off
+                    </div>
+                </div>
+            </div>
+            <div id="scheduledDateWrap" class="hidden">
+                <div class="field-row">
+                    <label>Planned Drop-Off Date <span class="req">*</span></label>
+                    <input type="date" id="scheduledDropoffDate">
+                </div>
+            </div>
+        </div>
+
+        <!-- RAF (Drop-Off mode only) -->
+        <div id="rafSection">
+            <div class="section-title"><span class="icon">📄</span> Repair Authorization Form</div>
+            <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">Please read the following agreement carefully and sign below.</p>
+
+            <div class="raf-container" id="rafContent">
+                <div class="raf-title">Patriots RV Services<br>Work Authorization &amp; Repair Agreement</div>
+
+                <h3>1. Work Authorization</h3>
+                <p>I hereby authorize Patriots RV Services ("PRVS") to perform the repairs, upgrades, and/or services described on this Repair Order for the vehicle identified above. I agree that Patriots RV Services is <strong>not responsible</strong> for loss or damage to this vehicle or articles left in the vehicle due to fire, theft, or any other cause beyond its reasonable control. I further grant permission for PRVS employees to operate the vehicle for the purposes of testing, inspection, and quality assurance.</p>
+                <p>Sealant, maintenance items, and winterization are the responsibility of the customer. Patriots RV Services will not be responsible for water intrusion of any kind or damages resulting thereof, unless the water intrusion is a direct result of work performed by PRVS.</p>
+
+                <h3>2. Mechanic's Lien &amp; Payment Terms</h3>
+                <p>To secure payment in the amount of the repairs, an expressed mechanic's lien on the vehicle is acknowledged, and I further agree to pay reasonable attorney's fees and court costs in the event that legal action becomes necessary to enforce this agreement. I acknowledge that if analysis reveals additional repairs are necessary, I will be contacted for authorization of any additional charges. If new parts listed in the attached Repair Order are not available, Patriots RV Services reserves the right to use quality replacement parts when possible, and the difference between part price and labor required will be adjusted accordingly.</p>
+                <p>The total amount of repair charges must be paid before the vehicle can be released for delivery. I acknowledge that said vehicle can be repossessed by Patriots RV Services for one of the following reasons: non-payment or partial payment, insufficient funds, stop payments, or outstanding balance due over 60 days from delivery, or if insurance coverage pays either a portion of, or the total amount due. I acknowledge that the insurance check/draft must be obtained by myself or sent in advance by the insurance company. I also acknowledge that I must make arrangements with any lien holder or other payees to endorse the insurance check/draft <strong>prior</strong> to the release of the repaired vehicle described.</p>
+
+                <h3>3. Estimates &amp; Completion Timelines</h3>
+                <p>All estimated completion dates, repair costs, and other quoted values are approximate and subject to change. Factors that may affect final pricing and timelines include, but are not limited to: parts availability, shipping delays, lost or back-ordered shipments, weather events, equipment or facility issues, technician availability, and unforeseen complications discovered during repairs — including delays on vehicles ahead of yours in the service queue. <strong>All figures provided are estimates only and are not guaranteed until the work is fully completed and a final invoice is issued.</strong></p>
+
+                <h3>4. Scheduled Trips &amp; Travel Plans</h3>
+                <p>Patriots RV Services cannot guarantee specific completion dates for any repair or upgrade (see Section 3 above). We strongly advise against scheduling trips or travel plans based on estimated completion dates while your RV is in our care. If you have an upcoming trip and your repair is not yet complete, you may choose to either wait for the repair to be finished or retrieve your vehicle as-is — however, please be aware that <strong>removing your RV from our shop before completion will forfeit your current position in the service queue</strong>. Rescheduling will be subject to availability at that time. Trip schedules and travel deadlines do not alter the order of our service queue, expedite repairs, or prevent delays that may arise from the factors described above. By signing below, you acknowledge that you accept full responsibility for any travel plans made while your RV is in our possession.</p>
+
+                <h3>5. Additional Repairs &amp; Hidden Damage</h3>
+                <p>During the course of repairs, conditions may be discovered that were not apparent during the initial inspection. If additional work is necessary beyond the original scope, Patriots RV Services will contact you for authorization before proceeding. If you decline the additional work, reassembly charges may apply to restore the vehicle to a safe and transportable condition.</p>
+
+                <h3>6. Authorization to Transport</h3>
+                <p>I do hereby authorize Patriots RV Services to transport my unit described above to an authorized facility for the purpose of additional repairs if needed, and I will hold them harmless for any and all damages that may occur during this transport. I further acknowledge that my insurance company would be the responsible party, if necessary. I further acknowledge that the vehicle has current inspection stickers and is within the legal guidelines to be towable or drivable depending on type/class of the vehicle. This includes but is not limited to all working headlights, turn signals, brake lights, windshield wipers, and brakes. All tires must be in good condition and within legal limits with a minimum of 4/32 of tread depth.</p>
+
+                <h3>7. Storage Policy</h3>
+                <p>Due to limited lot space, you have <strong>5 business days</strong> to pick up your vehicle after notification of completion. If not picked up within that time, we will begin storage charges of <strong>$80.00 per day</strong>. Vehicles not retrieved within <strong>30 days</strong> after completion and notification may be considered abandoned in accordance with the Texas Property Code, and Patriots RV Services reserves all rights and remedies available under Texas law, including but not limited to filing for a mechanic's and storage lien under Chapter 70 of the Texas Property Code.</p>
+
+                <h3>8. Food Spoilage &amp; Perishables</h3>
+                <p>Patriots RV Services is <strong>not responsible</strong> for food spoilage or damage to any perishable items left in the vehicle. Your RV may not remain connected to shore power during the course of service, and refrigeration, freezer, and climate control systems may be without power for extended periods. Please remove all perishable items before dropping off your vehicle.</p>
+
+                <h3>9. Rodent, Pest &amp; Wildlife Damage</h3>
+                <p>Patriots RV Services is <strong>not responsible</strong> for any rodent, pest, or wildlife damage — whether pre-existing at the time of drop-off or occurring while the vehicle is on our premises. Rodent and pest activity is common in outdoor storage environments and is beyond our reasonable control. If rodent or pest damage is discovered during the course of repairs, you will be notified and any resulting work will require separate authorization.</p>
+
+                <h3>10. Storm, Freeze &amp; Weather Damage</h3>
+                <p>Patriots RV Services is <strong>not responsible</strong> for any damage to your vehicle resulting from weather events including, but not limited to: hail, wind, ice, freezing temperatures, flooding, lightning, or severe storms. While your RV is stored on our premises, it is exposed to outdoor conditions. We recommend verifying that your insurance coverage includes comprehensive protection for weather-related damage. If weather damage occurs while your vehicle is in our care, your insurance carrier would be the responsible party.</p>
+
+                <h3>11. Power of Attorney — Insurance</h3>
+                <p>For the consideration of repairs made to the vehicle, I hereby grant my power of attorney to Patriots RV Services to sign and endorse any checks and/or drafts made payable to me and release thereto as settlement for claim damage to this vehicle.</p>
+
+                <h3>12. Photo &amp; Media Authorization</h3>
+                <p>I hereby authorize photos and video to be taken throughout the course of repairs of the vehicle. These photos/videos may be required by third parties (i.e., insurance carriers, parts suppliers, etc.) and may also be used for training and/or marketing purposes.</p>
+
+                <h3>13. Personal Property Disclaimer</h3>
+                <p>Patriots RV Services is not responsible for any personal property left in the vehicle during the course of repairs, including but not limited to: electronics, clothing, tools, accessories, recreational equipment, and valuables. Please remove all personal items before drop-off. Any items discovered during service will be set aside when possible, but PRVS assumes no liability for loss, theft, or damage to personal property.</p>
+
+                <h3>14. Customer Responsibility — Final Payment</h3>
+                <p>The customer is responsible for the complete repair bill including both the insurance and deductible portions. It is the customer's responsibility to inform their service representative when payment is to be made with an insurance check and to whom the check is made out to. Please note: if the lien is a payee on the check, the check will be taken to the lien holder for inspection, at which time they will endorse the check. All deductibles and customer-pay repairs are to be <strong>paid prior to delivery of vehicle</strong>. Payment in full of the balance is required before the vehicle is delivered.</p>
+            </div>
+
+            <!-- RAF acknowledgment checkbox -->
+            <div class="raf-checkbox">
+                <input type="checkbox" id="rafAgree" onchange="checkRafAgreed()">
+                <label for="rafAgree">I have read and agree to all terms and conditions stated in the Repair Authorization Form above. I understand that this is a legally binding agreement.</label>
+            </div>
+
+            <!-- Signature -->
+            <div style="height:20px"></div>
+            <div class="section-title"><span class="icon">✍️</span> Customer Signature</div>
+            <div class="sig-pad-wrap">
+                <canvas id="signatureCanvas"></canvas>
+            </div>
+            <div class="sig-actions">
+                <button onclick="clearSignature()">Clear Signature</button>
+            </div>
+            <div class="field-grid-2 mt-16">
+                <div class="field-row">
+                    <label>Printed Name <span class="req">*</span></label>
+                    <input type="text" id="sigPrintedName">
+                </div>
+                <div class="field-row">
+                    <label>Date</label>
+                    <input type="text" id="sigDate" readonly>
+                </div>
+            </div>
+
+            <!-- Photo capture -->
+            <div style="height:20px"></div>
+            <div class="section-title"><span class="icon">📸</span> Photo Verification (Optional)</div>
+            <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">Capture a photo of the customer signing for verification records.</p>
+            <div class="photo-capture-wrap">
+                <video id="cameraPreview" class="camera-preview" autoplay playsinline></video>
+                <canvas id="photoCaptureCanvas" class="hidden"></canvas>
+                <img id="capturedPhoto" class="photo-captured" alt="Captured photo">
+                <div>
+                    <button class="camera-btn" id="cameraBtn" onclick="toggleCamera()">📷 Open Camera</button>
+                    <button class="camera-btn hidden" id="captureBtn" onclick="capturePhoto()" style="background:#16a34a;">📸 Take Photo</button>
+                    <button class="camera-btn hidden" id="retakeBtn" onclick="retakePhoto()" style="background:#d97706;">🔄 Retake</button>
+                </div>
+            </div>
+
+            <!-- RAF delivery -->
+            <div style="height:12px"></div>
+            <div class="section-title"><span class="icon">📧</span> Send Copy of Signed Agreement</div>
+            <div class="field-grid-2">
+                <div class="field-row">
+                    <label><input type="checkbox" id="sendEmail" checked style="width:auto;margin-right:6px;">Send to Email</label>
+                </div>
+                <div class="field-row">
+                    <label><input type="checkbox" id="sendSMS" disabled style="width:auto;margin-right:6px;">Send via SMS (coming soon)</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lead Conversion: step 4 is just review + submit -->
+        <div id="leadStep4" class="hidden">
+            <div class="section-title"><span class="icon">✅</span> Review &amp; Submit</div>
+            <div id="leadReviewSummary"></div>
+        </div>
+
+        <button class="btn-primary mt-16" onclick="submitCheckin()" id="submitBtn" disabled>Submit Check-In</button>
+    </div>
+
+    <!-- ══════════════ STEP 5 — SUCCESS ══════════════ -->
+    <div class="form-section hidden" id="step5">
+        <div class="success-screen">
+            <div class="checkmark">✅</div>
+            <h2>Check-In Complete!</h2>
+            <p id="successMsg">The Repair Order has been created successfully.</p>
+            <div class="ro-id-display" id="newROId">—</div>
+            <div style="margin-top:20px">
+                <button class="btn-primary" onclick="startNewCheckin()" style="max-width:300px;margin:0 auto;">Start New Check-In</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ════════════════════════════════════════════════════════════════ -->
+<script>
+    // ── CONFIG ────────────────────────────────────────────────────
+    const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+    const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+    const SB_AUTH_OPTIONS = {
+        auth: {
+            persistSession:   true,
+            autoRefreshToken: true,
+            storageKey:       'prvs_checkin_auth',
+            detectSessionInUrl: true,
+        }
+    };
+
+    const SERVICE_SILOS = [
+        { key: 'repair',     label: 'Repair',       emoji: '🔧' },
+        { key: 'vroom',      label: 'Vroom',        emoji: '✨' },
+        { key: 'solar',      label: 'Solar',        emoji: '☀️' },
+        { key: 'roof',       label: 'Roof',         emoji: '🏠' },
+        { key: 'paint_body', label: 'Paint & Body', emoji: '🎨' },
+        { key: 'chassis',    label: 'Chassis',      emoji: '🔩' },
+        { key: 'detailing',  label: 'Detailing',    emoji: '🧽' },
+        { key: 'truetopper', label: 'TrueTopper',   emoji: '🏕️' },
+    ];
+
+    const SILO_TO_REPAIR_TYPE = {
+        'repair':     'Repairs',
+        'vroom':      'Vroom',
+        'solar':      'Solar',
+        'roof':       'Roof',
+        'paint_body': 'Paint and Body',
+        'chassis':    'Chassis',
+        'detailing':  'Detailing',
+        'truetopper': 'TrueTopper',
+    };
+
+    const DEBUG = false;
+    function log(...args) { if (DEBUG) console.log(...args); }
+    function warn(...args) { if (DEBUG) console.warn(...args); }
+
+    // ── STATE ─────────────────────────────────────────────────────
+    let _sb = null;
+    let supabaseSession = null;
+    let userRoles = [];
+    let currentStep = 1;
+    let formState = {
+        mode: null,          // 'dropoff' | 'lead'
+        customerType: null,  // 'new' | 'returning'
+        workTypes: [],       // ['new'] | ['warranty'] | ['new','warranty']
+        selectedSilos: [],   // ['repair','solar',...]
+        dropoffChoice: null, // 'today' | 'scheduled'
+        returnCustomerData: null,  // existing customer data from lookup
+        warrantyOrigRO: null,      // original RO id for warranty
+        signatureData: null,       // base64 PNG
+        capturedPhoto: null,       // base64 JPEG
+    };
+
+    // ── SUPABASE ──────────────────────────────────────────────────
+    function getSB() {
+        if (!_sb) {
+            if (typeof supabase !== 'undefined' && supabase.createClient) {
+                _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS);
+            } else if (window.supabase && window.supabase.createClient) {
+                _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS);
+            } else {
+                console.error('Supabase SDK not available yet');
+                return null;
+            }
+        }
+        return _sb;
+    }
+
+    // ── AUTH ───────────────────────────────────────────────────────
+    async function initAuth() {
+        // Restore existing session
+        const sb = getSB();
+        if (sb) {
+            const { data: { session } } = await sb.auth.getSession();
+            if (session) {
+                supabaseSession = session;
+                await loadUserRoles();
+                showForm();
+                return;
+            }
+            // Listen for auth changes
+            sb.auth.onAuthStateChange((event, session) => {
+                supabaseSession = session;
+                if (session) {
+                    loadUserRoles().then(() => showForm());
+                }
+            });
+        }
+        // Init Google One Tap
+        initGoogleAuth();
+    }
+
+    async function initGoogleAuth() {
+        if (typeof google === 'undefined' || !google.accounts) {
+            setTimeout(initGoogleAuth, 500);
+            return;
+        }
+
+        let sbNonce = localStorage.getItem('prvs_checkin_nonce');
+        let sbHashedNonce = localStorage.getItem('prvs_checkin_nonce_hash');
+        if (!sbNonce) {
+            const rawNonceBytes = crypto.getRandomValues(new Uint8Array(16));
+            sbNonce = Array.from(rawNonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            const nonceBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sbNonce));
+            sbHashedNonce = Array.from(new Uint8Array(nonceBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            localStorage.setItem('prvs_checkin_nonce', sbNonce);
+            localStorage.setItem('prvs_checkin_nonce_hash', sbHashedNonce);
+        }
+
+        google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            nonce: sbHashedNonce,
+            params: { nonce: sbHashedNonce },
+            callback: async (credentialResponse) => {
+                if (credentialResponse.credential) {
+                    try {
+                        const retrievedNonce = localStorage.getItem('prvs_checkin_nonce');
+                        const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
+                            provider: 'google',
+                            token: credentialResponse.credential,
+                            nonce: retrievedNonce,
+                        });
+                        if (sbError) {
+                            warn('Supabase signInWithIdToken failed:', sbError.message);
+                            localStorage.removeItem('prvs_checkin_nonce');
+                            localStorage.removeItem('prvs_checkin_nonce_hash');
+                            showToast('Sign-in failed. Please try again.', 'error');
+                        } else {
+                            supabaseSession = sbData.session;
+                            localStorage.removeItem('prvs_checkin_nonce');
+                            localStorage.removeItem('prvs_checkin_nonce_hash');
+                            await loadUserRoles();
+                            showForm();
+                        }
+                    } catch (e) {
+                        warn('Auth exchange failed:', e.message);
+                        showToast('Authentication error. Please try again.', 'error');
+                    }
+                }
+            },
+            auto_select: true,
+        });
+
+        google.accounts.id.renderButton(
+            document.getElementById('g_id_onload'),
+            { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 300 }
+        );
+        google.accounts.id.prompt();
+    }
+
+    async function loadUserRoles() {
+        if (!supabaseSession) return;
+        try {
+            const email = supabaseSession.user.email;
+            const { data: userRecord } = await getSB()
+                .from('users').select('id').eq('email', email).maybeSingle();
+            if (!userRecord) return;
+            const { data: roleData } = await getSB()
+                .from('user_roles').select('roles(name)').eq('user_id', userRecord.id);
+            if (roleData) {
+                userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
+            }
+            // Merge staff table role
+            try {
+                const { data: staffRecord } = await getSB()
+                    .from('staff').select('role, service_silo, active').eq('email', email).single();
+                if (staffRecord && staffRecord.active) {
+                    const staffRoleMap = { 'sr_manager': 'Sr Manager', 'manager': 'Manager', 'parts_manager': 'Manager', 'tech': 'Tech' };
+                    const mapped = staffRoleMap[staffRecord.role];
+                    if (mapped && !userRoles.includes(mapped)) userRoles.push(mapped);
+                }
+            } catch (e) { /* staff record may not exist */ }
+        } catch (e) { warn('Could not load roles:', e); }
+    }
+
+    function isAdmin() { return userRoles.includes('Admin'); }
+    function hasRole(role) { return userRoles.includes(role); }
+    function isManagerOrAbove() {
+        return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
+    }
+
+    function showForm() {
+        // Gate: Manager or above only
+        if (!isManagerOrAbove()) {
+            document.getElementById('authGate').innerHTML = `
+                <h2>Access Restricted</h2>
+                <p>The Customer Check-In system is available to Managers and above.<br>
+                Please contact an administrator if you need access.</p>
+            `;
+            return;
+        }
+        document.getElementById('authGate').classList.add('hidden');
+        document.getElementById('formArea').classList.remove('hidden');
+        document.getElementById('staffBar').classList.remove('hidden');
+        document.getElementById('staffName').textContent = supabaseSession.user.email;
+        buildSiloGrid();
+        initSignaturePad();
+        document.getElementById('sigDate').value = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    // ── STEP NAVIGATION ───────────────────────────────────────────
+    function goToStep(step) {
+        // Validate before advancing
+        if (step > currentStep) {
+            if (!validateCurrentStep()) return;
+        }
+        currentStep = step;
+        for (let i = 1; i <= 5; i++) {
+            const el = document.getElementById('step' + i);
+            if (el) el.classList.toggle('hidden', i !== step);
+        }
+        // Update dots
+        document.querySelectorAll('.step-dot').forEach(dot => {
+            const s = parseInt(dot.dataset.step);
+            dot.classList.toggle('active', s === step);
+            dot.classList.toggle('completed', s < step);
+        });
+        document.querySelectorAll('.step-connector').forEach((conn, i) => {
+            conn.classList.toggle('completed', (i + 1) < step);
+        });
+        // Show/hide step 5 dot for lead mode (no RAF = fewer steps)
+        const isLead = formState.mode === 'lead';
+        // Scroll to top of step
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Mode-specific visibility in step 4
+        if (step === 4) {
+            setupStep4();
+        }
+        updateSubmitButton();
+    }
+
+    function validateCurrentStep() {
+        if (currentStep === 1) {
+            if (!formState.mode) { showToast('Please select a mode to continue.', 'warning'); return false; }
+        }
+        if (currentStep === 2) {
+            if (!formState.customerType) { showToast('Please select New or Returning Customer.', 'warning'); return false; }
+            const fn = document.getElementById('firstName').value.trim();
+            const ln = document.getElementById('lastName').value.trim();
+            const ph = document.getElementById('phone').value.trim();
+            if (!fn || !ln) { showToast('First and Last Name are required.', 'warning'); return false; }
+            if (!ph) { showToast('Phone number is required.', 'warning'); return false; }
+            if (formState.workTypes.length === 0) { showToast('Please select a work type (New Work, Warranty, or both).', 'warning'); return false; }
+        }
+        if (currentStep === 3) {
+            if (formState.selectedSilos.length === 0) { showToast('Please select at least one service.', 'warning'); return false; }
+            const desc = document.getElementById('serviceDesc').value.trim();
+            if (!desc) { showToast('Please describe the work needed.', 'warning'); return false; }
+        }
+        return true;
+    }
+
+    function setupStep4() {
+        const isDrop = formState.mode === 'dropoff';
+        document.getElementById('dropoffQuestionWrap').classList.toggle('hidden', !isDrop);
+        document.getElementById('rafSection').classList.toggle('hidden', !isDrop);
+        document.getElementById('leadStep4').classList.toggle('hidden', isDrop);
+
+        if (!isDrop) {
+            // Build lead review summary
+            buildLeadReview();
+        }
+        updateSubmitButton();
+    }
+
+    function buildLeadReview() {
+        const fn = document.getElementById('firstName').value.trim();
+        const ln = document.getElementById('lastName').value.trim();
+        const phone = document.getElementById('phone').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const rv = [document.getElementById('rvYear').value, document.getElementById('rvMake').value, document.getElementById('rvModel').value].filter(Boolean).join(' ');
+        const siloLabels = formState.selectedSilos.map(k => SERVICE_SILOS.find(s => s.key === k)).filter(Boolean).map(s => `${s.emoji} ${s.label}`).join(', ');
+        const desc = document.getElementById('serviceDesc').value.trim();
+        const dropDate = document.getElementById('leadDropoffDate').value;
+        const promDate = document.getElementById('leadPromisedDate').value;
+        const notes = document.getElementById('leadNotes').value.trim();
+
+        document.getElementById('leadReviewSummary').innerHTML = `
+            <div style="background:#f8fafc;border-radius:12px;padding:16px;font-size:0.9rem;line-height:1.8;">
+                <strong>Customer:</strong> ${escapeHtml(fn)} ${escapeHtml(ln)}<br>
+                <strong>Phone:</strong> ${escapeHtml(phone)}${email ? `<br><strong>Email:</strong> ${escapeHtml(email)}` : ''}<br>
+                ${rv ? `<strong>RV:</strong> ${escapeHtml(rv)}<br>` : ''}
+                <strong>Services:</strong> ${siloLabels}<br>
+                <strong>Work Type:</strong> ${formState.workTypes.map(w => w === 'new' ? '🔧 New Work' : '🛡️ Warranty').join(' + ')}<br>
+                <strong>Description:</strong> ${escapeHtml(desc)}<br>
+                ${dropDate ? `<strong>Planned Drop-Off:</strong> ${dropDate}<br>` : ''}
+                ${promDate ? `<strong>Promised Date:</strong> ${promDate}<br>` : ''}
+                ${notes ? `<strong>Notes:</strong> ${escapeHtml(notes)}` : ''}
+            </div>
+        `;
+    }
+
+    // ── MODE SELECTION ────────────────────────────────────────────
+    function selectMode(mode) {
+        formState.mode = mode;
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('selected', b.dataset.mode === mode));
+        // Auto-advance after short delay
+        setTimeout(() => goToStep(2), 300);
+    }
+
+    // ── CUSTOMER TYPE ─────────────────────────────────────────────
+    function selectCustomerType(type) {
+        formState.customerType = type;
+        document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('selected', b.dataset.ctype === type));
+        document.getElementById('returningSearch').classList.toggle('hidden', type !== 'returning');
+        // For new customer, show contact fields immediately
+        if (type === 'new') {
+            document.getElementById('contactFields').classList.remove('hidden');
+            clearContactFields();
+        } else {
+            // Hide contact fields until they select a result
+            document.getElementById('contactFields').classList.add('hidden');
+            document.getElementById('customerSearch').value = '';
+            document.getElementById('searchResults').classList.remove('show');
+        }
+        updateStep2Continue();
+    }
+
+    // ── RETURNING CUSTOMER SEARCH ─────────────────────────────────
+    let _searchTimeout = null;
+    async function searchCustomers(query) {
+        clearTimeout(_searchTimeout);
+        if (query.length < 2) {
+            document.getElementById('searchResults').classList.remove('show');
+            return;
+        }
+        _searchTimeout = setTimeout(async () => {
+            try {
+                const q = query.toLowerCase();
+                // Search repair_orders for matching customers
+                const { data, error } = await getSB()
+                    .from('repair_orders')
+                    .select('id, ro_id, customer_name, phone, email, address, rv, vin')
+                    .or(`customer_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,vin.ilike.%${q}%`)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+
+                if (error) { warn('Search error:', error); return; }
+
+                // Deduplicate by customer name+phone
+                const seen = new Map();
+                const unique = [];
+                for (const ro of (data || [])) {
+                    const key = (ro.customer_name || '').toLowerCase() + '|' + (ro.phone || '');
+                    if (!seen.has(key)) {
+                        seen.set(key, true);
+                        unique.push(ro);
+                    }
+                }
+
+                const resultsEl = document.getElementById('searchResults');
+                if (unique.length === 0) {
+                    resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:0.85rem;">No matching customers found. Try a different search or select "New Customer".</div>';
+                } else {
+                    resultsEl.innerHTML = unique.map(ro => `
+                        <div class="search-result-item" onclick='selectReturningCustomer(${JSON.stringify(ro).replace(/'/g, "&#39;")})'>
+                            <div class="sr-name">${escapeHtml(ro.customer_name || 'Unknown')}</div>
+                            <div class="sr-detail">${escapeHtml(ro.phone || '')} ${ro.email ? '· ' + escapeHtml(ro.email) : ''}</div>
+                            <div class="sr-detail">${escapeHtml(ro.rv || '')} ${ro.vin ? '· VIN: ' + escapeHtml(ro.vin) : ''}</div>
+                        </div>
+                    `).join('');
+                }
+                resultsEl.classList.add('show');
+            } catch (e) { warn('Search failed:', e); }
+        }, 350);
+    }
+
+    function selectReturningCustomer(ro) {
+        formState.returnCustomerData = ro;
+        document.getElementById('searchResults').classList.remove('show');
+        document.getElementById('contactFields').classList.remove('hidden');
+
+        // Parse name into first/last
+        const nameParts = (ro.customer_name || '').trim().split(/\s+/);
+        document.getElementById('firstName').value = nameParts[0] || '';
+        document.getElementById('lastName').value = nameParts.slice(1).join(' ') || '';
+        document.getElementById('phone').value = ro.phone || '';
+        document.getElementById('email').value = ro.email || '';
+        document.getElementById('address').value = ro.address || '';
+
+        // Parse RV — try "YYYY Make Model" pattern
+        const rvParts = (ro.rv || '').trim().split(/\s+/);
+        if (rvParts.length >= 1 && /^\d{4}$/.test(rvParts[0])) {
+            document.getElementById('rvYear').value = rvParts[0];
+            document.getElementById('rvMake').value = rvParts[1] || '';
+            document.getElementById('rvModel').value = rvParts.slice(2).join(' ') || '';
+        } else {
+            document.getElementById('rvMake').value = ro.rv || '';
+        }
+        document.getElementById('rvVin').value = ro.vin || '';
+
+        showToast('Customer info loaded. Please verify and update if needed.', 'info');
+        updateStep2Continue();
+
+        // Load previous ROs for warranty selection
+        loadPreviousROs(ro.customer_name, ro.phone);
+    }
+
+    async function loadPreviousROs(name, phone) {
+        try {
+            const { data } = await getSB()
+                .from('repair_orders')
+                .select('id, ro_id, rv, description, date_received, status')
+                .or(`customer_name.ilike.%${name}%,phone.eq.${phone}`)
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+            if (data && data.length > 0) {
+                document.getElementById('prevROList').innerHTML = '<p style="font-size:0.82rem;color:#64748b;margin-bottom:8px;">Select the original RO for warranty claim:</p>' +
+                    data.map(ro => `
+                        <div class="prev-ro-item" onclick="selectWarrantyRO('${escapeHtml(ro.ro_id)}', this)">
+                            <div class="ro-label">${escapeHtml(ro.ro_id)}</div>
+                            <div class="ro-sub">${escapeHtml(ro.rv || '')} — ${escapeHtml(ro.description || '').substring(0, 80)}${(ro.description || '').length > 80 ? '...' : ''}</div>
+                            <div class="ro-sub">${ro.date_received || ''} · ${ro.status || ''}</div>
+                        </div>
+                    `).join('');
+            }
+        } catch (e) { warn('Could not load previous ROs:', e); }
+    }
+
+    function selectWarrantyRO(roId, el) {
+        formState.warrantyOrigRO = roId;
+        document.getElementById('warrantyOrigRO').value = roId;
+        document.querySelectorAll('.prev-ro-item').forEach(i => i.classList.remove('selected'));
+        el.classList.add('selected');
+    }
+
+    // ── WORK TYPE ─────────────────────────────────────────────────
+    function toggleWorkType(type) {
+        const idx = formState.workTypes.indexOf(type);
+        if (idx >= 0) {
+            formState.workTypes.splice(idx, 1);
+        } else {
+            formState.workTypes.push(type);
+        }
+        document.querySelectorAll('.work-type-btn').forEach(b => {
+            b.classList.toggle('selected', formState.workTypes.includes(b.dataset.work));
+        });
+        // Show/hide warranty fields
+        document.getElementById('warrantyFields').classList.toggle('show', formState.workTypes.includes('warranty'));
+        document.getElementById('warrantyWorkDesc').classList.toggle('hidden', !formState.workTypes.includes('warranty'));
+        updateStep2Continue();
+    }
+
+    function updateStep2Continue() {
+        const fn = document.getElementById('firstName')?.value.trim();
+        const ln = document.getElementById('lastName')?.value.trim();
+        const ph = document.getElementById('phone')?.value.trim();
+        const btn = document.getElementById('toStep3Btn');
+        btn.disabled = !(fn && ln && ph && formState.workTypes.length > 0);
+    }
+
+    // Add input listeners for live validation
+    document.addEventListener('DOMContentLoaded', () => {
+        ['firstName', 'lastName', 'phone'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', updateStep2Continue);
+        });
+    });
+
+    // ── SILO GRID ─────────────────────────────────────────────────
+    function buildSiloGrid() {
+        const grid = document.getElementById('siloGrid');
+        grid.innerHTML = SERVICE_SILOS.map(s => `
+            <div class="silo-chip" data-silo="${s.key}" onclick="toggleSilo('${s.key}', this)">
+                <span class="silo-emoji">${s.emoji}</span> ${s.label}
+            </div>
+        `).join('');
+    }
+
+    function toggleSilo(key, el) {
+        const idx = formState.selectedSilos.indexOf(key);
+        if (idx >= 0) {
+            formState.selectedSilos.splice(idx, 1);
+            el.classList.remove('selected');
+        } else {
+            formState.selectedSilos.push(key);
+            el.classList.add('selected');
+        }
+    }
+
+    // ── DROP-OFF SELECTION ────────────────────────────────────────
+    function selectDropoff(choice) {
+        formState.dropoffChoice = choice;
+        document.querySelectorAll('.dropoff-opt').forEach(b => b.classList.toggle('selected', b.dataset.dropoff === choice));
+        document.getElementById('scheduledDateWrap').classList.toggle('hidden', choice !== 'scheduled');
+        updateSubmitButton();
+    }
+
+    // ── LEAD FIELDS VISIBILITY ────────────────────────────────────
+    // Show lead-specific fields in step 3 when mode is lead
+    function updateLeadFieldsVisibility() {
+        document.getElementById('leadFields').classList.toggle('show', formState.mode === 'lead');
+    }
+
+    // ── DICTATION (Web Speech API) ────────────────────────────────
+    let _activeRecognition = null;
+    function toggleDictation(textareaId) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            showToast('Voice input is not supported in this browser.', 'warning');
+            return;
+        }
+
+        const textarea = document.getElementById(textareaId);
+        const btn = textarea.parentElement.querySelector('.dictation-btn');
+
+        if (_activeRecognition) {
+            _activeRecognition.stop();
+            _activeRecognition = null;
+            btn.classList.remove('recording');
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        let finalTranscript = textarea.value;
+        if (finalTranscript && !finalTranscript.endsWith(' ')) finalTranscript += ' ';
+
+        recognition.onresult = (event) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interim += event.results[i][0].transcript;
+                }
+            }
+            textarea.value = finalTranscript + interim;
+        };
+
+        recognition.onend = () => {
+            btn.classList.remove('recording');
+            _activeRecognition = null;
+            textarea.value = finalTranscript;
+        };
+
+        recognition.onerror = (e) => {
+            warn('Dictation error:', e.error);
+            btn.classList.remove('recording');
+            _activeRecognition = null;
+            if (e.error === 'not-allowed') showToast('Microphone access denied. Please allow microphone in browser settings.', 'error');
+        };
+
+        recognition.start();
+        _activeRecognition = recognition;
+        btn.classList.add('recording');
+        showToast('Listening... Tap the microphone again to stop.', 'info');
+    }
+
+    // ── SIGNATURE PAD ─────────────────────────────────────────────
+    let _sigCanvas, _sigCtx, _sigDrawing = false, _sigHasData = false;
+
+    function initSignaturePad() {
+        _sigCanvas = document.getElementById('signatureCanvas');
+        _sigCtx = _sigCanvas.getContext('2d');
+
+        // Set actual canvas size
+        const rect = _sigCanvas.getBoundingClientRect();
+        _sigCanvas.width = rect.width * 2;  // 2x for retina
+        _sigCanvas.height = 360;            // 180px * 2 for retina
+        _sigCtx.scale(2, 2);
+        _sigCtx.strokeStyle = '#1e293b';
+        _sigCtx.lineWidth = 2;
+        _sigCtx.lineCap = 'round';
+        _sigCtx.lineJoin = 'round';
+
+        // Draw baseline
+        drawSigBaseline();
+
+        // Mouse events
+        _sigCanvas.addEventListener('mousedown', sigStart);
+        _sigCanvas.addEventListener('mousemove', sigMove);
+        _sigCanvas.addEventListener('mouseup', sigEnd);
+        _sigCanvas.addEventListener('mouseleave', sigEnd);
+
+        // Touch events
+        _sigCanvas.addEventListener('touchstart', sigTouchStart, { passive: false });
+        _sigCanvas.addEventListener('touchmove', sigTouchMove, { passive: false });
+        _sigCanvas.addEventListener('touchend', sigEnd);
+    }
+
+    function drawSigBaseline() {
+        _sigCtx.save();
+        _sigCtx.strokeStyle = '#e2e8f0';
+        _sigCtx.lineWidth = 1;
+        _sigCtx.setLineDash([4, 4]);
+        _sigCtx.beginPath();
+        const y = (_sigCanvas.height / 2) * 0.78;
+        _sigCtx.moveTo(20, y);
+        _sigCtx.lineTo((_sigCanvas.width / 2) - 20, y);
+        _sigCtx.stroke();
+        _sigCtx.restore();
+        // Restore main settings
+        _sigCtx.strokeStyle = '#1e293b';
+        _sigCtx.lineWidth = 2;
+        _sigCtx.setLineDash([]);
+    }
+
+    function sigGetPos(e) {
+        const rect = _sigCanvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function sigStart(e) {
+        _sigDrawing = true;
+        _sigHasData = true;
+        const pos = sigGetPos(e);
+        _sigCtx.beginPath();
+        _sigCtx.moveTo(pos.x, pos.y);
+    }
+
+    function sigMove(e) {
+        if (!_sigDrawing) return;
+        const pos = sigGetPos(e);
+        _sigCtx.lineTo(pos.x, pos.y);
+        _sigCtx.stroke();
+    }
+
+    function sigEnd() { _sigDrawing = false; }
+
+    function sigTouchStart(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const mouseEvent = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY });
+        _sigCanvas.dispatchEvent(mouseEvent);
+    }
+
+    function sigTouchMove(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const mouseEvent = new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY });
+        _sigCanvas.dispatchEvent(mouseEvent);
+    }
+
+    function clearSignature() {
+        _sigCtx.clearRect(0, 0, _sigCanvas.width / 2, _sigCanvas.height / 2);
+        drawSigBaseline();
+        _sigHasData = false;
+        formState.signatureData = null;
+        updateSubmitButton();
+    }
+
+    function getSignatureData() {
+        if (!_sigHasData) return null;
+        return _sigCanvas.toDataURL('image/png');
+    }
+
+    // ── PHOTO CAPTURE ─────────────────────────────────────────────
+    let _cameraStream = null;
+
+    async function toggleCamera() {
+        const preview = document.getElementById('cameraPreview');
+        const cameraBtn = document.getElementById('cameraBtn');
+        const captureBtn = document.getElementById('captureBtn');
+
+        if (_cameraStream) {
+            stopCamera();
+            return;
+        }
+
+        try {
+            _cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+            });
+            preview.srcObject = _cameraStream;
+            preview.style.display = 'block';
+            cameraBtn.textContent = '❌ Close Camera';
+            captureBtn.classList.remove('hidden');
+        } catch (e) {
+            showToast('Could not access camera. Please check permissions.', 'error');
+            warn('Camera error:', e);
+        }
+    }
+
+    function capturePhoto() {
+        const preview = document.getElementById('cameraPreview');
+        const canvas = document.getElementById('photoCaptureCanvas');
+        const img = document.getElementById('capturedPhoto');
+
+        canvas.width = preview.videoWidth;
+        canvas.height = preview.videoHeight;
+        canvas.getContext('2d').drawImage(preview, 0, 0);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        formState.capturedPhoto = dataUrl;
+
+        img.src = dataUrl;
+        img.style.display = 'block';
+        stopCamera();
+
+        document.getElementById('retakeBtn').classList.remove('hidden');
+        showToast('Photo captured.', 'success');
+    }
+
+    function retakePhoto() {
+        formState.capturedPhoto = null;
+        document.getElementById('capturedPhoto').style.display = 'none';
+        document.getElementById('retakeBtn').classList.add('hidden');
+        toggleCamera();
+    }
+
+    function stopCamera() {
+        if (_cameraStream) {
+            _cameraStream.getTracks().forEach(t => t.stop());
+            _cameraStream = null;
+        }
+        document.getElementById('cameraPreview').style.display = 'none';
+        document.getElementById('cameraBtn').textContent = '📷 Open Camera';
+        document.getElementById('captureBtn').classList.add('hidden');
+    }
+
+    // ── RAF AGREEMENT CHECK ───────────────────────────────────────
+    function checkRafAgreed() {
+        updateSubmitButton();
+    }
+
+    // ── SUBMIT BUTTON STATE ───────────────────────────────────────
+    function updateSubmitButton() {
+        const btn = document.getElementById('submitBtn');
+        if (formState.mode === 'dropoff') {
+            const rafAgreed = document.getElementById('rafAgree')?.checked;
+            const sigPrinted = document.getElementById('sigPrintedName')?.value.trim();
+            const hasDropoffChoice = !!formState.dropoffChoice;
+            const hasSig = _sigHasData;
+            btn.disabled = !(rafAgreed && sigPrinted && hasDropoffChoice && hasSig);
+        } else {
+            // Lead mode — just need the review to be shown
+            btn.disabled = false;
+        }
+    }
+
+    // Add listeners for submit button state
+    document.addEventListener('DOMContentLoaded', () => {
+        const sigName = document.getElementById('sigPrintedName');
+        if (sigName) sigName.addEventListener('input', updateSubmitButton);
+    });
+
+    // ── SUBMIT ────────────────────────────────────────────────────
+    async function submitCheckin() {
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+
+        try {
+            // Gather form data
+            const firstName = document.getElementById('firstName').value.trim();
+            const lastName = document.getElementById('lastName').value.trim();
+            const customerName = `${firstName} ${lastName}`;
+            const phone = document.getElementById('phone').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const address = document.getElementById('address').value.trim();
+            const rvYear = document.getElementById('rvYear').value.trim();
+            const rvMake = document.getElementById('rvMake').value.trim();
+            const rvModel = document.getElementById('rvModel').value.trim();
+            const rv = [rvYear, rvMake, rvModel].filter(Boolean).join(' ');
+            const vin = document.getElementById('rvVin').value.trim().toUpperCase();
+            const serviceDesc = document.getElementById('serviceDesc').value.trim();
+            const warrantyDesc = document.getElementById('warrantyDesc')?.value.trim() || '';
+
+            // Determine RO type
+            let roType = 'standard';
+            if (formState.workTypes.includes('new') && formState.workTypes.includes('warranty')) {
+                roType = 'hybrid';
+            } else if (formState.workTypes.includes('warranty')) {
+                roType = 'warranty';
+            }
+
+            // Determine status
+            let status = 'Scheduled'; // default for lead conversion
+            if (formState.mode === 'dropoff') {
+                status = formState.dropoffChoice === 'today' ? 'On Lot' : 'Scheduled';
+            }
+
+            // Determine repair type (first selected silo)
+            const repairType = formState.selectedSilos.length > 0
+                ? SILO_TO_REPAIR_TYPE[formState.selectedSilos[0]] || null
+                : null;
+
+            // Build description
+            let fullDescription = serviceDesc;
+            if (warrantyDesc) {
+                fullDescription = `[NEW WORK]\n${serviceDesc}\n\n[WARRANTY WORK]\n${warrantyDesc}`;
+            }
+
+            // Promised date
+            const promisedDate = formState.mode === 'lead'
+                ? document.getElementById('leadPromisedDate')?.value || null
+                : null;
+
+            // Date received
+            const today = new Date().toISOString().slice(0, 10);
+            const dateReceived = (formState.mode === 'dropoff' && formState.dropoffChoice === 'today')
+                ? today : null;
+
+            // Generate RO ID
+            const candidates = generateROIdCandidates(customerName, rv, today);
+
+            let insertedRO = null;
+            for (const roId of candidates) {
+                const { data, error } = await getSB().from('repair_orders').insert({
+                    ro_id:          roId,
+                    customer_name:  customerName,
+                    phone:          phone || null,
+                    email:          email || null,
+                    address:        address || null,
+                    rv:             rv || null,
+                    vin:            vin || null,
+                    repair_type:    repairType,
+                    description:    fullDescription,
+                    date_received:  dateReceived,
+                    promised_date:  promisedDate,
+                    pct_complete:   0,
+                    status:         status,
+                    urgency:        roType === 'warranty' ? 'Critical' : null,
+                    customer_type:  formState.customerType === 'returning' ? 'Returning' : 'New',
+                    ro_type:        roType,
+                    photo_library:  { photos: [], docs: [] },
+                }).select().single();
+
+                if (!error) { insertedRO = data; break; }
+                if (error.code !== '23505') throw error;
+            }
+
+            if (!insertedRO) throw new Error('Could not generate a unique RO ID.');
+
+            // Add notes
+            if (formState.mode === 'lead') {
+                const leadNotes = document.getElementById('leadNotes')?.value.trim();
+                if (leadNotes) {
+                    await getSB().from('notes').insert({
+                        ro_id: insertedRO.id,
+                        type: 'customer_comm',
+                        body: `[LEAD CONVERSION NOTES]\n${leadNotes}`,
+                    });
+                }
+                const dropDate = document.getElementById('leadDropoffDate')?.value;
+                if (dropDate) {
+                    await getSB().from('notes').insert({
+                        ro_id: insertedRO.id,
+                        type: 'ro_status',
+                        body: `Planned drop-off date: ${dropDate}`,
+                    });
+                }
+            }
+
+            // Warranty original RO reference
+            if (formState.workTypes.includes('warranty')) {
+                const origRO = document.getElementById('warrantyOrigRO')?.value.trim();
+                if (origRO) {
+                    await getSB().from('notes').insert({
+                        ro_id: insertedRO.id,
+                        type: 'ro_status',
+                        body: `Warranty claim — Original RO: ${origRO}`,
+                    });
+                }
+            }
+
+            // Additional silos note (if multiple silos selected)
+            if (formState.selectedSilos.length > 1) {
+                const siloLabels = formState.selectedSilos.map(k => {
+                    const s = SERVICE_SILOS.find(si => si.key === k);
+                    return s ? `${s.emoji} ${s.label}` : k;
+                }).join(', ');
+                await getSB().from('notes').insert({
+                    ro_id: insertedRO.id,
+                    type: 'ro_status',
+                    body: `Services requested: ${siloLabels}`,
+                });
+            }
+
+            // Store signature in Supabase Storage
+            if (formState.mode === 'dropoff') {
+                const sigData = getSignatureData();
+                if (sigData) {
+                    try {
+                        const sigBlob = dataURLtoBlob(sigData);
+                        const sigPath = `raf-signatures/${insertedRO.ro_id}_signature_${Date.now()}.png`;
+                        await getSB().storage.from('raf-documents').upload(sigPath, sigBlob, { contentType: 'image/png' });
+                        formState.signatureData = sigPath;
+                    } catch (e) { warn('Signature upload failed:', e); }
+                }
+
+                // Store photo
+                if (formState.capturedPhoto) {
+                    try {
+                        const photoBlob = dataURLtoBlob(formState.capturedPhoto);
+                        const photoPath = `raf-photos/${insertedRO.ro_id}_photo_${Date.now()}.jpg`;
+                        await getSB().storage.from('raf-documents').upload(photoPath, photoBlob, { contentType: 'image/jpeg' });
+                    } catch (e) { warn('Photo upload failed:', e); }
+                }
+
+                // Send RAF copy via email
+                if (document.getElementById('sendEmail')?.checked && email) {
+                    try {
+                        await sendRAFEmail(insertedRO, customerName, email);
+                    } catch (e) { warn('RAF email failed:', e); }
+                }
+            }
+
+            // Success
+            document.getElementById('newROId').textContent = insertedRO.ro_id;
+            const modeLabel = formState.mode === 'dropoff'
+                ? (formState.dropoffChoice === 'today' ? 'Drop-Off' : 'Scheduled Drop-Off')
+                : 'Lead Conversion';
+            const typeLabel = roType === 'hybrid' ? 'Hybrid (New + Warranty)' : roType === 'warranty' ? 'Warranty' : 'Standard';
+            document.getElementById('successMsg').innerHTML = `
+                ${modeLabel} — ${typeLabel} RO created for <strong>${escapeHtml(customerName)}</strong>.<br>
+                Status: <strong>${status}</strong>
+                ${email && formState.mode === 'dropoff' ? '<br>A copy of the signed agreement has been sent to the customer\'s email.' : ''}
+            `;
+            goToStep(5);
+            showToast('Repair Order created successfully!', 'success');
+
+        } catch (e) {
+            console.error('Submit failed:', e);
+            showToast('Error creating RO: ' + e.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Submit Check-In';
+        }
+    }
+
+    // ── SEND RAF EMAIL ────────────────────────────────────────────
+    async function sendRAFEmail(ro, customerName, email) {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
+            method: 'POST',
+            headers: {
+                'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                type: 'raf_copy',
+                to: email,
+                cc: 'info@patriotsrvservices.com',
+                subject: `Patriots RV Services — Repair Authorization for ${ro.ro_id}`,
+                customerName: customerName,
+                roId: ro.ro_id,
+                signedDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+            }),
+        });
+        if (!resp.ok) warn('RAF email response not ok:', resp.status);
+    }
+
+    // ── RO ID GENERATION ──────────────────────────────────────────
+    function generateROId(customerName, rv, dateStr) {
+        const namePart = (customerName || 'UNKN').replace(/[^A-Za-z]/g, '').substring(0, 4).toUpperCase().padEnd(4, 'X');
+        const datePart = dateStr.replace(/-/g, '').substring(2); // YYMMDD → take last 6, but we need 4 hex
+        const hash = simpleHash(namePart + (rv || '') + dateStr);
+        const hex = hash.toString(16).toUpperCase().padStart(4, '0').substring(0, 4);
+        return `PRVS-${namePart.substring(0,2)}${datePart.substring(2,4)}-${hex}`;
+    }
+
+    function simpleHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const chr = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + chr;
+            hash |= 0;
+        }
+        return Math.abs(hash);
+    }
+
+    function generateROIdCandidates(customerName, rv, dateStr) {
+        const base = generateROId(customerName, rv, dateStr);
+        const suffixed = Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`);
+        const fallback = `${base}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+        return [base, ...suffixed, fallback];
+    }
+
+    // ── UTILITIES ─────────────────────────────────────────────────
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function dataURLtoBlob(dataURL) {
+        const parts = dataURL.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const bstr = atob(parts[1]);
+        const u8arr = new Uint8Array(bstr.length);
+        for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+        return new Blob([u8arr], { type: mime });
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
+    }
+
+    function clearContactFields() {
+        ['firstName', 'lastName', 'phone', 'email', 'address', 'rvYear', 'rvMake', 'rvModel', 'rvVin', 'rvColor'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        formState.returnCustomerData = null;
+    }
+
+    function startNewCheckin() {
+        // Reset everything
+        formState = {
+            mode: null, customerType: null, workTypes: [], selectedSilos: [],
+            dropoffChoice: null, returnCustomerData: null, warrantyOrigRO: null,
+            signatureData: null, capturedPhoto: null,
+        };
+        clearContactFields();
+        ['serviceDesc', 'warrantyDesc', 'leadNotes', 'warrantyOrigRO', 'sigPrintedName'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+        document.getElementById('rafAgree').checked = false;
+        document.getElementById('contactFields').classList.add('hidden');
+        document.getElementById('returningSearch').classList.remove('hidden');
+        document.getElementById('searchResults').classList.remove('show');
+        document.getElementById('warrantyFields').classList.remove('show');
+        document.getElementById('warrantyWorkDesc').classList.add('hidden');
+        document.getElementById('scheduledDateWrap').classList.add('hidden');
+        document.getElementById('capturedPhoto').style.display = 'none';
+        document.getElementById('retakeBtn').classList.add('hidden');
+        document.getElementById('prevROList').innerHTML = '';
+        stopCamera();
+        if (_sigCanvas) clearSignature();
+        buildSiloGrid();
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Submit Check-In';
+
+        goToStep(1);
+    }
+
+    // ── INIT ──────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+        initAuth();
+    });
+
+    // Watch for step 3 → show lead fields
+    const _origGoToStep = goToStep;
+    // (already handled inline — lead fields shown based on mode)
+    // Override goToStep to also update lead fields visibility
+    const _baseGoToStep = goToStep;
+    // Patch: show lead fields when entering step 3
+    (function() {
+        const orig = window.goToStep || goToStep;
+        // Already handled in goToStep via updateLeadFieldsVisibility
+    })();
+    // Just call it when step 3 is shown
+    const origGoToStep3 = goToStep;
+
+    // Simpler: just observe step changes
+    const _realGoToStep = goToStep;
+    window.goToStep = function(step) {
+        _realGoToStep(step);
+        if (step === 3) updateLeadFieldsVisibility();
+    };
+</script>
+</body>
+</html>

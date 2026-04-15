@@ -2499,6 +2499,21 @@
             letter-spacing: 0.06em;
             margin-top: 2px;
         }
+        .hybrid-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            background: linear-gradient(135deg, rgba(30,58,138,0.12), rgba(139,92,246,0.12));
+            border: 1px solid rgba(99,102,241,0.4);
+            border-radius: 12px;
+            color: #6366f1;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-top: 2px;
+        }
         .training-badge {
             display: inline-flex;
             align-items: center;
@@ -3003,6 +3018,7 @@
         .compact-chip.ch-request     { color: #FF1493; border-color: #FF1493; background: rgba(255,20,147,0.08); }
         .compact-chip.ch-insurance   { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(251,146,60,0.08); }
         .compact-chip.ch-warranty    { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3); }
+        .compact-chip.ch-hybrid      { background: linear-gradient(135deg, rgba(30,58,138,0.12), rgba(139,92,246,0.12)); color: #6366f1; border-color: rgba(99,102,241,0.4); }
         .compact-chip.ch-shop        { background: rgba(139,92,246,0.15); color: #8b5cf6; border-color: rgba(139,92,246,0.3); }
         .compact-chip.ch-training   { color: #6b7280; border-color: rgba(107,114,128,0.4); background: rgba(107,114,128,0.10); }
         .compact-chip.ch-parts-badge { color: var(--text-secondary); border-color: var(--border-color); background: var(--bg-elevated); }
@@ -3370,6 +3386,9 @@
                 </button>
                 <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(234,179,8,0.15); color: #facc15; border: 2px solid rgba(234,179,8,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(234,179,8,0.3)'" onmouseout="this.style.background='rgba(234,179,8,0.15)'">
                     &#128451; Closed ROs
+                </button>
+                <button id="customerCheckinBtn" onclick="window.open('customer-checkin.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(34,197,94,0.15); color: #4ade80; border: 2px solid rgba(34,197,94,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(34,197,94,0.3)'" onmouseout="this.style.background='rgba(34,197,94,0.15)'">
+                    📋 Customer Check-In
                 </button>
                 <button id="erAdminBtn" onclick="openERAdminView()" style="display:none; padding: 10px 16px; background: rgba(217,119,6,0.15); color: #fbbf24; border: 2px solid rgba(217,119,6,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(217,119,6,0.3)'" onmouseout="this.style.background='rgba(217,119,6,0.15)'">
                     🪔 Wishes <span id="erUnreviewedCount" style="background:#d97706;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
@@ -8252,6 +8271,7 @@ Notes: ${notes}` : '',
                         if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
                     } catch(e) {}
                     if (ro.roType === 'warranty') chips += '<span class="compact-chip ch-warranty">Warranty</span>';
+                    if (ro.roType === 'hybrid') chips += '<span class="compact-chip ch-hybrid">🔧🛡️ Hybrid</span>';
                     if (ro.roType === 'shop') chips += '<span class="compact-chip ch-shop">🏪 Shop</span>';
                     if (ro.isTraining) chips += '<span class="compact-chip ch-training">🎓 Training</span>';
 
@@ -8385,6 +8405,7 @@ Notes: ${notes}` : '',
                         ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.roType === 'warranty' ? '<div class="warranty-badge">🔄 Warranty</div><div class="warranty-badge" style="background:rgba(0,0,0,0.08);border-color:rgba(0,0,0,0.15);color:#6b7280;margin-top:2px;">$0 — No Charge</div>' : ''}
+                        ${ro.roType === 'hybrid' ? '<div class="hybrid-badge">🔧🛡️ New + Warranty</div>' : ''}
                         ${ro.roType === 'shop' ? '<div class="shop-badge">🏪 Shop Operations</div>' : ''}
                         ${ro.isTraining ? '<div class="training-badge">🎓 Training</div>' : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
@@ -9510,6 +9531,11 @@ Notes: ${notes}` : '',
             const closedROsBtn = document.getElementById('closedROsBtn');
             if (closedROsBtn) {
                 closedROsBtn.style.display = 'inline-block';
+            }
+            // Show Customer Check-In button (Manager and above)
+            const checkinBtn = document.getElementById('customerCheckinBtn');
+            if (checkinBtn) {
+                checkinBtn.style.display = (isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) ? 'inline-block' : 'none';
             }
             // Show/hide Enhancement Requests admin button (Admin only)
             const erAdminBtn = document.getElementById('erAdminBtn');
