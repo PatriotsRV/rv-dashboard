@@ -32,18 +32,27 @@
         html { font-size: 16px; -webkit-text-size-adjust: 100%; }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            background: #e8e2da url('checkin-bg.jpg') center center / cover no-repeat fixed;
+            background: #e8e2da;
             color: #2c2520;
             min-height: 100vh;
             line-height: 1.6;
         }
-        /* Soft cream overlay so cards/text stay readable over the photo */
+        /* Fixed full-bleed RV park photo with boosted vibrance */
         body::before {
             content: '';
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: linear-gradient(180deg, rgba(250,248,245,0.55) 0%, rgba(232,226,218,0.65) 100%);
+            background: url('checkin-bg.jpg') center center / cover no-repeat;
+            filter: saturate(1.25) contrast(1.05);
             pointer-events: none;
-            z-index: 0;
+            z-index: -2;
+        }
+        /* Very light overlay so cards stay readable without washing out the photo */
+        body::after {
+            content: '';
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(180deg, rgba(250,248,245,0.18) 0%, rgba(232,226,218,0.28) 100%);
+            pointer-events: none;
+            z-index: -1;
         }
 
         /* ── COLOR TOKENS ─────────────────────────────────────────── */
