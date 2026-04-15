@@ -155,7 +155,7 @@ Deno.serve(async (req: Request) => {
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="border-bottom: 3px solid #c8102e; padding-bottom: 16px; margin-bottom: 20px;">
     <h1 style="color: #c8102e; margin: 0; font-size: 22px;">Patriots RV Services</h1>
-    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Your Mission Critical RV Service and Upgrade Center</p>
+    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Your Veteran Owned, Mission Critical RV Service, Repair and Upgrade Center</p>
   </div>
 
   <p>Dear ${customerName || "Valued Customer"},</p>
@@ -383,7 +383,7 @@ Deno.serve(async (req: Request) => {
 
     <div style="background: linear-gradient(135deg, #1e3a8a, #1d4ed8); padding: 24px 20px; text-align: center;">
       <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">Patriots RV Services</h1>
-      <p style="margin: 6px 0 0; color: #bfdbfe; font-size: 12px; font-style: italic;">Dedicated to providing top-quality RV repair, upgrades, and service with integrity and precision.</p>
+      <p style="margin: 6px 0 0; color: #bfdbfe; font-size: 12px; font-style: italic;">Your Veteran Owned, Mission Critical RV Service, Repair and Upgrade Center.</p>
     </div>
 
     <div style="padding: 24px 20px;">
@@ -468,7 +468,7 @@ Deno.serve(async (req: Request) => {
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="border-bottom: 3px solid #c8102e; padding-bottom: 16px; margin-bottom: 20px;">
     <h1 style="color: #c8102e; margin: 0; font-size: 22px;">Patriots RV Services</h1>
-    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Your Mission Critical RV Service and Upgrade Center</p>
+    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Your Veteran Owned, Mission Critical RV Service, Repair and Upgrade Center</p>
   </div>
   <p>Dear ${customerName},</p>
   <p>Thank you for your interest in our solar installation services. Please see the <strong>attached PDF</strong> for your complete quote details.</p>
