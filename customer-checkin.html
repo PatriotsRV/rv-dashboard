@@ -661,6 +661,7 @@
 
             <div class="raf-container" id="rafContent">
                 <div class="raf-title">Patriots RV Services<br>Work Authorization &amp; Repair Agreement</div>
+                <p style="text-align:center;font-weight:700;color:#b91c1c;font-size:0.95rem;margin:8px 0 16px;letter-spacing:0.03em;">⚠️ PLEASE READ ALL SECTIONS ⚠️</p>
 
                 <h3>1. Work Authorization</h3>
                 <p>I hereby authorize Patriots RV Services ("PRVS") to perform the repairs, upgrades, and/or services described on this Repair Order for the vehicle identified above. I agree that Patriots RV Services is <strong>not responsible</strong> for loss or damage to this vehicle or articles left in the vehicle due to fire, theft, or any other cause beyond its reasonable control. I further grant permission for PRVS employees to operate the vehicle for the purposes of testing, inspection, and quality assurance.</p>
@@ -735,8 +736,8 @@
 
             <!-- Photo capture -->
             <div style="height:20px"></div>
-            <div class="section-title"><span class="icon">📸</span> Photo Verification (Optional)</div>
-            <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">Capture a photo of the customer signing for verification records.</p>
+            <div class="section-title"><span class="icon">📸</span> Photo Verification <span style="color:#b91c1c;font-weight:700;">(Required)</span></div>
+            <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">A photo of the customer at time of signing is <strong>required</strong> for verification and dispute resolution.</p>
             <div class="photo-capture-wrap">
                 <video id="cameraPreview" class="camera-preview" autoplay playsinline></video>
                 <canvas id="photoCaptureCanvas" class="hidden"></canvas>
@@ -1369,16 +1370,12 @@
         // Draw baseline
         drawSigBaseline();
 
-        // Mouse events
-        _sigCanvas.addEventListener('mousedown', sigStart);
-        _sigCanvas.addEventListener('mousemove', sigMove);
-        _sigCanvas.addEventListener('mouseup', sigEnd);
-        _sigCanvas.addEventListener('mouseleave', sigEnd);
-
-        // Touch events
-        _sigCanvas.addEventListener('touchstart', sigTouchStart, { passive: false });
-        _sigCanvas.addEventListener('touchmove', sigTouchMove, { passive: false });
-        _sigCanvas.addEventListener('touchend', sigEnd);
+        // Pointer events (works with mouse, trackpad, touch, and stylus)
+        _sigCanvas.addEventListener('pointerdown', sigPointerDown);
+        _sigCanvas.addEventListener('pointermove', sigPointerMove);
+        _sigCanvas.addEventListener('pointerup', sigEnd);
+        _sigCanvas.addEventListener('pointerleave', sigEnd);
+        _sigCanvas.addEventListener('pointercancel', sigEnd);
     }
 
     function drawSigBaseline() {
@@ -1403,7 +1400,9 @@
         return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
 
-    function sigStart(e) {
+    function sigPointerDown(e) {
+        e.preventDefault();
+        _sigCanvas.setPointerCapture(e.pointerId);
         _sigDrawing = true;
         _sigHasData = true;
         const pos = sigGetPos(e);
@@ -1411,28 +1410,15 @@
         _sigCtx.moveTo(pos.x, pos.y);
     }
 
-    function sigMove(e) {
+    function sigPointerMove(e) {
         if (!_sigDrawing) return;
+        e.preventDefault();
         const pos = sigGetPos(e);
         _sigCtx.lineTo(pos.x, pos.y);
         _sigCtx.stroke();
     }
 
     function sigEnd() { _sigDrawing = false; }
-
-    function sigTouchStart(e) {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const mouseEvent = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY });
-        _sigCanvas.dispatchEvent(mouseEvent);
-    }
-
-    function sigTouchMove(e) {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const mouseEvent = new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY });
-        _sigCanvas.dispatchEvent(mouseEvent);
-    }
 
     function clearSignature() {
         _sigCtx.clearRect(0, 0, _sigCanvas.width / 2, _sigCanvas.height / 2);
@@ -1492,6 +1478,7 @@
 
         document.getElementById('retakeBtn').classList.remove('hidden');
         showToast('Photo captured.', 'success');
+        updateSubmitButton();
     }
 
     function retakePhoto() {
@@ -1499,6 +1486,7 @@
         document.getElementById('capturedPhoto').style.display = 'none';
         document.getElementById('retakeBtn').classList.add('hidden');
         toggleCamera();
+        updateSubmitButton();
     }
 
     function stopCamera() {
@@ -1524,7 +1512,8 @@
             const sigPrinted = document.getElementById('sigPrintedName')?.value.trim();
             const hasDropoffChoice = !!formState.dropoffChoice;
             const hasSig = _sigHasData;
-            btn.disabled = !(rafAgreed && sigPrinted && hasDropoffChoice && hasSig);
+            const hasPhoto = !!formState.capturedPhoto;
+            btn.disabled = !(rafAgreed && sigPrinted && hasDropoffChoice && hasSig && hasPhoto);
         } else {
             // Lead mode — just need the review to be shown
             btn.disabled = false;
