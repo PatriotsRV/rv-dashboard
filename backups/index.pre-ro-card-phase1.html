@@ -1,14 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.405
-    Released: 2026-04-14
-    v1.405: Shop RO Type (GH#24 Phase 1) — 🏪 Shop Operations RO type for non-customer parts ordering/returns. Simplified New/Edit modal (customer fields hidden). Shop badge on standard + compact cards. RO Type filter button. Slack notifications skipped for shop ROs. Spanish translations.
-    v1.404: Training RO flag (GH#24) — is_training badge, filter, Slack/report exclusions
-           DB migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS is_training BOOLEAN DEFAULT FALSE;
-    v1.404: Slack integration (GH#20) — notifySlack() helper, triggers on part received, new RO, ready for pickup, urgency→Critical, warranty RO opened
-    v1.402: Warranty RO Type — 4th RO type with auto-Critical urgency, red warranty badge, $0 No Charge badge, Original RO# and Warranty Reason fields, filter button, compact chip. Warranty data stored in ro_type column + notes prefix.
-    v1.401: Compact View Mobile Inline Expansion — tap row body to expand/collapse inline panel (mobile ≤768px). Chevron affordance, one-at-a-time, status/urgency/tech/spot/quick-actions. Desktop compact unchanged.
+    PRVS Dashboard v1.400
+    Released: 2026-04-11
     v1.400: Security Remediation Complete — S1-S7: XSS escapeHtml (44 calls), RBAC migration (5 files), analytics+solar auth guards, Anthropic API key to server-side proxy, DEBUG-gated console logging, inline onclick event delegation, CORS origin lockdown, session-token auth, calendar config table, search_path fix
     v1.308: GH#22 Closed RO Archive — header button linking to closed-ros.html (visible to all users)
     v1.307: GH#19 Enhancement Request — floating genie lamp button on all pages, modal with category dropdown + voice dictation, Supabase enhancement_requests table, daily email report via pg_cron
@@ -322,13 +316,6 @@
             transform: translateY(-1px);
         }
 
-        .search-highlight {
-            background: rgba(250, 204, 21, 0.35);
-            color: inherit;
-            border-radius: 2px;
-            padding: 0 1px;
-        }
-
         .upload-area {
             flex: 1;
             min-width: 300px;
@@ -515,43 +502,43 @@
         }
 
         .ro-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-            border-color: rgba(10, 132, 255, 0.5);
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--accent-info);
         }
 
         .ro-card.ro-card-status-waiting-for-qa-qc {
-            border-color: rgba(255, 20, 147, 0.5);
-            box-shadow: 0 0 8px rgba(255, 20, 147, 0.15);
+            border-color: #FF1493;
+            box-shadow: 0 0 12px rgba(255, 20, 147, 0.3);
         }
 
         .ro-card.ro-card-status-waiting-for-qa-qc:hover {
-            border-color: rgba(255, 20, 147, 0.7);
-            box-shadow: 0 0 12px rgba(255, 20, 147, 0.25);
+            border-color: #FF1493;
+            box-shadow: 0 0 24px rgba(255, 20, 147, 0.5);
         }
 
-        /* ── Parts Request Indicator ───────────────────────────────────── */
+        /* ── Parts Request Pulse ───────────────────────────────────────── */
         @keyframes parts-request-border-pulse {
             0%, 100% {
-                border-color: rgba(255, 20, 147, 0.35);
-                box-shadow: none;
+                border-color: rgba(255, 20, 147, 0.4);
+                box-shadow: 0 0 8px rgba(255, 20, 147, 0.2);
             }
             50% {
-                border-color: rgba(255, 20, 147, 0.75);
-                box-shadow: 0 0 6px rgba(255, 20, 147, 0.15);
+                border-color: rgba(255, 20, 147, 1);
+                box-shadow: 0 0 22px rgba(255, 20, 147, 0.65), 0 0 6px rgba(255, 20, 147, 0.4) inset;
             }
         }
         .ro-card.has-parts-request {
-            animation: parts-request-border-pulse 3s ease-in-out infinite;
+            animation: parts-request-border-pulse 2.4s ease-in-out infinite;
             border-width: 2px;
         }
         .ro-card.has-parts-request:hover {
-            animation: parts-request-border-pulse 2s ease-in-out infinite;
+            animation: parts-request-border-pulse 1.4s ease-in-out infinite;
         }
 
         @keyframes chip-pulse {
-            0%, 100% { opacity: 0.9; }
-            50%       { opacity: 1; }
+            0%, 100% { opacity: 0.85; box-shadow: 0 0 5px rgba(255, 20, 147, 0.4); }
+            50%       { opacity: 1;    box-shadow: 0 0 14px rgba(255, 20, 147, 0.85); }
         }
         .parts-request-chip {
             display: flex;
@@ -561,20 +548,21 @@
             padding: 5px 12px;
             border-radius: 20px;
             border: 1.5px solid #FF1493;
-            background: rgba(255, 20, 147, 0.10);
+            background: rgba(255, 20, 147, 0.12);
             color: #FF1493;
             font-size: 0.68rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.07em;
             cursor: pointer;
+            animation: chip-pulse 2.4s ease-in-out infinite;
             margin-bottom: 8px;
             width: 100%;
             box-sizing: border-box;
             transition: background 0.2s;
         }
         .parts-request-chip:hover {
-            background: rgba(255, 20, 147, 0.20);
+            background: rgba(255, 20, 147, 0.22);
         }
 
         /* ── Parts Status Chips (GH#14) ─────────────────────────────── */
@@ -599,28 +587,32 @@
         }
         .parts-status-chip.sourcing {
             border-color: #ff6a00;
-            background: rgba(255, 106, 0, 0.10);
+            background: rgba(255, 106, 0, 0.13);
             color: #ff6a00;
+            animation: chip-pulse 2.0s ease-in-out infinite;
+            text-shadow: 0 0 8px rgba(255,106,0,0.5);
         }
-        .parts-status-chip.sourcing:hover { background: rgba(255, 106, 0, 0.20); }
+        .parts-status-chip.sourcing:hover { background: rgba(255, 106, 0, 0.25); }
         .parts-status-chip.outstanding {
             border-color: #f59e0b;
-            background: rgba(245, 158, 11, 0.10);
+            background: rgba(245, 158, 11, 0.13);
             color: #f59e0b;
+            animation: chip-pulse 2.4s ease-in-out infinite;
         }
-        .parts-status-chip.outstanding:hover { background: rgba(245, 158, 11, 0.20); }
+        .parts-status-chip.outstanding:hover { background: rgba(245, 158, 11, 0.25); }
         .parts-status-chip.received {
             border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.10);
+            background: rgba(34, 197, 94, 0.13);
             color: #22c55e;
         }
-        .parts-status-chip.received:hover { background: rgba(34, 197, 94, 0.20); }
+        .parts-status-chip.received:hover { background: rgba(34, 197, 94, 0.25); }
         .parts-status-chip.estimate {
             border-color: #3b82f6;
-            background: rgba(59, 130, 246, 0.10);
+            background: rgba(59, 130, 246, 0.13);
             color: #3b82f6;
+            animation: chip-pulse 2.6s ease-in-out infinite;
         }
-        .parts-status-chip.estimate:hover { background: rgba(59, 130, 246, 0.20); }
+        .parts-status-chip.estimate:hover { background: rgba(59, 130, 246, 0.25); }
 
         .parts-status-modal-btn {
             flex: 1;
@@ -789,19 +781,19 @@
         .photo-upload-btn {
             width: 100%;
             padding: 10px;
-            background: var(--bg-elevated);
-            border: 1px solid rgba(10, 132, 255, 0.35);
+            background: var(--accent-info);
+            border: 1px solid var(--accent-info);
             border-radius: 8px;
-            color: var(--accent-info);
+            color: white;
             font-family: 'Barlow Condensed', sans-serif;
-            font-size: 0.95rem;
+            font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
             transition: all 0.2s ease;
             text-transform: uppercase;
             letter-spacing: 0.05em;
@@ -827,17 +819,19 @@
         .edit-ro-btn:hover {
             background: var(--accent-medium);
             color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 204, 0, 0.3);
         }
         .schedule-ro-btn {
             width: 100%;
             padding: 10px;
-            background: var(--bg-elevated);
+            background: linear-gradient(135deg,rgba(57,255,110,0.15),rgba(57,255,110,0.08));
             border: 1px solid rgba(57,255,110,0.4);
             border-radius: 8px;
             color: #39ff6e;
             font-family: 'Barlow Condensed', sans-serif;
             font-size: 0.95rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.2s ease;
             text-transform: uppercase;
@@ -845,8 +839,11 @@
             margin-top: 6px;
         }
         .schedule-ro-btn:hover {
-            background: rgba(57,255,110,0.15);
+            background: rgba(57,255,110,0.3);
             border-color: #39ff6e;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(57,255,110,0.3);
         }
 
         .archive-ro-btn {
@@ -874,13 +871,17 @@
         .archive-ro-btn:hover {
             background: #FFD700;
             color: #0d0f12;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
         }
 
 
 
         .photo-upload-btn:hover {
-            background: rgba(10, 132, 255, 0.12);
-            border-color: var(--accent-info);
+            background: var(--accent-low);
+            border-color: var(--accent-low);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
         }
 
         .photo-upload-btn:active {
@@ -894,30 +895,31 @@
         
         .checkin-btn {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             background: #39FF14;
-            border: 1px solid #39FF14;
+            border: 2px solid #39FF14;
             border-radius: 8px;
             color: #000;
             font-family: 'Barlow Condensed', sans-serif;
-            font-size: 0.95rem;
+            font-size: 1.1rem;
             font-weight: 700;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
             transition: all 0.2s ease;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5);
         }
-
+        
         .checkin-btn:hover {
             background: #2EE010;
             border-color: #2EE010;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(57, 255, 20, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.8);
         }
         
         .checkin-btn:active {
@@ -1206,7 +1208,13 @@
 
         .progress-fill::after {
             content: '';
-            display: none; /* shimmer removed — clean gradient is sufficient */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
         }
 
         @keyframes shimmer {
@@ -1276,11 +1284,10 @@
         
         .time-logs-section {
             margin-bottom: 16px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-color);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 8px;
             padding: 14px;
-            color: var(--text-primary);
+            color: white;
         }
         
         .time-logs-header {
@@ -1309,19 +1316,19 @@
         .view-time-logs-btn {
             width: 100%;
             padding: 8px 16px;
-            background: rgba(102, 126, 234, 0.15);
-            color: #a5b4fc;
-            border: 1px solid rgba(102, 126, 234, 0.3);
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 600;
             transition: all 0.2s ease;
         }
-
+        
         .view-time-logs-btn:hover {
-            background: rgba(102, 126, 234, 0.25);
-            border-color: rgba(102, 126, 234, 0.5);
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
         }
 
         .status-badge {
@@ -2457,63 +2464,6 @@
             background: linear-gradient(135deg, rgba(52,199,89,0.3) 0%, rgba(16,185,129,0.3) 100%);
             color: #34c759;
         }
-        .ro-type-btn.shop {
-            border-color: #8b5cf6;
-            color: #8b5cf6;
-        }
-        .ro-type-btn.shop.active {
-            background: #8b5cf6;
-            color: #fff;
-        }
-        .shop-badge {
-            display: inline-block;
-            background: rgba(139,92,246,0.15);
-            color: #8b5cf6;
-            border: 1px solid rgba(139,92,246,0.3);
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 2px 8px;
-            margin-top: 2px;
-        }
-        .ro-type-btn.warranty {
-            background: linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(220,38,38,0.15) 100%);
-            color: #ef4444;
-        }
-        .ro-type-btn.warranty.active {
-            background: linear-gradient(135deg, rgba(239,68,68,0.35) 0%, rgba(220,38,38,0.35) 100%);
-            color: #ef4444;
-        }
-        .warranty-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 8px;
-            background: rgba(239,68,68,0.15);
-            border: 1px solid rgba(239,68,68,0.4);
-            border-radius: 12px;
-            color: #ef4444;
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            margin-top: 2px;
-        }
-        .training-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 8px;
-            background: rgba(107,114,128,0.10);
-            border: 1px solid rgba(107,114,128,0.35);
-            border-radius: 12px;
-            color: #6b7280;
-            font-size: 0.7rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            margin-top: 2px;
-        }
         .customer-pay-section {
             display: none;
             grid-column: 1 / -1;
@@ -2694,6 +2644,8 @@
         .parts-btn:hover {
             background: #ff9500;
             color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255,149,0,0.3);
         }
 
         /* ── Collapsible Filter Sections ── */
@@ -2786,454 +2738,16 @@
         .work-order-btn {
             width: 100%;
             padding: 10px 16px;
-            background: var(--bg-elevated);
-            color: var(--accent-info);
-            border: 1px solid rgba(10, 132, 255, 0.35);
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8e 100%);
+            color: white;
+            border: none;
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.9rem;
             font-weight: 600;
             margin-top: 6px;
-            transition: all 0.2s;
         }
-        .work-order-btn:hover { background: rgba(10, 132, 255, 0.12); border-color: var(--accent-info); }
-
-        /* ── Card Utility Classes (v1.400 cleanup) ─────────────────────── */
-        .card-ro-id {
-            font-size: 0.7rem;
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--accent-info);
-            letter-spacing: 0.05em;
-            margin-top: -4px;
-            margin-bottom: 4px;
-        }
-        .card-parking-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            background: rgba(254, 249, 195, 0.12);
-            border: 1px solid rgba(253, 224, 71, 0.35);
-            border-radius: 6px;
-            padding: 3px 10px;
-            font-size: 0.78rem;
-            font-weight: 700;
-            color: #fde047;
-            margin-bottom: 5px;
-            cursor: pointer;
-        }
-        .card-parking-badge:hover { background: rgba(254, 249, 195, 0.18); }
-        .card-secondary-btn {
-            width: 100%;
-            padding: 10px 16px;
-            background: var(--bg-elevated);
-            color: var(--text-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Barlow Condensed', sans-serif;
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-top: 6px;
-            transition: all 0.2s;
-        }
-        .card-secondary-btn:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.2); }
-        .card-actions-primary { margin-top: 16px; }
-        .card-actions-secondary { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); }
-
-        /* ── Compact Manager View ──────────────────────────────────────── */
-        .board-grid.compact-grid {
-            grid-template-columns: 1fr;
-            gap: 6px;
-        }
-        .ro-card-compact {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 6px 10px;
-            display: grid;
-            grid-template-columns: 56px minmax(160px, 1.4fr) minmax(110px, 1fr) minmax(90px, 0.8fr) minmax(160px, 1.2fr) auto;
-            align-items: center;
-            gap: 8px;
-            transition: background 0.15s ease;
-            position: relative;
-            min-height: 0;
-        }
-        .compact-col-photo {
-            width: 56px;
-            height: 42px;
-            border-radius: 4px;
-            overflow: hidden;
-            background: var(--bg-elevated);
-            flex-shrink: 0;
-        }
-        .compact-col-photo img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .compact-col-photo .compact-no-photo {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.55rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-        }
-        .ro-card-compact:hover { background: var(--bg-elevated); }
-        .ro-card-compact.has-parts-request {
-            border-color: rgba(255, 20, 147, 0.4);
-        }
-        .ro-card-compact.ro-card-status-waiting-for-qa-qc {
-            border-color: rgba(255, 20, 147, 0.5);
-        }
-
-        .compact-col-id {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            min-width: 0;
-        }
-        .compact-customer {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .compact-ro-id {
-            font-size: 0.68rem;
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--accent-info);
-            letter-spacing: 0.04em;
-        }
-        .compact-rv {
-            font-size: 0.78rem;
-            color: var(--text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .compact-col-status {
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            min-width: 0;
-        }
-        .compact-stage {
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .compact-urgency {
-            font-size: 0.65rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding: 1px 6px;
-            border-radius: 4px;
-            display: inline-block;
-            width: fit-content;
-        }
-        .compact-urgency.u-critical { color: #ff3b30; background: rgba(255, 59, 48, 0.12); }
-        .compact-urgency.u-high     { color: #ff9500; background: rgba(255, 149, 0, 0.12); }
-        .compact-urgency.u-medium   { color: #ffcc00; background: rgba(255, 204, 0, 0.10); }
-        .compact-urgency.u-low      { color: #34c759; background: rgba(52, 199, 89, 0.12); }
-
-        .compact-col-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            min-width: 0;
-        }
-        .compact-days {
-            font-size: 0.85rem;
-            font-weight: 700;
-            font-family: 'JetBrains Mono', monospace;
-        }
-        .compact-days-label {
-            font-size: 0.65rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-        .compact-tech {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .compact-spot {
-            font-size: 0.7rem;
-            color: #fde047;
-            font-weight: 600;
-        }
-
-        .compact-col-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            min-width: 0;
-        }
-        .compact-chip {
-            font-size: 0.62rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            padding: 2px 8px;
-            border-radius: 10px;
-            border: 1px solid;
-            white-space: nowrap;
-            cursor: pointer;
-        }
-        .compact-chip.ch-sourcing    { color: #ff6a00; border-color: #ff6a00; background: rgba(255,106,0,0.08); }
-        .compact-chip.ch-outstanding { color: #f59e0b; border-color: #f59e0b; background: rgba(245,158,11,0.08); }
-        .compact-chip.ch-received    { color: #22c55e; border-color: #22c55e; background: rgba(34,197,94,0.08); }
-        .compact-chip.ch-estimate    { color: #3b82f6; border-color: #3b82f6; background: rgba(59,130,246,0.08); }
-        .compact-chip.ch-request     { color: #FF1493; border-color: #FF1493; background: rgba(255,20,147,0.08); }
-        .compact-chip.ch-insurance   { color: #fb923c; border-color: rgba(251,146,60,0.4); background: rgba(251,146,60,0.08); }
-        .compact-chip.ch-warranty    { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3); }
-        .compact-chip.ch-shop        { background: rgba(139,92,246,0.15); color: #8b5cf6; border-color: rgba(139,92,246,0.3); }
-        .compact-chip.ch-training   { color: #6b7280; border-color: rgba(107,114,128,0.4); background: rgba(107,114,128,0.10); }
-        .compact-chip.ch-parts-badge { color: var(--text-secondary); border-color: var(--border-color); background: var(--bg-elevated); }
-
-        .compact-col-actions {
-            display: flex;
-            gap: 6px;
-            flex-shrink: 0;
-        }
-        .compact-action-btn {
-            padding: 5px 10px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            font-family: 'Barlow Condensed', sans-serif;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            background: var(--bg-elevated);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.15s;
-            white-space: nowrap;
-        }
-        .compact-action-btn:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.25); }
-
-        /* Compact grid header row */
-        .compact-grid-header {
-            display: grid;
-            grid-template-columns: 56px minmax(160px, 1.4fr) minmax(110px, 1fr) minmax(90px, 0.8fr) minmax(160px, 1.2fr) auto;
-            gap: 8px;
-            padding: 6px 10px;
-            font-size: 0.65rem;
-            font-weight: 700;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 2px;
-        }
-
-
-        /* ── Compact chevron (mobile expand affordance) ── */
-        .compact-chevron {
-            display: none;
-            width: 24px;
-            height: 24px;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-            font-weight: 300;
-            color: var(--text-secondary);
-            transition: transform 0.2s ease;
-            flex-shrink: 0;
-            pointer-events: none;
-            align-self: center;
-        }
-        .ro-card-compact.is-expanded .compact-chevron {
-            transform: rotate(90deg);
-            color: var(--accent-info);
-        }
-
-        /* ── Compact inline expand panel ── */
-        .compact-expand-panel {
-            display: none;
-            overflow: hidden;
-            max-height: 0;
-            transition: max-height 0.25s ease, opacity 0.2s ease;
-            opacity: 0;
-        }
-        .compact-expand-panel.is-open {
-            max-height: 400px;
-            opacity: 1;
-        }
-        .compact-expand-inner {
-            display: none;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-color);
-            border-top: none;
-            border-radius: 0 0 6px 6px;
-            padding: 10px 12px 14px;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .compact-mobile-summary { display: none; }
-
-        @media (max-width: 768px) {
-            /* Show chevron */
-            .compact-chevron { display: flex; }
-
-            /* Collapse 6-col grid to 3-col: photo | summary | chevron */
-            .ro-card-compact {
-                cursor: pointer;
-                grid-template-columns: 56px 1fr 24px;
-                gap: 10px;
-                align-items: center;
-                padding: 8px 10px;
-            }
-            /* Hide desktop columns */
-            .compact-col-id,
-            .compact-col-status,
-            .compact-col-meta,
-            .compact-col-chips,
-            .compact-col-actions {
-                display: none;
-            }
-            /* Photo: constrain to grid column so it doesn't overflow into text */
-            .compact-col-photo {
-                width: 100%;
-                height: 44px;
-            }
-            /* Show mobile summary */
-            .compact-mobile-summary {
-                display: flex;
-                flex-direction: column;
-                gap: 3px;
-                min-width: 0;
-                overflow: hidden;
-            }
-            .compact-mobile-name {
-                font-size: 0.92rem;
-                font-weight: 700;
-                color: var(--text-primary);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            .compact-mobile-sub {
-                font-size: 0.73rem;
-                color: var(--text-secondary);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-            .compact-mobile-badges {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
-                margin-top: 2px;
-            }
-            /* Expand panel on mobile */
-            .compact-expand-panel { display: block; }
-            .compact-expand-inner { display: flex; }
-
-            /* Expanded row highlight */
-            .ro-card-compact.is-expanded {
-                border-color: var(--accent-info);
-                background: var(--bg-elevated);
-                border-radius: 6px 6px 0 0;
-            }
-
-            /* Panel layout */
-            .cep-fields {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 8px;
-            }
-            .cep-row {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-            }
-            .cep-label {
-                font-size: 0.6rem;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.07em;
-                color: var(--text-secondary);
-            }
-            .cep-value {
-                font-size: 0.82rem;
-                color: var(--text-primary);
-                font-weight: 500;
-            }
-            /* Status dropdown in panel */
-            .cep-status-dropdown {
-                width: 100%;
-                padding: 6px 8px;
-                border-radius: 6px;
-                font-size: 0.7rem;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
-                font-family: 'JetBrains Mono', monospace;
-                cursor: pointer;
-                border: 2px solid;
-            }
-            /* Urgency dropdown in panel */
-            .cep-urgency-dropdown {
-                width: 100%;
-                padding: 6px 8px;
-                border-radius: 6px;
-                font-size: 0.7rem;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
-                font-family: 'JetBrains Mono', monospace;
-                cursor: pointer;
-                border: 2px solid transparent;
-            }
-            .cep-urgency-dropdown.urgency-critical { background: var(--accent-urgent); color: white; }
-            .cep-urgency-dropdown.urgency-high     { background: var(--accent-high);   color: white; }
-            .cep-urgency-dropdown.urgency-medium   { background: var(--accent-medium); color: white; }
-            .cep-urgency-dropdown.urgency-low      { background: var(--accent-low);    color: white; }
-            /* Action buttons row */
-            .cep-actions {
-                display: flex;
-                gap: 6px;
-                flex-wrap: wrap;
-                padding-top: 8px;
-                border-top: 1px solid var(--border-color);
-            }
-            .cep-action-btn {
-                flex: 1;
-                min-width: 0;
-                padding: 9px 4px;
-                font-size: 0.72rem;
-                font-weight: 700;
-                font-family: 'Barlow Condensed', sans-serif;
-                border-radius: 6px;
-                border: 1px solid var(--border-color);
-                background: var(--bg-surface);
-                color: var(--text-primary);
-                cursor: pointer;
-                text-align: center;
-                letter-spacing: 0.02em;
-                transition: background 0.15s;
-                white-space: nowrap;
-            }
-            .cep-action-btn:active { background: var(--bg-elevated); }
-            /* Hide compact-grid-header on mobile — columns don't match 3-col layout */
-            .compact-grid-header { display: none; }
-        }
+        .work-order-btn:hover { opacity: 0.9; }
 
         .wo-silo-card {
             background: white;
@@ -3344,7 +2858,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.405</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.400</span>
             </div>
         </header>
 
@@ -3354,7 +2868,6 @@
                 <select id="viewModeSelector" class="view-mode-dropdown" onchange="setViewMode(this.value)">
                     <option value="condensed">Condensed</option>
                     <option value="regular" selected>Regular</option>
-                    <option value="compact">Compact</option>
                 </select>
                 <button id="adminSettingsBtn" onclick="openAdminSettingsModal()" style="display: none; padding: 10px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; cursor: pointer; font-weight: 600; margin-left: 12px;">
                     ⚙️ Admin Settings
@@ -3380,16 +2893,12 @@
             </div>
             
             <div class="search-section">
-                <label class="search-label">🔍 Search:</label>
-                <div style="flex:1; position:relative;">
-                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#6b7280; pointer-events:none; font-size:1rem;">🔍</span>
-                    <input type="text"
-                           id="customerSearch"
-                           class="search-input"
-                           style="padding-left:36px; width:100%; box-sizing:border-box; flex:unset;"
-                           placeholder="Search name, RO ID, VIN, tech, description, phone…"
-                           autocomplete="off">
-                </div>
+                <label class="search-label">🔍 Search by Customer Name:</label>
+                <input type="text" 
+                       id="customerSearch" 
+                       class="search-input" 
+                       placeholder="Type customer name to filter..."
+                       autocomplete="off">
                 <button id="clearSearch" class="clear-search-btn" style="display: none;">✕ Clear</button>
             </div>
 
@@ -3437,7 +2946,7 @@
 
                 <div class="filter-section">
                     <label class="filter-label filter-toggle-label" onclick="toggleFilterSection('insurance')">
-                        Filter by RO Type
+                        Filter by Insurance
                         <span class="filter-active-indicator" id="insurance-active-dot"></span>
                         <span class="filter-chevron" id="insurance-chevron">▼</span>
                     </label>
@@ -3447,14 +2956,6 @@
                             <button class="filter-btn" data-filter="insurance" data-type="rotype" onclick="toggleROTypeFilter('insurance')">🛡️ Insurance</button>
                             <button class="filter-btn" data-filter="hybrid" data-type="rotype" onclick="toggleROTypeFilter('hybrid')">🔀 Hybrid</button>
                             <button class="filter-btn" data-filter="standard" data-type="rotype" onclick="toggleROTypeFilter('standard')">🔧 Standard</button>
-                            <button class="filter-btn" data-filter="warranty" data-type="rotype" onclick="toggleROTypeFilter('warranty')">🔄 Warranty</button>
-                            <button class="filter-btn" data-filter="shop" data-type="rotype" onclick="toggleROTypeFilter('shop')">🏪 Shop</button>
-                            <button class="filter-btn" data-filter="training" data-type="rotype" onclick="toggleROTypeFilter('training')">🎓 Training</button>
-                        </div>
-                        <div id="trainingToggleWrap" style="display:none;padding:6px 0 0;">
-                            <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.75rem;color:#6b7280;cursor:pointer;">
-                                <input type="checkbox" id="showTrainingToggle" onchange="toggleShowTraining(this.checked)"> 👁 Show Training ROs alongside normal
-                            </label>
                         </div>
                     </div>
                 </div>
@@ -3745,8 +3246,7 @@
         let currentSearchFilter = ''; // Customer name search
         let currentDaysFilter = null; // Days on lot >= filter
         let currentPartsFilter = 'all'; // 'all', 'outstanding', 'backordered'
-        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard', 'warranty', 'shop', 'training'
-        let showTrainingROs = false; // GH#24: training ROs hidden by default
+        let currentROTypeFilter = 'all'; // 'all', 'insurance', 'hybrid', 'standard'
         let timeLogsData = []; // Store time logs from Google Sheets
         let timeLogsRefreshInterval = null; // Auto-refresh timer
         
@@ -3837,27 +3337,6 @@
                 roStatusNotes: true,
                 customerCommNotes: true,
                 timeLogs: true,
-                editButton: true
-            },
-            compact: {
-                rvPhoto: false,
-                customerName: true,
-                rvDetails: true,
-                dollarValue: false,
-                daysOnLot: true,
-                qrCode: false,
-                printLabel: false,
-                photoUpload: false,
-                urgencySelector: false,
-                statusDropdown: false,
-                repairTypeTags: false,
-                technicianAssigned: true,
-                contactInfo: false,
-                repairDescription: false,
-                progressBar: false,
-                roStatusNotes: false,
-                customerCommNotes: false,
-                timeLogs: false,
                 editButton: true
             }
         };
@@ -4008,16 +3487,6 @@
                 await updateFieldInSupabase(originalIndex, 'urgency', newUrgency);
                 await writeAuditLog(ro.roId, [{ field: 'urgency', oldValue: ro.urgency, newValue: newUrgency }]);
                 log('✓ Urgency updated in Supabase');
-
-                // GH#20: Slack — urgency changed to Critical (GH#24: skip training ROs)
-                if (newUrgency === 'Critical' && !ro.isTraining) {
-                    notifySlack('ro_urgency_critical', {
-                        customerName: ro?.customerName || '',
-                        rv: ro?.rv || '',
-                        roId: ro?.roId || '',
-                        technicianAssigned: ro?.technicianAssigned || '',
-                    });
-                }
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
@@ -4251,20 +3720,10 @@
                 }
                 log('✓ Status and progress updated in Supabase');
 
-                // GH#20: Slack — Ready for Pickup (GH#24: skip training ROs)
-                if (newStatus === 'Ready for pickup' && !ro.isTraining) {
-                    notifySlack('ro_ready_pickup', {
-                        customerName: ro?.customerName || '',
-                        rv: ro?.rv || '',
-                        roId: ro?.roId || '',
-                        parkingSpot: ro?.parkingSpot || '',
-                    });
-                }
-
                 // Show success feedback
                 dropdown.style.opacity = '1';
                 dropdown.disabled = false;
-
+                
                 // Brief flash to show success
                 dropdown.style.boxShadow = '0 0 0 3px rgba(52, 199, 89, 0.5)';
                 setTimeout(() => {
@@ -5098,8 +4557,8 @@
             const isEdit = prefix === 'edit';
 
             // Toggle buttons — may be in either modal
-            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn', 'warrantyROBtn', 'shopROBtn',
-             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn', 'editWarrantyROBtn', 'editShopROBtn'].forEach(id => {
+            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn',
+             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.remove('active');
             });
@@ -5107,10 +4566,8 @@
             const stdId  = isEdit ? 'editStandardROBtn'  : 'standardROBtn';
             const insId  = isEdit ? 'editInsuranceROBtn' : 'insuranceROBtn';
             const hybId  = isEdit ? 'editHybridROBtn'    : 'hybridROBtn';
-            const warId  = isEdit ? 'editWarrantyROBtn'  : 'warrantyROBtn';
             const insSec = document.getElementById(isEdit ? 'editInsuranceFieldsSection' : 'insuranceFieldsSection');
             const cpSec  = document.getElementById(isEdit ? 'editCustomerPaySection'     : 'customerPaySection');
-            const warSec = document.getElementById(isEdit ? 'editWarrantyFieldsSection'  : 'warrantyFieldsSection');
             const modalTitle = isEdit
                 ? document.querySelector('#editROOverlay h2')
                 : document.querySelector('#modalOverlay h2');
@@ -5119,74 +4576,17 @@
                 document.getElementById(insId)?.classList.add('active');
                 if (insSec) insSec.classList.add('visible');
                 if (cpSec)  cpSec.classList.remove('visible');
-                if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = '🛡️ Insurance Claim RO';
             } else if (type === 'hybrid') {
                 document.getElementById(hybId)?.classList.add('active');
                 if (insSec) insSec.classList.add('visible');
                 if (cpSec)  cpSec.classList.add('visible');
-                if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? '🔀 Hybrid RO' : '🔀 Insurance + Customer Pay RO';
-            } else if (type === 'shop') {
-                const shopId = isEdit ? 'editShopROBtn' : 'shopROBtn';
-                document.getElementById(shopId)?.classList.add('active', 'shop');
-                if (insSec) insSec.classList.remove('visible');
-                if (cpSec)  cpSec.classList.remove('visible');
-                if (warSec) warSec.classList.remove('visible');
-                if (modalTitle) modalTitle.textContent = '🏪 Shop Operations RO';
-                // Hide scan estimate button
-                const scanBtn = document.getElementById(isEdit ? 'editScanBtn' : 'newScanBtn');
-                if (scanBtn) scanBtn.style.display = 'none';
-                // Hide customer-specific fields, show shop-relevant ones
-                const formId = isEdit ? 'editROForm' : 'newROForm';
-                const formEl = document.getElementById(formId);
-                if (formEl) {
-                    formEl.querySelectorAll('.shop-hide').forEach(el => el.style.display = 'none');
-                    formEl.querySelectorAll('.shop-only').forEach(el => el.style.display = '');
-                    // Remove required from hidden fields so form can submit
-                    formEl.querySelectorAll('.shop-hide input[required], .shop-hide textarea[required], .shop-hide select[required]').forEach(el => {
-                        el.dataset.wasRequired = 'true';
-                        el.removeAttribute('required');
-                    });
-                }
-            } else if (type === 'warranty') {
-                document.getElementById(warId)?.classList.add('active', 'warranty');
-                if (insSec) insSec.classList.remove('visible');
-                if (cpSec)  cpSec.classList.remove('visible');
-                if (warSec) warSec.classList.add('visible');
-                if (modalTitle) modalTitle.textContent = '🔄 Warranty RO';
-                // Auto-set urgency to Critical for warranty ROs
-                const urgencySelect = isEdit
-                    ? document.querySelector('#editROForm select[name="urgency"], #editROForm .form-select[name="editUrgency"]')
-                    : document.querySelector('#newROForm select[name="urgency"]');
-                if (urgencySelect && urgencySelect.value !== 'Critical') {
-                    urgencySelect.value = 'Critical';
-                    urgencySelect.classList.remove('urgency-high','urgency-medium','urgency-low');
-                    urgencySelect.classList.add('urgency-critical');
-                }
             } else {
                 document.getElementById(stdId)?.classList.add('active');
                 if (insSec) insSec.classList.remove('visible');
                 if (cpSec)  cpSec.classList.remove('visible');
-                if (warSec) warSec.classList.remove('visible');
                 if (modalTitle) modalTitle.textContent = isEdit ? 'Edit Repair Order' : 'New Repair Order';
-            }
-            // Restore shop-hidden fields when switching away from shop
-            if (type !== 'shop') {
-                const formId = isEdit ? 'editROForm' : 'newROForm';
-                const formEl = document.getElementById(formId);
-                if (formEl) {
-                    formEl.querySelectorAll('.shop-hide').forEach(el => el.style.display = '');
-                    formEl.querySelectorAll('.shop-only').forEach(el => el.style.display = 'none');
-                    // Restore required attributes that were removed for shop mode
-                    formEl.querySelectorAll('[data-was-required]').forEach(el => {
-                        el.setAttribute('required', '');
-                        delete el.dataset.wasRequired;
-                    });
-                }
-                // Restore scan estimate button
-                const scanBtn = document.getElementById(isEdit ? 'editScanBtn' : 'newScanBtn');
-                if (scanBtn) scanBtn.style.display = '';
             }
             // Show/hide custom fields section with insurance sections
             const customSec = document.getElementById((isEdit ? 'edit' : 'new') + 'CustomFieldsSection');
@@ -5201,7 +4601,7 @@
 
         function collectInsuranceFields(context) {
             const isEdit = context === 'edit';
-            if (currentROType === 'standard' || currentROType === 'warranty') return null;
+            if (currentROType === 'standard') return null;
             const cpPrefix = isEdit ? 'editCp_' : 'cp_';
             const insPrefix = isEdit ? 'editIns_' : 'ins_';
             const base = {
@@ -5579,9 +4979,6 @@
 
         // S4: Anthropic API key moved to server-side Edge Function (claude-vision-proxy). Client no longer handles API key.
         async function callClaudeVision(base64Data, mediaType, isPDF) {
-            // Refresh session to ensure a fresh access_token (prevents 401 on expired JWT)
-            const { data: { session: freshSession } } = await getSB().auth.getSession();
-            if (freshSession) supabaseSession = freshSession;
             if (!supabaseSession) throw new Error('You must be signed in to use the estimate scanner.');
             const systemPrompt = `You are an insurance estimate data extractor for an RV repair shop.
 Extract all field/value pairs from the provided insurance estimate document.
@@ -5713,12 +5110,8 @@ Always prefer mapping to a standard key over creating a new one.`;
             });
 
             if (!response.ok) {
-                let msg = `Proxy error ${response.status}`;
-                try {
-                    const err = await response.json();
-                    msg = err.error?.message || err.error || err.msg || msg;
-                } catch (_) { /* non-JSON response from gateway */ }
-                throw new Error(msg);
+                const err = await response.json();
+                throw new Error(err.error?.message || err.error || `Proxy error ${response.status}`);
             }
 
             const data = await response.json();
@@ -6573,15 +5966,6 @@ Notes: ${notes}` : '',
             document.querySelectorAll('[data-type="rotype"]').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.filter === currentROTypeFilter);
             });
-            // GH#24: Show/hide the "Show Training" toggle for admin/sr_manager
-            const ttw = document.getElementById('trainingToggleWrap');
-            if (ttw) ttw.style.display = isSrOrAdmin() ? '' : 'none';
-            renderBoard();
-        }
-
-        // GH#24: Toggle visibility of training ROs alongside normal ROs
-        function toggleShowTraining(checked) {
-            showTrainingROs = !!checked;
             renderBoard();
         }
 
@@ -7084,19 +6468,9 @@ Notes: ${notes}` : '',
                 await updatePartInSheet(part);
                 await updatePartsJsonInSheet(ctx.originalIndex);
 
-                // GH#20: Slack — part received (GH#24: skip training ROs)
-                const ro = currentFilteredData[filteredIndex];
-                if (!ro?.isTraining) {
-                    notifySlack('part_received', {
-                        partName: part.partName || 'Part',
-                        customerName: ro?.customerName || '',
-                        roId: ro?.roId || '',
-                        technicianAssigned: ro?.technicianAssigned || '',
-                    });
-                }
-
                 // Auto-flip parts_status to 'received' if ALL parts are now Received or Installed
                 const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed');
+                const ro = currentFilteredData[filteredIndex];
                 if (allDone && ro && ro.partsStatus !== 'received') {
                     log('🔩 All parts received — auto-flipping parts_status to received');
                     await setPartsStatus(filteredIndex, 'received');
@@ -7458,42 +6832,6 @@ Notes: ${notes}` : '',
 
             // --- S6: Delegated event handlers for RO card grid ---
             document.getElementById('boardGrid').addEventListener('click', function(e) {
-                // ── Compact row mobile expand/collapse ───────────────────────────
-                if (window.innerWidth <= 768 && !e.target.closest('[data-action]')) {
-                    var compactRow = e.target.closest('[data-compact-row="1"]');
-                    if (compactRow) {
-                        var isExpanded = compactRow.classList.contains('is-expanded');
-                        // Collapse all other open rows first
-                        document.querySelectorAll('.ro-card-compact.is-expanded').forEach(function(other) {
-                            if (other !== compactRow) {
-                                other.classList.remove('is-expanded');
-                                var otherPanel = other.nextElementSibling;
-                                if (otherPanel && otherPanel.classList.contains('compact-expand-panel')) {
-                                    otherPanel.classList.remove('is-open');
-                                    setTimeout(function() { otherPanel.style.display = 'none'; }, 260);
-                                }
-                            }
-                        });
-                        var panel = compactRow.nextElementSibling;
-                        if (isExpanded) {
-                            compactRow.classList.remove('is-expanded');
-                            if (panel && panel.classList.contains('compact-expand-panel')) {
-                                panel.classList.remove('is-open');
-                                setTimeout(function() { panel.style.display = 'none'; }, 260);
-                            }
-                        } else {
-                            compactRow.classList.add('is-expanded');
-                            if (panel && panel.classList.contains('compact-expand-panel')) {
-                                panel.style.display = 'block';
-                                panel.offsetHeight; // force reflow
-                                panel.classList.add('is-open');
-                                compactRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                            }
-                        }
-                        return;
-                    }
-                }
-                // ── End compact expand/collapse ──────────────────────────────────
                 const btn = e.target.closest('[data-action]');
                 if (!btn) return;
                 const action = btn.dataset.action;
@@ -7529,16 +6867,9 @@ Notes: ${notes}` : '',
                 const idx = parseInt(card.dataset.roIndex, 10);
                 if (el.classList.contains('urgency-dropdown')) {
                     updateROUrgency(idx, el.value);
-                    // Sync urgency color class on the select itself
-                    el.className = el.className.replace(/urgency-(critical|high|medium|low)/g, '').trim();
-                    el.classList.add('urgency-' + el.value.toLowerCase());
                 }
                 if (el.classList.contains('status-dropdown')) {
                     updateROStatus(idx, el.value);
-                    // Sync status color class on the select itself
-                    var newSC = el.value.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-');
-                    el.className = el.className.replace(/status-[a-z-]+/g, '').trim();
-                    el.classList.add('status-dropdown', 'status-' + newSC);
                 }
                 if (el.classList.contains('progress-input')) {
                     updateROProgress(idx, parseInt(el.value));
@@ -8050,7 +7381,7 @@ Notes: ${notes}` : '',
         }
 
         function scrollToROInBoard(roId) {
-            const cards = document.querySelectorAll('.ro-card[data-ro-index], .ro-card-compact[data-ro-index]');
+            const cards = document.querySelectorAll('.ro-card[data-ro-index]');
             for (const card of cards) {
                 const idx = parseInt(card.dataset.roIndex);
                 const ro = currentData[idx];
@@ -8067,31 +7398,6 @@ Notes: ${notes}` : '',
             showToast('RO not visible — it may be filtered out.', 'warning', { duration: 12000, actionLabel: 'Clear Filters', actionCallback: function() { currentStatusFilters = []; currentRepairFilter = 'all'; currentPartsFilter = 'all'; currentROTypeFilter = 'all'; currentDaysFilter = null; currentSearchFilter = ''; document.getElementById('customerSearch').value = ''; renderBoard(); } });
         }
 
-        // Post-render search highlight — walks text nodes, wraps matches in <mark>
-        function highlightSearchMatches(container, needle) {
-            if (!needle) return;
-            const lowerNeedle = needle.toLowerCase();
-            const skip = { SCRIPT: 1, STYLE: 1, INPUT: 1, SELECT: 1, TEXTAREA: 1, MARK: 1 };
-            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-            const matches = [];
-            while (walker.nextNode()) {
-                const node = walker.currentNode;
-                if (skip[node.parentElement?.tagName]) continue;
-                const idx = node.textContent.toLowerCase().indexOf(lowerNeedle);
-                if (idx !== -1) matches.push({ node, idx });
-            }
-            // Process in reverse so DOM mutations don't shift positions
-            for (let i = matches.length - 1; i >= 0; i--) {
-                const { node, idx } = matches[i];
-                const mark = document.createElement('mark');
-                mark.className = 'search-highlight';
-                const range = document.createRange();
-                range.setStart(node, idx);
-                range.setEnd(node, idx + needle.length);
-                range.surroundContents(mark);
-            }
-        }
-
         function renderBoard() {
             const grid = document.getElementById('boardGrid');
             
@@ -8104,23 +7410,11 @@ Notes: ${notes}` : '',
             // Apply all filters
             let filtered = sorted;
             
-            // Unified multi-field search filter
+            // Customer name search filter
             if (currentSearchFilter) {
-                const needle = currentSearchFilter.toLowerCase();
                 filtered = filtered.filter(ro => {
-                    const haystack = [
-                        ro.customerName,
-                        ro.roId,
-                        ro.rv,
-                        ro.vin,
-                        ro.technicianAssigned,
-                        ro.repairDescription,
-                        ro.parkingSpot,
-                        ro.customerPhone,
-                        ro.customerEmail,
-                        ro.repairType,
-                    ].filter(Boolean).join(' ').toLowerCase();
-                    return haystack.includes(needle);
+                    const customerName = (ro.customerName || '').toLowerCase();
+                    return customerName.includes(currentSearchFilter.toLowerCase());
                 });
             }
             
@@ -8158,18 +7452,11 @@ Notes: ${notes}` : '',
                 });
             }
 
-            // GH#24: Training RO visibility — hidden by default unless filter is 'training' or toggle is on
-            if (currentROTypeFilter === 'training') {
-                filtered = filtered.filter(ro => ro.isTraining);
-            } else if (!showTrainingROs) {
-                filtered = filtered.filter(ro => !ro.isTraining);
-            }
-
             // RO Type filter
-            if (currentROTypeFilter !== 'all' && currentROTypeFilter !== 'training') {
+            if (currentROTypeFilter !== 'all') {
                 filtered = filtered.filter(ro => {
-                    let roType = ro.roType || 'standard';
-                    if (roType === 'standard' && ro.insuranceData) {
+                    let roType = 'standard';
+                    if (ro.insuranceData) {
                         try {
                             const d = JSON.parse(ro.insuranceData);
                             if (d.isInsuranceClaim) roType = d.roType || 'insurance';
@@ -8178,8 +7465,6 @@ Notes: ${notes}` : '',
                     if (currentROTypeFilter === 'insurance') return roType === 'insurance';
                     if (currentROTypeFilter === 'hybrid') return roType === 'hybrid';
                     if (currentROTypeFilter === 'standard') return roType === 'standard';
-                    if (currentROTypeFilter === 'warranty') return roType === 'warranty';
-                    if (currentROTypeFilter === 'shop') return roType === 'shop';
                     return true;
                 });
             }
@@ -8221,132 +7506,13 @@ Notes: ${notes}` : '',
                 return;
             }
 
-            // Toggle grid layout for compact view
-            grid.classList.toggle('compact-grid', currentViewMode === 'compact');
-
-            // Compact header row
-            const compactHeader = currentViewMode === 'compact' ? `<div class="compact-grid-header"><span></span><span>Customer / RO</span><span>Status</span><span>Days / Tech</span><span>Parts / Tags</span><span>Actions</span></div>` : '';
-
-            grid.innerHTML = compactHeader + filtered.map((ro, index) => {
+            grid.innerHTML = filtered.map((ro, index) => {
                 const priorityLevel = getPriorityLevel(ro.priorityScore);
                 const statusClass = ro.status.toLowerCase().replace(/\s+/g, '-').replace(/\//g, '-');
-
-                /* ── Compact Manager View ──────────────────────────────── */
-                if (currentViewMode === 'compact') {
-                    const urgency = ro.urgency || 'Medium';
-                    const urgencyLc = urgency.toLowerCase();
-                    const days = calculateDaysOnLot(ro);
-                    const daysColor = getDaysHeatColor(days);
-
-                    // Build chips
-                    let chips = '';
-                    if (ro.partsStatus === 'sourcing') chips += '<span class="compact-chip ch-sourcing" data-action="parts-status" data-idx="' + index + '">Sourcing</span>';
-                    else if (ro.partsStatus === 'outstanding' || ro.hasOpenPartsRequest) chips += '<span class="compact-chip ch-outstanding" data-action="parts-status" data-idx="' + index + '">Outstanding</span>';
-                    else if (ro.partsStatus === 'estimate') chips += '<span class="compact-chip ch-estimate" data-action="parts-status" data-idx="' + index + '">Estimate</span>';
-                    else if (ro.partsStatus === 'received') chips += '<span class="compact-chip ch-received" data-action="parts-status" data-idx="' + index + '">Received</span>';
-
-                    if (ro.hasOpenPartsRequest && ro.partsStatus !== 'outstanding') chips += '<span class="compact-chip ch-request">Requested</span>';
-
-                    try {
-                        const ins = ro.insuranceData ? JSON.parse(ro.insuranceData) : null;
-                        if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
-                    } catch(e) {}
-                    if (ro.roType === 'warranty') chips += '<span class="compact-chip ch-warranty">Warranty</span>';
-                    if (ro.roType === 'shop') chips += '<span class="compact-chip ch-shop">🏪 Shop</span>';
-                    if (ro.isTraining) chips += '<span class="compact-chip ch-training">🎓 Training</span>';
-
-                    try {
-                        const parts = ro.partsJson ? JSON.parse(ro.partsJson) : [];
-                        if (parts.length > 0) {
-                            const ct = parts.length;
-                            chips += '<span class="compact-chip ch-parts-badge" data-action="parts-badge" data-idx="' + index + '">' + ct + ' part' + (ct !== 1 ? 's' : '') + '</span>';
-                        }
-                    } catch(e) {}
-
-                    return `
-                    <div class="ro-card-compact ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}" data-compact-row="1">
-                        <div class="compact-col-photo">${ro.rvPhotoUrl ? '<img src="' + ro.rvPhotoUrl + '" alt="RV" onerror="this.style.opacity=\'0.3\'">' : '<span class="compact-no-photo">No Photo</span>'}</div>
-                        <div class="compact-col-id">
-                            <span class="compact-customer">${escapeHtml(ro.customerName) || t('Unknown')}</span>
-                            ${ro.roId ? '<span class="compact-ro-id">' + escapeHtml(ro.roId) + '</span>' : ''}
-                            <span class="compact-rv">${escapeHtml(ro.rv) || t('RV not specified')}</span>
-                        </div>
-                        <div class="compact-col-status">
-                            <span class="compact-stage" style="color: var(--text-primary);">${escapeHtml(ro.status)}</span>
-                            <span class="compact-urgency u-${urgencyLc}">${urgency}</span>
-                        </div>
-                        <div class="compact-col-meta">
-                            ${days !== null ? '<span class="compact-days" style="color:' + daysColor + ';">' + days + ' <span class="compact-days-label">days</span></span>' : '<span class="compact-days-label">Not on lot</span>'}
-                            <span class="compact-tech">${escapeHtml(ro.technicianAssigned) || 'Unassigned'}</span>
-                            ${ro.parkingSpot ? '<span class="compact-spot">📍 ' + escapeHtml(ro.parkingSpot) + '</span>' : ''}
-                        </div>
-                        <div class="compact-col-chips">${chips || '<span style="color:var(--text-secondary);font-size:0.7rem;">—</span>'}</div>
-                        <div class="compact-col-actions">
-                            <button class="compact-action-btn" data-action="edit-ro" data-idx="${index}" title="Edit RO">✏️</button>
-                            <button class="compact-action-btn" data-action="manage-parts" data-idx="${index}" title="Manage Parts">🔩</button>
-                            <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
-                            ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
-                        </div>
-                        <div class="compact-mobile-summary">
-                            <span class="compact-mobile-name">${escapeHtml(ro.customerName) || t('Unknown')}</span>
-                            <span class="compact-mobile-sub">${escapeHtml(ro.rv) || t('RV not specified')}${ro.roId ? ' &middot; ' + escapeHtml(ro.roId) : ''}</span>
-                            <span class="compact-mobile-sub" style="color:var(--text-primary);font-weight:600;">${escapeHtml(ro.status)} &middot; <span class="compact-urgency u-${urgencyLc}">${urgency}</span></span>
-                            <div class="compact-mobile-badges">${chips || ''}</div>
-                        </div>
-                        <span class="compact-chevron">&#8250;</span>
-                    </div>
-                    <div class="compact-expand-panel" data-expand-for="${index}">
-                        <div class="compact-expand-inner">
-                            <div class="cep-fields">
-                                <div class="cep-row">
-                                    <span class="cep-label">Status</span>
-                                    <select class="cep-status-dropdown status-dropdown status-${statusClass}" data-ro-index="${index}">
-                                        <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>Not On Lot</option>
-                                        <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
-                                        <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
-                                        <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>Awaiting Parts</option>
-                                        <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
-                                        <option value="In progress" ${ro.status === 'In progress' ? 'selected' : ''}>In Progress</option>
-                                        <option value="Repairs Completed" ${ro.status === 'Repairs Completed' ? 'selected' : ''}>Repairs Completed</option>
-                                        <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>Waiting for QA/QC</option>
-                                        <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>Ready for Pickup</option>
-                                        <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
-                                    </select>
-                                </div>
-                                <div class="cep-row">
-                                    <span class="cep-label">Urgency</span>
-                                    <select class="cep-urgency-dropdown urgency-dropdown urgency-${urgencyLc}" data-ro-index="${index}">
-                                        <option value="Critical" ${urgency === 'Critical' ? 'selected' : ''}>Critical</option>
-                                        <option value="High" ${urgency === 'High' ? 'selected' : ''}>High</option>
-                                        <option value="Medium" ${urgency === 'Medium' ? 'selected' : ''}>Medium</option>
-                                        <option value="Low" ${urgency === 'Low' ? 'selected' : ''}>Low</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="cep-fields">
-                                <div class="cep-row">
-                                    <span class="cep-label">Technician</span>
-                                    <span class="cep-value">${escapeHtml(ro.technicianAssigned) || 'Unassigned'}</span>
-                                </div>
-                                <div class="cep-row">
-                                    <span class="cep-label">Parking Spot</span>
-                                    <span class="cep-value">${ro.parkingSpot ? '📍 ' + escapeHtml(ro.parkingSpot) : '—'}</span>
-                                </div>
-                            </div>
-                            <div class="cep-actions">
-                                <button class="cep-action-btn" data-action="edit-ro" data-idx="${index}">✏️ Edit RO</button>
-                                <button class="cep-action-btn" data-action="manage-parts" data-idx="${index}">🔩 Parts</button>
-                                <button class="cep-action-btn" data-action="work-orders" data-idx="${index}">🔧 WO</button>
-                                ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="cep-action-btn" data-action="schedule" data-idx="' + index + '">📅 Schedule</button>' : ''}
-                            </div>
-                        </div>
-                    </div>`;
-                }
-
-                /* ── Standard Card View (condensed / regular / expanded) ─ */
+                
                 return `
                     <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
-                        ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
+                        ${shouldShow('urgencySelector') ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
                                     title="Change urgency level">
@@ -8381,12 +7547,9 @@ Notes: ${notes}` : '',
                         
                         ${shouldShow('customerName') ? `
                         <div class="customer-name">${escapeHtml(ro.customerName) || t('Unknown Customer')}</div>
-                        ${ro.roId ? `<div class="card-ro-id">${escapeHtml(ro.roId)}</div>` : ''}
-                        ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
+                        ${ro.roId ? `<div style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info); letter-spacing:0.05em; margin-top:-4px; margin-bottom:4px;">${escapeHtml(ro.roId)}</div>` : ''}
+                        ${ro.parkingSpot ? `<div style="display:inline-flex;align-items:center;gap:5px;background:#fef9c3;border:1.5px solid #fde047;border-radius:6px;padding:3px 10px;font-size:0.78rem;font-weight:700;color:#854d0e;margin-bottom:5px;cursor:pointer;" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
-                        ${ro.roType === 'warranty' ? '<div class="warranty-badge">🔄 Warranty</div><div class="warranty-badge" style="background:rgba(0,0,0,0.08);border-color:rgba(0,0,0,0.15);color:#6b7280;margin-top:2px;">$0 — No Charge</div>' : ''}
-                        ${ro.roType === 'shop' ? '<div class="shop-badge">🏪 Shop Operations</div>' : ''}
-                        ${ro.isTraining ? '<div class="training-badge">🎓 Training</div>' : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
                         <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" data-action="parts-status" data-idx="${index}" title="Parts status — click to update">
@@ -8566,7 +7729,7 @@ Notes: ${notes}` : '',
                                         ${t('View Time Logs')}
                                     </button>
                                     ${isAdmin() ? `
-                                    <button class="view-time-logs-btn" data-action="refresh-logs" data-idx="${index}" title="Admin: Force refresh time logs from Google Sheets" style="margin-top: 8px;">
+                                    <button class="view-time-logs-btn" data-action="refresh-logs" data-idx="${index}" title="Admin: Force refresh time logs from Google Sheets" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); margin-top: 8px;">
                                         ${t('🔄 Refresh Time Logs')}
                                     </button>
                                     ` : ''}
@@ -8576,7 +7739,6 @@ Notes: ${notes}` : '',
                             return '';
                         })() : ''}
                         
-                        <div class="card-actions-primary">
                         ${shouldShow('editButton') ? `
                         <button class="edit-ro-btn" data-action="edit-ro" data-idx="${index}">
                             ${t('✏️ Edit RO')}
@@ -8591,38 +7753,31 @@ Notes: ${notes}` : '',
                         <button class="work-order-btn" data-action="work-orders" data-idx="${index}">
                             🔧 ${t('Work Orders')}
                         </button>
-                        </div>
-                        <div class="card-actions-secondary">
-                        ${canSeeWorkList() ? `<button class="card-secondary-btn" data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
+                        ${canSeeWorkList() ? `<button data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#334155,#475569);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
                         ${ro.customerPhone ? `
-                        <button class="card-secondary-btn kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer">
+                        <button class="kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer" style="width:100%;padding:10px 16px;background:linear-gradient(135deg,#0ea5e9 0%,#0284c7 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:600;margin-top:6px;">
                             💬 ${t('Messages')}
                         </button>
                         ` : ''}
-                        ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
+                        ${(isAdmin() || hasRole('Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
                         <button class="mark-ordered-btn" data-action="set-parts-status" data-idx="${index}" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}
                         </button>
                         ` : ''}
-                        ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? `
+                        ${(isAdmin() || hasRole('Manager')) && ro.status !== 'Delivered/Cashed Out' ? `
                         <button class="schedule-ro-btn" data-action="schedule" data-idx="${index}">
                             📅 ${ro.status === 'Scheduled' ? t('Reschedule') : t('Schedule')}
                         </button>` : ''}
+
                         ${isAdmin() && (ro.status === 'Delivered/Cashed Out') ? `
                         <button class="archive-ro-btn visible" data-action="archive" data-idx="${index}">
                             ${t('📦 Archive to Cashiered')}
                         </button>
                         ` : ''}
-                        </div>
                     </div>
                 `;
             }).join('');
-
-            // Highlight search matches in rendered cards
-            if (currentSearchFilter) {
-                highlightSearchMatches(grid, currentSearchFilter);
-            }
-
+            
             // QR codes now render on-demand when toggle is clicked
             // Just load Drive images for RV photos
             if (accessToken) {
@@ -9099,12 +8254,12 @@ Notes: ${notes}` : '',
             'Live': 'En Vivo',
             'RVs on Lot': 'RVs en el Lote',
             // Search & filters
-            '🔍 Search:': '🔍 Buscar:',
-            'Search name, RO ID, VIN, tech, description, phone…': 'Buscar nombre, OR, VIN, técnico, descripción, teléfono…',
+            '🔍 Search by Customer Name:': '🔍 Buscar por Nombre:',
+            'Type customer name to filter...': 'Escriba el nombre del cliente...',
             '✕ Clear': '✕ Limpiar',
             'Filter by Days on Lot ≥': 'Días en el Lote ≥',
             'Filter by Parts Status': 'Filtrar por Partes',
-            'Filter by RO Type': 'Filtrar por Tipo de OT',
+            'Filter by Insurance': 'Filtrar por Seguro',
             'Filter by Repair Type:': 'Tipo de Reparación:',
             'Filter by Status': 'Filtrar por Estado',
             'All ROs': 'Todas',
@@ -9114,8 +8269,6 @@ Notes: ${notes}` : '',
             '🛡️ Insurance': '🛡️ Seguro',
             '🔀 Hybrid': '🔀 Híbrido',
             '🔧 Standard': '🔧 Estándar',
-            '🏪 Shop': '🏪 Taller',
-            '🏪 Shop Operations': '🏪 Operaciones de Taller',
             // RO status values
             'Not On Lot': 'No en el Lote',
             'On Lot': 'En el Lote',
@@ -9252,9 +8405,9 @@ Notes: ${notes}` : '',
             const liveSpan = document.querySelector('.live-indicator span:last-child');
             if (liveSpan) liveSpan.dataset.i18n = 'Live';
             const searchLabel = document.querySelector('.search-label');
-            if (searchLabel) searchLabel.dataset.i18n = '🔍 Search:';
+            if (searchLabel) searchLabel.dataset.i18n = '🔍 Search by Customer Name:';
             const searchInput = document.getElementById('customerSearch');
-            if (searchInput) searchInput.dataset.i18nPh = 'Search name, RO ID, VIN, tech, description, phone…';
+            if (searchInput) searchInput.dataset.i18nPh = 'Type customer name to filter...';
             const clearBtn = document.getElementById('clearSearch');
             if (clearBtn) clearBtn.dataset.i18n = '✕ Clear';
             // Tag filter section labels (preserve child spans)
@@ -10112,7 +9265,6 @@ Notes: ${notes}` : '',
                 hasOpenPartsRequest:      !!row.has_open_parts_request,
                 partsStatus:              row.parts_status || null,
                 requestedByEmail:         row.requested_by_email || null,
-                isTraining:               !!row.is_training,
                 _supabaseId:              row.id,  // keep uuid for updates
             };
         }
@@ -10209,6 +9361,7 @@ Notes: ${notes}` : '',
                 }));
 
                 log('✅ Loaded', timeLogsData.length, 'time logs from Supabase');
+                renderBoard();
             } catch(err) {
                 console.error('Error loading time logs from Supabase:', err);
                 timeLogsData = [];
@@ -10397,8 +9550,7 @@ Notes: ${notes}` : '',
                     status:         formData.status || 'Not On Lot',
                     urgency:        formData.urgency || null,
                     customer_type:  formData.customerType || null,
-                    ro_type:        currentROType || 'standard',
-                    is_training:    !!formData.isTraining,
+                    ro_type:        'standard',
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -10451,8 +9603,6 @@ Notes: ${notes}` : '',
                 date_arrived:   formData.dateArrived || null,
                 dollar_value:   formData.dollarValue ? parseFloat(formData.dollarValue) : null,
                 parking_spot:   formData.parkingSpot || null,
-                ro_type:        currentROType || 'standard',
-                is_training:    !!formData.isTraining,
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -11394,11 +10544,8 @@ Notes: ${notes}` : '',
             });
         }
         async function _doNotifyPartsRequester(filteredIndex) {
+            const ro = currentFilteredData[filteredIndex];
             try {
-                const ro = currentFilteredData[filteredIndex];
-                if (!ro) { showToast('RO not found — the view may have changed. Please try again.', 'warning'); return; }
-                const roPartsData = partsData[ro.roId] || [];
-                const orderedParts = roPartsData.filter(p => ['Ordered','In Transit','Backordered'].includes(p.status));
                 const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
                     headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
@@ -11449,22 +10596,6 @@ Notes: ${notes}` : '',
                 log('ETA notification sent to', ro.requestedByEmail, 'for part:', partName, 'ETA:', eta);
             } catch(err) {
                 warn('ETA notification failed (non-blocking):', err);
-            }
-        }
-
-        // GH#20: Fire-and-forget Slack notification helper — errors are caught and logged, never surface to user
-        async function notifySlack(event, data = {}) {
-            try {
-                await fetch(`${SUPABASE_URL}/functions/v1/slack-notify`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ event, ...data }),
-                });
-            } catch (e) {
-                console.warn('Slack notify failed (non-fatal):', e);
             }
         }
 
@@ -11814,7 +10945,7 @@ Notes: ${notes}` : '',
         // ── Parts Status Modal (GH#14) ────────────────────────────────────────
         // Opens a modal for Manager/Admin to set Parts status: Sourcing / Outstanding / Received / Clear
         function openPartsStatusModal(filteredIndex) {
-            if (!isAdmin() && !hasRole('Manager') && !hasRole('Sr Manager')) {
+            if (!isAdmin() && !hasRole('Manager')) {
                 showToast('Only Managers and Admins can change parts status.', 'warning');
                 return;
             }
@@ -12768,20 +11899,7 @@ Notes: ${notes}` : '',
                 // Restore RO type and insurance fields from Column W JSON
                 let savedInsData = null;
                 try { savedInsData = ro.insuranceData ? JSON.parse(ro.insuranceData) : null; } catch(e) {}
-                if (ro.roType === 'shop') {
-                    setROType('shop', 'edit');
-                } else if (ro.roType === 'warranty') {
-                    setROType('warranty', 'edit');
-                    // Restore warranty fields from notes prefix
-                    const notes = ro.roStatusNotes || '';
-                    const warMatch = notes.match(/\[WARRANTY: Original RO: ([^\|]*)\| Reason: ([^\]]*)\]/);
-                    if (warMatch) {
-                        const origEl = document.getElementById('editWarrantyOriginalRO');
-                        const reasonEl = document.getElementById('editWarrantyReason');
-                        if (origEl) origEl.value = warMatch[1].trim();
-                        if (reasonEl) reasonEl.value = warMatch[2].trim();
-                    }
-                } else if (savedInsData && savedInsData.roType) {
+                if (savedInsData && savedInsData.roType) {
                     setROType(savedInsData.roType, 'edit');
                     // Populate insurance fields
                     const insFields = ['claimNumber','policyNumber','insuranceCompany','coverageType',
@@ -12816,12 +11934,6 @@ Notes: ${notes}` : '',
                 document.querySelectorAll('#editROForm input[name="editRepairType"]').forEach(cb => {
                     cb.checked = repairTypes.includes(cb.value);
                 });
-
-                // GH#24: Training RO toggle — admin/sr_manager only
-                const etw = document.getElementById('editTrainingWrap');
-                if (etw) etw.style.display = isSrOrAdmin() ? '' : 'none';
-                const etc = document.getElementById('editIsTraining');
-                if (etc) etc.checked = !!ro.isTraining;
 
                 document.getElementById('editROOverlay').classList.add('active');
             } catch (error) {
@@ -12880,11 +11992,6 @@ Notes: ${notes}` : '',
                 const submitBtn = document.getElementById('newROSubmitBtn');
                 modalTitle.textContent = 'New Repair Order';
                 submitBtn.textContent = 'Save RO';
-                // GH#24: Show training checkbox for admin/sr_manager only
-                const ntw = document.getElementById('newTrainingWrap');
-                if (ntw) { ntw.style.display = isSrOrAdmin() ? '' : 'none'; }
-                const ntc = document.getElementById('newIsTraining');
-                if (ntc) ntc.checked = false;
                 modalOverlay.classList.add('active');
             });
 
@@ -12914,40 +12021,14 @@ Notes: ${notes}` : '',
 
                 const formData = new FormData(newROForm);
                 const data = Object.fromEntries(formData.entries());
-
-                // Shop RO: override customer fields with shop defaults
-                if (currentROType === 'shop') {
-                    data.customerName = 'PRVS - SHOP OPERATIONS';
-                    data.repairType = 'Shop';
-                    data.customerPhone = '';
-                    data.customerEmail = '';
-                    data.customerAddress = '';
-                    data.rv = '';
-                    data.vin = '';
-                    data.dollarValue = '';
-                    data.status = data.status || 'On Lot';
-                    data.urgency = data.urgency || 'Low';
-                    data.customerType = data.customerType || '';
-                } else {
-                    const repairTypes = formData.getAll('repairType');
-                    if (repairTypes.length === 0) {
-                        showToast('Please select at least one Repair Type.', 'warning');
-                        return;
-                    }
-                    data.repairType = repairTypes.join(', ');
+                
+                const repairTypes = formData.getAll('repairType');
+                if (repairTypes.length === 0) {
+                    showToast('Please select at least one Repair Type.', 'warning');
+                    return;
                 }
+                data.repairType = repairTypes.join(', ');
                 if (data.vin) data.vin = data.vin.toUpperCase();
-
-                // GH#24: Training RO flag
-                data.isTraining = !!document.getElementById('newIsTraining')?.checked;
-
-                // Prepend warranty details to notes if warranty RO
-                if (currentROType === 'warranty') {
-                    const wOrigRO = document.getElementById('warrantyOriginalRO')?.value || '';
-                    const wReason = document.getElementById('warrantyReason')?.value || '';
-                    const warPrefix = '[WARRANTY: Original RO: ' + wOrigRO + ' | Reason: ' + wReason + ']\n';
-                    data.roStatusNotes = warPrefix + (data.roStatusNotes || '');
-                }
 
                 const submitBtn = document.getElementById('newROSubmitBtn');
                 if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '⏳ Saving...'; }
@@ -12989,35 +12070,8 @@ Notes: ${notes}` : '',
                         window._pendingEstimateDoc = null;
                     }
                     window._lastEstimateScan = null;
-
-                    // GH#20: Slack — capture warranty fields before closeModal resets the form
-                    const _slackROType = currentROType;
-                    const _slackWarOrigRO = document.getElementById('warrantyOriginalRO')?.value || '';
-                    const _slackWarReason = document.getElementById('warrantyReason')?.value || '';
-
                     closeModal();
                     showToast('Repair Order saved successfully!', 'success');
-
-                    // GH#20: Slack — new RO created (skip training + shop ROs)
-                    if (!data.isTraining && currentROType !== 'shop') {
-                        notifySlack('ro_created', {
-                            customerName: data.customerName || '',
-                            rv: data.rv || '',
-                            roId: success.ro_id || '',
-                            technicianAssigned: data.technicianAssigned || '',
-                            urgency: data.urgency || 'Medium',
-                        });
-                        // GH#20: Slack — warranty RO opened
-                        if (_slackROType === 'warranty') {
-                            notifySlack('warranty_ro_opened', {
-                                customerName: data.customerName || '',
-                                rv: data.rv || '',
-                                roId: success.ro_id || '',
-                                originalRO: _slackWarOrigRO,
-                                warrantyReason: _slackWarReason,
-                            });
-                        }
-                    }
                 }
             });
 
@@ -13052,7 +12106,6 @@ Notes: ${notes}` : '',
                         repairType: repairTypes.join(', '),
                         vin: document.getElementById('editVin').value.toUpperCase(),
                         repairDescription: document.getElementById('editRepairDescription').value,
-                        isTraining: !!document.getElementById('editIsTraining')?.checked,
                     };
 
                     // Diff old vs new — only log fields that actually changed
@@ -13076,23 +12129,6 @@ Notes: ${notes}` : '',
                         const newVal = String(data[key] || '').trim();
                         if (oldVal !== newVal) {
                             changes.push({ field: label, oldValue: oldVal, newValue: newVal });
-                        }
-                    }
-
-                    // Update warranty notes prefix if warranty RO
-                    if (currentROType === 'warranty') {
-                        const wOrigRO = document.getElementById('editWarrantyOriginalRO')?.value || '';
-                        const wReason = document.getElementById('editWarrantyReason')?.value || '';
-                        const warPrefix = '[WARRANTY: Original RO: ' + wOrigRO + ' | Reason: ' + wReason + ']';
-                        const existingNotes = existing.roStatusNotes || '';
-                        // Replace existing warranty prefix or prepend
-                        const cleaned = existingNotes.replace(/\[WARRANTY: Original RO: [^\]]*\]\n?/, '');
-                        const supaId = existing._supabaseId;
-                        if (supaId) {
-                            const newNotes = warPrefix + (cleaned ? '\n' + cleaned : '');
-                            await getSB().from('notes').upsert({
-                                ro_id: supaId, type: 'ro_status', body: newNotes,
-                            }, { onConflict: 'ro_id,type' }).then(() => {});
                         }
                     }
 
@@ -13827,8 +12863,6 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn active" id="standardROBtn" onclick="setROType('standard')">🔧 Standard RO</button>
                 <button type="button" class="ro-type-btn insurance" id="insuranceROBtn" onclick="setROType('insurance')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="hybridROBtn" onclick="setROType('hybrid')">🔀 Insurance + Customer Pay</button>
-                <button type="button" class="ro-type-btn warranty" id="warrantyROBtn" onclick="setROType('warranty')">🔄 Warranty RO</button>
-                <button type="button" class="ro-type-btn shop" id="shopROBtn" onclick="setROType('shop')">🏪 Shop RO</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -13840,41 +12874,41 @@ function toggleWOTasks(tasksId, chevId) {
 
             <form id="newROForm">
                 <div class="form-grid">
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Name *</label>
                         <input type="text" class="form-input" name="customerName" id="new_customerName" required>
                         <div id="sug_new_customerName"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" name="customerPhone" id="new_customerPhone">
                         <div id="sug_new_customerPhone"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Email</label>
                         <input type="email" class="form-input" name="customerEmail" id="new_customerEmail">
                         <div id="sug_new_customerEmail"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">RV *</label>
                         <input type="text" class="form-input" name="rv" id="new_rv" placeholder="2019 Winnebago Vista" required>
                         <div id="sug_new_rv"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">VIN</label>
                         <input type="text" class="form-input" name="vin" id="new_vin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                         <div id="sug_new_vin"></div>
                     </div>
-                    <div class="form-field full-width shop-hide">
+                    <div class="form-field full-width">
                         <label class="form-label">Customer Address</label>
                         <input type="text" class="form-input" name="customerAddress" id="new_customerAddress">
                         <div id="sug_new_customerAddress"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">RV Photo URL</label>
                         <input type="url" class="form-input" name="rvPhotoUrl">
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Repair Type *</label>
                         <div class="checkbox-group">
                             <label class="checkbox-label">
@@ -13920,12 +12954,12 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Technician Assigned</label>
                         <input type="text" class="form-input" name="technicianAssigned">
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Dollar Value</label>
                         <input type="number" class="form-input" name="dollarValue" id="new_dollarValue" min="0" step="0.01">
                         <div id="sug_new_dollarValue"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">📍 Parking Spot</label>
                         <select class="form-select" name="parkingSpot" id="new_parkingSpot">
                             <option value="">— Not assigned —</option>
@@ -13991,7 +13025,7 @@ function toggleWOTasks(tasksId, chevId) {
                             </optgroup>
                         </select>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Status *</label>
                         <select class="form-select" name="status" required>
                             <option value="">Select Status</option>
@@ -14006,7 +13040,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Delivered/Cashed Out">Delivered/Cashed Out</option>
                         </select>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Urgency *</label>
                         <select class="form-select" name="urgency" required>
                             <option value="">Select Urgency</option>
@@ -14016,7 +13050,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Low">Low</option>
                         </select>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Type *</label>
                         <select class="form-select" name="customerType" required>
                             <option value="">Select Type</option>
@@ -14024,11 +13058,11 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Regular">Regular</option>
                         </select>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Promised Date</label>
                         <input type="date" class="form-input" name="promisedDate">
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Date RV Arrived on Lot</label>
                         <input type="date" class="form-input" name="dateArrived">
                         <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">Leave blank if RV is Not On Lot yet. Set when RV physically arrives.</div>
@@ -14037,7 +13071,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">RO Status Notes</label>
                         <textarea class="form-textarea" name="roStatusNotes"></textarea>
                     </div>
-                    <div class="form-field full-width shop-hide">
+                    <div class="form-field full-width">
                         <label class="form-label">Customer Communication Notes</label>
                         <textarea class="form-textarea" name="customerCommunicationNotes"></textarea>
                     </div>
@@ -14084,19 +13118,6 @@ function toggleWOTasks(tasksId, chevId) {
                         <div class="form-field full-width">
                             <label class="form-label">Customer Pay Description</label>
                             <textarea class="form-textarea" name="customerPayDescription" id="cp_customerPayDescription" placeholder="Describe what the customer is paying for separately..."></textarea>
-                        </div>
-                    </div>
-
-                    <!-- Warranty Details (hidden until Warranty mode activated) -->
-                    <div class="insurance-section" id="warrantyFieldsSection" style="border-top:1px solid rgba(239,68,68,0.3);">
-                        <div class="insurance-section-header" style="color:#ef4444;">🔄 Warranty Details</div>
-                        <div class="form-field">
-                            <label class="form-label">Original RO #</label>
-                            <input type="text" class="form-input" id="warrantyOriginalRO" placeholder="e.g. PRVS-1234-ABCD">
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Warranty Reason</label>
-                            <input type="text" class="form-input" id="warrantyReason" placeholder="e.g. Repair failed, wrong part installed">
                         </div>
                     </div>
 
@@ -14342,12 +13363,6 @@ function toggleWOTasks(tasksId, chevId) {
                         <div class="form-field"><label class="form-label">Arrived at Shop</label><input type="text" class="form-input" id="ins_arrivedAtShop"><div id="sug_new_arrivedAtShop"></div></div>
                     </div>
                 </div>
-                <div id="newTrainingWrap" class="form-field full-width" style="display:none; padding:8px 0;">
-                    <label style="display:inline-flex;align-items:center;gap:8px;font-size:0.85rem;color:#6b7280;cursor:pointer;">
-                        <input type="checkbox" id="newIsTraining"> 🎓 Training RO
-                    </label>
-                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">Training ROs are excluded from Slack notifications and manager reports.</div>
-                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="newROSubmitBtn">Save Repair Order</button>
@@ -14369,8 +13384,6 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn active" id="editStandardROBtn" onclick="setROType('standard','edit')">🔧 Standard RO</button>
                 <button type="button" class="ro-type-btn insurance" id="editInsuranceROBtn" onclick="setROType('insurance','edit')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="editHybridROBtn" onclick="setROType('hybrid','edit')">🔀 Insurance + Customer Pay</button>
-                <button type="button" class="ro-type-btn warranty" id="editWarrantyROBtn" onclick="setROType('warranty','edit')">🔄 Warranty RO</button>
-                <button type="button" class="ro-type-btn shop" id="editShopROBtn" onclick="setROType('shop','edit')">🏪 Shop RO</button>
             </div>
 
             <!-- Insurance Estimate Scanner -->
@@ -14384,32 +13397,32 @@ function toggleWOTasks(tasksId, chevId) {
                 <div style="font-size: 0.75rem; color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; margin-bottom: 16px;" id="editRoId"></div>
 
                 <div class="form-grid">
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Name *</label>
                         <input type="text" class="form-input" id="editCustomerName" required>
                         <div id="sug_edit_customerName"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" id="editCustomerPhone">
                         <div id="sug_edit_customerPhone"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Customer Email</label>
                         <input type="email" class="form-input" id="editCustomerEmail">
                         <div id="sug_edit_customerEmail"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">RV *</label>
                         <input type="text" class="form-input" id="editRv" required>
                         <div id="sug_edit_rv"></div>
                     </div>
-                    <div class="form-group shop-hide">
+                    <div class="form-group">
                         <label class="form-label">VIN</label>
                         <input type="text" class="form-input" id="editVin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                         <div id="sug_edit_vin"></div>
                     </div>
-                    <div class="form-field full-width shop-hide">
+                    <div class="form-field full-width">
                         <label class="form-label">Customer Address</label>
                         <input type="text" class="form-input" id="editCustomerAddress">
                         <div id="sug_edit_customerAddress"></div>
@@ -14418,7 +13431,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Repair Description</label>
                         <textarea class="form-input" id="editRepairDescription" rows="3" style="resize:vertical; min-height:64px;"></textarea>
                     </div>
-                    <div class="form-field full-width shop-hide">
+                    <div class="form-field full-width">
                         <label class="form-label">Repair Type *</label>
                         <div class="checkbox-group">
                             <label class="checkbox-label"><input type="checkbox" name="editRepairType" value="Roof"><span>Roof</span></label>
@@ -14435,12 +13448,12 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Technician Assigned</label>
                         <input type="text" class="form-input" id="editTechnicianAssigned">
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">RO Value ($)</label>
                         <input type="number" class="form-input" id="editDollarValue" min="0" step="0.01" placeholder="0.00">
                         <div id="sug_edit_dollarValue"></div>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">📍 Parking Spot</label>
                         <select class="form-select" id="editParkingSpot">
                             <option value="">— Not assigned —</option>
@@ -14506,11 +13519,11 @@ function toggleWOTasks(tasksId, chevId) {
                             </optgroup>
                         </select>
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Promised Date</label>
                         <input type="date" class="form-input" id="editPromisedDate">
                     </div>
-                    <div class="form-field shop-hide">
+                    <div class="form-field">
                         <label class="form-label">Date RV Arrived on Lot</label>
                         <input type="date" class="form-input" id="editDateArrived">
                     </div>
@@ -14609,19 +13622,6 @@ function toggleWOTasks(tasksId, chevId) {
                         <div class="form-field full-width"><label class="form-label">Customer Pay Description</label><textarea class="form-textarea" id="editCp_customerPayDescription"></textarea></div>
                     </div>
 
-                    <!-- Warranty Details (Edit mode, hidden until Warranty mode activated) -->
-                    <div class="insurance-section" id="editWarrantyFieldsSection" style="border-top:1px solid rgba(239,68,68,0.3);">
-                        <div class="insurance-section-header" style="color:#ef4444;">🔄 Warranty Details</div>
-                        <div class="form-field">
-                            <label class="form-label">Original RO #</label>
-                            <input type="text" class="form-input" id="editWarrantyOriginalRO" placeholder="e.g. PRVS-1234-ABCD">
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Warranty Reason</label>
-                            <input type="text" class="form-input" id="editWarrantyReason" placeholder="e.g. Repair failed, wrong part installed">
-                        </div>
-                    </div>
-
                     <!-- Custom Insurance Fields (Edit RO) -->
                     <div class="insurance-section" id="editCustomFieldsSection">
                         <div class="custom-fields-section-header">
@@ -14661,12 +13661,6 @@ function toggleWOTasks(tasksId, chevId) {
                     </div>
 
                     <div id="sug_edit_extra" class="form-field full-width" style="padding:0; background:none; border:none;"></div>
-                </div>
-                <div id="editTrainingWrap" class="form-field full-width" style="display:none; padding:8px 0;">
-                    <label style="display:inline-flex;align-items:center;gap:8px;font-size:0.85rem;color:#6b7280;cursor:pointer;">
-                        <input type="checkbox" id="editIsTraining"> 🎓 Mark as Training RO
-                    </label>
-                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">Training ROs are excluded from Slack notifications and manager reports.</div>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="editCancelBtn">Cancel</button>
