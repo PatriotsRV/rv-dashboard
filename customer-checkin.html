@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.3
+    PRVS Customer Check-In v1.4
     Released: 2026-04-15
+    v1.4: GH#20 Fix signature (init canvas on step 4 visibility), full RAF in email
     v1.3: GH#20 Fix generate-signature (draw in CSS-pixel space, not offscreen canvas)
     v1.2: GH#19 Professional marble visual redesign, wider form, version display
     v1.1: GH#18 Signature & photo hard validation, generate-signature feature, auth refresh fix
@@ -906,7 +907,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.3</div>
+<div class="version-badge">PRVS Customer Check-In v1.4</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1116,7 +1117,7 @@
         document.getElementById('staffBar').classList.remove('hidden');
         document.getElementById('staffName').textContent = supabaseSession.user.email;
         buildSiloGrid();
-        initSignaturePad();
+        // NOTE: initSignaturePad() is called in setupStep4() so the canvas is visible
         document.getElementById('sigDate').value = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
@@ -1178,7 +1179,10 @@
         document.getElementById('rafSection').classList.toggle('hidden', !isDrop);
         document.getElementById('leadStep4').classList.toggle('hidden', isDrop);
 
-        if (!isDrop) {
+        if (isDrop) {
+            // Init signature pad now that the canvas is visible on screen
+            initSignaturePad();
+        } else {
             // Build lead review summary
             buildLeadReview();
         }
@@ -1475,30 +1479,39 @@
 
     // ── SIGNATURE PAD ─────────────────────────────────────────────
     let _sigCanvas, _sigCtx, _sigDrawing = false, _sigHasData = false;
+    let _sigPadReady = false;  // prevent duplicate event listeners
 
     function initSignaturePad() {
         _sigCanvas = document.getElementById('signatureCanvas');
+        if (!_sigCanvas) return;
+
+        // Only fully init once (resize + events). On repeat calls just
+        // verify the canvas has nonzero dimensions.
+        const rect = _sigCanvas.getBoundingClientRect();
+        if (rect.width === 0) return; // still hidden — bail
+
         _sigCtx = _sigCanvas.getContext('2d');
 
-        // Set actual canvas size
-        const rect = _sigCanvas.getBoundingClientRect();
-        _sigCanvas.width = rect.width * 2;  // 2x for retina
-        _sigCanvas.height = 360;            // 180px * 2 for retina
-        _sigCtx.scale(2, 2);
-        _sigCtx.strokeStyle = '#1e293b';
-        _sigCtx.lineWidth = 2;
-        _sigCtx.lineCap = 'round';
-        _sigCtx.lineJoin = 'round';
+        if (!_sigPadReady) {
+            // First-time setup: size the canvas and attach events
+            _sigCanvas.width = rect.width * 2;  // 2x for retina
+            _sigCanvas.height = 360;            // 180px * 2 for retina
+            _sigCtx.scale(2, 2);
+            _sigCtx.strokeStyle = '#1e293b';
+            _sigCtx.lineWidth = 2;
+            _sigCtx.lineCap = 'round';
+            _sigCtx.lineJoin = 'round';
 
-        // Draw baseline
-        drawSigBaseline();
+            drawSigBaseline();
 
-        // Pointer events (works with mouse, trackpad, touch, and stylus)
-        _sigCanvas.addEventListener('pointerdown', sigPointerDown);
-        _sigCanvas.addEventListener('pointermove', sigPointerMove);
-        _sigCanvas.addEventListener('pointerup', sigEnd);
-        _sigCanvas.addEventListener('pointerleave', sigEnd);
-        _sigCanvas.addEventListener('pointercancel', sigEnd);
+            // Pointer events (works with mouse, trackpad, touch, and stylus)
+            _sigCanvas.addEventListener('pointerdown', sigPointerDown);
+            _sigCanvas.addEventListener('pointermove', sigPointerMove);
+            _sigCanvas.addEventListener('pointerup', sigEnd);
+            _sigCanvas.addEventListener('pointerleave', sigEnd);
+            _sigCanvas.addEventListener('pointercancel', sigEnd);
+            _sigPadReady = true;
+        }
     }
 
     function drawSigBaseline() {
@@ -2058,6 +2071,7 @@
         document.getElementById('prevROList').innerHTML = '';
         stopCamera();
         if (_sigCanvas) clearSignature();
+        _sigPadReady = false;  // allow re-init on next step 4 visit
         buildSiloGrid();
 
         const btn = document.getElementById('submitBtn');

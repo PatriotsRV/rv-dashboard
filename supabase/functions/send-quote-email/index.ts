@@ -374,11 +374,15 @@ Deno.serve(async (req: Request) => {
 
       const subject = `Patriots RV Services — Signed Repair Authorization (${roId || "RO"})`;
 
+      // Shared styles for RAF section headers and paragraphs
+      const sH = 'margin:20px 0 8px;color:#1e3a8a;font-size:15px;font-weight:700;border-bottom:1px solid #e2e8f0;padding-bottom:4px;';
+      const sP = 'margin:0 0 10px;font-size:13px;line-height:1.7;color:#374151;';
+
       const htmlBody = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 20px; color: #333; background: #f9fafb;">
+<body style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; padding: 20px; color: #333; background: #f9fafb;">
   <div style="background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
 
     <div style="background: linear-gradient(135deg, #1e3a8a, #1d4ed8); padding: 24px 20px; text-align: center;">
@@ -388,7 +392,7 @@ Deno.serve(async (req: Request) => {
 
     <div style="padding: 24px 20px;">
       <p style="font-size: 15px;">Dear ${customerName || "Valued Customer"},</p>
-      <p style="font-size: 14px; color: #555;">Thank you for choosing Patriots RV Services. This email confirms that you have reviewed and signed our <strong>Repair Authorization Form</strong> on <strong>${signedDate || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</strong>.</p>
+      <p style="font-size: 14px; color: #555;">Thank you for choosing Patriots RV Services. This email confirms that you have reviewed and signed our <strong>Repair Authorization Form</strong> on <strong>${signedDate || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</strong>. A complete copy of the signed agreement is included below for your records.</p>
 
       <div style="background: #f0f9ff; border: 1.5px solid #93c5fd; border-radius: 10px; padding: 16px; margin: 16px 0;">
         <table style="width:100%; border-collapse:collapse; font-size:14px;">
@@ -400,23 +404,63 @@ Deno.serve(async (req: Request) => {
         </table>
       </div>
 
-      <div style="background: #fefce8; border-left: 4px solid #eab308; border-radius: 6px; padding: 14px 16px; margin: 16px 0; font-size: 13px;">
-        <strong style="color: #92400e;">Your Signed Agreement Covers:</strong>
-        <ul style="margin: 8px 0 0; padding-left: 20px; color: #78350f; line-height: 1.8;">
-          <li>Work Authorization &amp; Mechanic's Lien</li>
-          <li>Estimates &amp; Completion Timelines (subject to change)</li>
-          <li>Scheduled Trips &amp; Travel Plans Policy</li>
-          <li>Authorization to Transport</li>
-          <li>Storage Policy ($80/day after 5 business days past completion)</li>
-          <li>Food Spoilage, Pest, &amp; Weather Damage Disclaimers</li>
-          <li>Photo &amp; Media Authorization</li>
-          <li>Personal Property Disclaimer</li>
-          <li>Payment Terms (payment in full before delivery)</li>
-        </ul>
-        <p style="margin: 10px 0 0; font-size: 12px; color: #92400e;">A full copy of all terms was presented to you at the time of signing. If you would like another copy, please contact our front desk.</p>
+      <!-- ── FULL REPAIR AUTHORIZATION FORM ───────────────────────── -->
+      <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:10px; padding:20px 18px; margin:24px 0;">
+        <h2 style="text-align:center; color:#1e3a8a; font-size:18px; margin:0 0 4px;">Patriots RV Services</h2>
+        <p style="text-align:center; color:#475569; font-size:13px; margin:0 0 18px;">Work Authorization &amp; Repair Agreement</p>
+
+        <h3 style="${sH}">1. Work Authorization</h3>
+        <p style="${sP}">I hereby authorize Patriots RV Services ("PRVS") to perform the repairs, upgrades, and/or services described on this Repair Order for the vehicle identified above. I agree that Patriots RV Services is <strong>not responsible</strong> for loss or damage to this vehicle or articles left in the vehicle due to fire, theft, or any other cause beyond its reasonable control. I further grant permission for PRVS employees to operate the vehicle for the purposes of testing, inspection, and quality assurance.</p>
+        <p style="${sP}">Sealant, maintenance items, and winterization are the responsibility of the customer. Patriots RV Services will not be responsible for water intrusion of any kind or damages resulting thereof, unless the water intrusion is a direct result of work performed by PRVS.</p>
+
+        <h3 style="${sH}">2. Mechanic's Lien &amp; Payment Terms</h3>
+        <p style="${sP}">To secure payment in the amount of the repairs, an expressed mechanic's lien on the vehicle is acknowledged, and I further agree to pay reasonable attorney's fees and court costs in the event that legal action becomes necessary to enforce this agreement. I acknowledge that if analysis reveals additional repairs are necessary, I will be contacted for authorization of any additional charges. If new parts listed in the attached Repair Order are not available, Patriots RV Services reserves the right to use quality replacement parts when possible, and the difference between part price and labor required will be adjusted accordingly.</p>
+        <p style="${sP}">The total amount of repair charges must be paid before the vehicle can be released for delivery. I acknowledge that said vehicle can be repossessed by Patriots RV Services for one of the following reasons: non-payment or partial payment, insufficient funds, stop payments, or outstanding balance due over 60 days from delivery, or if insurance coverage pays either a portion of, or the total amount due. I acknowledge that the insurance check/draft must be obtained by myself or sent in advance by the insurance company. I also acknowledge that I must make arrangements with any lien holder or other payees to endorse the insurance check/draft <strong>prior</strong> to the release of the repaired vehicle described.</p>
+
+        <h3 style="${sH}">3. Estimates &amp; Completion Timelines</h3>
+        <p style="${sP}">All estimated completion dates, repair costs, and other quoted values are approximate and subject to change. Factors that may affect final pricing and timelines include, but are not limited to: parts availability, shipping delays, lost or back-ordered shipments, weather events, equipment or facility issues, technician availability, and unforeseen complications discovered during repairs — including delays on vehicles ahead of yours in the service queue. <strong>All figures provided are estimates only and are not guaranteed until the work is fully completed and a final invoice is issued.</strong></p>
+
+        <h3 style="${sH}">4. Scheduled Trips &amp; Travel Plans</h3>
+        <p style="${sP}">Patriots RV Services cannot guarantee specific completion dates for any repair or upgrade (see Section 3 above). We strongly advise against scheduling trips or travel plans based on estimated completion dates while your RV is in our care. If you have an upcoming trip and your repair is not yet complete, you may choose to either wait for the repair to be finished or retrieve your vehicle as-is — however, please be aware that <strong>removing your RV from our shop before completion will forfeit your current position in the service queue</strong>. Rescheduling will be subject to availability at that time. Trip schedules and travel deadlines do not alter the order of our service queue, expedite repairs, or prevent delays that may arise from the factors described above. By signing below, you acknowledge that you accept full responsibility for any travel plans made while your RV is in our possession.</p>
+
+        <h3 style="${sH}">5. Additional Repairs &amp; Hidden Damage</h3>
+        <p style="${sP}">During the course of repairs, conditions may be discovered that were not apparent during the initial inspection. If additional work is necessary beyond the original scope, Patriots RV Services will contact you for authorization before proceeding. If you decline the additional work, reassembly charges may apply to restore the vehicle to a safe and transportable condition.</p>
+
+        <h3 style="${sH}">6. Authorization to Transport</h3>
+        <p style="${sP}">I do hereby authorize Patriots RV Services to transport my unit described above to an authorized facility for the purpose of additional repairs if needed, and I will hold them harmless for any and all damages that may occur during this transport. I further acknowledge that my insurance company would be the responsible party, if necessary. I further acknowledge that the vehicle has current inspection stickers and is within the legal guidelines to be towable or drivable depending on type/class of the vehicle. This includes but is not limited to all working headlights, turn signals, brake lights, windshield wipers, and brakes. All tires must be in good condition and within legal limits with a minimum of 4/32 of tread depth.</p>
+
+        <h3 style="${sH}">7. Storage Policy</h3>
+        <p style="${sP}">Due to limited lot space, you have <strong>5 business days</strong> to pick up your vehicle after notification of completion. If not picked up within that time, we will begin storage charges of <strong>$80.00 per day</strong>. Vehicles not retrieved within <strong>30 days</strong> after completion and notification may be considered abandoned in accordance with the Texas Property Code, and Patriots RV Services reserves all rights and remedies available under Texas law, including but not limited to filing for a mechanic's and storage lien under Chapter 70 of the Texas Property Code.</p>
+
+        <h3 style="${sH}">8. Food Spoilage &amp; Perishables</h3>
+        <p style="${sP}">Patriots RV Services is <strong>not responsible</strong> for food spoilage or damage to any perishable items left in the vehicle. Your RV may not remain connected to shore power during the course of service, and refrigeration, freezer, and climate control systems may be without power for extended periods. Please remove all perishable items before dropping off your vehicle.</p>
+
+        <h3 style="${sH}">9. Rodent, Pest &amp; Wildlife Damage</h3>
+        <p style="${sP}">Patriots RV Services is <strong>not responsible</strong> for any rodent, pest, or wildlife damage — whether pre-existing at the time of drop-off or occurring while the vehicle is on our premises. Rodent and pest activity is common in outdoor storage environments and is beyond our reasonable control. If rodent or pest damage is discovered during the course of repairs, you will be notified and any resulting work will require separate authorization.</p>
+
+        <h3 style="${sH}">10. Storm, Freeze &amp; Weather Damage</h3>
+        <p style="${sP}">Patriots RV Services is <strong>not responsible</strong> for any damage to your vehicle resulting from weather events including, but not limited to: hail, wind, ice, freezing temperatures, flooding, lightning, or severe storms. While your RV is stored on our premises, it is exposed to outdoor conditions. We recommend verifying that your insurance coverage includes comprehensive protection for weather-related damage. If weather damage occurs while your vehicle is in our care, your insurance carrier would be the responsible party.</p>
+
+        <h3 style="${sH}">11. Power of Attorney — Insurance</h3>
+        <p style="${sP}">For the consideration of repairs made to the vehicle, I hereby grant my power of attorney to Patriots RV Services to sign and endorse any checks and/or drafts made payable to me and release thereto as settlement for claim damage to this vehicle.</p>
+
+        <h3 style="${sH}">12. Photo &amp; Media Authorization</h3>
+        <p style="${sP}">I hereby authorize photos and video to be taken throughout the course of repairs of the vehicle. These photos/videos may be required by third parties (i.e., insurance carriers, parts suppliers, etc.) and may also be used for training and/or marketing purposes.</p>
+
+        <h3 style="${sH}">13. Personal Property Disclaimer</h3>
+        <p style="${sP}">Patriots RV Services is not responsible for any personal property left in the vehicle during the course of repairs, including but not limited to: electronics, clothing, tools, accessories, recreational equipment, and valuables. Please remove all personal items before drop-off. Any items discovered during service will be set aside when possible, but PRVS assumes no liability for loss, theft, or damage to personal property.</p>
+
+        <h3 style="${sH}">14. Customer Responsibility — Final Payment</h3>
+        <p style="${sP}">The customer is responsible for the complete repair bill including both the insurance and deductible portions. It is the customer's responsibility to inform their service representative when payment is to be made with an insurance check and to whom the check is made out to. Please note: if the lien is a payee on the check, the check will be taken to the lien holder for inspection, at which time they will endorse the check. All deductibles and customer-pay repairs are to be <strong>paid prior to delivery of vehicle</strong>. Payment in full of the balance is required before the vehicle is delivered.</p>
+      </div>
+      <!-- ── END FULL RAF ─────────────────────────────────────────── -->
+
+      <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 16px; margin: 16px 0; text-align:center;">
+        <p style="margin:0; font-size:14px; color:#15803d; font-weight:700;">&#9989; Signed electronically by ${customerName || "Customer"} on ${signedDate || "today"}</p>
+        <p style="margin:6px 0 0; font-size:12px; color:#166534;">This document was acknowledged and agreed to via the PRVS Customer Check-In system.</p>
       </div>
 
-      <p style="font-size: 14px; color: #555;">We will take great care of your RV. If you have any questions about your service, please don't hesitate to reach out.</p>
+      <p style="font-size: 14px; color: #555;">We will take great care of your RV. If you have any questions about your service or need to reference this agreement, you have the full document above. Don't hesitate to reach out.</p>
     </div>
 
     <div style="background: #f8fafc; padding: 16px 20px; border-top: 1px solid #e2e8f0;">
@@ -438,7 +482,7 @@ Deno.serve(async (req: Request) => {
         to,
         cc:      rafCcGroup,
         subject,
-        text:    `Repair Authorization Confirmation\n\nDear ${customerName},\n\nThank you for choosing Patriots RV Services. This confirms that you signed our Repair Authorization Form on ${signedDate || "today"}.\n\nRepair Order: ${roId || "Pending"}${rv ? `\nVehicle: ${rv}` : ""}${services ? `\nServices: ${services}` : ""}\n\nYour signed agreement covers: Work Authorization, Mechanic's Lien, Estimates & Timelines, Transport Authorization, Storage Policy, Food Spoilage/Pest/Weather Disclaimers, Photo Authorization, Personal Property, and Payment Terms.\n\nA full copy of all terms was presented at signing. Contact our front desk if you need another copy.\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
+        text:    `REPAIR AUTHORIZATION CONFIRMATION\n\nDear ${customerName},\n\nThank you for choosing Patriots RV Services. This confirms that you signed our Repair Authorization Form on ${signedDate || "today"}.\n\nRepair Order: ${roId || "Pending"}${rv ? `\nVehicle: ${rv}` : ""}${services ? `\nServices: ${services}` : ""}\n\n${'='.repeat(50)}\nPATRIOTS RV SERVICES\nWORK AUTHORIZATION & REPAIR AGREEMENT\n${'='.repeat(50)}\n\n1. WORK AUTHORIZATION\nI hereby authorize Patriots RV Services ("PRVS") to perform the repairs, upgrades, and/or services described on this Repair Order for the vehicle identified above. I agree that Patriots RV Services is not responsible for loss or damage to this vehicle or articles left in the vehicle due to fire, theft, or any other cause beyond its reasonable control. I further grant permission for PRVS employees to operate the vehicle for the purposes of testing, inspection, and quality assurance.\n\nSealant, maintenance items, and winterization are the responsibility of the customer. Patriots RV Services will not be responsible for water intrusion of any kind or damages resulting thereof, unless the water intrusion is a direct result of work performed by PRVS.\n\n2. MECHANIC'S LIEN & PAYMENT TERMS\nTo secure payment in the amount of the repairs, an expressed mechanic's lien on the vehicle is acknowledged, and I further agree to pay reasonable attorney's fees and court costs in the event that legal action becomes necessary to enforce this agreement. I acknowledge that if analysis reveals additional repairs are necessary, I will be contacted for authorization of any additional charges.\n\nThe total amount of repair charges must be paid before the vehicle can be released for delivery. I acknowledge that said vehicle can be repossessed by Patriots RV Services for non-payment or partial payment, insufficient funds, stop payments, or outstanding balance due over 60 days from delivery.\n\n3. ESTIMATES & COMPLETION TIMELINES\nAll estimated completion dates, repair costs, and other quoted values are approximate and subject to change. All figures provided are estimates only and are not guaranteed until the work is fully completed and a final invoice is issued.\n\n4. SCHEDULED TRIPS & TRAVEL PLANS\nPatriots RV Services cannot guarantee specific completion dates. Removing your RV from our shop before completion will forfeit your current position in the service queue.\n\n5. ADDITIONAL REPAIRS & HIDDEN DAMAGE\nDuring the course of repairs, conditions may be discovered that were not apparent during the initial inspection. If additional work is necessary, Patriots RV Services will contact you for authorization before proceeding.\n\n6. AUTHORIZATION TO TRANSPORT\nI do hereby authorize Patriots RV Services to transport my unit to an authorized facility for additional repairs if needed.\n\n7. STORAGE POLICY\nYou have 5 business days to pick up your vehicle after notification of completion. Storage charges of $80.00 per day apply after that. Vehicles not retrieved within 30 days may be considered abandoned under Texas law.\n\n8. FOOD SPOILAGE & PERISHABLES\nPatriots RV Services is not responsible for food spoilage or damage to any perishable items left in the vehicle.\n\n9. RODENT, PEST & WILDLIFE DAMAGE\nPatriots RV Services is not responsible for any rodent, pest, or wildlife damage.\n\n10. STORM, FREEZE & WEATHER DAMAGE\nPatriots RV Services is not responsible for any damage resulting from weather events.\n\n11. POWER OF ATTORNEY — INSURANCE\nI hereby grant my power of attorney to Patriots RV Services to sign and endorse any checks/drafts as settlement for claim damage.\n\n12. PHOTO & MEDIA AUTHORIZATION\nI hereby authorize photos and video to be taken throughout the course of repairs.\n\n13. PERSONAL PROPERTY DISCLAIMER\nPatriots RV Services is not responsible for any personal property left in the vehicle during repairs.\n\n14. CUSTOMER RESPONSIBILITY — FINAL PAYMENT\nThe customer is responsible for the complete repair bill including both the insurance and deductible portions. Payment in full of the balance is required before the vehicle is delivered.\n\n${'='.repeat(50)}\nSigned electronically by ${customerName || "Customer"} on ${signedDate || "today"}\n${'='.repeat(50)}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
         html:    htmlBody,
       });
 
