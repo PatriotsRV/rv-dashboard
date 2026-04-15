@@ -22,6 +22,7 @@ Deno.serve(async (req: Request) => {
 
     const gmailUser = Deno.env.get("GMAIL_USER");
     const gmailPass = Deno.env.get("GMAIL_APP_PASSWORD");
+    const customerCcGroup = Deno.env.get("CUSTOMER_EMAIL_CC_GROUP") || "info@patriotsrvservices.com";
 
     if (!gmailUser || !gmailPass) {
       return new Response(JSON.stringify({ error: "GMAIL_USER or GMAIL_APP_PASSWORD secret not set" }), {
@@ -187,7 +188,7 @@ Deno.serve(async (req: Request) => {
         from:    `"Patriots RV Services" <${gmailUser}>`,
         replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
         to,
-        cc:      "Patriots RV Services <repair@patriotsrvservices.com>",
+        cc:      customerCcGroup,
         subject,
         text:    `Photos from Patriots RV Services\n\nDear ${customerName},\n\nPlease find ${photos.length} photo(s) of your RV${rv ? ` (${rv})` : ""}${roId ? ` — RO #${roId}` : ""} at the following links:\n\n${photos.map((u, i) => `  ${i + 1}. ${u}`).join("\n")}${message ? `\n\nMessage: ${message}` : ""}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
         html:    htmlBody,
@@ -283,7 +284,7 @@ Deno.serve(async (req: Request) => {
         from:    `"Patriots RV Services" <${gmailUser}>`,
         replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
         to,
-        cc:      cc || undefined,
+        cc:      cc || customerCcGroup,
         subject,
         text:    `Parts Ordered — ${customerName} (RO #${roId})\n\nGood news! Your parts have been ordered.\n\nCustomer: ${customerName}\nRO: ${roId}\nVehicle: ${rv || "N/A"}\nOrdered by: ${orderedBy || "Parts Department"}\n\nParts:\n${textParts}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
         html:    htmlBody,
@@ -346,9 +347,98 @@ Deno.serve(async (req: Request) => {
         from:    `"Patriots RV Services" <${gmailUser}>`,
         replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
         to,
-        cc:      cc || undefined,
+        cc:      cc || customerCcGroup,
         subject,
         text:    `Parts ETA Update — ${customerName} (RO #${roId})\n\nPart: ${partName}\nExpected ETA: ${eta}\nVehicle: ${rv || "N/A"}\nUpdated by: ${updatedBy || "Parts Department"}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
+        html:    htmlBody,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
+      });
+    }
+
+    // ── RAF COPY EMAIL (GH#17 Customer Check-In) ──────────────────────
+    if (type === "raf_copy") {
+      const { to, cc, customerName, roId, signedDate, rv, services, workType } = body;
+
+      // CC group: use provided cc, or the shared env var
+      const rafCcGroup = cc || customerCcGroup;
+
+      if (!to) {
+        return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
+        });
+      }
+
+      const subject = `Patriots RV Services — Signed Repair Authorization (${roId || "RO"})`;
+
+      const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 20px; color: #333; background: #f9fafb;">
+  <div style="background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+
+    <div style="background: linear-gradient(135deg, #1e3a8a, #1d4ed8); padding: 24px 20px; text-align: center;">
+      <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">Patriots RV Services</h1>
+      <p style="margin: 6px 0 0; color: #bfdbfe; font-size: 12px; font-style: italic;">Dedicated to providing top-quality RV repair, upgrades, and service with integrity and precision.</p>
+    </div>
+
+    <div style="padding: 24px 20px;">
+      <p style="font-size: 15px;">Dear ${customerName || "Valued Customer"},</p>
+      <p style="font-size: 14px; color: #555;">Thank you for choosing Patriots RV Services. This email confirms that you have reviewed and signed our <strong>Repair Authorization Form</strong> on <strong>${signedDate || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</strong>.</p>
+
+      <div style="background: #f0f9ff; border: 1.5px solid #93c5fd; border-radius: 10px; padding: 16px; margin: 16px 0;">
+        <table style="width:100%; border-collapse:collapse; font-size:14px;">
+          <tr><td style="padding:5px 0; color:#64748b; width:130px;">Repair Order:</td><td style="padding:5px 0; font-weight:700; font-family:monospace; font-size:15px;">${roId || "Pending"}</td></tr>
+          ${rv ? `<tr><td style="padding:5px 0; color:#64748b;">Vehicle:</td><td style="padding:5px 0;">${rv}</td></tr>` : ""}
+          ${services ? `<tr><td style="padding:5px 0; color:#64748b;">Services:</td><td style="padding:5px 0;">${services}</td></tr>` : ""}
+          ${workType ? `<tr><td style="padding:5px 0; color:#64748b;">Work Type:</td><td style="padding:5px 0;">${workType}</td></tr>` : ""}
+          <tr><td style="padding:5px 0; color:#64748b;">Date Signed:</td><td style="padding:5px 0;">${signedDate || "Today"}</td></tr>
+        </table>
+      </div>
+
+      <div style="background: #fefce8; border-left: 4px solid #eab308; border-radius: 6px; padding: 14px 16px; margin: 16px 0; font-size: 13px;">
+        <strong style="color: #92400e;">Your Signed Agreement Covers:</strong>
+        <ul style="margin: 8px 0 0; padding-left: 20px; color: #78350f; line-height: 1.8;">
+          <li>Work Authorization &amp; Mechanic's Lien</li>
+          <li>Estimates &amp; Completion Timelines (subject to change)</li>
+          <li>Scheduled Trips &amp; Travel Plans Policy</li>
+          <li>Authorization to Transport</li>
+          <li>Storage Policy ($80/day after 5 business days past completion)</li>
+          <li>Food Spoilage, Pest, &amp; Weather Damage Disclaimers</li>
+          <li>Photo &amp; Media Authorization</li>
+          <li>Personal Property Disclaimer</li>
+          <li>Payment Terms (payment in full before delivery)</li>
+        </ul>
+        <p style="margin: 10px 0 0; font-size: 12px; color: #92400e;">A full copy of all terms was presented to you at the time of signing. If you would like another copy, please contact our front desk.</p>
+      </div>
+
+      <p style="font-size: 14px; color: #555;">We will take great care of your RV. If you have any questions about your service, please don't hesitate to reach out.</p>
+    </div>
+
+    <div style="background: #f8fafc; padding: 16px 20px; border-top: 1px solid #e2e8f0;">
+      <p style="margin: 0; color: #555; font-size: 13px;">
+        &#128205; 11399 US 380, Krum TX 76249<br>
+        &#128222; <a href="tel:9404885047" style="color:#1e3a8a; text-decoration:none;">(940) 488-5047</a><br>
+        &#127760; <a href="https://patriotsrvservices.com" style="color:#1e3a8a; text-decoration:none;">patriotsrvservices.com</a>
+      </p>
+      <p style="margin: 8px 0 0; color: #94a3b8; font-size: 10px;">This is an automated confirmation from the PRVS Dashboard. Please retain this email for your records.</p>
+    </div>
+
+  </div>
+</body>
+</html>`;
+
+      await transporter.sendMail({
+        from:    `"Patriots RV Services" <${gmailUser}>`,
+        replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
+        to,
+        cc:      rafCcGroup,
+        subject,
+        text:    `Repair Authorization Confirmation\n\nDear ${customerName},\n\nThank you for choosing Patriots RV Services. This confirms that you signed our Repair Authorization Form on ${signedDate || "today"}.\n\nRepair Order: ${roId || "Pending"}${rv ? `\nVehicle: ${rv}` : ""}${services ? `\nServices: ${services}` : ""}\n\nYour signed agreement covers: Work Authorization, Mechanic's Lien, Estimates & Timelines, Transport Authorization, Storage Policy, Food Spoilage/Pest/Weather Disclaimers, Photo Authorization, Personal Property, and Payment Terms.\n\nA full copy of all terms was presented at signing. Contact our front desk if you need another copy.\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
         html:    htmlBody,
       });
 

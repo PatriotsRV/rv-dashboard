@@ -1694,7 +1694,9 @@
                 // Send RAF copy via email
                 if (document.getElementById('sendEmail')?.checked && email) {
                     try {
-                        await sendRAFEmail(insertedRO, customerName, email);
+                        const siloLabels = formState.selectedSilos.map(k => SERVICE_SILOS.find(s => s.key === k)).filter(Boolean).map(s => `${s.emoji} ${s.label}`).join(', ');
+                        const workTypeLabel = roType === 'hybrid' ? 'Hybrid (New Work + Warranty)' : roType === 'warranty' ? 'Warranty' : 'New Work';
+                        await sendRAFEmail(insertedRO, customerName, email, rv, siloLabels, workTypeLabel);
                     } catch (e) { warn('RAF email failed:', e); }
                 }
             }
@@ -1722,7 +1724,7 @@
     }
 
     // ── SEND RAF EMAIL ────────────────────────────────────────────
-    async function sendRAFEmail(ro, customerName, email) {
+    async function sendRAFEmail(ro, customerName, email, rv, services, workType) {
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
             method: 'POST',
             headers: {
@@ -1732,11 +1734,12 @@
             body: JSON.stringify({
                 type: 'raf_copy',
                 to: email,
-                cc: 'info@patriotsrvservices.com',
-                subject: `Patriots RV Services — Repair Authorization for ${ro.ro_id}`,
                 customerName: customerName,
                 roId: ro.ro_id,
                 signedDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+                rv: rv || undefined,
+                services: services || undefined,
+                workType: workType || undefined,
             }),
         });
         if (!resp.ok) warn('RAF email response not ok:', resp.status);
