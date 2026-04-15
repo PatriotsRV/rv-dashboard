@@ -361,6 +361,11 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - SMS/messaging will be handled by Twilio (see `TWILIO_SMS_SPEC.md`).
 - MODULARIZATION_ROADMAP.md Phase 16 (kenect.js) marked as REMOVED.
 
+### Perplexity Computer Skills (Session 48)
+- **`prvs-dashboard-startup`** — custom Perplexity skill. Triggers on "Start Session", "COMET STARTUP", "PRVS startup", etc. Clones/pulls repo, reads CLAUDE_CONTEXT.md, confirms version, reads TODO list by priority, reports last completed, waits for updates.
+- **`prvs-dashboard-endsession`** — custom Perplexity skill. Triggers on "End Session", "Wrap up", "Shut it down", etc. Runs backup.sh, updates both context files, commits, pushes, confirms hash.
+- Both skills persist across all Perplexity sessions (account-level). Manageable at perplexity.ai/computer/skills.
+
 ### Git & Deployment
 - `gh` CLI not available in sandbox — use `git` directly.
 - Workspace folder IS the git repo — `git push origin main` works.
