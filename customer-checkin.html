@@ -1566,41 +1566,65 @@
             return;
         }
 
-        // Draw the name in a cursive style onto the signature canvas
-        const canvas = _sigCanvas;
-        const ctx = _sigCtx;
+        // Strategy: render signature on a temporary unscaled canvas,
+        // then draw it as an image onto the retina-scaled signature canvas.
+        // This avoids all 2x transform complications.
 
-        // Clear existing
-        ctx.clearRect(0, 0, canvas.width / 2, canvas.height / 2);
-        drawSigBaseline();
+        const tempCanvas = document.createElement('canvas');
+        const dw = _sigCanvas.width;   // actual pixel width (retina)
+        const dh = _sigCanvas.height;  // actual pixel height (retina)
+        tempCanvas.width = dw;
+        tempCanvas.height = dh;
+        const tc = tempCanvas.getContext('2d');
 
-        // Draw cursive-style name
-        const displayH = canvas.height / 2; // actual display height
-        const displayW = canvas.width / 2;  // actual display width
-        const baselineY = displayH * 0.78;
+        // White background
+        tc.fillStyle = '#ffffff';
+        tc.fillRect(0, 0, dw, dh);
 
-        ctx.save();
-        ctx.font = 'italic 36px "Brush Script MT", "Segoe Script", "Comic Sans MS", cursive';
-        ctx.fillStyle = '#1e293b';
-        ctx.textBaseline = 'bottom';
+        // Draw baseline
+        tc.strokeStyle = '#e2e8f0';
+        tc.lineWidth = 2;
+        tc.setLineDash([8, 8]);
+        tc.beginPath();
+        const blY = dh * 0.72;
+        tc.moveTo(40, blY);
+        tc.lineTo(dw - 40, blY);
+        tc.stroke();
+        tc.setLineDash([]);
 
-        // Measure and center or left-align with padding
-        const textWidth = ctx.measureText(printedName).width;
-        const startX = Math.max(24, (displayW - textWidth) / 2);
+        // Draw the name as signature
+        const fontSize = Math.min(72, Math.max(40, dw / (printedName.length * 0.6)));
+        tc.font = `italic ${fontSize}px "Brush Script MT", "Segoe Script", "Apple Chancery", "Lucida Handwriting", "Snell Roundhand", cursive`;
+        tc.fillStyle = '#1e293b';
+        tc.textBaseline = 'alphabetic';
 
-        // Add a slight slant transform for realism
-        ctx.translate(startX, baselineY);
-        ctx.rotate(-0.04); // slight upward tilt
-        ctx.fillText(printedName, 0, 0);
-        ctx.restore();
+        const metrics = tc.measureText(printedName);
+        const tw = metrics.width;
+        const startX = Math.max(40, (dw - tw) / 2);
 
-        // Restore stroke settings
-        ctx.strokeStyle = '#1e293b';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
+        tc.save();
+        tc.translate(startX + tw / 2, blY - 8);
+        tc.rotate(-0.025);
+        tc.fillText(printedName, -tw / 2, 0);
+        tc.restore();
+
+        // Now paint the temp canvas onto the real sig canvas
+        // Reset the sig canvas transform, draw, then re-apply scale
+        _sigCtx.save();
+        _sigCtx.setTransform(1, 0, 0, 1, 0, 0); // reset to identity
+        _sigCtx.clearRect(0, 0, dw, dh);
+        _sigCtx.drawImage(tempCanvas, 0, 0);
+        _sigCtx.restore(); // restores the 2x scale
+
+        // Restore main drawing settings on sig ctx
+        _sigCtx.strokeStyle = '#1e293b';
+        _sigCtx.lineWidth = 2;
+        _sigCtx.lineCap = 'round';
+        _sigCtx.lineJoin = 'round';
+        _sigCtx.setLineDash([]);
 
         _sigHasData = true;
-        formState.generatedSignature = canvas.toDataURL('image/png');
+        formState.generatedSignature = _sigCanvas.toDataURL('image/png');
         showToast('Signature generated from printed name.', 'success');
         updateSubmitButton();
     }
