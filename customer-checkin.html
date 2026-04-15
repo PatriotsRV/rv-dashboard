@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.0
+    PRVS Customer Check-In v1.1
     Released: 2026-04-15
+    v1.1: GH#18 Signature & photo hard validation, generate-signature feature, auth refresh fix
     v1.0: Initial build — GH#17 Customer Check-In Page
           Two-mode form: Drop-Off (customer at front desk) / Lead Conversion (staff entering committed lead)
           Customer type: New Customer / Returning Customer (lookup by name/phone/email/VIN)
@@ -722,7 +723,9 @@
             </div>
             <div class="sig-actions">
                 <button onclick="clearSignature()">Clear Signature</button>
+                <button onclick="generateSignatureFromName()" style="background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem;">✍️ Generate Signature</button>
             </div>
+            <p id="sigStatus" style="font-size:0.82rem;font-weight:600;margin-top:8px;color:#b91c1c;">❌ Signature required</p>
             <div class="field-grid-2 mt-16">
                 <div class="field-row">
                     <label>Printed Name <span class="req">*</span></label>
@@ -737,7 +740,8 @@
             <!-- Photo capture -->
             <div style="height:20px"></div>
             <div class="section-title"><span class="icon">📸</span> Photo Verification <span style="color:#b91c1c;font-weight:700;">(Required)</span></div>
-            <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">A photo of the customer at time of signing is <strong>required</strong> for verification and dispute resolution.</p>
+            <p style="font-size:0.82rem;color:#64748b;margin-bottom:4px;">A photo of the customer at time of signing is <strong>required</strong> for verification and dispute resolution.</p>
+            <p id="photoStatus" style="font-size:0.82rem;font-weight:600;margin-bottom:12px;color:#b91c1c;">❌ Photo required</p>
             <div class="photo-capture-wrap">
                 <video id="cameraPreview" class="camera-preview" autoplay playsinline></video>
                 <canvas id="photoCaptureCanvas" class="hidden"></canvas>
@@ -848,6 +852,7 @@
         warrantyOrigRO: null,      // original RO id for warranty
         signatureData: null,       // base64 PNG
         capturedPhoto: null,       // base64 JPEG
+        generatedSignature: null,  // base64 PNG from printed name
     };
 
     // ── SUPABASE ──────────────────────────────────────────────────
@@ -1425,12 +1430,62 @@
         drawSigBaseline();
         _sigHasData = false;
         formState.signatureData = null;
+        formState.generatedSignature = null;
         updateSubmitButton();
     }
 
     function getSignatureData() {
-        if (!_sigHasData) return null;
+        if (!_sigHasData && !formState.generatedSignature) return null;
+        // If only generated signature exists (no hand-drawn), use that
+        if (!_sigHasData && formState.generatedSignature) return formState.generatedSignature;
         return _sigCanvas.toDataURL('image/png');
+    }
+
+    // ── GENERATE SIGNATURE FROM PRINTED NAME ─────────────────────
+    function generateSignatureFromName() {
+        const printedName = document.getElementById('sigPrintedName')?.value.trim();
+        if (!printedName) {
+            showToast('Please enter a printed name first.', 'warning');
+            return;
+        }
+
+        // Draw the name in a cursive style onto the signature canvas
+        const canvas = _sigCanvas;
+        const ctx = _sigCtx;
+
+        // Clear existing
+        ctx.clearRect(0, 0, canvas.width / 2, canvas.height / 2);
+        drawSigBaseline();
+
+        // Draw cursive-style name
+        const displayH = canvas.height / 2; // actual display height
+        const displayW = canvas.width / 2;  // actual display width
+        const baselineY = displayH * 0.78;
+
+        ctx.save();
+        ctx.font = 'italic 36px "Brush Script MT", "Segoe Script", "Comic Sans MS", cursive';
+        ctx.fillStyle = '#1e293b';
+        ctx.textBaseline = 'bottom';
+
+        // Measure and center or left-align with padding
+        const textWidth = ctx.measureText(printedName).width;
+        const startX = Math.max(24, (displayW - textWidth) / 2);
+
+        // Add a slight slant transform for realism
+        ctx.translate(startX, baselineY);
+        ctx.rotate(-0.04); // slight upward tilt
+        ctx.fillText(printedName, 0, 0);
+        ctx.restore();
+
+        // Restore stroke settings
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+
+        _sigHasData = true;
+        formState.generatedSignature = canvas.toDataURL('image/png');
+        showToast('Signature generated from printed name.', 'success');
+        updateSubmitButton();
     }
 
     // ── PHOTO CAPTURE ─────────────────────────────────────────────
@@ -1511,9 +1566,21 @@
             const rafAgreed = document.getElementById('rafAgree')?.checked;
             const sigPrinted = document.getElementById('sigPrintedName')?.value.trim();
             const hasDropoffChoice = !!formState.dropoffChoice;
-            const hasSig = _sigHasData;
+            const hasSig = _sigHasData || !!formState.generatedSignature;
             const hasPhoto = !!formState.capturedPhoto;
             btn.disabled = !(rafAgreed && sigPrinted && hasDropoffChoice && hasSig && hasPhoto);
+
+            // Update visual indicators
+            const sigStatus = document.getElementById('sigStatus');
+            const photoStatus = document.getElementById('photoStatus');
+            if (sigStatus) {
+                sigStatus.textContent = hasSig ? '✅ Signature captured' : '❌ Signature required';
+                sigStatus.style.color = hasSig ? '#16a34a' : '#b91c1c';
+            }
+            if (photoStatus) {
+                photoStatus.textContent = hasPhoto ? '✅ Photo captured' : '❌ Photo required';
+                photoStatus.style.color = hasPhoto ? '#16a34a' : '#b91c1c';
+            }
         } else {
             // Lead mode — just need the review to be shown
             btn.disabled = false;
@@ -1529,10 +1596,47 @@
     // ── SUBMIT ────────────────────────────────────────────────────
     async function submitCheckin() {
         const btn = document.getElementById('submitBtn');
+
+        // ── HARD VALIDATION (drop-off mode) ──────────────────────────
+        if (formState.mode === 'dropoff') {
+            const rafAgreed = document.getElementById('rafAgree')?.checked;
+            if (!rafAgreed) {
+                showToast('You must agree to the Repair Authorization Form terms before submitting.', 'error');
+                return;
+            }
+            if (!formState.dropoffChoice) {
+                showToast('Please select a drop-off option (leaving today or scheduling).', 'error');
+                return;
+            }
+            // Signature: must have hand-drawn OR generated signature
+            const hasSig = _sigHasData || !!formState.generatedSignature;
+            if (!hasSig) {
+                showToast('A signature is required. Please sign on the pad or click "Generate Signature" after entering your printed name.', 'error');
+                return;
+            }
+            const sigPrinted = document.getElementById('sigPrintedName')?.value.trim();
+            if (!sigPrinted) {
+                showToast('Please enter a printed name for the signature.', 'error');
+                return;
+            }
+            // Photo: mandatory
+            if (!formState.capturedPhoto) {
+                showToast('A photo of the customer is required. Please open the camera and take a photo.', 'error');
+                return;
+            }
+        }
+
         btn.disabled = true;
         btn.textContent = 'Submitting...';
 
         try {
+            // Refresh auth session to avoid 401 on Edge Function calls
+            try {
+                const { data: refreshData } = await getSB().auth.refreshSession();
+                if (refreshData?.session) {
+                    supabaseSession = refreshData.session;
+                }
+            } catch (e) { console.warn('Session refresh warning:', e); }
             // Gather form data
             const firstName = document.getElementById('firstName').value.trim();
             const lastName = document.getElementById('lastName').value.trim();
@@ -1686,7 +1790,10 @@
                         const siloLabels = formState.selectedSilos.map(k => SERVICE_SILOS.find(s => s.key === k)).filter(Boolean).map(s => `${s.emoji} ${s.label}`).join(', ');
                         const workTypeLabel = roType === 'hybrid' ? 'Hybrid (New Work + Warranty)' : roType === 'warranty' ? 'Warranty' : 'New Work';
                         await sendRAFEmail(insertedRO, customerName, email, rv, siloLabels, workTypeLabel);
-                    } catch (e) { warn('RAF email failed:', e); }
+                    } catch (e) {
+                        console.error('RAF email failed:', e);
+                        showToast('RO created, but email delivery failed. Staff can resend from the dashboard.', 'warning');
+                    }
                 }
             }
 
@@ -1714,10 +1821,12 @@
 
     // ── SEND RAF EMAIL ────────────────────────────────────────────
     async function sendRAFEmail(ro, customerName, email, rv, services, workType) {
+        // Use the freshest token available
+        const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
             method: 'POST',
             headers: {
-                'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+                'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
@@ -1731,7 +1840,10 @@
                 workType: workType || undefined,
             }),
         });
-        if (!resp.ok) warn('RAF email response not ok:', resp.status);
+        if (!resp.ok) {
+            console.error('RAF email response not ok:', resp.status, await resp.text().catch(() => ''));
+            throw new Error(`Email send failed (HTTP ${resp.status})`);
+        }
     }
 
     // ── RO ID GENERATION ──────────────────────────────────────────
@@ -1798,7 +1910,7 @@
         formState = {
             mode: null, customerType: null, workTypes: [], selectedSilos: [],
             dropoffChoice: null, returnCustomerData: null, warrantyOrigRO: null,
-            signatureData: null, capturedPhoto: null,
+            signatureData: null, capturedPhoto: null, generatedSignature: null,
         };
         clearContactFields();
         ['serviceDesc', 'warrantyDesc', 'leadNotes', 'warrantyOrigRO', 'sigPrintedName'].forEach(id => {
