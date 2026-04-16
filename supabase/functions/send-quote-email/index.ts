@@ -5,7 +5,7 @@ function getCorsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || '';
   return {
     'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-prvs-secret',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   };
@@ -14,6 +14,25 @@ function getCorsHeaders(req: Request) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: getCorsHeaders(req) });
+  }
+
+  // ── SHARED-SECRET AUTH GATE ────────────────────────────────────────
+  // Validates the X-PRVS-Secret header against a server-side secret.
+  // If the secret is not yet configured in Supabase, the check is a no-op
+  // (legacy-compatible). Once the secret is set with
+  //   supabase secrets set PRVS_FUNCTION_SECRET=<value>
+  // all callers must send a matching X-PRVS-Secret header or get 401.
+  {
+    const expectedSecret = Deno.env.get("PRVS_FUNCTION_SECRET");
+    if (expectedSecret) {
+      const providedSecret = req.headers.get("x-prvs-secret") || "";
+      if (providedSecret !== expectedSecret) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized — missing or invalid X-PRVS-Secret header" }),
+          { status: 401, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } },
+        );
+      }
+    }
   }
 
   try {

@@ -73,6 +73,10 @@ function saveProjects(arr) {
 // ── Supabase client (solar projects) ────────────────────────────────────────
 const _SB_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 const _SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+// Shared-secret header for send-quote-email edge function. Matches Supabase
+// secret PRVS_FUNCTION_SECRET. Not true security (visible in client source)
+// but raises the bar against casual abuse of the public function URL.
+const _PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
 let _sbSolar = null;
 try {
     _sbSolar = supabase.createClient(_SB_URL, _SB_ANON, {
@@ -3243,7 +3247,7 @@ function App() {
             try { pdfBase64 = generateQuotePdf(); } catch(pdfErr) { console.warn('PDF generation failed, sending without attachment:', pdfErr); }
             const res = await fetch(`${_SB_URL}/functions/v1/send-quote-email`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${_SB_ANON}`, 'Content-Type': 'application/json' },
+                headers: { 'Authorization': `Bearer ${_SB_ANON}`, 'Content-Type': 'application/json', 'X-PRVS-Secret': _PRVS_FUNCTION_SECRET },
                 body: JSON.stringify({
                     to: emailAddr,
                     customerName: customerInfo.name || 'Valued Customer',

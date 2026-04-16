@@ -4807,7 +4807,8 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`
+                        'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
                     },
                     body: JSON.stringify({
                         type: 'photo_share',
@@ -9141,6 +9142,10 @@ Notes: ${notes}` : '',
         // ── Supabase Configuration ──────────────────────────────────
         const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+        // Shared-secret header for send-quote-email edge function. Matches Supabase
+        // secret PRVS_FUNCTION_SECRET. Not true security (visible in client source)
+        // but raises the bar against casual abuse of the public function URL.
+        const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
 
         /**
          * DEBUG — set to true locally for verbose logging; false in production.
@@ -11467,7 +11472,7 @@ Notes: ${notes}` : '',
                 const orderedParts = roPartsData.filter(p => ['Ordered','In Transit','Backordered'].includes(p.status));
                 const resp = await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
-                    headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+                    headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json', 'X-PRVS-Secret': PRVS_FUNCTION_SECRET },
                     body: JSON.stringify({
                         type:         'parts_ordered',
                         to:           ro.requestedByEmail,
@@ -11499,7 +11504,7 @@ Notes: ${notes}` : '',
             try {
                 await fetch(SUPABASE_URL + '/functions/v1/send-quote-email', {
                     method: 'POST',
-                    headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+                    headers: { 'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json', 'X-PRVS-Secret': PRVS_FUNCTION_SECRET },
                     body: JSON.stringify({
                         type:         'parts_eta_update',
                         to:           ro.requestedByEmail,
@@ -11723,6 +11728,7 @@ Notes: ${notes}` : '',
                         headers: {
                             'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
                             'Content-Type':  'application/json',
+                            'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
                         },
                         body: JSON.stringify({
                             type:         'parts_request',

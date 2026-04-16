@@ -920,6 +920,10 @@
     // ── CONFIG ────────────────────────────────────────────────────
     const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+    // Shared-secret header for send-quote-email edge function. Matches Supabase
+    // secret PRVS_FUNCTION_SECRET. Not true security (visible in client source)
+    // but raises the bar against casual abuse of the public function URL.
+    const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
     const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 
     const SB_AUTH_OPTIONS = {
@@ -1945,6 +1949,7 @@
             const shouldNotifyStaff =
                 formState.mode === 'lead' ||
                 (formState.mode === 'dropoff' && (roType === 'warranty' || roType === 'hybrid'));
+            let staffNotified = false;
             if (shouldNotifyStaff) {
                 try {
                     await sendLeadStaffNotification(insertedRO, {
@@ -1969,6 +1974,7 @@
                                                   ? (document.getElementById('leadNotes')?.value.trim() || '')
                                                   : '',
                     });
+                    staffNotified = true;
                 } catch (e) {
                     console.error('Staff notification email failed:', e);
                     showToast('RO created, but staff notification email failed to send.', 'warning');
@@ -1987,7 +1993,10 @@
                 ${email && formState.mode === 'dropoff' ? '<br>A copy of the signed agreement has been sent to the customer\'s email.' : ''}
             `;
             goToStep(5);
-            showToast('Repair Order created successfully!', 'success');
+            const successMsg = staffNotified
+                ? '✅ RO created — staff notified at repair@patriotsrvservices.com'
+                : 'Repair Order created successfully!';
+            showToast(successMsg, 'success');
 
         } catch (e) {
             console.error('Submit failed:', e);
@@ -2006,6 +2015,7 @@
             headers: {
                 'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json',
+                'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
             },
             body: JSON.stringify({
                 type: 'raf_copy',
@@ -2072,6 +2082,7 @@
             headers: {
                 'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json',
+                'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
             },
             body: JSON.stringify({
                 type:                 'lead_staff_notify',
