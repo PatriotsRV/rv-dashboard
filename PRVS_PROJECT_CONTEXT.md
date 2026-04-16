@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.403 |
+| **Current Version** | v1.405 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -57,7 +57,7 @@
 
 ### 🟡 Medium Priority / Roland Actions
 - **GitHub Releases v1.283–v1.308** — Backlog of unpublished releases. ⏳ Roland action
-- **GitHub Release v1.402/v1.403/v1.404** — Warranty RO + Slack integration + Morning Manager Report. ⏳ Roland action
+- **GitHub Release v1.402/v1.403/v1.404/v1.405** — Warranty RO + Slack integration + Morning Manager Report + Shop Operations RO. ⏳ Roland action
 - **Supabase: Maximize log retention** — Settings → Logs. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts notifications. ⏳ Roland action
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah. ⏳ Open
@@ -68,13 +68,13 @@
 ---
 
 ## ✅ Recently Completed
-- ✅ **Worklist Report v1.2 — clickable tech tile expand (2026-04-14)** — Tech tiles in Staff Status section are now clickable. Expands to show daily time log per tech: sessions, gaps, duration, ACTIVE badge, summary. Commit: 3d62840.
-- ✅ **send-manager-report v1.8 (2026-04-14)** — v1.7: ≥30 days filter (was ≥60). v1.8: red PARTS HOLD badge on individual RO line items + named ROs in Key Flags. Deployed as Supabase version 13. Commits: b0c3e5d, 26d36e4.
-- ✅ **GitHub Issue #20 — pg_cron DST update (2026-04-14)** — Track UTC offset change needed November 2026 (CDT→CST).
-- ✅ **GH#23 Morning Manager Report — send-manager-report v1.5 (2026-04-13)** — Per-silo personalized email to all managers. Work List + dollar total, RVs Waiting sorted by days/urgency, Key Flags (Critical, >60d, blocking parts). Red/yellow data quality banners. pg_cron Mon–Fri 8 AM CDT. Deployed + confirmed sending. 9 commits (f875bc4→4c3e9a7).
-- ✅ **GH#18 orderedParts scope fix (2026-04-13)** — Fixed `orderedParts is not defined` error in Email Requestor / Part Ordered flow. Commit: fc25a93.
-- ✅ **Slack Integration GH#20 — v1.403 (2026-04-12)** — `slack-notify` Edge Function v1.2 + 5 trigger points in index.html. Fires to #ro-updates, #parts-alerts, #warranty-flags. ro_created + ro_ready_pickup confirmed working. 3 triggers remaining to verify.
-- ✅ **Warranty RO Type v1.402 (2026-04-12)** — 4th RO type for comeback jobs fixed at no charge. Auto-Critical urgency, red badge, $0 No Charge badge, Original RO# field. Commits: b241df3, 35c1c88.
+- ✅ **customer-checkin.html backdrop redesign (2026-04-16)** — Replaced marble CSS backdrop with fixed full-bleed RV park mountain photo. Vibrance boost (saturate 1.25, contrast 1.05) + light cream overlay (~20% opacity). Commits: 71489b5, 6ac5c07.
+- ✅ **Sr Manager Parts + Schedule Fix (2026-04-14)** — Added `hasRole('Sr Manager')` to 5 UI role gates. Fixes Kevin McHenry Sr Manager access. Commit: d5ddc36.
+- ✅ **GH#24 Shop Operations RO Phase 1 v1.405 (2026-04-14)** — 5th RO type (`shop`) for non-customer parts ordering/returns. Purple badge, compact chip, filter button, Slack skip. Commits: 66a5fe8, ca07ba9, 13981a0.
+- ✅ **send-manager-report v1.8 (2026-04-14)** — v1.7: ≥30 days filter. v1.8: red PARTS HOLD badge on individual RO line items + named ROs in Key Flags. Deployed as Supabase version 13.
+- ✅ **Worklist Report v1.2 — clickable tech tile expand (2026-04-14)** — Tech tiles in Staff Status section now clickable, expands to show daily time log per tech.
+- ✅ **Perplexity Computer Skills (2026-04-14)** — Created `prvs-dashboard-startup` and `prvs-dashboard-endsession` as persistent Perplexity account-level skills.
+- ✅ **Slack Integration GH#20 — v1.403 (2026-04-12)** — `slack-notify` Edge Function v1.2 + 5 trigger points. ro_created + ro_ready_pickup confirmed working. 3 triggers remaining.
 - ✅ **send-parts-report v1.7 (2026-04-12)** — Contextual numbered action prompts, EOD checklist, Gmail clipping fix.
 - ✅ **Unified Search V1 (2026-04-12)** — 10-field haystack search (name, RO ID, VIN, RV, tech, description, spot, phone, email, repair type) + post-render highlight. Works in standard + compact views. Commit: 7a355a4.
 - ✅ **v1.400 Session (2026-04-11)** — Version bumped v1.308→v1.400. Toast System complete (116 alert→showToast, 4 confirm→toast-action). Visual cleanup pass (calmed animations, utility classes). Dead code cleanup (968 lines removed). Kenect removal (550 lines). Compact Manager View (dense 6-column row layout with RV photo thumbnail). slideIn keyframe fix.
@@ -126,4 +126,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-14 — v1.404 — Session 45: send-manager-report v1.8 + worklist-report v1.2 tech tile expand + GH Issue #20*
+*Last updated: 2026-04-16 — Session 49 — v1.405 — customer-checkin.html backdrop redesign (RV park photo replaces marble)*
