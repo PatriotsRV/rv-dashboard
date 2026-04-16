@@ -491,6 +491,238 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── LEAD / WARRANTY DROP-OFF STAFF NOTIFICATION ───────────────────
+    // Fires for: Lead Conversion (any work type) + Drop-off when Warranty or Hybrid.
+    // Purpose: alert the appropriate silo manager that a committed job is on the way
+    // so they can pre-stage parts, paperwork, and shop capacity.
+    if (type === "lead_staff_notify") {
+      const {
+        to,
+        roId,
+        mode,                  // 'lead' | 'dropoff'
+        customerName,
+        customerType,          // 'New' | 'Returning'
+        customerPhone,
+        customerEmail,
+        customerAddress,
+        rv,
+        vin,
+        silos,                 // Array<{ key, label, emoji }>
+        workType,              // 'standard' | 'warranty' | 'hybrid'
+        workDescription,
+        warrantyDescription,
+        warrantyOrigRO,
+        plannedDropoff,        // ISO date string or null
+        promisedDate,          // ISO date string or null
+        leadNotes,
+        createdByName,
+        createdByRole,
+        createdByEmail,
+        createdAt,             // ISO string
+        dashboardLink,
+      } = body;
+
+      if (!to) {
+        return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
+        });
+      }
+
+      const silosArr: Array<{ key: string; label: string; emoji: string }> = Array.isArray(silos) ? silos : [];
+      const silosLabelsText = silosArr.map(s => s.label).join(", ") || "—";
+      const silosHtml = silosArr.length > 0
+        ? silosArr.map(s => `<div style="padding:6px 10px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; font-size:14px; font-weight:600; color:#1e3a8a; display:inline-block; margin:3px 4px 3px 0;">${s.emoji || ""} ${s.label}</div>`).join("")
+        : `<span style="color:#888; font-style:italic;">None selected</span>`;
+
+      const workTypeLabel =
+        workType === "hybrid"   ? "Hybrid (New Work + Warranty)" :
+        workType === "warranty" ? "Warranty"                     :
+                                  "Standard (New Work)";
+      const workTypeTag =
+        workType === "hybrid"   ? " (Hybrid)"   :
+        workType === "warranty" ? " (Warranty)" :
+                                  "";
+
+      // Subject line: "New Lead — Customer — Services — RV — RO ID"
+      //            or "New Warranty Drop-Off — ..." / "New Hybrid Drop-Off — ..."
+      let subjectPrefix = "New Lead" + workTypeTag;
+      if (mode === "dropoff") {
+        subjectPrefix = workType === "hybrid"   ? "New Hybrid Drop-Off" :
+                        workType === "warranty" ? "New Warranty Drop-Off" :
+                                                  "New Drop-Off"; // shouldn't fire for standard, but safe
+      }
+      const subject = `${subjectPrefix} — ${customerName || "Customer"} — ${silosLabelsText} — ${rv || "RV"} — ${roId || "RO"}`;
+
+      const fmtDate = (iso?: string | null) => {
+        if (!iso) return "—";
+        try {
+          return new Date(iso + (iso.length === 10 ? "T12:00:00" : "")).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+        } catch { return iso; }
+      };
+      const fmtDateTime = (iso?: string | null) => {
+        if (!iso) return new Date().toLocaleString();
+        try { return new Date(iso).toLocaleString(); } catch { return iso; }
+      };
+
+      const createdBy = createdByName || createdByEmail || "Unknown";
+      const createdByLine = createdByRole ? `${createdBy} · ${createdByRole}` : createdBy;
+
+      const headerLabel = mode === "dropoff"
+        ? (workType === "hybrid" ? "Hybrid Warranty Drop-Off" : "Warranty Drop-Off")
+        : "New Lead Conversion";
+      const headerSub = mode === "dropoff"
+        ? "Customer is on the lot — manager prep required"
+        : "Customer committed — manager prep required before drop-off";
+
+      const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; padding: 20px; color: #333; background: #f9fafb;">
+  <div style="background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+
+    <div style="background: linear-gradient(135deg, #1e3a8a, #1d4ed8); padding: 24px 20px; text-align: center;">
+      <h1 style="color: #fff; margin: 0; font-size: 22px; font-weight: 700;">Patriots RV Services</h1>
+      <p style="margin: 6px 0 0; color: #bfdbfe; font-size: 12px; text-transform: uppercase; letter-spacing: .08em;">${headerLabel}</p>
+    </div>
+
+    <div style="padding: 24px 20px;">
+
+      <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin:0 0 4px; font-size:13px; color:#92400e; text-transform:uppercase; letter-spacing:.05em; font-weight:700;">🔔 Action Required</p>
+        <p style="margin:0; font-size:14px; color:#78350f;">${headerSub}</p>
+      </div>
+
+      <!-- ── SUMMARY ─────────────────────────────────────────────── -->
+      <div style="background: #f0f9ff; border: 1.5px solid #93c5fd; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+        <table style="width:100%; border-collapse:collapse; font-size:14px;">
+          <tr><td style="padding:5px 0; color:#64748b; width:140px;">RO ID:</td><td style="padding:5px 0; font-weight:700; font-family:monospace; font-size:15px; color:#1e3a8a;">${roId || "—"}</td></tr>
+          <tr><td style="padding:5px 0; color:#64748b;">Created:</td><td style="padding:5px 0;">${fmtDateTime(createdAt)}</td></tr>
+          <tr><td style="padding:5px 0; color:#64748b;">Created by:</td><td style="padding:5px 0; font-weight:600;">${createdByLine}</td></tr>
+          <tr><td style="padding:5px 0; color:#64748b;">Work type:</td><td style="padding:5px 0; font-weight:600;">${workTypeLabel}</td></tr>
+          <tr><td style="padding:5px 0; color:#64748b;">Customer type:</td><td style="padding:5px 0;">${customerType || "—"}</td></tr>
+        </table>
+      </div>
+
+      <!-- ── SERVICES REQUESTED (the action block) ──────────────── -->
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">Services Requested</h3>
+      <div style="background:#f8fafc; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+        ${silosHtml}
+      </div>
+
+      <!-- ── SCHEDULING ─────────────────────────────────────────── -->
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">Scheduling</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:16px;">
+        <tr><td style="padding:4px 0; color:#64748b; width:170px;">Planned drop-off:</td><td style="padding:4px 0; font-weight:600;">${fmtDate(plannedDropoff)}</td></tr>
+        <tr><td style="padding:4px 0; color:#64748b;">Promised complete:</td><td style="padding:4px 0; font-weight:600;">${fmtDate(promisedDate)}</td></tr>
+      </table>
+
+      <!-- ── CUSTOMER ───────────────────────────────────────────── -->
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">Customer</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:16px;">
+        <tr><td style="padding:4px 0; color:#64748b; width:100px;">Name:</td><td style="padding:4px 0; font-weight:600;">${customerName || "—"}</td></tr>
+        <tr><td style="padding:4px 0; color:#64748b;">Phone:</td><td style="padding:4px 0;">${customerPhone ? `<a href="tel:${String(customerPhone).replace(/[^+\d]/g, "")}" style="color:#1d4ed8; text-decoration:none; font-weight:600;">${customerPhone}</a>` : "—"}</td></tr>
+        <tr><td style="padding:4px 0; color:#64748b;">Email:</td><td style="padding:4px 0;">${customerEmail ? `<a href="mailto:${customerEmail}" style="color:#1d4ed8; text-decoration:none;">${customerEmail}</a>` : "—"}</td></tr>
+        <tr><td style="padding:4px 0; color:#64748b; vertical-align:top;">Address:</td><td style="padding:4px 0;">${customerAddress || "—"}</td></tr>
+      </table>
+
+      <!-- ── RV ─────────────────────────────────────────────────── -->
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">RV</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:16px;">
+        <tr><td style="padding:4px 0; color:#64748b; width:100px;">Unit:</td><td style="padding:4px 0; font-weight:600;">${rv || "—"}</td></tr>
+        <tr><td style="padding:4px 0; color:#64748b;">VIN:</td><td style="padding:4px 0; font-family:monospace; font-size:13px;">${vin || "—"}</td></tr>
+      </table>
+
+      <!-- ── WORK DESCRIPTION ───────────────────────────────────── -->
+      ${workDescription ? `
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">New Work Description</h3>
+      <div style="background:#f8fafc; border-left:4px solid #1d4ed8; border-radius:6px; padding:12px 14px; margin-bottom:16px; font-size:14px; line-height:1.6; white-space:pre-wrap;">${workDescription}</div>
+      ` : ""}
+
+      ${warrantyDescription || warrantyOrigRO ? `
+      <h3 style="margin:20px 0 8px; color:#c8102e; font-size:15px; font-weight:700; border-bottom:1px solid #fecaca; padding-bottom:4px;">Warranty Work</h3>
+      <div style="background:#fef2f2; border-left:4px solid #c8102e; border-radius:6px; padding:12px 14px; margin-bottom:16px; font-size:14px; line-height:1.6;">
+        ${warrantyOrigRO ? `<p style="margin:0 0 8px; font-size:13px;"><strong>Original RO:</strong> <span style="font-family:monospace;">${warrantyOrigRO}</span></p>` : ""}
+        ${warrantyDescription ? `<div style="white-space:pre-wrap;">${warrantyDescription}</div>` : ""}
+      </div>
+      ` : ""}
+
+      <!-- ── LEAD CONVERSION NOTES (the real context) ───────────── -->
+      ${leadNotes ? `
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">Lead Conversion Notes</h3>
+      <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:8px; padding:14px 16px; margin-bottom:20px; font-size:14px; line-height:1.7; white-space:pre-wrap; color:#422006;">${leadNotes}</div>
+      ` : ""}
+
+      <!-- ── DASHBOARD CTA ──────────────────────────────────────── -->
+      ${dashboardLink ? `
+      <div style="text-align:center; margin:28px 0 8px;">
+        <a href="${dashboardLink}" style="display:inline-block; background: linear-gradient(135deg, #1e3a8a, #1d4ed8); color:#fff; text-decoration:none; font-weight:700; font-size:15px; padding:14px 28px; border-radius:8px; box-shadow:0 2px 6px rgba(30,58,138,0.25);">View RO on Dashboard →</a>
+      </div>
+      <p style="text-align:center; margin:4px 0 0; font-size:11px; color:#94a3b8;">Link opens the RO tile and highlights it.</p>
+      ` : ""}
+
+    </div>
+
+    <div style="background: #f8fafc; padding: 16px 20px; border-top: 1px solid #e2e8f0;">
+      <p style="margin: 0; color: #555; font-size: 13px;">
+        &#128205; 11399 US 380, Krum TX 76249<br>
+        &#128222; <a href="tel:9404885047" style="color:#1e3a8a; text-decoration:none;">(940) 488-5047</a> &nbsp;·&nbsp;
+        &#127760; <a href="https://patriotsrvservices.com" style="color:#1e3a8a; text-decoration:none;">patriotsrvservices.com</a>
+      </p>
+      <p style="margin: 8px 0 0; color: #94a3b8; font-size: 10px;">Automated internal notification from the PRVS Dashboard.</p>
+    </div>
+
+  </div>
+</body>
+</html>`;
+
+      const textBody =
+`${headerLabel.toUpperCase()}
+${headerSub}
+
+RO ID: ${roId || "—"}
+Created: ${fmtDateTime(createdAt)}
+Created by: ${createdByLine}
+Work type: ${workTypeLabel}
+Customer type: ${customerType || "—"}
+
+SERVICES REQUESTED
+${silosLabelsText}
+
+SCHEDULING
+Planned drop-off:   ${fmtDate(plannedDropoff)}
+Promised complete:  ${fmtDate(promisedDate)}
+
+CUSTOMER
+Name:    ${customerName || "—"}
+Phone:   ${customerPhone || "—"}
+Email:   ${customerEmail || "—"}
+Address: ${customerAddress || "—"}
+
+RV
+Unit: ${rv || "—"}
+VIN:  ${vin || "—"}
+${workDescription ? `\nNEW WORK DESCRIPTION\n${workDescription}\n` : ""}${warrantyDescription || warrantyOrigRO ? `\nWARRANTY WORK${warrantyOrigRO ? `\nOriginal RO: ${warrantyOrigRO}` : ""}${warrantyDescription ? `\n${warrantyDescription}` : ""}\n` : ""}${leadNotes ? `\nLEAD CONVERSION NOTES\n${leadNotes}\n` : ""}
+${dashboardLink ? `\nView RO on Dashboard: ${dashboardLink}\n` : ""}
+—
+Patriots RV Services · 11399 US 380, Krum TX 76249 · (940) 488-5047
+Automated internal notification from the PRVS Dashboard.`;
+
+      await transporter.sendMail({
+        from:    `"Patriots RV Services — Dashboard" <${gmailUser}>`,
+        replyTo: createdByEmail || "Patriots RV Services <info@patriotsrvservices.com>",
+        to,
+        subject,
+        text:    textBody,
+        html:    htmlBody,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
+      });
+    }
+
     // ── SOLAR QUOTE EMAIL (original behaviour) ─────────────────────────
     const { to, customerName, quoteNumber, roNumber, grandTotal, body: emailBody, pdfBase64 } = body;
 

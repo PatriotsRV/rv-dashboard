@@ -1939,6 +1939,42 @@
                 }
             }
 
+            // ── STAFF NOTIFICATION EMAIL ─────────────────────────────
+            // Fires for: Lead Conversion (any work type) + Drop-off when Warranty or Hybrid.
+            // Non-blocking — email failure does not fail the RO creation.
+            const shouldNotifyStaff =
+                formState.mode === 'lead' ||
+                (formState.mode === 'dropoff' && (roType === 'warranty' || roType === 'hybrid'));
+            if (shouldNotifyStaff) {
+                try {
+                    await sendLeadStaffNotification(insertedRO, {
+                        mode:                 formState.mode,
+                        customerName:         customerName,
+                        customerType:         formState.customerType === 'returning' ? 'Returning' : 'New',
+                        customerPhone:        phone,
+                        customerEmail:        email,
+                        customerAddress:      address,
+                        rv:                   rv,
+                        vin:                  vin,
+                        selectedSiloKeys:     formState.selectedSilos,
+                        workType:             roType,
+                        workDescription:      serviceDesc,
+                        warrantyDescription:  warrantyDesc,
+                        warrantyOrigRO:       document.getElementById('warrantyOrigRO')?.value.trim() || '',
+                        plannedDropoff:       formState.mode === 'lead'
+                                                  ? (document.getElementById('leadDropoffDate')?.value || null)
+                                                  : (dateReceived || null),
+                        promisedDate:         promisedDate,
+                        leadNotes:            formState.mode === 'lead'
+                                                  ? (document.getElementById('leadNotes')?.value.trim() || '')
+                                                  : '',
+                    });
+                } catch (e) {
+                    console.error('Staff notification email failed:', e);
+                    showToast('RO created, but staff notification email failed to send.', 'warning');
+                }
+            }
+
             // Success
             document.getElementById('newROId').textContent = insertedRO.ro_id;
             const modeLabel = formState.mode === 'dropoff'
@@ -1985,6 +2021,89 @@
         if (!resp.ok) {
             console.error('RAF email response not ok:', resp.status, await resp.text().catch(() => ''));
             throw new Error(`Email send failed (HTTP ${resp.status})`);
+        }
+    }
+
+    // ── SEND LEAD / WARRANTY DROP-OFF STAFF NOTIFICATION ──────────
+    // Alerts the silo managers that a committed job is incoming so they can
+    // pre-stage parts, paperwork, and shop capacity. Fires for Lead Conversions
+    // (any work type) and for Warranty/Hybrid Drop-Offs.
+    //
+    // TODO: Move recipient to app_config table so it can be changed without a
+    // code deploy. For v1, hardcoded to repair@patriotsrvservices.com.
+    async function sendLeadStaffNotification(ro, payload) {
+        const STAFF_NOTIFY_TO = 'repair@patriotsrvservices.com';
+
+        // Look up submitter from the staff table (friendly name + role)
+        let createdByName = null;
+        let createdByRole = null;
+        const createdByEmail = supabaseSession?.user?.email || null;
+        if (createdByEmail) {
+            try {
+                const { data: staffRec } = await getSB()
+                    .from('staff')
+                    .select('name, role')
+                    .eq('email', createdByEmail)
+                    .single();
+                if (staffRec) {
+                    createdByName = staffRec.name || null;
+                    const roleMap = {
+                        'sr_manager':    'Sr Manager',
+                        'manager':       'Manager',
+                        'parts_manager': 'Parts Manager',
+                        'tech':          'Tech',
+                        'admin':         'Admin',
+                    };
+                    createdByRole = roleMap[staffRec.role] || staffRec.role || null;
+                }
+            } catch (e) { /* staff record may not exist — fall back to email */ }
+        }
+
+        // Build silos array in canonical SERVICE_SILOS order
+        const silosPayload = SERVICE_SILOS
+            .filter(s => (payload.selectedSiloKeys || []).includes(s.key))
+            .map(s => ({ key: s.key, label: s.label, emoji: s.emoji }));
+
+        const dashboardLink = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(ro.ro_id)}`;
+
+        const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                type:                 'lead_staff_notify',
+                to:                   STAFF_NOTIFY_TO,
+                roId:                 ro.ro_id,
+                mode:                 payload.mode,
+                customerName:         payload.customerName,
+                customerType:         payload.customerType,
+                customerPhone:        payload.customerPhone || null,
+                customerEmail:        payload.customerEmail || null,
+                customerAddress:      payload.customerAddress || null,
+                rv:                   payload.rv || null,
+                vin:                  payload.vin || null,
+                silos:                silosPayload,
+                workType:             payload.workType,
+                workDescription:      payload.workDescription || null,
+                warrantyDescription:  payload.warrantyDescription || null,
+                warrantyOrigRO:       payload.warrantyOrigRO || null,
+                plannedDropoff:       payload.plannedDropoff || null,
+                promisedDate:         payload.promisedDate || null,
+                leadNotes:            payload.leadNotes || null,
+                createdByName:        createdByName,
+                createdByRole:        createdByRole,
+                createdByEmail:       createdByEmail,
+                createdAt:            new Date().toISOString(),
+                dashboardLink:        dashboardLink,
+            }),
+        });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            console.error('Staff notify response not ok:', resp.status, errText);
+            throw new Error(`Staff notify send failed (HTTP ${resp.status})`);
         }
     }
 
