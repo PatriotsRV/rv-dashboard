@@ -563,14 +563,13 @@ Deno.serve(async (req: Request) => {
         workType === "warranty" ? " (Warranty)" :
                                   "";
 
-      // Subject line: "New Lead — Customer — Services — RV — RO ID"
-      //            or "New Warranty Drop-Off — ..." / "New Hybrid Drop-Off — ..."
-      let subjectPrefix = "New Lead" + workTypeTag;
-      if (mode === "dropoff") {
-        subjectPrefix = workType === "hybrid"   ? "New Hybrid Drop-Off" :
-                        workType === "warranty" ? "New Warranty Drop-Off" :
-                                                  "New Drop-Off"; // shouldn't fire for standard, but safe
-      }
+      // Subject line: "🚨 New Customer — ..." or "🚨 Returning Customer (Warranty) — Drop-Off — ..."
+      // - Uses customerType to say "New Customer" vs "Returning Customer"
+      // - Appends (Warranty) / (Hybrid) when applicable
+      // - Appends "— Drop-Off" for drop-off mode (customer is on the lot now — higher urgency)
+      const customerLabel = customerType === "Returning" ? "Returning Customer" : "New Customer";
+      const modeTag = mode === "dropoff" ? " — Drop-Off" : "";
+      const subjectPrefix = `🚨 ${customerLabel}${workTypeTag}${modeTag}`;
       const subject = `${subjectPrefix} — ${customerName || "Customer"} — ${silosLabelsText} — ${rv || "RV"} — ${roId || "RO"}`;
 
       const fmtDate = (iso?: string | null) => {
