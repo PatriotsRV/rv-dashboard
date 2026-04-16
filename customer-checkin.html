@@ -7,7 +7,7 @@
     v1.2: GH#19 Professional marble visual redesign, wider form, version display
     v1.1: GH#18 Signature & photo hard validation, generate-signature feature, auth refresh fix
     v1.0: Initial build — GH#17 Customer Check-In Page
-          Two-mode form: Drop-Off (customer at front desk) / Lead Conversion (staff entering committed lead)
+          Two-mode form: RV Customer Drop Off (customer at front desk) / New Customer Entry (staff entering committed customer)
           Customer type: New Customer / Returning Customer (lookup by name/phone/email/VIN)
           Work type: New Work / Warranty / Both (hybrid RO)
           8-silo service selection
@@ -574,13 +574,13 @@
         <div class="mode-toggle">
             <div class="mode-btn" data-mode="dropoff" onclick="selectMode('dropoff')">
                 <span class="mode-icon">🚐</span>
-                <span class="mode-label">RV Drop-Off</span>
+                <span class="mode-label">RV Customer Drop Off</span>
                 <span class="mode-desc">Dropping off or scheduling a drop-off for your RV</span>
             </div>
             <div class="mode-btn" data-mode="lead" onclick="selectMode('lead')">
                 <span class="mode-icon">📋</span>
-                <span class="mode-label">Lead Conversion</span>
-                <span class="mode-desc">Staff: entering a committed lead with future drop-off</span>
+                <span class="mode-label">New Customer Entry</span>
+                <span class="mode-desc">Staff: entering a customer committed to a future drop-off</span>
             </div>
         </div>
     </div>
@@ -729,7 +729,7 @@
             <div class="section-title"><span class="icon">📅</span> Scheduling</div>
             <div class="field-grid-2">
                 <div class="field-row">
-                    <label>Planned Drop-Off Date</label>
+                    <label>Planned Drop Off Date</label>
                     <input type="date" id="leadDropoffDate">
                 </div>
                 <div class="field-row">
@@ -766,13 +766,13 @@
             </div>
             <div id="scheduledDateWrap" class="hidden">
                 <div class="field-row">
-                    <label>Planned Drop-Off Date <span class="req">*</span></label>
+                    <label>Planned Drop Off Date <span class="req">*</span></label>
                     <input type="date" id="scheduledDropoffDate">
                 </div>
             </div>
         </div>
 
-        <!-- RAF (Drop-Off mode only) -->
+        <!-- RAF (RV Customer Drop Off mode only) -->
         <div id="rafSection">
             <div class="section-title"><span class="icon">📄</span> Repair Authorization Form</div>
             <p style="font-size:0.82rem;color:#64748b;margin-bottom:12px;">Please read the following agreement carefully and sign below.</p>
@@ -883,7 +883,7 @@
             </div>
         </div>
 
-        <!-- Lead Conversion: step 4 is just review + submit -->
+        <!-- New Customer Entry: step 4 is just review + submit -->
         <div id="leadStep4" class="hidden">
             <div class="section-title"><span class="icon">✅</span> Review &amp; Submit</div>
             <div id="leadReviewSummary"></div>
@@ -1214,7 +1214,7 @@
                 <strong>Services:</strong> ${siloLabels}<br>
                 <strong>Work Type:</strong> ${formState.workTypes.map(w => w === 'new' ? '🔧 New Work' : '🛡️ Warranty').join(' + ')}<br>
                 <strong>Description:</strong> ${escapeHtml(desc)}<br>
-                ${dropDate ? `<strong>Planned Drop-Off:</strong> ${dropDate}<br>` : ''}
+                ${dropDate ? `<strong>Planned Drop Off:</strong> ${dropDate}<br>` : ''}
                 ${promDate ? `<strong>Promised Date:</strong> ${promDate}<br>` : ''}
                 ${notes ? `<strong>Notes:</strong> ${escapeHtml(notes)}` : ''}
             </div>
@@ -1944,7 +1944,7 @@
             }
 
             // ── STAFF NOTIFICATION EMAIL ─────────────────────────────
-            // Fires for: Lead Conversion (any work type) + Drop-off when Warranty or Hybrid.
+            // Fires for: New Customer Entry (any work type) + RV Customer Drop Off when Warranty or Hybrid.
             // Non-blocking — email failure does not fail the RO creation.
             const shouldNotifyStaff =
                 formState.mode === 'lead' ||
@@ -1984,8 +1984,8 @@
             // Success
             document.getElementById('newROId').textContent = insertedRO.ro_id;
             const modeLabel = formState.mode === 'dropoff'
-                ? (formState.dropoffChoice === 'today' ? 'Drop-Off' : 'Scheduled Drop-Off')
-                : 'Lead Conversion';
+                ? (formState.dropoffChoice === 'today' ? 'Drop Off' : 'Scheduled Drop Off')
+                : 'New Customer Entry';
             const typeLabel = roType === 'hybrid' ? 'Hybrid (New + Warranty)' : roType === 'warranty' ? 'Warranty' : 'Standard';
             document.getElementById('successMsg').innerHTML = `
                 ${modeLabel} — ${typeLabel} RO created for <strong>${escapeHtml(customerName)}</strong>.<br>
@@ -2036,8 +2036,8 @@
 
     // ── SEND LEAD / WARRANTY DROP-OFF STAFF NOTIFICATION ──────────
     // Alerts the silo managers that a committed job is incoming so they can
-    // pre-stage parts, paperwork, and shop capacity. Fires for Lead Conversions
-    // (any work type) and for Warranty/Hybrid Drop-Offs.
+    // pre-stage parts, paperwork, and shop capacity. Fires for New Customer Entries
+    // (any work type) and for Warranty/Hybrid RV Customer Drop Offs.
     //
     // TODO: Move recipient to app_config table so it can be changed without a
     // code deploy. For v1, hardcoded to repair@patriotsrvservices.com.
