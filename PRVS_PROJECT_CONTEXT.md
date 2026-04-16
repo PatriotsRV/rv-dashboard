@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.405 |
+| **Current Version** | v1.406 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -52,14 +52,16 @@
 - **GH#23 — Map service_silo values to each manager in staff table** — Needed for per-silo RV filtering in send-manager-report to work correctly. ⏳ Open
 - **GH#20 — Slack Integration (remaining triggers)** — Test `ro_urgency_critical`, `part_received`, `warranty_ro_opened`. Audit & configure all 5 event types. Deploy final. 🔄 In Progress
 - **GH#5c — Polish Work Orders UI** — Mobile layout, remaining bugs. 🔄 In Progress
-- **GH#17/GH#19 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. Next session build target. ⏳ Open
+- **GH#17 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. **Session 50:** Lead Staff Notification built; mode rename ("RV Customer Drop Off", "New Customer Entry"); shared-secret X-PRVS-Secret auth. Still living form — Roland will add more fields pre-go-live. 🔄 In Progress
 - **GH#6 — Employee Time Clock** — Full time clock in dashboard. ⏳ Open
 
 ### 🟡 Medium Priority / Roland Actions
 - **GitHub Releases v1.283–v1.308** — Backlog of unpublished releases. ⏳ Roland action
-- **GitHub Release v1.402/v1.403/v1.404/v1.405** — Warranty RO + Slack integration + Morning Manager Report + Shop Operations RO. ⏳ Roland action
+- **GitHub Release v1.402/v1.403/v1.404/v1.405/v1.406** — Warranty RO + Slack integration + Morning Manager Report + Shop Operations RO + Lead Staff Notification & X-PRVS-Secret auth. ⏳ Roland action
 - **Supabase: Maximize log retention** — Settings → Logs. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts notifications. ⏳ Roland action
+- **Migrate lead_staff_notify recipient to `app_config`** — Currently hardcoded to `repair@patriotsrvservices.com` in `send-quote-email`. Move to `app_config` table following the calendar ID pattern. ⏳ Open
+- **Test remaining lead_staff_notify variants** — Verify warranty-only drop off, hybrid drop off, returning customer subject/header variants. 🔄 Open
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah. ⏳ Open
 - **GH#9 — Parts form autocomplete** — Suggest from history. ⏳ Open
 - **GH#21 — checkin.html Auth Persistence Fix** — Spec covered in Security Remediation Issue 3 pattern. ⏳ Open
@@ -68,20 +70,15 @@
 ---
 
 ## ✅ Recently Completed
-- ✅ **customer-checkin.html backdrop redesign (2026-04-16)** — Replaced marble CSS backdrop with fixed full-bleed RV park mountain photo. Vibrance boost (saturate 1.25, contrast 1.05) + light cream overlay (~20% opacity). Commits: 71489b5, 6ac5c07.
+- ✅ **GH#19 Lead Staff Notification (2026-04-16, Session 50)** — Staff notification email built for `customer-checkin.html`. Fires on New Customer Entry (any work type) + RV Customer Drop Off when warranty/hybrid. `send-quote-email` v1.8 adds `lead_staff_notify` type with mode-aware subject + branded HTML. Recipient: repair@patriotsrvservices.com. Live-tested with real + warranty customer.
+- ✅ **Shared-Secret X-PRVS-Secret Pattern (2026-04-16, Session 50)** — `PRVS_FUNCTION_SECRET` Supabase secret + `X-PRVS-Secret` header on 4 index.html edge fetches (photo_share, parts_ordered, parts_eta_update, parts_request) + customer-checkin.html lead_staff_notify. Deployed send-quote-email with `--no-verify-jwt`. index.html v1.405→v1.406.
+- ✅ **Mode Rename — RV Customer Drop Off / New Customer Entry (2026-04-16, Session 50)** — "RV Drop-Off" → "RV Customer Drop Off", "Lead Conversion" → "New Customer Entry". UI labels + email strings + internal comments updated; mode payload values (`'dropoff'`/`'lead'`) preserved. customer-checkin.html v1.2→v1.4. Commits: ef505bc, d4f0acb.
+- ✅ **customer-checkin.html backdrop redesign (2026-04-16, Session 49)** — Replaced marble CSS backdrop with fixed full-bleed RV park mountain photo. Vibrance boost (saturate 1.25, contrast 1.05) + light cream overlay (~20% opacity). Commits: 71489b5, 6ac5c07.
 - ✅ **Sr Manager Parts + Schedule Fix (2026-04-14)** — Added `hasRole('Sr Manager')` to 5 UI role gates. Fixes Kevin McHenry Sr Manager access. Commit: d5ddc36.
 - ✅ **GH#24 Shop Operations RO Phase 1 v1.405 (2026-04-14)** — 5th RO type (`shop`) for non-customer parts ordering/returns. Purple badge, compact chip, filter button, Slack skip. Commits: 66a5fe8, ca07ba9, 13981a0.
 - ✅ **send-manager-report v1.8 (2026-04-14)** — v1.7: ≥30 days filter. v1.8: red PARTS HOLD badge on individual RO line items + named ROs in Key Flags. Deployed as Supabase version 13.
 - ✅ **Worklist Report v1.2 — clickable tech tile expand (2026-04-14)** — Tech tiles in Staff Status section now clickable, expands to show daily time log per tech.
-- ✅ **Perplexity Computer Skills (2026-04-14)** — Created `prvs-dashboard-startup` and `prvs-dashboard-endsession` as persistent Perplexity account-level skills.
 - ✅ **Slack Integration GH#20 — v1.403 (2026-04-12)** — `slack-notify` Edge Function v1.2 + 5 trigger points. ro_created + ro_ready_pickup confirmed working. 3 triggers remaining.
-- ✅ **send-parts-report v1.7 (2026-04-12)** — Contextual numbered action prompts, EOD checklist, Gmail clipping fix.
-- ✅ **Unified Search V1 (2026-04-12)** — 10-field haystack search (name, RO ID, VIN, RV, tech, description, spot, phone, email, repair type) + post-render highlight. Works in standard + compact views. Commit: 7a355a4.
-- ✅ **v1.400 Session (2026-04-11)** — Version bumped v1.308→v1.400. Toast System complete (116 alert→showToast, 4 confirm→toast-action). Visual cleanup pass (calmed animations, utility classes). Dead code cleanup (968 lines removed). Kenect removal (550 lines). Compact Manager View (dense 6-column row layout with RV photo thumbnail). slideIn keyframe fix.
-- ✅ **Security Remediation — ALL COMPLETE (2026-04-11)** — 10 security issues across 7 sessions (S1–S7) + 2 hotfixes. 5 Edge Functions redeployed with CORS. 2 SQL migrations run.
-- ✅ **Perplexity scan + specs (2026-04-10)** — Full project scan. 5 implementation specs written, reviewed, merged.
-- ✅ **v1.308 (2026-04-05)** — Closed RO Archive (GH#22), Enhancement Request system (GH#19), parts badge fixes, Work List DOM fix.
-- ✅ **v1.305 (2026-04-04)** — Sr Manager silo-specific work lists, Work List Report page.
 
 ---
 
@@ -126,4 +123,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-16 — Session 49 — v1.405 — customer-checkin.html backdrop redesign (RV park photo replaces marble)*
+*Last updated: 2026-04-16 — Session 50 — v1.406 — Lead Staff Notification + X-PRVS-Secret shared-secret auth + Drop Off / New Customer Entry rename*
