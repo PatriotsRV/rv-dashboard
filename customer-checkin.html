@@ -723,7 +723,7 @@
             </div>
         </div>
 
-        <!-- Lead conversion extras -->
+        <!-- New Customer Entry extras -->
         <div class="lead-fields" id="leadFields">
             <div style="height:16px"></div>
             <div class="section-title"><span class="icon">📅</span> Scheduling</div>
@@ -751,7 +751,7 @@
     <div class="form-section hidden" id="step4">
         <button class="btn-back" onclick="goToStep(3)">← Back</button>
 
-        <!-- Drop-off: are you leaving RV today? -->
+        <!-- Drop Off: are you leaving RV today? -->
         <div id="dropoffQuestionWrap">
             <div class="dropoff-question">
                 <h3>🚐 Are you dropping off your RV today?</h3>
@@ -1807,7 +1807,7 @@
             }
 
             // Determine status
-            let status = 'Scheduled'; // default for lead conversion
+            let status = 'Scheduled'; // default for New Customer Entry
             if (formState.mode === 'dropoff') {
                 status = formState.dropoffChoice === 'today' ? 'On Lot' : 'Scheduled';
             }

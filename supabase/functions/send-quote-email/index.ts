@@ -510,8 +510,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── LEAD / WARRANTY DROP-OFF STAFF NOTIFICATION ───────────────────
-    // Fires for: Lead Conversion (any work type) + Drop-off when Warranty or Hybrid.
+    // ── NEW CUSTOMER ENTRY / WARRANTY DROP OFF STAFF NOTIFICATION ─────
+    // Fires for: New Customer Entry (any work type) + Drop Off when Warranty or Hybrid.
     // Purpose: alert the appropriate silo manager that a committed job is on the way
     // so they can pre-stage parts, paperwork, and shop capacity.
     if (type === "lead_staff_notify") {
@@ -563,12 +563,12 @@ Deno.serve(async (req: Request) => {
         workType === "warranty" ? " (Warranty)" :
                                   "";
 
-      // Subject line: "🚨 New Customer — ..." or "🚨 Returning Customer (Warranty) — Drop-Off — ..."
+      // Subject line: "🚨 New Customer — ..." or "🚨 Returning Customer (Warranty) — Drop Off — ..."
       // - Uses customerType to say "New Customer" vs "Returning Customer"
       // - Appends (Warranty) / (Hybrid) when applicable
-      // - Appends "— Drop-Off" for drop-off mode (customer is on the lot now — higher urgency)
+      // - Appends "— Drop Off" for drop-off mode (customer is on the lot now — higher urgency)
       const customerLabel = customerType === "Returning" ? "Returning Customer" : "New Customer";
-      const modeTag = mode === "dropoff" ? " — Drop-Off" : "";
+      const modeTag = mode === "dropoff" ? " — Drop Off" : "";
       const subjectPrefix = `🚨 ${customerLabel}${workTypeTag}${modeTag}`;
       const subject = `${subjectPrefix} — ${customerName || "Customer"} — ${silosLabelsText} — ${rv || "RV"} — ${roId || "RO"}`;
 
@@ -587,8 +587,8 @@ Deno.serve(async (req: Request) => {
       const createdByLine = createdByRole ? `${createdBy} · ${createdByRole}` : createdBy;
 
       const headerLabel = mode === "dropoff"
-        ? (workType === "hybrid" ? "Hybrid Warranty Drop-Off" : "Warranty Drop-Off")
-        : "New Lead Conversion";
+        ? (workType === "hybrid" ? "Hybrid Warranty Drop Off" : "Warranty Drop Off")
+        : "New Customer Entry";
       const headerSub = mode === "dropoff"
         ? "Customer is on the lot — manager prep required"
         : "Customer committed — manager prep required before drop-off";
@@ -632,7 +632,7 @@ Deno.serve(async (req: Request) => {
       <!-- ── SCHEDULING ─────────────────────────────────────────── -->
       <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">Scheduling</h3>
       <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:16px;">
-        <tr><td style="padding:4px 0; color:#64748b; width:170px;">Planned drop-off:</td><td style="padding:4px 0; font-weight:600;">${fmtDate(plannedDropoff)}</td></tr>
+        <tr><td style="padding:4px 0; color:#64748b; width:170px;">Planned Drop Off:</td><td style="padding:4px 0; font-weight:600;">${fmtDate(plannedDropoff)}</td></tr>
         <tr><td style="padding:4px 0; color:#64748b;">Promised complete:</td><td style="padding:4px 0; font-weight:600;">${fmtDate(promisedDate)}</td></tr>
       </table>
 
@@ -666,9 +666,9 @@ Deno.serve(async (req: Request) => {
       </div>
       ` : ""}
 
-      <!-- ── LEAD CONVERSION NOTES (the real context) ───────────── -->
+      <!-- ── NEW CUSTOMER ENTRY NOTES (the real context) ────────── -->
       ${leadNotes ? `
-      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">Lead Conversion Notes</h3>
+      <h3 style="margin:20px 0 8px; color:#1e3a8a; font-size:15px; font-weight:700; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">New Customer Entry Notes</h3>
       <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:8px; padding:14px 16px; margin-bottom:20px; font-size:14px; line-height:1.7; white-space:pre-wrap; color:#422006;">${leadNotes}</div>
       ` : ""}
 
@@ -709,7 +709,7 @@ SERVICES REQUESTED
 ${silosLabelsText}
 
 SCHEDULING
-Planned drop-off:   ${fmtDate(plannedDropoff)}
+Planned Drop Off:   ${fmtDate(plannedDropoff)}
 Promised complete:  ${fmtDate(promisedDate)}
 
 CUSTOMER
