@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.405
-    Released: 2026-04-14
+    PRVS Dashboard v1.406
+    Released: 2026-04-16
+    v1.406: HEIC photo upload fix — iPhone photos in HEIC format auto-converted to JPEG client-side before upload (heic2any CDN). Applied to uploadPhoto() and uploadDocument(). Fixes "mime type image/heic is not supported" error on iPhone tech uploads.
     v1.405: Shop RO Type (GH#24 Phase 1) — 🏪 Shop Operations RO type for non-customer parts ordering/returns. Simplified New/Edit modal (customer fields hidden). Shop badge on standard + compact cards. RO Type filter button. Slack notifications skipped for shop ROs. Spanish translations.
     v1.404: Training RO flag (GH#24) — is_training badge, filter, Slack/report exclusions
            DB migration: ALTER TABLE repair_orders ADD COLUMN IF NOT EXISTS is_training BOOLEAN DEFAULT FALSE;
@@ -3360,7 +3361,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.405</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.406</span>
             </div>
         </header>
 
@@ -4323,6 +4324,32 @@
         }
 
         // Photo Upload Function
+        // v1.406: iPhone photos come in HEIC format by default — Supabase bucket MIME policy
+        // rejects image/heic, AND Chrome/Edge/Firefox can't render HEIC even if uploaded.
+        // Convert to JPEG client-side before handing to uploadToSupabaseStorage.
+        // Uses heic2any (loaded from jsdelivr CDN in the <script> tags block).
+        async function convertHeicIfNeeded(file) {
+            if (!file) return file;
+            const nameLower = (file.name || '').toLowerCase();
+            const typeLower = (file.type || '').toLowerCase();
+            const isHeic = typeLower === 'image/heic' || typeLower === 'image/heif'
+                || nameLower.endsWith('.heic') || nameLower.endsWith('.heif');
+            if (!isHeic) return file;
+            if (typeof heic2any !== 'function') {
+                warn('heic2any library not loaded — uploading HEIC as-is (may fail)');
+                return file;
+            }
+            try {
+                const jpegBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+                const finalBlob = Array.isArray(jpegBlob) ? jpegBlob[0] : jpegBlob;
+                const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
+                return new File([finalBlob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+            } catch (err) {
+                console.error('HEIC conversion failed:', err);
+                throw new Error('Could not convert HEIC photo. Ask the iPhone user to switch Settings → Camera → Formats → Most Compatible, then retry.');
+            }
+        }
+
         async function uploadPhoto(index) {
             if (!getSB() || !supabaseSession) {
                 showToast('Session expired — please refresh the page and sign in again.', 'warning');
@@ -4334,7 +4361,8 @@
 
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'image/*,video/*';
+            // v1.406: add .heic/.heif explicitly — some iOS Chrome pickers won't include them under image/*
+            input.accept = 'image/*,video/*,.heic,.heif';
             input.multiple = true;
             // No capture attribute — lets mobile show native picker (Camera OR Photo Library)
 
@@ -4368,8 +4396,13 @@
                     let firstPhotoUrl = null;
                     const isFirstPhoto = !currentData[originalIndex].rvPhotoUrl;
 
-                    for (const file of files) {
-                        if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) continue;
+                    for (const rawFile of files) {
+                        const nameLower = (rawFile.name || '').toLowerCase();
+                        const isHeic = nameLower.endsWith('.heic') || nameLower.endsWith('.heif');
+                        // v1.406: HEIC files may come through with empty or "image/heic" type; accept them and convert below
+                        if (!isHeic && !rawFile.type.startsWith('image/') && !rawFile.type.startsWith('video/')) continue;
+                        if (uploadBtn && isHeic) uploadBtn.textContent = `⏳ Converting HEIC ${uploaded + 1}/${files.length}...`;
+                        const file = await convertHeicIfNeeded(rawFile);
                         const roId = currentData[originalIndex]?.roId || 'general';
                         const photoUrl = await uploadToSupabaseStorage(file, roId);
                         library.push(photoUrl);
@@ -4566,8 +4599,8 @@
         }
 
         async function uploadDocument(index, input) {
-            const file = input.files[0];
-            if (!file) return;
+            const rawFile = input.files[0];
+            if (!rawFile) return;
 
             if (!getSB() || !supabaseSession) {
                 showToast('Session expired — please refresh the page and sign in again.', 'warning');
@@ -4585,6 +4618,13 @@
             if (uploadBtn) { uploadBtn.disabled = true; uploadBtn.textContent = '⏳ Uploading...'; }
 
             try {
+                // v1.406: auto-convert HEIC docs to JPEG before upload
+                const heicNameLower = (rawFile.name || '').toLowerCase();
+                const wasHeic = heicNameLower.endsWith('.heic') || heicNameLower.endsWith('.heif');
+                if (uploadBtn && wasHeic) uploadBtn.textContent = '⏳ Converting HEIC...';
+                const file = await convertHeicIfNeeded(rawFile);
+                if (uploadBtn) uploadBtn.textContent = '⏳ Uploading...';
+
                 // Upload to Supabase Storage — same rv-media bucket, docs subfolder
                 // skipContentType: true so non-image MIME types are not rejected by bucket policy
                 const roId = currentData[originalIndex]?.roId || 'general';
@@ -7359,7 +7399,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.282 - Released 2026-03-23');
+            log('📦 PRVS Dashboard v1.406 - Released 2026-04-16');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -14704,6 +14744,7 @@ function toggleWOTasks(tasksId, chevId) {
 
     <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <script src="https://apis.google.com/js/api.js?v=2" onload="gapiLoaded()"></script>
     <script>
         // Timeout if Google APIs don't load within 10 seconds
