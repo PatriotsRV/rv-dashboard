@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.406 |
+| **Current Version** | v1.409 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -48,16 +48,24 @@
 - **GH#4 — Twilio SMS build** — Full spec in `docs/specs/TWILIO_SMS_SPEC.md`. Replaces Kenect. ⏳ Waiting on number port
 
 ### 🟠 High Priority
+- **GH#26 — New RO Statuses: "Not on Lot" + "On Lot"** (Session 51) — Both status values already exist in dropdown per Roland's test. Scope narrowed to: verify CHECK constraint allows both, add filter buttons + badge styles if missing, wire customer-checkin modes to set them (New Customer Entry → `Not on Lot`; drop-off arrival transitions → `On Lot`). Pairs with GH#27. ⏳ Open
+- **GH#27 — Drop-Off form RO lookup + pre-populate** (Session 51) — When customer starts `customer-checkin.html` "RV Customer Drop Off" mode, look up existing `status='Not on Lot'` RO by phone OR email OR customer name. Pre-populate core fields (including RV if present, editable). Multi-match → picker. No match → blank form (walk-in). On submit: transition RO `"Not on Lot"` → `"On Lot"`, audit field edits, fire GH#28 email. ⏳ Open
+- **GH#28 — Customer Arrived / Dropped Off staff email** (Session 51) — New `customer_arrived` email type on `send-quote-email`. Fires on drop-off submission when matched RO transitions to `"On Lot"` (pairs with GH#27). Recipient: repair@patriotsrvservices.com. Action banner: "Pictures and normal check-in procedures / RO updates need to take place." Shared-secret X-PRVS-Secret auth. ⏳ Open
 - **GH#23 — Morning Manager Report (data quality banner fix)** — Data quality banner ($0.00 warning) not firing for sr_manager reports. Multi-silo work list lookup needs fresh investigation. Deferred from Session 44. 🔄 In Progress
 - **GH#23 — Map service_silo values to each manager in staff table** — Needed for per-silo RV filtering in send-manager-report to work correctly. ⏳ Open
 - **GH#20 — Slack Integration (remaining triggers)** — Test `ro_urgency_critical`, `part_received`, `warranty_ro_opened`. Audit & configure all 5 event types. Deploy final. 🔄 In Progress
 - **GH#5c — Polish Work Orders UI** — Mobile layout, remaining bugs. 🔄 In Progress
-- **GH#17 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. **Session 50:** Lead Staff Notification built; mode rename ("RV Customer Drop Off", "New Customer Entry"); shared-secret X-PRVS-Secret auth. Still living form — Roland will add more fields pre-go-live. 🔄 In Progress
+- **GH#17 — Customer Check-In Page** — Front desk RO intake + RAF e-signature. Session 50: Lead Staff Notification built; mode rename; shared-secret auth. Still living form — Roland will add more fields pre-go-live. 🔄 In Progress
 - **GH#6 — Employee Time Clock** — Full time clock in dashboard. ⏳ Open
+
+### 🟡 Medium Priority / Monitor
+- **GH#29c — MONITOR status-change bug on unique ROs** (Session 51) — Staff previously reported status not sticking on non-dupe ROs. Post-v1.408 testing shows changes stick. Likely the v1.408 dupe-lookup fix resolved the underlying cause. If resurfaces: Chrome DevTools Network tab → filter `repair_orders` → capture PATCH response status + body. 🔍 Monitor
+- **Extend `.select()` + row-count assertions** to all 13 v1.408 write sites (belt-and-suspenders). Already on GH#30 soft-delete. ⏳ Open
 
 ### 🟡 Medium Priority / Roland Actions
 - **GitHub Releases v1.283–v1.308** — Backlog of unpublished releases. ⏳ Roland action
 - **GitHub Release v1.402/v1.403/v1.404/v1.405/v1.406** — Warranty RO + Slack integration + Morning Manager Report + Shop Operations RO + Lead Staff Notification & X-PRVS-Secret auth. ⏳ Roland action
+- **GitHub Release v1.407/v1.408/v1.409** (Session 51) — Tile bar wrap fix + GH#29 status-change bug fix + GH#30 Admin Delete RO. ⏳ Roland action
 - **Supabase: Maximize log retention** — Settings → Logs. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts notifications. ⏳ Roland action
 - **Migrate lead_staff_notify recipient to `app_config`** — Currently hardcoded to `repair@patriotsrvservices.com` in `send-quote-email`. Move to `app_config` table following the calendar ID pattern. ⏳ Open
@@ -65,11 +73,16 @@
 - **GH#11 — Solar Battery Bank Wh** — Show Wh alongside Ah. ⏳ Open
 - **GH#9 — Parts form autocomplete** — Suggest from history. ⏳ Open
 - **GH#21 — checkin.html Auth Persistence Fix** — Spec covered in Security Remediation Issue 3 pattern. ⏳ Open
+- **`isManagerOrAbove()` helper refactor** — Consolidate 5+ scattered `isAdmin() || hasRole('Manager') || hasRole('Sr Manager')` checks. ⏳ Open
 - **Modularization** — Long-term. Spec ready in `docs/specs/MODULARIZATION_ROADMAP.md`. Start after security + SMS stable. ⏳ Not started
 
 ---
 
 ## ✅ Recently Completed
+- ✅ **GH#30 Admin Delete RO — soft-delete + 1-week auto-scrub (2026-04-18, Session 51, v1.409)** — New `deleted_at`/`deleted_by` columns on `repair_orders`. 🗑 Delete RO admin wrap in Edit RO modal footer (FK-count confirm). 🗑 Recently Deleted admin header button + modal with ↩ Restore / 🗑 Delete Now (type-name-to-confirm). pg_cron `scrub-soft-deleted-ros` job ID 6, daily 02:00 CDT. Feature tested end-to-end on Roman placeholder. Commit: c6eecda.
+- ✅ **GH#29b DB dupe/test cleanup (2026-04-18, Session 51)** — Scan found 1 dupe (Roman / today's check-in test). Kept `1293920d` (active), hard-deleted placeholder `bc206e95` via GH#30 feature. 7 detection queries saved in `docs/dupe_detection_queries.sql`.
+- ✅ **GH#29 Status-change bug fix (2026-04-18, Session 51, v1.408)** — 13 write-path lookups switched from `(customerName + dateReceived)` to UUID-first `ro._supabaseId` with fallback. Fixes wrong-row writes when dupes exist. Functions affected: updateROStatus, updateROUrgency, updateROProgress, editField, uploadPhoto, uploadDocument, setMainPhoto, archiveRO, openScheduleModal, confirmSchedule, proceedWithSchedule, openPartsModal, openEditRO. Roland confirmed fix on both dupe scenario and unique-RO status changes. Commit: 0a486e4.
+- ✅ **v1.407 Tile bar wrap fix (2026-04-18, Session 51)** — Header tile bar now `flex-wrap: wrap` with `row-gap: 12px`; stripped `margin-left: 12px` from 8 buttons. Customer Check-In button (already shipped) now visible at all widths. Discovered GH#25 was already live — marked done. Commit: 1164a18.
 - ✅ **GH#19 Lead Staff Notification (2026-04-16, Session 50)** — Staff notification email built for `customer-checkin.html`. Fires on New Customer Entry (any work type) + RV Customer Drop Off when warranty/hybrid. `send-quote-email` v1.8 adds `lead_staff_notify` type with mode-aware subject + branded HTML. Recipient: repair@patriotsrvservices.com. Live-tested with real + warranty customer.
 - ✅ **Shared-Secret X-PRVS-Secret Pattern (2026-04-16, Session 50)** — `PRVS_FUNCTION_SECRET` Supabase secret + `X-PRVS-Secret` header on 4 index.html edge fetches (photo_share, parts_ordered, parts_eta_update, parts_request) + customer-checkin.html lead_staff_notify. Deployed send-quote-email with `--no-verify-jwt`. index.html v1.405→v1.406.
 - ✅ **Mode Rename — RV Customer Drop Off / New Customer Entry (2026-04-16, Session 50)** — "RV Drop-Off" → "RV Customer Drop Off", "Lead Conversion" → "New Customer Entry". UI labels + email strings + internal comments updated; mode payload values (`'dropoff'`/`'lead'`) preserved. customer-checkin.html v1.2→v1.4. Commits: ef505bc, d4f0acb.
@@ -123,4 +136,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-16 — Session 50 — v1.406 — Lead Staff Notification + X-PRVS-Secret shared-secret auth + Drop Off / New Customer Entry rename*
+*Last updated: 2026-04-18 — Session 51 — v1.409 — Tile bar wrap fix (v1.407) + GH#29 status-change bug 13-site UUID-first lookup fix (v1.408) + GH#30 Admin Delete RO soft-delete with 1-week auto-scrub (v1.409) + GH#29b DB dupe cleanup (Roman removed) + GH#25-28 intake pipeline TODOs logged*
