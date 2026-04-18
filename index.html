@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.406
-    Released: 2026-04-16
+    PRVS Dashboard v1.407
+    Released: 2026-04-18
+    v1.407: Header tile bar wrap fix (Session 51) — `.view-mode-section` now `flex-wrap: wrap` with `row-gap: 12px`; stripped `margin-left: 12px` from all 8 header buttons (Admin Settings, Solar, Analytics, Work List Report, Closed ROs, Customer Check-In, Wishes, Merge Dupes) so the container `gap: 12px` cleanly handles spacing across both rows. Buttons now wrap to a second row on narrow viewports instead of overflowing off-screen — the green 📋 Customer Check-In button is now visible at all widths.
     v1.406: HEIC photo upload fix — iPhone photos in HEIC format auto-converted to JPEG client-side before upload (heic2any CDN). Applied to uploadPhoto() and uploadDocument(). Fixes "mime type image/heic is not supported" error on iPhone tech uploads.
     v1.405: Shop RO Type (GH#24 Phase 1) — 🏪 Shop Operations RO type for non-customer parts ordering/returns. Simplified New/Edit modal (customer fields hidden). Shop badge on standard + compact cards. RO Type filter button. Slack notifications skipped for shop ROs. Spanish translations.
     v1.404: Training RO flag (GH#24) — is_training badge, filter, Slack/report exclusions
@@ -219,8 +220,10 @@
 
         .view-mode-section {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             gap: 12px;
+            row-gap: 12px;
             margin-bottom: 20px;
             padding: 16px 20px;
             background: linear-gradient(135deg, #007FFF 0%, #0059B3 100%);
@@ -3361,7 +3364,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.406</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.407</span>
             </div>
         </header>
 
@@ -3373,28 +3376,28 @@
                     <option value="regular" selected>Regular</option>
                     <option value="compact">Compact</option>
                 </select>
-                <button id="adminSettingsBtn" onclick="openAdminSettingsModal()" style="display: none; padding: 10px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; cursor: pointer; font-weight: 600; margin-left: 12px;">
+                <button id="adminSettingsBtn" onclick="openAdminSettingsModal()" style="display: none; padding: 10px 16px; background: rgba(255, 255, 255, 0.2); color: white; border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; cursor: pointer; font-weight: 600;">
                     ⚙️ Admin Settings
                 </button>
-                <button id="solarBtn" onclick="window.open('solar.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(255,160,0,0.15); color: #ffa000; border: 2px solid rgba(255,160,0,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,160,0,0.3)'" onmouseout="this.style.background='rgba(255,160,0,0.15)'">
+                <button id="solarBtn" onclick="window.open('solar.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(255,160,0,0.15); color: #ffa000; border: 2px solid rgba(255,160,0,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,160,0,0.3)'" onmouseout="this.style.background='rgba(255,160,0,0.15)'">
                     ☀️ Solar
                 </button>
-                <button id="analyticsBtn" onclick="window.open('analytics.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(22,163,74,0.15); color: #4ade80; border: 2px solid rgba(22,163,74,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(22,163,74,0.3)'" onmouseout="this.style.background='rgba(22,163,74,0.15)'">
+                <button id="analyticsBtn" onclick="window.open('analytics.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(22,163,74,0.15); color: #4ade80; border: 2px solid rgba(22,163,74,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(22,163,74,0.3)'" onmouseout="this.style.background='rgba(22,163,74,0.15)'">
                     📊 Analytics
                 </button>
-                <button id="workListReportBtn" onclick="window.open('worklist-report.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(124,58,237,0.15); color: #c4b5fd; border: 2px solid rgba(124,58,237,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.3)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
+                <button id="workListReportBtn" onclick="window.open('worklist-report.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(124,58,237,0.15); color: #c4b5fd; border: 2px solid rgba(124,58,237,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.3)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
                     &#128203; Work List Report
                 </button>
-                <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(234,179,8,0.15); color: #facc15; border: 2px solid rgba(234,179,8,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(234,179,8,0.3)'" onmouseout="this.style.background='rgba(234,179,8,0.15)'">
+                <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(234,179,8,0.15); color: #facc15; border: 2px solid rgba(234,179,8,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(234,179,8,0.3)'" onmouseout="this.style.background='rgba(234,179,8,0.15)'">
                     &#128451; Closed ROs
                 </button>
-                <button id="customerCheckinBtn" onclick="window.open('customer-checkin.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(34,197,94,0.15); color: #4ade80; border: 2px solid rgba(34,197,94,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(34,197,94,0.3)'" onmouseout="this.style.background='rgba(34,197,94,0.15)'">
+                <button id="customerCheckinBtn" onclick="window.open('customer-checkin.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(34,197,94,0.15); color: #4ade80; border: 2px solid rgba(34,197,94,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(34,197,94,0.3)'" onmouseout="this.style.background='rgba(34,197,94,0.15)'">
                     📋 Customer Check-In
                 </button>
-                <button id="erAdminBtn" onclick="openERAdminView()" style="display:none; padding: 10px 16px; background: rgba(217,119,6,0.15); color: #fbbf24; border: 2px solid rgba(217,119,6,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(217,119,6,0.3)'" onmouseout="this.style.background='rgba(217,119,6,0.15)'">
+                <button id="erAdminBtn" onclick="openERAdminView()" style="display:none; padding: 10px 16px; background: rgba(217,119,6,0.15); color: #fbbf24; border: 2px solid rgba(217,119,6,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(217,119,6,0.3)'" onmouseout="this.style.background='rgba(217,119,6,0.15)'">
                     🪔 Wishes <span id="erUnreviewedCount" style="background:#d97706;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
                 </button>
-                <button id="manageDupesBtn" onclick="openDuplicateManager()" style="display:none; padding: 10px 16px; background: rgba(239,68,68,0.15); color: #f87171; border: 2px solid rgba(239,68,68,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; margin-left: 12px; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">
+                <button id="manageDupesBtn" onclick="openDuplicateManager()" style="display:none; padding: 10px 16px; background: rgba(239,68,68,0.15); color: #f87171; border: 2px solid rgba(239,68,68,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">
                     🔗 Merge Dupes <span id="dupesCount" style="background:#ef4444;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
                 </button>
             </div>
@@ -7400,7 +7403,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.406 - Released 2026-04-16');
+            log('📦 PRVS Dashboard v1.407 - Released 2026-04-18');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
