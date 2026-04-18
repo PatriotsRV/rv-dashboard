@@ -100,6 +100,59 @@ UNION ALL
 SELECT 'time_logs',                   COUNT(*)              FROM time_logs;
 
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- Q6: FULL FIELD DUMP for every row inside a duplicate (name, date) group
+-- ─────────────────────────────────────────────────────────────────────────
+-- Use this to manually review duplicates. Returns every column on every row
+-- that belongs to a (customer_name, date_received) group with >1 members,
+-- clustered together so you can compare side-by-side.
+--
+-- In Supabase SQL Editor, click **Export → CSV** on the result set and save
+-- to ~/rv-dashboard/tmp/dupes_full.csv (or wherever convenient) — then paste
+-- the path back into the chat and I'll read it directly.
+WITH dupe_groups AS (
+    SELECT customer_name, date_received
+    FROM repair_orders
+    GROUP BY customer_name, date_received
+    HAVING COUNT(*) > 1
+)
+SELECT ro.*
+FROM repair_orders ro
+JOIN dupe_groups dg USING (customer_name, date_received)
+ORDER BY ro.customer_name, ro.date_received, ro.created_at;
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Q7: FK child counts per duplicate row
+-- ─────────────────────────────────────────────────────────────────────────
+-- For each RO in a dupe group, shows how many child rows reference it
+-- (notes, parts, time_logs, audit_log, insurance_scans). High-FK rows
+-- usually have real work logged against them — prefer merging INTO those
+-- rather than deleting them. Zero-FK rows are the safest to DELETE outright.
+WITH dupe_groups AS (
+    SELECT customer_name, date_received
+    FROM repair_orders
+    GROUP BY customer_name, date_received
+    HAVING COUNT(*) > 1
+)
+SELECT
+    ro.id,
+    ro.ro_id,
+    ro.customer_name,
+    ro.date_received,
+    ro.rv,
+    ro.status,
+    ro.created_at,
+    (SELECT COUNT(*) FROM notes           n WHERE n.ro_id = ro.id) AS note_ct,
+    (SELECT COUNT(*) FROM parts           p WHERE p.ro_id = ro.id) AS part_ct,
+    (SELECT COUNT(*) FROM time_logs       t WHERE t.ro_id = ro.id) AS time_ct,
+    (SELECT COUNT(*) FROM audit_log       a WHERE a.ro_id = ro.id) AS audit_ct,
+    (SELECT COUNT(*) FROM insurance_scans i WHERE i.ro_id = ro.id) AS ins_ct
+FROM repair_orders ro
+JOIN dupe_groups dg USING (customer_name, date_received)
+ORDER BY ro.customer_name, ro.date_received, ro.created_at;
+
+
 -- ============================================================================
 -- CLEANUP GUIDANCE (do NOT copy-paste unless you have triaged results above)
 -- ============================================================================
@@ -112,7 +165,7 @@ SELECT 'time_logs',                   COUNT(*)              FROM time_logs;
 --   1) First confirm no FKs reference the target id:
 --        SELECT 'notes'      AS tbl, COUNT(*) FROM notes           WHERE ro_id = '<UUID>'
 --        UNION ALL SELECT 'parts',   COUNT(*) FROM parts           WHERE ro_id = '<UUID>'
---        UNION ALL SELECT 'time',    COUNT(*) FROM time_logs       WHERE repair_order_id = '<UUID>'
+--        UNION ALL SELECT 'time',    COUNT(*) FROM time_logs       WHERE ro_id = '<UUID>'
 --        UNION ALL SELECT 'ins',     COUNT(*) FROM insurance_scans WHERE ro_id = '<UUID>'
 --        UNION ALL SELECT 'audit',   COUNT(*) FROM audit_log       WHERE ro_id = '<UUID>';
 --   2) If all zero, delete:

@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.408
+    PRVS Dashboard v1.409
     Released: 2026-04-18
+    v1.409: GH#30 Admin Delete RO — soft-delete with 1-week auto-scrub. New `deleted_at` + `deleted_by` columns on repair_orders (see add_deleted_at.sql). loadDataFromSupabase now filters `.is('deleted_at', null)` so soft-deleted ROs disappear from the board. 🗑 Delete RO admin-only button in Edit RO modal footer — confirm dialog shows FK counts (notes/parts/time logs/audit). 🗑 Recently Deleted admin-only header button (next to Closed ROs) opens a modal listing all soft-deleted ROs with Restore / Delete Now (name-type-to-confirm) actions and live auto-purge countdown. pg_cron `scrub-soft-deleted-ros` runs daily at 02:00 CDT and cascade-deletes children first (see cron_scrub_deleted_ros.sql). Also adds `.select()` + row-count assertion on the soft-delete UPDATE so silent RLS writes now throw (GH#29c belt-and-suspenders).
     v1.408: GH#29 Status-change bug fix — 13 write-path lookups (updateROUrgency, editField, updateROProgress, updateROStatus, uploadPhoto, uploadDocument, setMainPhoto, archiveRO, openScheduleModal, confirmSchedule, proceedWithSchedule, openPartsModal, openEditRO) were using `customerName + dateReceived` to resolve `currentFilteredData[index] → currentData` — when two ROs shared a (name, date) pair, findIndex returned the FIRST dupe and every write silently targeted the wrong row. Symptom: status/urgency/progress/field edits, photo uploads, archive-to-cashiered, schedule saves, and parts modal all operated on a dupe instead of the RO the user clicked. Fix: UUID-first lookup `ro._supabaseId ? findIndex(item._supabaseId === ro._supabaseId) : fallback(name+date)`. `_supabaseId` is populated from Supabase `row.id` at load time on every RO, so the fallback only ever fires for legacy/edge data.
     v1.407: Header tile bar wrap fix (Session 51) — `.view-mode-section` now `flex-wrap: wrap` with `row-gap: 12px`; stripped `margin-left: 12px` from all 8 header buttons (Admin Settings, Solar, Analytics, Work List Report, Closed ROs, Customer Check-In, Wishes, Merge Dupes) so the container `gap: 12px` cleanly handles spacing across both rows. Buttons now wrap to a second row on narrow viewports instead of overflowing off-screen — the green 📋 Customer Check-In button is now visible at all widths.
     v1.406: HEIC photo upload fix — iPhone photos in HEIC format auto-converted to JPEG client-side before upload (heic2any CDN). Applied to uploadPhoto() and uploadDocument(). Fixes "mime type image/heic is not supported" error on iPhone tech uploads.
@@ -3365,7 +3366,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.408</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.409</span>
             </div>
         </header>
 
@@ -3391,6 +3392,10 @@
                 </button>
                 <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(234,179,8,0.15); color: #facc15; border: 2px solid rgba(234,179,8,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(234,179,8,0.3)'" onmouseout="this.style.background='rgba(234,179,8,0.15)'">
                     &#128451; Closed ROs
+                </button>
+                <!-- GH#30: Recently Deleted (admin-only) — soft-deleted ROs awaiting 7-day scrub -->
+                <button id="recentlyDeletedBtn" onclick="openRecentlyDeletedModal()" style="display:none; padding: 10px 16px; background: rgba(220,38,38,0.15); color: #fca5a5; border: 2px solid rgba(220,38,38,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(220,38,38,0.3)'" onmouseout="this.style.background='rgba(220,38,38,0.15)'">
+                    🗑 Recently Deleted <span id="recentlyDeletedCount" style="background:#dc2626;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span>
                 </button>
                 <button id="customerCheckinBtn" onclick="window.open('customer-checkin.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(34,197,94,0.15); color: #4ade80; border: 2px solid rgba(34,197,94,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(34,197,94,0.3)'" onmouseout="this.style.background='rgba(34,197,94,0.15)'">
                     📋 Customer Check-In
@@ -4963,6 +4968,226 @@
             } catch (err) {
                 console.error('Error archiving RO:', err);
                 showToast('Error archiving RO. Check console for details.', 'error');
+            }
+        }
+
+
+
+        // ── GH#30: Admin Delete RO — soft-delete with 1-week auto-scrub ──
+        // Called from the 🗑 Delete RO button inside the Edit RO modal footer.
+        async function softDeleteCurrentRO() {
+            if (!isAdmin()) {
+                showToast('Admin access required to delete ROs.', 'warning');
+                return;
+            }
+            const idx = (typeof editingROIndex === 'number') ? editingROIndex : -1;
+            if (idx < 0 || idx >= currentData.length) {
+                showToast('Could not identify the RO to delete — reopen the modal and try again.', 'danger');
+                return;
+            }
+            const ro = currentData[idx];
+            if (!ro?._supabaseId) {
+                showToast('RO is missing a Supabase ID — cannot delete.', 'danger');
+                return;
+            }
+
+            // Fetch FK counts so the confirm shows what's about to be hidden/purged
+            let noteCt = 0, partCt = 0, timeCt = 0, auditCt = 0;
+            try {
+                const [n, p, t, a] = await Promise.all([
+                    getSB().from('notes')    .select('*', { count: 'exact', head: true }).eq('ro_id', ro._supabaseId),
+                    getSB().from('parts')    .select('*', { count: 'exact', head: true }).eq('ro_id', ro._supabaseId),
+                    getSB().from('time_logs').select('*', { count: 'exact', head: true }).eq('ro_id', ro._supabaseId),
+                    getSB().from('audit_log').select('*', { count: 'exact', head: true }).eq('ro_id', ro._supabaseId),
+                ]);
+                noteCt = n.count || 0; partCt = p.count || 0; timeCt = t.count || 0; auditCt = a.count || 0;
+            } catch (e) {
+                warn('FK count fetch failed (proceeding with delete confirm anyway):', e);
+            }
+
+            const msg =
+                `Soft-delete this RO?\n\n` +
+                `Customer:  ${ro.customerName || '—'}\n` +
+                `RV:        ${ro.rv || '—'}\n` +
+                `RO ID:     ${ro.roId || '—'}\n\n` +
+                `Logged activity on this RO:\n` +
+                `  • ${noteCt} note${noteCt === 1 ? '' : 's'}\n` +
+                `  • ${partCt} part${partCt === 1 ? '' : 's'}\n` +
+                `  • ${timeCt} time log${timeCt === 1 ? '' : 's'}\n` +
+                `  • ${auditCt} audit entr${auditCt === 1 ? 'y' : 'ies'}\n\n` +
+                `The RO will hide from the dashboard immediately and auto-purge after 7 days.\n` +
+                `You can Restore it before then from the 🗑 Recently Deleted header button.`;
+            if (!confirm(msg)) return;
+
+            try {
+                const deleterEmail = supabaseSession?.user?.email || 'unknown';
+                const { data, error } = await getSB()
+                    .from('repair_orders')
+                    .update({ deleted_at: new Date().toISOString(), deleted_by: deleterEmail })
+                    .eq('id', ro._supabaseId)
+                    .select();                  // confirm a row was actually updated
+                if (error) throw error;
+                if (!data || data.length === 0) {
+                    throw new Error('Update returned 0 rows — RLS may have blocked the write.');
+                }
+
+                await writeAuditLog(ro.roId, [{ field: 'deleted_at', oldValue: '', newValue: 'soft-deleted' }]);
+
+                // Close the Edit RO modal
+                const editOverlay = document.getElementById('editROOverlay');
+                if (editOverlay) editOverlay.classList.remove('active');
+
+                showToast(`🗑 "${ro.customerName}" soft-deleted. Auto-purge in 7 days.`, 'success');
+                await loadDataFromSupabase();
+                refreshRecentlyDeletedCount();
+            } catch (err) {
+                console.error('Soft-delete failed:', err);
+                showToast('Delete failed: ' + (err.message || 'Unknown error'), 'danger');
+            }
+        }
+
+        // Loads all rows where deleted_at is set, newest first (oldest = closest to scrub).
+        async function loadRecentlyDeletedROs() {
+            if (!isAdmin()) return [];
+            const { data, error } = await getSB()
+                .from('repair_orders')
+                .select('id, ro_id, customer_name, rv, status, urgency, repair_type, deleted_at, deleted_by, date_received')
+                .not('deleted_at', 'is', null)
+                .order('deleted_at', { ascending: false });
+            if (error) {
+                console.error('loadRecentlyDeletedROs failed:', error);
+                showToast('Could not load recently deleted ROs: ' + error.message, 'danger');
+                return [];
+            }
+            return data || [];
+        }
+
+        // Updates the count badge on the header button.
+        async function refreshRecentlyDeletedCount() {
+            if (!isAdmin()) return;
+            const badge = document.getElementById('recentlyDeletedCount');
+            if (!badge) return;
+            const { count, error } = await getSB()
+                .from('repair_orders')
+                .select('*', { count: 'exact', head: true })
+                .not('deleted_at', 'is', null);
+            if (error) { badge.textContent = ''; return; }
+            badge.textContent = (count && count > 0) ? String(count) : '';
+            badge.style.display = (count && count > 0) ? 'inline-block' : 'none';
+        }
+
+        function daysUntilScrub(deletedAtIso) {
+            const deletedMs = new Date(deletedAtIso).getTime();
+            const scrubMs = deletedMs + 7 * 24 * 60 * 60 * 1000;
+            const remainMs = scrubMs - Date.now();
+            if (remainMs <= 0) return '⚠ overdue';
+            const days = Math.floor(remainMs / (24 * 60 * 60 * 1000));
+            const hours = Math.floor((remainMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+            if (days > 0) return `${days}d ${hours}h`;
+            return `${hours}h`;
+        }
+
+        async function openRecentlyDeletedModal() {
+            if (!isAdmin()) {
+                showToast('Admin access required.', 'warning');
+                return;
+            }
+            const rows = await loadRecentlyDeletedROs();
+            const bodyEl = document.getElementById('recentlyDeletedBody');
+            if (!bodyEl) return;
+
+            if (!rows.length) {
+                bodyEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:#6b7280;">No soft-deleted ROs. 🎉</div>';
+            } else {
+                bodyEl.innerHTML = rows.map(r => {
+                    const remain = daysUntilScrub(r.deleted_at);
+                    const whenDeleted = new Date(r.deleted_at).toLocaleString();
+                    return `
+                        <div style="display:grid; grid-template-columns: 1fr auto; gap:12px; padding:14px; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:10px; background:white;">
+                            <div>
+                                <div style="font-weight:700; color:#111827; font-size:1rem;">${escapeHtml(r.customer_name || '—')}</div>
+                                <div style="color:#4b5563; font-size:0.88rem; margin-top:2px;">${escapeHtml(r.rv || '—')} &middot; <span style="font-family:'JetBrains Mono',monospace; font-size:0.78rem; color:#6b7280;">${escapeHtml(r.ro_id || '')}</span></div>
+                                <div style="color:#6b7280; font-size:0.78rem; margin-top:4px;">Status at delete: <b>${escapeHtml(r.status || '—')}</b> &middot; Type: ${escapeHtml(r.repair_type || '—')} &middot; Received: ${escapeHtml(r.date_received || '—')}</div>
+                                <div style="color:#6b7280; font-size:0.78rem; margin-top:2px;">Deleted by <b>${escapeHtml(r.deleted_by || '—')}</b> on ${escapeHtml(whenDeleted)}</div>
+                                <div style="color:${remain.startsWith('⚠') ? '#dc2626' : '#9ca3af'}; font-size:0.78rem; margin-top:2px; font-weight:600;">Auto-purge in: ${escapeHtml(remain)}</div>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:6px; align-items:stretch;">
+                                <button onclick="restoreSoftDeletedRO('${r.id}')" style="padding:6px 12px; background:#16a34a; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.78rem;">↩ Restore</button>
+                                <button onclick="hardDeleteROnow('${r.id}', '${escapeHtml(r.customer_name || '').replace(/'/g,"\\'")}')" style="padding:6px 12px; background:#dc2626; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.78rem;">🗑 Delete Now</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            document.getElementById('recentlyDeletedOverlay').classList.add('active');
+        }
+
+        function closeRecentlyDeletedModal() {
+            const ov = document.getElementById('recentlyDeletedOverlay');
+            if (ov) ov.classList.remove('active');
+        }
+
+        async function restoreSoftDeletedRO(supabaseId) {
+            if (!isAdmin()) return;
+            try {
+                const { data, error } = await getSB()
+                    .from('repair_orders')
+                    .update({ deleted_at: null, deleted_by: null })
+                    .eq('id', supabaseId)
+                    .select();
+                if (error) throw error;
+                if (!data || data.length === 0) throw new Error('Restore returned 0 rows.');
+                showToast('↩ RO restored to active dashboard.', 'success');
+                await loadDataFromSupabase();
+                await refreshRecentlyDeletedCount();
+                await openRecentlyDeletedModal();      // re-render the list
+            } catch (err) {
+                console.error('Restore failed:', err);
+                showToast('Restore failed: ' + (err.message || 'Unknown error'), 'danger');
+            }
+        }
+
+        // Calls the scrub function server-side (but targets only this one RO)
+        // by running an explicit sequential delete of children then parent.
+        // Uses the same ordering as scrub_soft_deleted_ros() in the migration.
+        async function hardDeleteROnow(supabaseId, customerName) {
+            if (!isAdmin()) return;
+            const msg =
+                `PERMANENTLY delete this RO and every note, part, time log, audit entry, ` +
+                `insurance scan, work order, and work-list entry attached to it?\n\n` +
+                `Customer: ${customerName}\n\n` +
+                `This cannot be undone. Type the customer name to confirm — or click Cancel.`;
+            const typed = prompt(msg);
+            if (typed === null) return;
+            if (typed.trim() !== (customerName || '').trim()) {
+                showToast('Name did not match — delete cancelled.', 'warning');
+                return;
+            }
+            try {
+                // Children first (mirrors scrub_soft_deleted_ros ordering)
+                const sb = getSB();
+                // service_tasks via service_work_orders lookup
+                const { data: wos } = await sb.from('service_work_orders').select('id').eq('ro_id', supabaseId);
+                const woIds = (wos || []).map(w => w.id);
+                if (woIds.length) {
+                    await sb.from('service_tasks').delete().in('wo_id', woIds);
+                }
+                await sb.from('service_work_orders').delete().eq('ro_id', supabaseId);
+                await sb.from('notes')             .delete().eq('ro_id', supabaseId);
+                await sb.from('parts')             .delete().eq('ro_id', supabaseId);
+                await sb.from('time_logs')         .delete().eq('ro_id', supabaseId);
+                await sb.from('audit_log')         .delete().eq('ro_id', supabaseId);
+                await sb.from('insurance_scans')   .delete().eq('ro_id', supabaseId);
+                await sb.from('manager_work_lists').delete().eq('ro_id', supabaseId);
+                const { error: parentErr } = await sb.from('repair_orders').delete().eq('id', supabaseId);
+                if (parentErr) throw parentErr;
+
+                showToast(`🗑 "${customerName}" permanently deleted.`, 'success');
+                await refreshRecentlyDeletedCount();
+                await openRecentlyDeletedModal();      // re-render list
+            } catch (err) {
+                console.error('Hard delete failed:', err);
+                showToast('Permanent delete failed: ' + (err.message || 'Unknown error'), 'danger');
             }
         }
 
@@ -7435,7 +7660,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.408 - Released 2026-04-18');
+            log('📦 PRVS Dashboard v1.409 - Released 2026-04-18');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -9612,6 +9837,12 @@ Notes: ${notes}` : '',
             if (closedROsBtn) {
                 closedROsBtn.style.display = 'inline-block';
             }
+            // GH#30: Show Recently Deleted button (Admin only) + load count badge
+            const rdBtn = document.getElementById('recentlyDeletedBtn');
+            if (rdBtn) {
+                rdBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+                if (isAdmin()) refreshRecentlyDeletedCount();
+            }
             // Show Customer Check-In button (Manager and above)
             const checkinBtn = document.getElementById('customerCheckinBtn');
             if (checkinBtn) {
@@ -10227,10 +10458,11 @@ Notes: ${notes}` : '',
         async function loadDataFromSupabase() {
             log('=== loadDataFromSupabase called ===');
             try {
-                // Load repair orders
+                // Load repair orders — GH#30: exclude soft-deleted rows
                 const { data: ros, error } = await getSB()
                     .from('repair_orders')
                     .select('*')
+                    .is('deleted_at', null)
                     .order('date_received', { ascending: false });
 
                 if (error) throw error;
@@ -12932,6 +13164,10 @@ Notes: ${notes}` : '',
                 const etc = document.getElementById('editIsTraining');
                 if (etc) etc.checked = !!ro.isTraining;
 
+                // GH#30: Delete RO block — admin only
+                const edw = document.getElementById('editDeleteWrap');
+                if (edw) edw.style.display = isAdmin() ? '' : 'none';
+
                 document.getElementById('editROOverlay').classList.add('active');
             } catch (error) {
                 console.error('Error in openEditRO:', error);
@@ -14777,11 +15013,37 @@ function toggleWOTasks(tasksId, chevId) {
                     </label>
                     <div style="font-size:0.72rem;color:#9ca3af;margin-top:2px;">Training ROs are excluded from Slack notifications and manager reports.</div>
                 </div>
+                <!-- GH#30: Admin Delete RO — soft-delete with 1-week auto-scrub -->
+                <div id="editDeleteWrap" class="form-field full-width" style="display:none; padding:10px 12px; margin-top:12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                        <div style="flex:1; min-width:200px;">
+                            <div style="font-size:0.88rem;font-weight:700;color:#991b1b;">🗑 Delete RO (Admin only)</div>
+                            <div style="font-size:0.72rem;color:#6b7280;margin-top:2px;">Soft-delete — hidden from dashboard, auto-purged in 7 days. Restore anytime before then from the 🗑 Recently Deleted header button.</div>
+                        </div>
+                        <button type="button" id="softDeleteROBtn" onclick="softDeleteCurrentRO()" style="padding:8px 14px; background:#dc2626; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.8rem; white-space:nowrap;">🗑 Delete RO</button>
+                    </div>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" id="editCancelBtn">Cancel</button>
                     <button type="submit" class="btn btn-primary">Update RO</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- GH#30: Recently Deleted ROs modal (Admin only) -->
+    <div class="modal-overlay" id="recentlyDeletedOverlay">
+        <div class="modal-content" style="max-width:760px; max-height:85vh; display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 22px; border-bottom:1px solid #e5e7eb; flex-shrink:0;">
+                <div>
+                    <div style="font-size:1.15rem; font-weight:800; color:#991b1b;">🗑 Recently Deleted ROs</div>
+                    <div style="font-size:0.78rem; color:#6b7280; margin-top:3px;">Soft-deleted ROs auto-purge 7 days after deletion. Restore brings one back to the active dashboard; Delete Now purges immediately (irreversible).</div>
+                </div>
+                <button onclick="closeRecentlyDeletedModal()" style="background:none; border:none; font-size:1.6rem; cursor:pointer; color:#6b7280; line-height:1;">×</button>
+            </div>
+            <div id="recentlyDeletedBody" style="padding:18px 22px; overflow-y:auto; background:#f9fafb;">
+                <div style="padding:40px 20px; text-align:center; color:#6b7280;">Loading…</div>
+            </div>
         </div>
     </div>
 
