@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.407
+    PRVS Dashboard v1.408
     Released: 2026-04-18
+    v1.408: GH#29 Status-change bug fix — 13 write-path lookups (updateROUrgency, editField, updateROProgress, updateROStatus, uploadPhoto, uploadDocument, setMainPhoto, archiveRO, openScheduleModal, confirmSchedule, proceedWithSchedule, openPartsModal, openEditRO) were using `customerName + dateReceived` to resolve `currentFilteredData[index] → currentData` — when two ROs shared a (name, date) pair, findIndex returned the FIRST dupe and every write silently targeted the wrong row. Symptom: status/urgency/progress/field edits, photo uploads, archive-to-cashiered, schedule saves, and parts modal all operated on a dupe instead of the RO the user clicked. Fix: UUID-first lookup `ro._supabaseId ? findIndex(item._supabaseId === ro._supabaseId) : fallback(name+date)`. `_supabaseId` is populated from Supabase `row.id` at load time on every RO, so the fallback only ever fires for legacy/edge data.
     v1.407: Header tile bar wrap fix (Session 51) — `.view-mode-section` now `flex-wrap: wrap` with `row-gap: 12px`; stripped `margin-left: 12px` from all 8 header buttons (Admin Settings, Solar, Analytics, Work List Report, Closed ROs, Customer Check-In, Wishes, Merge Dupes) so the container `gap: 12px` cleanly handles spacing across both rows. Buttons now wrap to a second row on narrow viewports instead of overflowing off-screen — the green 📋 Customer Check-In button is now visible at all widths.
     v1.406: HEIC photo upload fix — iPhone photos in HEIC format auto-converted to JPEG client-side before upload (heic2any CDN). Applied to uploadPhoto() and uploadDocument(). Fixes "mime type image/heic is not supported" error on iPhone tech uploads.
     v1.405: Shop RO Type (GH#24 Phase 1) — 🏪 Shop Operations RO type for non-customer parts ordering/returns. Simplified New/Edit modal (customer fields hidden). Shop badge on standard + compact cards. RO Type filter button. Slack notifications skipped for shop ROs. Spanish translations.
@@ -3364,7 +3365,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.407</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.408</span>
             </div>
         </header>
 
@@ -4017,10 +4018,12 @@
                 log('Updating urgency for:', ro.customerName, 'from', ro.urgency, 'to', newUrgency, 'by', userName);
 
                 // Update in currentData
-                const originalIndex = currentData.findIndex(item => 
-                    item.customerName === ro.customerName && 
-                    item.dateReceived === ro.dateReceived
-                );
+                const originalIndex = ro._supabaseId
+                    ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                    : currentData.findIndex(item =>
+                        item.customerName === ro.customerName &&
+                        item.dateReceived === ro.dateReceived
+                    );
 
                 if (originalIndex !== -1) {
                     currentData[originalIndex].urgency = newUrgency;
@@ -4091,10 +4094,12 @@
             try {
 
                 // Find original index in currentData
-                const originalIndex = currentData.findIndex(item =>
-                    item.customerName === ro.customerName &&
-                    item.dateReceived === ro.dateReceived
-                );
+                const originalIndex = ro._supabaseId
+                    ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                    : currentData.findIndex(item =>
+                        item.customerName === ro.customerName &&
+                        item.dateReceived === ro.dateReceived
+                    );
                 if (originalIndex === -1) { showToast('Error: Could not find the repair order in data.', 'error'); return; }
 
                 // ── REPAIR DESCRIPTION — full edit (pre-filled, full replace, audited) ──
@@ -4178,10 +4183,12 @@
                 log('Updating progress for:', ro.customerName, 'to', newProgress + '%', 'by', userName);
 
                 // Update in currentData
-                const originalIndex = currentData.findIndex(item => 
-                    item.customerName === ro.customerName && 
-                    item.dateReceived === ro.dateReceived
-                );
+                const originalIndex = ro._supabaseId
+                    ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                    : currentData.findIndex(item =>
+                        item.customerName === ro.customerName &&
+                        item.dateReceived === ro.dateReceived
+                    );
 
                 if (originalIndex !== -1) {
                     currentData[originalIndex].percentComplete = newProgress;
@@ -4233,10 +4240,12 @@
                 log('Auto-setting progress to:', autoProgress + '%');
 
                 // Update in currentData
-                const originalIndex = currentData.findIndex(item => 
-                    item.customerName === ro.customerName && 
-                    item.dateReceived === ro.dateReceived
-                );
+                const originalIndex = ro._supabaseId
+                    ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                    : currentData.findIndex(item =>
+                        item.customerName === ro.customerName &&
+                        item.dateReceived === ro.dateReceived
+                    );
 
                 // Auto-set dateArrived if transitioning off "Not On Lot" and no date set yet
                 const today = new Date().toISOString().split('T')[0];
@@ -4386,9 +4395,12 @@
                 if (uploadBtn) { uploadBtn.textContent = `⏳ Uploading 0/${files.length}...`; uploadBtn.disabled = true; }
 
                 try {
-                    const originalIndex = currentData.findIndex(item =>
-                        item.customerName === ro.customerName && item.dateReceived === ro.dateReceived
-                    );
+                    const originalIndex = ro._supabaseId
+                        ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                        : currentData.findIndex(item =>
+                            item.customerName === ro.customerName &&
+                            item.dateReceived === ro.dateReceived
+                        );
                     if (originalIndex === -1) throw new Error('RO not found in data');
 
                     // Parse existing photo library
@@ -4612,9 +4624,12 @@
             }
 
             const ro = currentFilteredData[index];
-            const originalIndex = currentData.findIndex(d =>
-                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
             if (originalIndex === -1) { input.value = ''; return; }
 
             const uploadBtn = input.nextElementSibling;
@@ -4670,9 +4685,12 @@
             const ro = currentFilteredData[index];
             if (!ro) return;
 
-            const originalIndex = currentData.findIndex(item =>
-                item.customerName === ro.customerName && item.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
             if (originalIndex === -1) return;
 
             currentData[originalIndex].rvPhotoUrl = newMainUrl;
@@ -4919,10 +4937,12 @@
             const ro = currentFilteredData[filteredIndex];
             if (!ro) return;
 
-            const originalIndex = currentData.findIndex(item =>
-                item.customerName === ro.customerName &&
-                item.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
             if (originalIndex === -1) {
                 showToast('Error: Could not match this RO in local data.', 'error');
                 return;
@@ -6259,9 +6279,12 @@ Always prefer mapping to a standard key over creating a new one.`;
             const ro = currentFilteredData[filteredIndex];
             if (!ro) return;
 
-            const originalIndex = currentData.findIndex(d =>
-                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
 
             // Parse service types from RO
             const roServices = (ro.repairType || '').split(',').map(s => s.trim()).filter(s => getCalendarId(s) !== null);
@@ -6370,9 +6393,12 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         async function confirmSchedule(filteredIndex) {
             const ro = currentFilteredData[filteredIndex];
-            const originalIndex = currentData.findIndex(d =>
-                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
 
             const btn = document.getElementById('scheduleConfirmBtn');
             const statusEl = document.getElementById('scheduleStatus');
@@ -6461,9 +6487,12 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         async function proceedWithSchedule(filteredIndex) {
             const ro = currentFilteredData[filteredIndex];
-            const originalIndex = currentData.findIndex(d =>
-                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
 
             const btn = document.getElementById('scheduleConfirmBtn');
             const statusEl = document.getElementById('scheduleStatus');
@@ -6810,9 +6839,12 @@ Notes: ${notes}` : '',
         function openPartsModal(filteredIndex) {
             const ro = currentFilteredData[filteredIndex];
             if (!ro) return;
-            const originalIndex = currentData.findIndex(d =>
-                d.customerName === ro.customerName && d.dateReceived === ro.dateReceived
-            );
+            const originalIndex = ro._supabaseId
+                ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                : currentData.findIndex(item =>
+                    item.customerName === ro.customerName &&
+                    item.dateReceived === ro.dateReceived
+                );
             const roId = ro.roId;
             const parts = (roId && partsData[roId]) ? partsData[roId] : [];
 
@@ -7403,7 +7435,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.407 - Released 2026-04-18');
+            log('📦 PRVS Dashboard v1.408 - Released 2026-04-18');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -12821,10 +12853,12 @@ Notes: ${notes}` : '',
                 const ro = currentFilteredData[index];
                 if (!ro) { showToast('Error: Could not find the repair order.', 'error'); return; }
 
-                editingROIndex = currentData.findIndex(item =>
-                    item.customerName === ro.customerName &&
-                    item.dateReceived === ro.dateReceived
-                );
+                editingROIndex = ro._supabaseId
+                    ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                    : currentData.findIndex(item =>
+                        item.customerName === ro.customerName &&
+                        item.dateReceived === ro.dateReceived
+                    );
 
                 document.getElementById('editRoId').textContent = ro.roId || '';
                 document.getElementById('editCustomerName').value = ro.customerName || '';
