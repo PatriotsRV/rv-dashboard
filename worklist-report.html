@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.5
+    PRVS Active Work List Report v1.6
     Released: 2026-04-19
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -21,6 +21,9 @@
           Also drops tester managers from the accordion list.
           Bar width fix: bars now flex-grow to fill the silo lane (was compacting left).
           Bugfix: urgency now included in the repair_orders SELECT (v1.4 bars were defaulting to gray).
+    v1.6: Labor chart bar-footer label now shows customer name (primary identifier) with
+          RO ID tail directly below (secondary, dimmer). Answers 'who is this RO for?'
+          at a glance. Both ellipsis-truncate for narrow bars.
 -->
 <html lang="en">
 <head>
@@ -345,7 +348,28 @@
         }
         .labor-bar-label .lbl-primary { color: #fbbf24; font-weight: 700; display: block; }
         .labor-bar-label .lbl-days    { color: #64748b; display: block; font-size: 0.58rem; }
-        .labor-bar-label .lbl-id      { color: #64748b; display: block; font-size: 0.56rem; letter-spacing: -0.02em; }
+        /* v1.6 — customer name = primary bar footer identifier */
+        .labor-bar-label .lbl-customer {
+            color: #e2e8f0;
+            font-weight: 600;
+            display: block;
+            font-size: 0.62rem;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* v1.6 — RO ID tail now secondary, below the customer name */
+        .labor-bar-label .lbl-id {
+            color: #64748b;
+            display: block;
+            font-size: 0.54rem;
+            letter-spacing: -0.02em;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
         /* flash highlight when scrolled to from the chart */
         .ro-row.flash-highlight { animation: ro-flash 1.6s ease-out; }
@@ -1156,6 +1180,11 @@ function renderLaborChart(roLookup, laborByRO, rateByEmail) {
 
             const daysLabel = b.daysOnLot !== null ? `${b.daysOnLot}d` : '—';
 
+            // v1.6 — show customer name as the primary footer identifier,
+            // RO ID tail underneath as secondary disambiguation.
+            const custLabel = custName || 'Unknown';
+            const roIdTail  = roIdText ? roIdText.split('-').slice(-2).join('-') : '';
+
             return `
                 <div class="labor-bar-wrap" data-ro-id="${escAttr(b.ro_id)}"
                      onclick="scrollToROInReport('${escAttr(b.ro_id)}')"
@@ -1168,7 +1197,8 @@ function renderLaborChart(roLookup, laborByRO, rateByEmail) {
                     <div class="labor-bar-label">
                         <span class="lbl-primary">${primary}</span>
                         <span class="lbl-days">${daysLabel}</span>
-                        <span class="lbl-id">${escAttr(roIdText.split('-').slice(-2).join('-') || custName.slice(0, 6))}</span>
+                        <span class="lbl-customer">${escHtml(custLabel)}</span>
+                        ${roIdTail ? `<span class="lbl-id">${escHtml(roIdTail)}</span>` : ''}
                     </div>
                 </div>
             `;
