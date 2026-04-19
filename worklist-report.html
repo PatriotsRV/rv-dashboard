@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.4
+    PRVS Active Work List Report v1.5
     Released: 2026-04-19
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -15,6 +15,12 @@
           Per-tech segments stacked inside each bar (deterministic color-by-email).
           Urgency color top-border. $/Hrs metric toggle (localStorage).
           Collapsible section (default open). Click bar → scroll + flash the accordion row below.
+    v1.5: Full exclusion of testers + training ROs from every report surface.
+          Testers = staff.hourly_rate = 0 (Kevin, Roland, Sofia). Training ROs = repair_orders.is_training = true.
+          Filters applied at load to _allWorkLists, _allROs, _allTimeLogs, _allActiveClockIns, _allTodayTimeLogs.
+          Also drops tester managers from the accordion list.
+          Bar width fix: bars now flex-grow to fill the silo lane (was compacting left).
+          Bugfix: urgency now included in the repair_orders SELECT (v1.4 bars were defaulting to gray).
 -->
 <html lang="en">
 <head>
@@ -285,7 +291,10 @@
         }
 
         .labor-bar-wrap {
-            flex: 0 0 48px; max-width: 48px; min-width: 32px;
+            /* v1.5 — grow to fill the lane (was flex: 0 0 48px which left dead space).
+               Cap at 100px so wide lanes with few ROs don't produce ugly fat bars. */
+            flex: 1 1 48px;
+            min-width: 48px; max-width: 100px;
             display: flex; flex-direction: column; align-items: center; gap: 2px;
             cursor: pointer;
             transition: transform 0.15s;
@@ -348,7 +357,8 @@
         @media (max-width: 768px) {
             .labor-silo-lane { flex-direction: column; align-items: stretch; }
             .labor-silo-label { flex: 1; flex-direction: row; justify-content: space-between; }
-            .labor-bar-wrap { flex-basis: 40px; max-width: 40px; }
+            /* v1.5 — keep bars flex-grow on mobile too, just drop the floor */
+            .labor-bar-wrap { flex: 1 1 40px; min-width: 40px; max-width: 80px; }
         }
         .ro-expand {
             color: #475569; font-size: 0.85rem; transition: transform 0.2s;
@@ -586,6 +596,19 @@ let _countdownSec = 180;
 // v1.4 — Labor Load chart state (persisted to localStorage)
 let _laborMetric = (localStorage.getItem('prvs_report_labor_metric') === 'hours') ? 'hours' : 'cost';
 let _laborChartOpen = (localStorage.getItem('prvs_report_labor_chart_open') !== '0'); // default open
+
+// v1.5 — Report exclusion rules.
+// Testers: anyone in _allStaff with hourly_rate = 0 (Kevin, Roland, Sofia by design).
+// Training ROs: repair_orders.is_training = true (added by GH#24 in index.html v1.404).
+// Both must be fully invisible to the report — counted hours, active techs, staff
+// tiles, chart segments, labor totals, accordions, time-detail tables.
+// These helpers expect _allStaff to be populated before they're called.
+function isTester(email) {
+    const em = (email || '').toLowerCase();
+    if (!em) return false;
+    const s = _allStaff.find(x => (x.email || '').toLowerCase() === em);
+    return !!(s && Number(s.hourly_rate || 0) === 0);
+}
 function setLaborMetric(m) {
     _laborMetric = (m === 'hours') ? 'hours' : 'cost';
     localStorage.setItem('prvs_report_labor_metric', _laborMetric);
@@ -796,7 +819,7 @@ async function loadAllData() {
         // 3. Load ALL currently active clock-ins (clock_out IS NULL) — for tech tiles
         const { data: activeClocks, error: acErr } = await getSB()
             .from('time_logs')
-            .select('*, repair_orders(ro_id, customer_name, rv)')
+            .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
             .is('clock_out', null)
             .order('clock_in', { ascending: false });
         if (acErr) throw acErr;
@@ -807,7 +830,7 @@ async function loadAllData() {
         todayStart.setHours(0, 0, 0, 0);
         const { data: todayLogs, error: tlTodayErr } = await getSB()
             .from('time_logs')
-            .select('*, repair_orders(ro_id, customer_name, rv)')
+            .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
             .gte('clock_in', todayStart.toISOString())
             .order('clock_in', { ascending: true });
         if (tlTodayErr) throw tlTodayErr;
@@ -824,9 +847,10 @@ async function loadAllData() {
         }
 
         // 5. Load RO data for those UUIDs
+        //    v1.5 — added is_training + urgency to the SELECT.
         const { data: ros, error: roErr } = await getSB()
             .from('repair_orders')
-            .select('id, ro_id, customer_name, rv, repair_type, status, date_received, date_arrived, dollar_value, parking_spot')
+            .select('id, ro_id, customer_name, rv, repair_type, status, urgency, date_received, date_arrived, dollar_value, parking_spot, is_training')
             .in('id', roIds);
         if (roErr) throw roErr;
         _allROs = ros || [];
@@ -839,6 +863,10 @@ async function loadAllData() {
             .order('clock_in', { ascending: false });
         if (tlErr) throw tlErr;
         _allTimeLogs = logs || [];
+
+        // 7. v1.5 — Apply report exclusions (testers + training ROs).
+        //    Must run after staff + ROs are loaded so both lookups are populated.
+        applyReportExclusions();
 
         renderReport();
     } catch (err) {
@@ -896,6 +924,38 @@ function buildLaborStats(rateByEmail) {
 function fmtUsd(n) {
     const v = Math.round(Number(n) || 0);
     return '$' + v.toLocaleString('en-US');
+}
+
+// v1.5 — Applied once per load cycle in loadAllData() after staff + ROs land.
+// Mutates _allWorkLists, _allROs, _allTimeLogs, _allActiveClockIns, _allTodayTimeLogs
+// to drop anything pointing at a training RO OR logged by a tester.
+// Leaves _allStaff intact so rate lookups by email still work (all testers at $0
+// are a no-op for rate anyway).
+function applyReportExclusions() {
+    // Build exclusion sets up front (one O(n) pass each).
+    const trainingRoIds = new Set(
+        (_allROs || []).filter(r => r && r.is_training === true).map(r => r.id)
+    );
+    const testerEmails = new Set(
+        (_allStaff || [])
+            .filter(s => s && Number(s.hourly_rate || 0) === 0)
+            .map(s => (s.email || '').toLowerCase())
+            .filter(Boolean)
+    );
+
+    const isTrainingRO = (roId) => !!roId && trainingRoIds.has(roId);
+    // For logs joined with repair_orders, log.repair_orders?.is_training is the direct signal
+    // (handles ROs that weren't in _allROs because they're not on any tracked work list).
+    const logIsTraining = (l) =>
+        (l.repair_orders && l.repair_orders.is_training === true) || isTrainingRO(l.ro_id);
+    const logIsTester = (l) =>
+        testerEmails.has(((l.tech_email || l.user_id || '') + '').toLowerCase());
+
+    _allROs = _allROs.filter(r => !r.is_training);
+    _allWorkLists = _allWorkLists.filter(w => !isTrainingRO(w.ro_id));
+    _allTimeLogs = _allTimeLogs.filter(l => !logIsTester(l) && !isTrainingRO(l.ro_id));
+    _allActiveClockIns = _allActiveClockIns.filter(l => !logIsTester(l) && !logIsTraining(l));
+    _allTodayTimeLogs  = _allTodayTimeLogs.filter(l => !logIsTester(l) && !logIsTraining(l));
 }
 
 // ── v1.4 Labor Load Chart ────────────────────────────────
@@ -1195,9 +1255,11 @@ function renderReport() {
     });
 
     // Filter out pure Admins — only show operational staff (Sr Managers, Managers, Techs)
+    // v1.5 — Also drop tester managers (hourly_rate = 0) so Kevin/Roland/Sofia don't clutter.
     Object.keys(byManager).forEach(email => {
         const staffRec = _allStaff.find(s => s.email.toLowerCase() === email.toLowerCase());
         if (!staffRec) delete byManager[email]; // not in staff table = admin-only user
+        else if (isTester(email)) delete byManager[email]; // v1.5 tester exclusion
     });
 
     // Determine manager ordering: Sr Managers first, then regular managers
@@ -1321,7 +1383,8 @@ function renderReport() {
 function renderStaffTiles() {
     // Filter: show only operational staff (techs, managers, sr_managers, parts_managers)
     // Excludes anyone not in the staff table (i.e., admin-only users)
-    const staffToShow = _allStaff.filter(s => s.active !== false);
+    // v1.5 — Also drop testers (hourly_rate = 0) so they don't clutter the tile grid.
+    const staffToShow = _allStaff.filter(s => s.active !== false && !isTester(s.email));
 
     if (staffToShow.length === 0) return '';
 
