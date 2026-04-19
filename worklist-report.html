@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.3
+    PRVS Active Work List Report v1.4
     Released: 2026-04-19
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -10,6 +10,11 @@
           Hourly rate from staff.hourly_rate (migration add_staff_hourly_rate.sql).
           Labor = sum(hours × rate) over all time_logs for each RO.
           Active (not-clocked-out) logs count against Date.now(). Roland/Kevin at $0 so testers don't pollute totals.
+    v1.4: Labor Load chart — pure-CSS stacked bars, one horizontal lane per active silo.
+          Within each lane, vertical bars per RO sorted labor-cost desc.
+          Per-tech segments stacked inside each bar (deterministic color-by-email).
+          Urgency color top-border. $/Hrs metric toggle (localStorage).
+          Collapsible section (default open). Click bar → scroll + flash the accordion row below.
 -->
 <html lang="en">
 <head>
@@ -206,6 +211,145 @@
             border-color: #fbbf24;
         }
         .stat-chip.stat-chip-labor strong { color: #fbbf24; }
+
+        /* ── v1.4 Labor Load chart ───────────────────── */
+        .labor-chart-section {
+            margin: 12px 16px;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #0f172a;
+        }
+        .labor-chart-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #0f1a2e, #1a2744);
+            user-select: none;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .labor-chart-title {
+            font-weight: 700; font-size: 0.95rem; color: #fbbf24;
+            display: flex; align-items: center; gap: 8px;
+            cursor: pointer;
+        }
+        .labor-chart-controls { display: flex; align-items: center; gap: 10px; font-size: 0.72rem; color: #94a3b8; }
+        .labor-metric-toggle {
+            display: inline-flex; background: #0b1121; border: 1px solid #334155;
+            border-radius: 6px; overflow: hidden;
+        }
+        .labor-metric-btn {
+            padding: 4px 12px; font-size: 0.72rem; font-weight: 600;
+            background: transparent; color: #64748b; border: 0; cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .labor-metric-btn:hover { color: #cbd5e1; }
+        .labor-metric-btn.active { background: #fbbf24; color: #0b1121; }
+        .labor-scale-readout { color: #fbbf24; font-weight: 700; font-family: 'SF Mono', monospace; }
+        .labor-chart-chev { color: #64748b; font-size: 1.1rem; transition: transform 0.2s; }
+        .labor-chart-chev.open { transform: rotate(180deg); }
+        .labor-chart-body { padding: 10px 0; }
+        .labor-chart-body.collapsed { display: none; }
+
+        .labor-silo-lane {
+            padding: 8px 14px;
+            border-top: 1px solid #1e293b;
+            display: flex; align-items: flex-end; gap: 14px;
+        }
+        .labor-silo-lane:first-child { border-top: 0; }
+        .labor-silo-label {
+            flex: 0 0 120px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #60a5fa;
+            display: flex; flex-direction: column; gap: 2px;
+            padding-bottom: 4px;
+        }
+        .labor-silo-subtotal {
+            font-size: 0.68rem;
+            color: #fbbf24;
+            font-weight: 600;
+            font-family: 'SF Mono', monospace;
+        }
+        .labor-silo-bars {
+            flex: 1;
+            display: flex; align-items: flex-end; gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            min-height: 210px;
+        }
+        .labor-silo-bars::-webkit-scrollbar { height: 6px; }
+        .labor-silo-bars::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .labor-silo-bars-empty {
+            color: #475569; font-size: 0.75rem; font-style: italic; padding: 12px 0;
+        }
+
+        .labor-bar-wrap {
+            flex: 0 0 48px; max-width: 48px; min-width: 32px;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+        .labor-bar-wrap:hover { transform: translateY(-2px); }
+        .labor-bar-wrap:hover .labor-bar-column { box-shadow: 0 0 0 1px #fbbf24; }
+        .labor-bar-column {
+            width: 100%;
+            height: 180px;
+            display: flex; flex-direction: column; justify-content: flex-end;
+            background: #0b1121;
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+            border-top: 3px solid #334155; /* urgency-colored */
+        }
+        .labor-bar-column.urg-critical { border-top-color: #ef4444; }
+        .labor-bar-column.urg-high     { border-top-color: #f97316; }
+        .labor-bar-column.urg-medium   { border-top-color: #eab308; }
+        .labor-bar-column.urg-low      { border-top-color: #22c55e; }
+        .labor-bar-segment {
+            width: 100%;
+            display: block;
+            border-top: 1px solid rgba(0,0,0,0.35);
+        }
+        .labor-bar-segment:first-child { border-top: 0; }
+        .labor-bar-ref {
+            position: absolute; left: 0; right: 0;
+            border-top: 1px dashed #fbbf24;
+            pointer-events: none;
+            opacity: 0.55;
+        }
+        .labor-bar-ratio-tag {
+            position: absolute; top: 2px; right: 2px;
+            font-size: 0.58rem; font-weight: 700;
+            color: #fbbf24;
+            background: rgba(0,0,0,0.45);
+            padding: 1px 3px; border-radius: 3px;
+            line-height: 1;
+        }
+        .labor-bar-label {
+            font-size: 0.62rem;
+            color: #cbd5e1;
+            font-family: 'SF Mono', monospace;
+            text-align: center;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .labor-bar-label .lbl-primary { color: #fbbf24; font-weight: 700; display: block; }
+        .labor-bar-label .lbl-days    { color: #64748b; display: block; font-size: 0.58rem; }
+        .labor-bar-label .lbl-id      { color: #64748b; display: block; font-size: 0.56rem; letter-spacing: -0.02em; }
+
+        /* flash highlight when scrolled to from the chart */
+        .ro-row.flash-highlight { animation: ro-flash 1.6s ease-out; }
+        @keyframes ro-flash {
+            0%   { background: #1e3a5f; box-shadow: inset 0 0 0 2px #fbbf24; }
+            100% { background: transparent; box-shadow: inset 0 0 0 0 transparent; }
+        }
+
+        @media (max-width: 768px) {
+            .labor-silo-lane { flex-direction: column; align-items: stretch; }
+            .labor-silo-label { flex: 1; flex-direction: row; justify-content: space-between; }
+            .labor-bar-wrap { flex-basis: 40px; max-width: 40px; }
+        }
         .ro-expand {
             color: #475569; font-size: 0.85rem; transition: transform 0.2s;
             min-width: 18px; text-align: center;
@@ -438,6 +582,23 @@ let _allTodayTimeLogs = [];  // all time_log entries for today (completed + acti
 let _staffSectionOpen = true;
 let _refreshTimer = null;
 let _countdownSec = 180;
+
+// v1.4 — Labor Load chart state (persisted to localStorage)
+let _laborMetric = (localStorage.getItem('prvs_report_labor_metric') === 'hours') ? 'hours' : 'cost';
+let _laborChartOpen = (localStorage.getItem('prvs_report_labor_chart_open') !== '0'); // default open
+function setLaborMetric(m) {
+    _laborMetric = (m === 'hours') ? 'hours' : 'cost';
+    localStorage.setItem('prvs_report_labor_metric', _laborMetric);
+    renderReport(); // full re-render to rescale all bars
+}
+function toggleLaborChart() {
+    _laborChartOpen = !_laborChartOpen;
+    localStorage.setItem('prvs_report_labor_chart_open', _laborChartOpen ? '1' : '0');
+    const body = document.getElementById('laborChartBody');
+    const chev = document.getElementById('laborChartChev');
+    if (body) body.classList.toggle('collapsed', !_laborChartOpen);
+    if (chev) chev.classList.toggle('open', _laborChartOpen);
+}
 
 // S2 — Role-based access (replaces hardcoded email arrays)
 let userRoles = [];
@@ -737,6 +898,280 @@ function fmtUsd(n) {
     return '$' + v.toLocaleString('en-US');
 }
 
+// ── v1.4 Labor Load Chart ────────────────────────────────
+// Deterministic tech color: hash email → HSL so same tech gets same color
+// across every bar. Hue avoids the urgency palette (reds/oranges/yellows/greens
+// between 330–150) by picking from 170–330 (cyan→purple→magenta band).
+function techColor(email) {
+    const s = (email || '').toLowerCase();
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+        h = ((h << 5) - h) + s.charCodeAt(i);
+        h |= 0;
+    }
+    const hue = 170 + (Math.abs(h) % 160); // 170..330
+    return `hsl(${hue}, 55%, 52%)`;
+}
+
+// Pretty tech name from email ("mauricio.tellez@…" → "Mauricio Tellez").
+function techDisplayName(email, staffMap) {
+    const em = (email || '').toLowerCase();
+    if (staffMap && staffMap[em] && staffMap[em].name) return staffMap[em].name;
+    const local = em.split('@')[0];
+    return local.replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Aggregate per-tech totals per RO from _allTimeLogs. Sorted cost desc per RO.
+function buildPerTechByRO(rateByEmail) {
+    const acc = {};
+    _allTimeLogs.forEach(l => {
+        const ro = l.ro_id;
+        if (!ro) return;
+        const em = ((l.tech_email || l.user_id || '') + '').toLowerCase();
+        const h = logHours(l);
+        const c = logCost(l, rateByEmail);
+        if (!acc[ro]) acc[ro] = {};
+        if (!acc[ro][em]) acc[ro][em] = { techEmail: em, hours: 0, cost: 0 };
+        acc[ro][em].hours += h;
+        acc[ro][em].cost  += c;
+    });
+    const out = {};
+    for (const ro in acc) {
+        out[ro] = Object.values(acc[ro]).sort((a, b) => b.cost - a.cost);
+    }
+    return out;
+}
+
+// Escape HTML for tooltip titles.
+function escAttr(s) {
+    return (s == null ? '' : String(s))
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Map status → urgency CSS class. ro.urgency is the canonical field;
+// fall back to status-based heuristic if missing.
+function urgencyClass(ro) {
+    const u = (ro.urgency || '').toLowerCase();
+    if (u.includes('critical')) return 'urg-critical';
+    if (u.includes('high'))     return 'urg-high';
+    if (u.includes('medium'))   return 'urg-medium';
+    if (u.includes('low'))      return 'urg-low';
+    return '';
+}
+
+// Build { [silo_key]: [{ro, laborCost, laborHours, perTech, daysOnLot}, ...] }.
+// An RO on multiple silo lists appears in each lane (per-silo manager decision).
+// Sorted labor-cost desc within each silo.
+function buildSiloLanes(roLookup, laborByRO, perTechByRO) {
+    const silos = {};
+    // Collect unique (silo, ro_id) pairs from work lists; skip _unsorted.
+    const seen = new Set();
+    _allWorkLists.forEach(w => {
+        const siloKey = w.service_silo;
+        if (!siloKey) return; // skip unsorted for the chart
+        const key = siloKey + '::' + w.ro_id;
+        if (seen.has(key)) return;
+        seen.add(key);
+        if (!silos[siloKey]) silos[siloKey] = [];
+        const ro = roLookup[w.ro_id] || {};
+        const lab = laborByRO[w.ro_id] || { cost: 0, hours: 0 };
+        const perTech = perTechByRO[w.ro_id] || [];
+        const startDate = ro.date_arrived || ro.date_received;
+        const daysOnLot = (ro.status === 'Not On Lot' && !ro.date_arrived) ? null
+            : startDate ? Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000) : null;
+        silos[siloKey].push({
+            ro, ro_id: w.ro_id,
+            laborCost: lab.cost, laborHours: lab.hours,
+            perTech,
+            daysOnLot,
+        });
+    });
+    // Sort within lane by labor cost desc (user-selected order).
+    for (const k in silos) silos[k].sort((a, b) => b.laborCost - a.laborCost);
+    return silos;
+}
+
+function renderLaborChart(roLookup, laborByRO, rateByEmail) {
+    const perTechByRO = buildPerTechByRO(rateByEmail);
+    const lanes = buildSiloLanes(roLookup, laborByRO, perTechByRO);
+
+    // Lanes in SERVICE_SILOS order, only those with at least one RO.
+    const laneOrder = SERVICE_SILOS.map(s => s.key).filter(k => lanes[k] && lanes[k].length);
+
+    if (laneOrder.length === 0) {
+        return `
+            <div class="labor-chart-section" id="laborChartSection">
+                <div class="labor-chart-header">
+                    <div class="labor-chart-title" onclick="toggleLaborChart()">
+                        <span>&#128202; Labor Load by Silo</span>
+                    </div>
+                </div>
+                <div class="labor-chart-body ${_laborChartOpen ? '' : 'collapsed'}" id="laborChartBody">
+                    <div style="padding:18px;color:#64748b;font-size:0.82rem;text-align:center;">No work list entries with a silo assignment yet.</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Global scale — max value across ALL bars for the active metric.
+    let peak = 0;
+    laneOrder.forEach(k => lanes[k].forEach(b => {
+        const v = _laborMetric === 'hours' ? b.laborHours : b.laborCost;
+        if (v > peak) peak = v;
+    }));
+    if (peak <= 0) peak = 1; // avoid /0
+
+    const BAR_PX = 180;
+    const MIN_VISIBLE_PX = 4; // any nonzero value gets at least this much height
+
+    // Staff name lookup for tooltips.
+    const staffMap = {};
+    _allStaff.forEach(s => {
+        const em = (s.email || '').toLowerCase();
+        if (em) staffMap[em] = s;
+    });
+
+    const lanesHtml = laneOrder.map(siloKey => {
+        const silo = SILO_MAP[siloKey];
+        const label = silo ? `${silo.emoji} ${silo.label}` : siloKey;
+        const bars = lanes[siloKey];
+        const laneSubtotal = bars.reduce((s, b) => s + b.laborCost, 0);
+        const laneSubtotalHrs = bars.reduce((s, b) => s + b.laborHours, 0);
+
+        const barsHtml = bars.map(b => {
+            const rawValue = _laborMetric === 'hours' ? b.laborHours : b.laborCost;
+            const pxTotal = rawValue > 0
+                ? Math.max(MIN_VISIBLE_PX, Math.round((rawValue / peak) * BAR_PX))
+                : 0;
+
+            // Per-tech stacked segments (proportional to pxTotal).
+            let segmentsHtml = '';
+            if (pxTotal > 0 && b.perTech.length > 0) {
+                const rawSum = b.perTech.reduce((s, t) => s + (_laborMetric === 'hours' ? t.hours : t.cost), 0) || 1;
+                segmentsHtml = b.perTech.map(t => {
+                    const tv = _laborMetric === 'hours' ? t.hours : t.cost;
+                    if (tv <= 0) return '';
+                    const segPx = Math.max(1, Math.round((tv / rawSum) * pxTotal));
+                    const color = techColor(t.techEmail);
+                    const nm = techDisplayName(t.techEmail, staffMap);
+                    const tip = `${nm}: ${t.hours.toFixed(1)}h · ${fmtUsd(t.cost)}`;
+                    return `<span class="labor-bar-segment" style="background:${color};height:${segPx}px;" title="${escAttr(tip)}"></span>`;
+                }).join('');
+            }
+
+            // Reference line for dollar_value (only when metric='cost' AND value>0)
+            let refLineHtml = '';
+            let ratioTagHtml = '';
+            const dv = Number(b.ro.dollar_value) || 0;
+            if (_laborMetric === 'cost' && dv > 0) {
+                const refPx = Math.round((dv / peak) * BAR_PX);
+                if (refPx >= 0 && refPx <= BAR_PX) {
+                    // bottom offset (column renders bottom-up)
+                    refLineHtml = `<div class="labor-bar-ref" style="bottom:${refPx}px;" title="RO value ${fmtUsd(dv)}"></div>`;
+                }
+                if (b.laborCost > 0) {
+                    const ratio = (b.laborCost / dv) * 100;
+                    const label = ratio >= 100 ? '>100%' : ratio.toFixed(0) + '%';
+                    ratioTagHtml = `<div class="labor-bar-ratio-tag" title="Labor \u00f7 RO value">${label}</div>`;
+                }
+            }
+
+            const primary = _laborMetric === 'hours'
+                ? `${b.laborHours.toFixed(1)}h`
+                : fmtUsd(b.laborCost);
+
+            const urg = urgencyClass(b.ro);
+            const roIdText = b.ro.ro_id || '';
+            const custName = b.ro.customer_name || 'Unknown';
+            const rv = b.ro.rv || '';
+            const tipLines = [
+                `${custName}${rv ? ' — ' + rv : ''}`,
+                roIdText ? `RO ${roIdText}` : '',
+                b.ro.urgency ? `Urgency: ${b.ro.urgency}` : '',
+                b.daysOnLot !== null ? `${b.daysOnLot} days on lot` : '',
+                dv > 0 ? `RO value: ${fmtUsd(dv)}` : '',
+                `Labor: ${b.laborHours.toFixed(1)}h · ${fmtUsd(b.laborCost)}`,
+            ].filter(Boolean).join('\n');
+
+            const daysLabel = b.daysOnLot !== null ? `${b.daysOnLot}d` : '—';
+
+            return `
+                <div class="labor-bar-wrap" data-ro-id="${escAttr(b.ro_id)}"
+                     onclick="scrollToROInReport('${escAttr(b.ro_id)}')"
+                     title="${escAttr(tipLines)}">
+                    <div class="labor-bar-column ${urg}">
+                        ${refLineHtml}
+                        ${ratioTagHtml}
+                        ${segmentsHtml}
+                    </div>
+                    <div class="labor-bar-label">
+                        <span class="lbl-primary">${primary}</span>
+                        <span class="lbl-days">${daysLabel}</span>
+                        <span class="lbl-id">${escAttr(roIdText.split('-').slice(-2).join('-') || custName.slice(0, 6))}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="labor-silo-lane">
+                <div class="labor-silo-label">
+                    <span>${label}</span>
+                    <span class="labor-silo-subtotal">${fmtUsd(laneSubtotal)} · ${laneSubtotalHrs.toFixed(1)}h · ${bars.length} RO${bars.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="labor-silo-bars">
+                    ${barsHtml || '<span class="labor-silo-bars-empty">No time logged yet</span>'}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const peakLabel = _laborMetric === 'hours' ? `${peak.toFixed(1)}h` : fmtUsd(peak);
+
+    return `
+        <div class="labor-chart-section" id="laborChartSection">
+            <div class="labor-chart-header">
+                <div class="labor-chart-title" onclick="toggleLaborChart()">
+                    <span>&#128202; Labor Load by Silo</span>
+                    <span class="labor-chart-chev ${_laborChartOpen ? 'open' : ''}" id="laborChartChev">&#9660;</span>
+                </div>
+                <div class="labor-chart-controls">
+                    <div class="labor-metric-toggle" role="tablist" aria-label="Metric">
+                        <button class="labor-metric-btn ${_laborMetric === 'cost' ? 'active' : ''}" onclick="setLaborMetric('cost')">$</button>
+                        <button class="labor-metric-btn ${_laborMetric === 'hours' ? 'active' : ''}" onclick="setLaborMetric('hours')">Hrs</button>
+                    </div>
+                    <span>Peak: <span class="labor-scale-readout">${peakLabel}</span></span>
+                </div>
+            </div>
+            <div class="labor-chart-body ${_laborChartOpen ? '' : 'collapsed'}" id="laborChartBody">
+                ${lanesHtml}
+            </div>
+        </div>
+    `;
+}
+
+// v1.4 — click handler for chart bars. Opens the right manager accordion
+// + scrolls to the matching RO row + flashes a highlight border.
+function scrollToROInReport(roId) {
+    if (!roId) return;
+    // Find the first row whose onclick references this RO. The rows use a
+    // rowId pattern `ro_{mIdx}_{siloKey}_{idx}` so we have to scan data-ro-id
+    // on the ro-row elements. We tag each row in renderRORow below.
+    const row = document.querySelector(`.ro-row[data-ro-id="${CSS.escape(roId)}"]`);
+    if (!row) return;
+    // Ensure the manager accordion body is open.
+    const body = row.closest('.manager-body');
+    if (body && !body.classList.contains('open')) body.classList.add('open');
+    // Scroll + flash.
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.remove('flash-highlight');
+    // Force reflow so the animation restarts if clicked twice.
+    void row.offsetWidth;
+    row.classList.add('flash-highlight');
+    setTimeout(() => row.classList.remove('flash-highlight'), 1700);
+}
+
 // ── Render ───────────────────────────────────────────────
 function renderReport() {
     const body = document.getElementById('reportBody');
@@ -802,13 +1237,16 @@ function renderReport() {
         <div class="stat-chip"><strong>${_allWorkLists.length}</strong> List Entries</div>
     `;
 
+    // v1.4 — Labor Load chart lives between the stats strip and the manager accordions.
+    const laborChartHtml = renderLaborChart(roLookup, laborByRO, rateByEmail);
+
     if (managerOrder.length === 0) {
-        body.innerHTML = '<div class="empty-state">No managers have work list entries yet.</div>';
+        body.innerHTML = laborChartHtml + '<div class="empty-state">No managers have work list entries yet.</div>';
         return;
     }
 
-    // Render manager sections
-    body.innerHTML = managerOrder.map((email, mIdx) => {
+    // Render manager sections (chart goes on top)
+    body.innerHTML = laborChartHtml + managerOrder.map((email, mIdx) => {
         const items = byManager[email];
         const isSr = _allStaff.find(s => s.email.toLowerCase() === email.toLowerCase())?.role === 'sr_manager';
         const roleBadge = isSr ? 'Sr Manager' : 'Manager';
@@ -1128,7 +1566,7 @@ function renderRORow(item, idx, roLookup, logsByRO, mIdx, siloKey, laborByRO) {
     }
 
     return `
-        <div class="ro-row">
+        <div class="ro-row" data-ro-id="${item.ro_id || ''}">
             <div class="ro-row-main" onclick="toggleRODetail('${rowId}')">
                 <span class="ro-priority">${idx + 1}</span>
                 <span class="ro-id">${roNumber}</span>
