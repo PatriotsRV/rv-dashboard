@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.6
+    PRVS Active Work List Report v1.7
     Released: 2026-04-19
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -24,6 +24,12 @@
     v1.6: Labor chart bar-footer label now shows customer name (primary identifier) with
           RO ID tail directly below (secondary, dimmer). Answers 'who is this RO for?'
           at a glance. Both ellipsis-truncate for narrow bars.
+    v1.7: Auto-logout audit on Staff Status tiles. Individual auto-closed sessions
+          (close_reason='auto_eod' set by GH#32 nightly pg_cron) now render with orange
+          left-border + orange ⚠ auto Xh badge in the expanded tile detail. Today's
+          auto-closes flag inline; prior-day auto-closes from the last 14 days appear
+          in a dedicated 'Recent auto-logouts' sub-section at the bottom of the detail.
+          Tile's own green/red live status is unchanged — per-session highlight only.
 -->
 <html lang="en">
 <head>
@@ -524,6 +530,37 @@
             font-size: 0.7rem; color: #6b7280; font-style: italic; padding: 4px 0;
         }
 
+        /* v1.7 — per-session orange marker for auto_eod-closed sessions
+           (tile itself stays green/red based on live clock-in state) */
+        .tile-detail-row.auto-eod {
+            background: rgba(249, 115, 22, 0.12);
+            border-left: 3px solid #f97316;
+            padding-left: 6px;
+            margin-left: -3px;
+            border-radius: 3px;
+        }
+        .tile-detail-row .td-auto-badge {
+            background: #f97316;
+            color: #0b1121;
+            font-size: 0.58rem;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 6px;
+            letter-spacing: 0.02em;
+        }
+        .tile-auto-section {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed rgba(249, 115, 22, 0.45);
+        }
+        .tile-auto-header {
+            color: #f97316;
+            font-weight: 700;
+            font-size: 0.68rem;
+            margin-bottom: 4px;
+            letter-spacing: 0.02em;
+        }
+
         /* ── Responsive ─────────────────────────────── */
         @media (max-width: 768px) {
             .ro-rv { display: none; }
@@ -613,6 +650,7 @@ let _allROs = [];         // repair_orders for relevant ROs
 let _allStaff = [];       // all active staff members
 let _allActiveClockIns = []; // currently active time_log entries (clock_out IS NULL)
 let _allTodayTimeLogs = [];  // all time_log entries for today (completed + active)
+let _allAutoClosed = [];     // v1.7 — auto_eod-closed sessions from the last 14 days (for per-session orange flag + audit)
 let _staffSectionOpen = true;
 let _refreshTimer = null;
 let _countdownSec = 180;
@@ -860,6 +898,21 @@ async function loadAllData() {
         if (tlTodayErr) throw tlTodayErr;
         _allTodayTimeLogs = todayLogs || [];
 
+        // 3c. v1.7 — Load auto-closed sessions from the last 14 days for the Staff Status audit.
+        //     close_reason='auto_eod' is set by the auto_close_stale_time_logs() pg_cron
+        //     (GH#32 Session 52). We show these rows with orange styling so chronic
+        //     forget-to-clock-out techs are visible without scanning each session manually.
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+        const { data: autoClosed, error: acAuditErr } = await getSB()
+            .from('time_logs')
+            .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
+            .eq('close_reason', 'auto_eod')
+            .gte('clock_out', fourteenDaysAgo.toISOString())
+            .order('clock_out', { ascending: false });
+        if (acAuditErr) throw acAuditErr;
+        _allAutoClosed = autoClosed || [];
+
         // 4. Collect unique RO UUIDs from work lists
         const roIds = [...new Set(_allWorkLists.map(w => w.ro_id).filter(Boolean))];
 
@@ -980,6 +1033,8 @@ function applyReportExclusions() {
     _allTimeLogs = _allTimeLogs.filter(l => !logIsTester(l) && !isTrainingRO(l.ro_id));
     _allActiveClockIns = _allActiveClockIns.filter(l => !logIsTester(l) && !logIsTraining(l));
     _allTodayTimeLogs  = _allTodayTimeLogs.filter(l => !logIsTester(l) && !logIsTraining(l));
+    // v1.7 — same exclusion rules for the auto-close audit feed
+    _allAutoClosed     = _allAutoClosed.filter(l => !logIsTester(l) && !logIsTraining(l));
 }
 
 // ── v1.4 Labor Load Chart ────────────────────────────────
@@ -1444,6 +1499,14 @@ function renderStaffTiles() {
         todayByEmail[em].push(log);
     });
 
+    // v1.7 — Build 14-day auto-close lookup by tech email.
+    const autoClosedByEmail = {};
+    _allAutoClosed.forEach(log => {
+        const em = (log.tech_email || '').toLowerCase();
+        if (!autoClosedByEmail[em]) autoClosedByEmail[em] = [];
+        autoClosedByEmail[em].push(log);
+    });
+
     const tiles = staffToShow.map((staff, sIdx) => {
         const email = staff.email.toLowerCase();
         const activeLogs = activeByEmail[email] || [];
@@ -1494,7 +1557,14 @@ function renderStaffTiles() {
                     const mins = (new Date(log.clock_out) - new Date(log.clock_in)) / 60000;
                     totalMinutes += mins;
                     const durStr = mins >= 60 ? (mins / 60).toFixed(1) + 'h' : Math.round(mins) + 'm';
-                    rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-dur">${durStr}</span></div>`);
+                    // v1.7 — flag auto-closed sessions in orange so they're visually distinct
+                    // from tech-initiated clock_outs. close_reason is set by auto_close_stale_time_logs().
+                    const isAutoClosed = log.close_reason === 'auto_eod';
+                    if (isAutoClosed) {
+                        rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed by nightly job — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; auto ${durStr}</span></div>`);
+                    } else {
+                        rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-dur">${durStr}</span></div>`);
+                    }
                 } else {
                     // Currently active
                     const elapsed = (Date.now() - new Date(log.clock_in).getTime()) / 60000;
@@ -1512,9 +1582,9 @@ function renderStaffTiles() {
                 }
             }
             const totalStr = totalMinutes >= 60 ? (totalMinutes / 60).toFixed(1) + 'h' : Math.round(totalMinutes) + 'm';
-            detailHtml = `<div class="tile-detail" id="det_${tileId}">${rows.join('')}<div class="tile-detail-summary">${todayLogs.length} session${todayLogs.length > 1 ? 's' : ''} · ${totalStr} today</div></div>`;
+            detailHtml = `<div class="tile-detail" id="det_${tileId}">${rows.join('')}<div class="tile-detail-summary">${todayLogs.length} session${todayLogs.length > 1 ? 's' : ''} · ${totalStr} today</div>${buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail)}</div>`;
         } else {
-            detailHtml = `<div class="tile-detail" id="det_${tileId}"><div class="tile-detail-empty">No check-ins today</div></div>`;
+            detailHtml = `<div class="tile-detail" id="det_${tileId}"><div class="tile-detail-empty">No check-ins today</div>${buildPriorAutoCloseSection(email, [], autoClosedByEmail)}</div>`;
         }
 
         return `
@@ -1557,6 +1627,37 @@ function toggleStaffSection() {
     const chev = document.getElementById('staffChev');
     if (body) body.classList.toggle('collapsed');
     if (chev) chev.classList.toggle('open');
+}
+
+// v1.7 — Build the "Recent auto-closes (last 14 days)" audit sub-section
+// shown inside a staff tile's expanded detail. Lists auto-closed sessions
+// that are NOT already visible in today's sessions block (to avoid
+// duplicates — today's auto-closes already show inline with orange styling).
+function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
+    const acRows = autoClosedByEmail[email] || [];
+    if (acRows.length === 0) return '';
+    const todayIds = new Set(todayLogs.map(l => l.id));
+    const prior = acRows.filter(l => !todayIds.has(l.id));
+    if (prior.length === 0) return '';
+
+    const listHtml = prior.map(log => {
+        const ro = log.repair_orders;
+        const roLabel = ro ? `${ro.customer_name || 'Unknown'} (${ro.ro_id || ''})` : 'Unknown RO';
+        const inD = log.clock_in ? new Date(log.clock_in) : null;
+        const outD = log.clock_out ? new Date(log.clock_out) : null;
+        const dateStr = inD ? inD.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const inT  = inD  ? inD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+        const outT = outD ? outD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+        const durStr = (inD && outD) ? ((outD - inD) / 3600000).toFixed(1) + 'h' : '';
+        return `<div class="tile-detail-row auto-eod" title="Auto-closed by nightly job"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; auto ${durStr}</span></div>`;
+    }).join('');
+
+    return `
+        <div class="tile-auto-section">
+            <div class="tile-auto-header">&#9888; ${prior.length} auto-logout${prior.length > 1 ? 's' : ''} · last 14 days</div>
+            ${listHtml}
+        </div>
+    `;
 }
 
 function toggleTechTile(tileId) {
