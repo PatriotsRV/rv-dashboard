@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.7
-    Released: 2026-04-19
+    PRVS Active Work List Report v1.8
+    Released: 2026-04-21
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
     v1.1: Staff status tiles — red/green color-coded grid showing who is clocked in and what RO they're working on
@@ -30,6 +30,17 @@
           auto-closes flag inline; prior-day auto-closes from the last 14 days appear
           in a dedicated 'Recent auto-logouts' sub-section at the bottom of the detail.
           Tile's own green/red live status is unchanged — per-session highlight only.
+    v1.8: Regular managers now appear in the Labor Load chart. Their work list rows
+          have service_silo=NULL (only Sr Managers populate it via the silo tab picker),
+          so buildSiloLanes was silently dropping every non-Sr-Manager row. Fix:
+          fall back to staff.service_silo by manager_email. parts_insurance is
+          excluded (not a service silo) — Bobby/Brandon stay out until the labor
+          report is expanded to include parts/insurance hours.
+          New section: Per-Silo Active Work List. Pivots work list data by silo
+          instead of by manager. Dedupes by ro_id, shows which manager(s) have
+          it on their list. Answers "how many active ROs are in Repair across
+          all managers?" at a glance. Sits between the Labor Load chart and the
+          manager accordions. Collapsible (localStorage persisted).
 -->
 <html lang="en">
 <head>
@@ -390,6 +401,60 @@
             /* v1.5 — keep bars flex-grow on mobile too, just drop the floor */
             .labor-bar-wrap { flex: 1 1 40px; min-width: 40px; max-width: 80px; }
         }
+
+        /* ── v1.8 Per-Silo Active Work List section ─── */
+        .persilo-section {
+            margin: 12px 16px;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #0f172a;
+        }
+        .persilo-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #0f1a2e, #1a2744);
+            user-select: none;
+            cursor: pointer;
+        }
+        .persilo-title {
+            font-weight: 700; font-size: 0.95rem; color: #60a5fa;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .persilo-chev { color: #64748b; font-size: 1.1rem; transition: transform 0.2s; }
+        .persilo-chev.open { transform: rotate(180deg); }
+        .persilo-body { padding: 0; }
+        .persilo-body.collapsed { display: none; }
+        /* Silo subheader variant used inside this section — gets hours chip in addition to labor chip */
+        .silo-subheader .silo-hours {
+            color: #a5b4fc;
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            margin-left: auto;
+        }
+        .silo-subheader .silo-hours + .silo-labor { margin-left: 6px; }
+        /* Owner pills row — who has this RO on their work list */
+        .ro-owners {
+            padding: 4px 18px 0 50px;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .ro-owners .owners-label { color: #64748b; font-size: 0.68rem; }
+        .owner-pill {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #cbd5e1;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 0.68rem;
+            font-weight: 600;
+        }
+        .owner-pill.sr { border-color: #1e40af; color: #93c5fd; background: #1e3a5f; }
         .ro-expand {
             color: #475569; font-size: 0.85rem; transition: transform 0.2s;
             min-width: 18px; text-align: center;
@@ -659,6 +724,9 @@ let _countdownSec = 180;
 let _laborMetric = (localStorage.getItem('prvs_report_labor_metric') === 'hours') ? 'hours' : 'cost';
 let _laborChartOpen = (localStorage.getItem('prvs_report_labor_chart_open') !== '0'); // default open
 
+// v1.8 — Per-Silo Active Work List section state (persisted to localStorage)
+let _perSiloOpen = (localStorage.getItem('prvs_report_persilo_open') !== '0'); // default open
+
 // v1.5 — Report exclusion rules.
 // Testers: anyone in _allStaff with hourly_rate = 0 (Kevin, Roland, Sofia by design).
 // Training ROs: repair_orders.is_training = true (added by GH#24 in index.html v1.404).
@@ -683,6 +751,16 @@ function toggleLaborChart() {
     const chev = document.getElementById('laborChartChev');
     if (body) body.classList.toggle('collapsed', !_laborChartOpen);
     if (chev) chev.classList.toggle('open', _laborChartOpen);
+}
+
+// v1.8 — Per-Silo Active Work List toggle
+function togglePerSilo() {
+    _perSiloOpen = !_perSiloOpen;
+    localStorage.setItem('prvs_report_persilo_open', _perSiloOpen ? '1' : '0');
+    const body = document.getElementById('perSiloBody');
+    const chev = document.getElementById('perSiloChev');
+    if (body) body.classList.toggle('collapsed', !_perSiloOpen);
+    if (chev) chev.classList.toggle('open', _perSiloOpen);
 }
 
 // S2 — Role-based access (replaces hardcoded email arrays)
@@ -965,6 +1043,27 @@ function buildRateByEmail() {
     return map;
 }
 
+// v1.8 — Regular managers (Manager role, not Sr Manager) don't set
+// manager_work_lists.service_silo — that column is only populated by Sr Managers
+// via the silo tab picker in index.html. Result: Jason/Mauricio/Andrew/Riley's
+// work list rows were silently dropped from buildSiloLanes(), so the Labor Load
+// chart and Per-Silo Active Work List showed nothing for them.
+// Fix: fall back to staff.service_silo by manager_email. parts_insurance is
+// intentionally excluded (not a service silo in SERVICE_SILOS) — Bobby/Brandon's
+// work list ROs won't bucket into any silo lane until we expand the report to
+// include parts/insurance labor later.
+function buildManagerSiloByEmail() {
+    const map = {};
+    _allStaff.forEach(s => {
+        const em = (s.email || '').toLowerCase();
+        const silo = s.service_silo;
+        if (!em || !silo) return;
+        if (!SILO_MAP[silo]) return; // skip parts_insurance and any non-service silo
+        map[em] = silo;
+    });
+    return map;
+}
+
 function logHours(l) {
     if (!l || !l.clock_in) return 0;
     const end = l.clock_out ? new Date(l.clock_out).getTime() : Date.now();
@@ -1102,13 +1201,18 @@ function urgencyClass(ro) {
 // Build { [silo_key]: [{ro, laborCost, laborHours, perTech, daysOnLot}, ...] }.
 // An RO on multiple silo lists appears in each lane (per-silo manager decision).
 // Sorted labor-cost desc within each silo.
-function buildSiloLanes(roLookup, laborByRO, perTechByRO) {
+// v1.8 — `managerSiloByEmail` is used as a NULL fallback: regular managers' work
+// list rows have service_silo=NULL (only Sr Managers populate it), so we resolve
+// their silo via staff.service_silo. See buildManagerSiloByEmail() comment.
+function buildSiloLanes(roLookup, laborByRO, perTechByRO, managerSiloByEmail) {
     const silos = {};
     // Collect unique (silo, ro_id) pairs from work lists; skip _unsorted.
     const seen = new Set();
+    const mgrSiloFallback = managerSiloByEmail || {};
     _allWorkLists.forEach(w => {
-        const siloKey = w.service_silo;
-        if (!siloKey) return; // skip unsorted for the chart
+        const mgrEmail = (w.manager_email || '').toLowerCase();
+        const siloKey = w.service_silo || mgrSiloFallback[mgrEmail];
+        if (!siloKey) return; // no silo on row AND no staff.service_silo → skip
         const key = siloKey + '::' + w.ro_id;
         if (seen.has(key)) return;
         seen.add(key);
@@ -1131,9 +1235,9 @@ function buildSiloLanes(roLookup, laborByRO, perTechByRO) {
     return silos;
 }
 
-function renderLaborChart(roLookup, laborByRO, rateByEmail) {
+function renderLaborChart(roLookup, laborByRO, rateByEmail, managerSiloByEmail) {
     const perTechByRO = buildPerTechByRO(rateByEmail);
-    const lanes = buildSiloLanes(roLookup, laborByRO, perTechByRO);
+    const lanes = buildSiloLanes(roLookup, laborByRO, perTechByRO, managerSiloByEmail);
 
     // Lanes in SERVICE_SILOS order, only those with at least one RO.
     const laneOrder = SERVICE_SILOS.map(s => s.key).filter(k => lanes[k] && lanes[k].length);
@@ -1296,18 +1400,172 @@ function renderLaborChart(roLookup, laborByRO, rateByEmail) {
     `;
 }
 
+// v1.8 — Per-Silo Active Work List data builder.
+// Pivots _allWorkLists by silo, deduping by ro_id, collecting all owner emails.
+// Uses the same service_silo || managerSiloByEmail[email] fallback as buildSiloLanes
+// so regular managers' rows bucket correctly.
+// Returns { [siloKey]: [{ ro_id, ro_name, owners: [email], priority, laborCost, laborHours, totalHours }, ...] }
+function buildPerSiloView(roLookup, laborByRO, logsByRO, managerSiloByEmail) {
+    const bySilo = {};
+    const mgrSiloFallback = managerSiloByEmail || {};
+    _allWorkLists.forEach(w => {
+        const mgrEmail = (w.manager_email || '').toLowerCase();
+        const siloKey = w.service_silo || mgrSiloFallback[mgrEmail];
+        if (!siloKey || !SILO_MAP[siloKey]) return; // skip unsorted + parts_insurance
+        if (!bySilo[siloKey]) bySilo[siloKey] = {};
+        const bucket = bySilo[siloKey];
+        if (!bucket[w.ro_id]) {
+            bucket[w.ro_id] = {
+                ro_id: w.ro_id,
+                ro_name: w.ro_name,
+                owners: new Set(),
+                priority: w.priority,
+            };
+        } else if (w.priority != null && (bucket[w.ro_id].priority == null || w.priority < bucket[w.ro_id].priority)) {
+            bucket[w.ro_id].priority = w.priority;
+        }
+        if (mgrEmail) bucket[w.ro_id].owners.add(mgrEmail);
+    });
+    // Convert inner { ro_id: {...} } maps into arrays sorted by labor cost desc.
+    const out = {};
+    Object.keys(bySilo).forEach(siloKey => {
+        const items = Object.values(bySilo[siloKey]).map(it => {
+            const lab = laborByRO[it.ro_id] || { cost: 0, hours: 0 };
+            // Sum ALL time logged (including active) from logsByRO for the silo-level hours chip
+            const logs = logsByRO[it.ro_id] || [];
+            const totalHours = logs.reduce((s, l) => {
+                if (l.clock_in && l.clock_out) return s + (new Date(l.clock_out) - new Date(l.clock_in)) / 3600000;
+                return s;
+            }, 0);
+            return {
+                ro_id: it.ro_id,
+                ro_name: it.ro_name,
+                priority: it.priority,
+                owners: Array.from(it.owners),
+                laborCost: lab.cost,
+                laborHours: lab.hours,
+                totalHours,
+            };
+        });
+        items.sort((a, b) => b.laborCost - a.laborCost);
+        out[siloKey] = items;
+    });
+    return out;
+}
+
+// v1.8 — Render the Per-Silo Active Work List section.
+// Sits between the Labor Load chart and the manager accordions.
+// One block per silo (SERVICE_SILOS order, only silos with ≥1 RO).
+// Each block: silo subheader (count, hours, labor $) + deduped RO rows reusing
+// renderRORow for consistent styling. Owner pills prepended to each row show
+// which manager(s) have the RO on their work list.
+function renderPerSiloSection(roLookup, laborByRO, logsByRO, managerSiloByEmail) {
+    const bySilo = buildPerSiloView(roLookup, laborByRO, logsByRO, managerSiloByEmail);
+    const siloOrder = SERVICE_SILOS.map(s => s.key).filter(k => bySilo[k] && bySilo[k].length > 0);
+
+    if (siloOrder.length === 0) {
+        return `
+            <div class="persilo-section" id="perSiloSection">
+                <div class="persilo-header" onclick="togglePerSilo()">
+                    <div class="persilo-title"><span>&#128203; Per-Silo Active Work List</span></div>
+                    <span class="persilo-chev ${_perSiloOpen ? 'open' : ''}" id="perSiloChev">&#9660;</span>
+                </div>
+                <div class="persilo-body ${_perSiloOpen ? '' : 'collapsed'}" id="perSiloBody">
+                    <div style="padding:18px;color:#64748b;font-size:0.82rem;text-align:center;">No work list entries yet.</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Staff name + role lookup for owner pills
+    const staffByEmail = {};
+    _allStaff.forEach(s => {
+        const em = (s.email || '').toLowerCase();
+        if (em) staffByEmail[em] = s;
+    });
+    const displayNameFor = (em) => {
+        const s = staffByEmail[em];
+        if (s && s.name) return s.name;
+        return em.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+    const isSrOwner = (em) => {
+        const s = staffByEmail[em];
+        return !!(s && s.role === 'sr_manager');
+    };
+
+    // Grand totals across the whole section (for header readout)
+    let grandROs = 0, grandHours = 0, grandCost = 0;
+    siloOrder.forEach(k => bySilo[k].forEach(it => {
+        grandROs += 1;
+        grandHours += it.totalHours;
+        grandCost += it.laborCost;
+    }));
+
+    const silosHtml = siloOrder.map(siloKey => {
+        const silo = SILO_MAP[siloKey];
+        const items = bySilo[siloKey];
+        const siloLaborCost = items.reduce((s, it) => s + it.laborCost, 0);
+        const siloHours = items.reduce((s, it) => s + it.totalHours, 0);
+
+        const rowsHtml = items.map((it, idx) => {
+            const ownersHtml = it.owners.map(em => {
+                const nm = displayNameFor(em);
+                const cls = isSrOwner(em) ? 'owner-pill sr' : 'owner-pill';
+                return `<span class="${cls}">${escAttr(nm)}</span>`;
+            }).join('');
+            const ownerBanner = `<div class="ro-owners"><span class="owners-label">&#128100; On list:</span>${ownersHtml}</div>`;
+            // Synthesize a work list item for renderRORow; mIdx='ps' keeps DOM IDs
+            // distinct from the manager accordion (which uses numeric indices).
+            const syntheticItem = { ro_id: it.ro_id, ro_name: it.ro_name, priority: it.priority };
+            return ownerBanner + renderRORow(syntheticItem, idx, roLookup, logsByRO, 'ps', siloKey, laborByRO);
+        }).join('');
+
+        return `
+            <div class="silo-subheader">
+                <span>${silo.emoji} ${silo.label}</span>
+                <span class="silo-count">${items.length} RO${items.length !== 1 ? 's' : ''}</span>
+                <span class="silo-hours" title="Total labor hours across all ROs in this silo">&#9201;&#65039; ${siloHours.toFixed(1)}h</span>
+                <span class="silo-labor" title="Total labor cost across all ROs in this silo">&#129505; ${fmtUsd(siloLaborCost)}</span>
+            </div>
+            ${rowsHtml}
+        `;
+    }).join('');
+
+    return `
+        <div class="persilo-section" id="perSiloSection">
+            <div class="persilo-header" onclick="togglePerSilo()">
+                <div class="persilo-title">
+                    <span>&#128203; Per-Silo Active Work List</span>
+                    <span style="color:#64748b;font-weight:500;font-size:0.78rem;">— ${grandROs} RO${grandROs !== 1 ? 's' : ''} · ${grandHours.toFixed(1)}h · ${fmtUsd(grandCost)}</span>
+                </div>
+                <span class="persilo-chev ${_perSiloOpen ? 'open' : ''}" id="perSiloChev">&#9660;</span>
+            </div>
+            <div class="persilo-body ${_perSiloOpen ? '' : 'collapsed'}" id="perSiloBody">
+                ${silosHtml}
+            </div>
+        </div>
+    `;
+}
+
 // v1.4 — click handler for chart bars. Opens the right manager accordion
 // + scrolls to the matching RO row + flashes a highlight border.
+// v1.8 — prefer a row inside a manager accordion (canonical context); fall back
+// to the per-silo row and force-open the section if it's collapsed.
 function scrollToROInReport(roId) {
     if (!roId) return;
-    // Find the first row whose onclick references this RO. The rows use a
-    // rowId pattern `ro_{mIdx}_{siloKey}_{idx}` so we have to scan data-ro-id
-    // on the ro-row elements. We tag each row in renderRORow below.
-    const row = document.querySelector(`.ro-row[data-ro-id="${CSS.escape(roId)}"]`);
-    if (!row) return;
-    // Ensure the manager accordion body is open.
-    const body = row.closest('.manager-body');
-    if (body && !body.classList.contains('open')) body.classList.add('open');
+    const matches = document.querySelectorAll(`.ro-row[data-ro-id="${CSS.escape(roId)}"]`);
+    if (matches.length === 0) return;
+    // Prefer manager-accordion row; fall back to first match (per-silo).
+    let row = null;
+    matches.forEach(el => {
+        if (!row && el.closest('.manager-body')) row = el;
+    });
+    if (!row) row = matches[0];
+    // Open whichever collapsible container the row is inside.
+    const mgrBody = row.closest('.manager-body');
+    if (mgrBody && !mgrBody.classList.contains('open')) mgrBody.classList.add('open');
+    const psBody = row.closest('.persilo-body');
+    if (psBody && psBody.classList.contains('collapsed')) togglePerSilo();
     // Scroll + flash.
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     row.classList.remove('flash-highlight');
@@ -1360,6 +1618,9 @@ function renderReport() {
     const rateByEmail = buildRateByEmail();
     const laborStats = buildLaborStats(rateByEmail);
     const laborByRO = laborStats.byRO;
+    // v1.8 — manager → silo fallback (for regular managers whose work list rows
+    // have NULL service_silo). Used by Labor Load chart + Per-Silo Active Work List.
+    const managerSiloByEmail = buildManagerSiloByEmail();
 
     // Stats
     const totalManagers = managerOrder.length;
@@ -1385,15 +1646,21 @@ function renderReport() {
     `;
 
     // v1.4 — Labor Load chart lives between the stats strip and the manager accordions.
-    const laborChartHtml = renderLaborChart(roLookup, laborByRO, rateByEmail);
+    // v1.8 — Pass managerSiloByEmail so regular managers' work list rows get bucketed.
+    const laborChartHtml = renderLaborChart(roLookup, laborByRO, rateByEmail, managerSiloByEmail);
+
+    // v1.8 — Per-Silo Active Work List: pivots work list data by silo (not by
+    // manager), dedupes by ro_id, shows who has it on their list. Answers "how
+    // many active ROs are in Repair right now across all my managers?" directly.
+    const perSiloHtml = renderPerSiloSection(roLookup, laborByRO, logsByRO, managerSiloByEmail);
 
     if (managerOrder.length === 0) {
-        body.innerHTML = laborChartHtml + '<div class="empty-state">No managers have work list entries yet.</div>';
+        body.innerHTML = laborChartHtml + perSiloHtml + '<div class="empty-state">No managers have work list entries yet.</div>';
         return;
     }
 
-    // Render manager sections (chart goes on top)
-    body.innerHTML = laborChartHtml + managerOrder.map((email, mIdx) => {
+    // Render manager sections (chart + per-silo section go on top)
+    body.innerHTML = laborChartHtml + perSiloHtml + managerOrder.map((email, mIdx) => {
         const items = byManager[email];
         const isSr = _allStaff.find(s => s.email.toLowerCase() === email.toLowerCase())?.role === 'sr_manager';
         const roleBadge = isSr ? 'Sr Manager' : 'Manager';
