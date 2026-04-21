@@ -1,7 +1,17 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.28
-    Released: 2026-04-05
+    PRVS Tech Check-In v1.30
+    Released: 2026-04-21
+    v1.30: GH#33 Phase 1 — rapid-fire clock-in dupe prevention. (1) Clock In button
+           locks instantly on tap (disabled + spinner) to kill double-tap misfires. (2) Pre-INSERT
+           SELECT guard checks for existing open row on (tech_email, ro_id) before inserting —
+           if found, shows friendly toast and skips the INSERT. (3) Catches Postgres 23505
+           unique_violation from the new UNIQUE partial index (migration gh33_unique_open_time_log.sql)
+           and shows the same friendly toast instead of raw error. (4) Offline queue replay
+           (drainQueue) now dedupes on replay — for each queued clock_in item, SELECTs first to
+           verify no open row already exists for that (tech, ro) before INSERTing. Stops the
+           Ignacio-style replay storm where an offline-queued clock-in gets flushed multiple times
+           on reconnect. Pairs with the DB UNIQUE partial index as load-bearing guard of last resort.
     v1.28: Fix Supabase auth for time_logs — signInWithIdToken() now called on Google sign-in,
            establishes authenticated Supabase session so clock-in/out inserts use 'authenticated'
            role (not anon). getSession() restores session on reload (30-day persistence).
@@ -269,6 +279,7 @@ const TRANSLATIONS_ES = {
     'Loading...': 'Cargando...',
     'Loading RO...': 'Cargando OR...',
     'Please select a service type before clocking in.': 'Por favor selecciona un tipo de servicio.',
+    'You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.': 'Ya estás registrado en esta OR. Si crees que esto es un error, cierra sesión y vuelve a iniciar sesión.',
     'Signed in as': 'Sesión iniciada como',
 };
 
@@ -410,8 +421,35 @@ async function drainQueue() {
     for (const item of items) {
         try {
             if (item.type === 'clock_in') {
+                // GH#33 Phase 1 — dedupe on replay. If a row already exists for this
+                // (tech_email, ro_id) with clock_out IS NULL, don't re-INSERT — the
+                // previous replay or a concurrent foreground clock-in already landed.
+                // This is the Ignacio rapid-fire replay-storm fix.
+                const d = item.data || {};
+                if (d.tech_email && d.ro_id) {
+                    const { data: existing } = await getSB()
+                        .from('time_logs')
+                        .select('id')
+                        .eq('tech_email', d.tech_email)
+                        .eq('ro_id', d.ro_id)
+                        .is('clock_out', null)
+                        .maybeSingle();
+                    if (existing) {
+                        log('Queue replay skipped — open session already exists for', d.tech_email, d.ro_id);
+                        await removeQueuedAction(item.id);
+                        continue;
+                    }
+                }
                 const { error } = await getSB().from('time_logs').insert(item.data);
-                if (!error) await removeQueuedAction(item.id);
+                if (!error) {
+                    await removeQueuedAction(item.id);
+                } else if (error.code === '23505') {
+                    // Belt-and-suspenders with the DB unique partial index — if a race
+                    // between queue drain and a foreground clock-in slipped past the
+                    // SELECT-guard above, the DB rejects. Drop the queued item.
+                    log('Queue replay 23505 — dropping queued duplicate', d.tech_email, d.ro_id);
+                    await removeQueuedAction(item.id);
+                }
             } else if (item.type === 'clock_out') {
                 const { error } = await getSB().from('time_logs').update(item.data).eq('id', item.logId);
                 if (!error) await removeQueuedAction(item.id);
@@ -834,7 +872,7 @@ function render() {
             ${isClockedIn ? `
                 <button class="btn btn-end" onclick="clockOut()">${t('🔴 Clock Out')}</button>
             ` : `
-                <button class="btn btn-start" onclick="clockIn()">${t('🟢 Clock In / Start Work')}</button>
+                <button class="btn btn-start" id="clockInBtn" onclick="clockIn()">${t('🟢 Clock In / Start Work')}</button>
             `}
             <button class="btn btn-secondary" onclick="window.close()">${t('Close')}</button>
         </div>
@@ -863,7 +901,18 @@ function selectService(type) {
 }
 
 // ── Clock In ─────────────────────────────────────────────────
+// GH#33 Phase 1 — v1.30: locks clockIn() against concurrent re-entry for the whole
+// tab lifetime of a click. Paired with the button-disabled state, kills double-tap
+// dupes even if the user double-clicks faster than the UI can render the disabled
+// state.
+let _clockInPending = false;
+
 async function clockIn() {
+    if (_clockInPending) {
+        log('Clock-in already in progress — ignoring duplicate tap');
+        return;
+    }
+
     if (!selectedService) {
         alert(t('Please select a service type before clocking in.'));
         return;
@@ -874,6 +923,17 @@ async function clockIn() {
     if (isOnline && !supabaseSession) {
         alert('Your session is not ready yet. Please sign out and sign back in.');
         return;
+    }
+
+    // GH#33 Phase 1 — instant button lock + spinner. Disabled state prevents
+    // tap-again loops; the in-memory _clockInPending is the authoritative guard.
+    _clockInPending = true;
+    const btn = document.getElementById('clockInBtn');
+    const originalBtnText = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ ' + t('🟢 Clock In / Start Work');
+        btn.style.opacity = '0.6';
     }
 
     const now = new Date().toISOString();
@@ -892,8 +952,49 @@ async function clockIn() {
 
     try {
         if (isOnline) {
+            // GH#33 Phase 1 — pre-INSERT SELECT guard. If an open row already exists
+            // for this (tech, ro), don't INSERT. Gives a graceful UX ahead of the DB
+            // unique_violation that would otherwise fire.
+            const { data: existing, error: existingErr } = await getSB()
+                .from('time_logs')
+                .select('id, clock_in')
+                .eq('tech_email', currentUser.email)
+                .eq('ro_id', roData.id)
+                .is('clock_out', null)
+                .maybeSingle();
+            if (!existingErr && existing) {
+                alert(t('You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.'));
+                // Re-sync local state with the existing session so the UI reflects reality.
+                activeSession = existing;
+                localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
+                render();
+                return;
+            }
+
             const { data, error } = await getSB().from('time_logs').insert(logData).select().single();
-            if (error) throw error;
+            if (error) {
+                // GH#33 Phase 1 — friendly handling for the DB unique_violation (23505).
+                // This fires if a concurrent tap squeezed through the pre-guard (race window
+                // between SELECT and INSERT), or if the offline-queue replay raced us.
+                if (error.code === '23505') {
+                    alert(t('You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.'));
+                    // Fetch the existing session so we can re-sync local state.
+                    const { data: raceRow } = await getSB()
+                        .from('time_logs')
+                        .select('*')
+                        .eq('tech_email', currentUser.email)
+                        .eq('ro_id', roData.id)
+                        .is('clock_out', null)
+                        .maybeSingle();
+                    if (raceRow) {
+                        activeSession = raceRow;
+                        localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
+                        render();
+                    }
+                    return;
+                }
+                throw error;
+            }
             activeSession = data;
             log('✅ Clocked in:', activeSession.id);
         } else {
@@ -918,6 +1019,17 @@ async function clockIn() {
     } catch(e) {
         console.error('Clock-in error:', e);
         alert('Error clocking in: ' + e.message);
+        // Restore button on error so tech can retry.
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalBtnText;
+            btn.style.opacity = '';
+        }
+    } finally {
+        _clockInPending = false;
+        // On success, render() already redrew the UI and the button is gone. On
+        // early-return paths above, we re-rendered before returning so the button
+        // is either gone (success) or re-drawn fresh by render(). Nothing more to do.
     }
 }
 
