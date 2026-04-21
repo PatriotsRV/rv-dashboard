@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.8
+    PRVS Active Work List Report v1.9
     Released: 2026-04-21
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -41,6 +41,22 @@
           it on their list. Answers "how many active ROs are in Repair across
           all managers?" at a glance. Sits between the Labor Load chart and the
           manager accordions. Collapsible (localStorage persisted).
+    v1.9: Auto-logout regime change — the 12h cap is dead. Replaced by a M-F 5 PM
+          CDT pg_cron (close_open_time_logs_eod, migration
+          replace_auto_logout_with_5pm_eod.sql) that hard-closes any open session
+          at EOD. Old 12h-capped rows retroactively rewritten to 8h with
+          close_reason='auto_eod_8h_recalc' (see retroactive_12h_to_8h_fix.sql).
+          Report-side: the Recent auto-logouts audit now queries close_reason
+          LIKE 'auto_%' so it handles all three flavors: auto_eod_5pm (orange
+          flag, tech didn't clock out), auto_eod (legacy 12h, same orange
+          treatment), auto_eod_8h_recalc (gray "✓ 8h recalc" — data corrected,
+          not a flag). Section header count only reflects orange/flagged rows;
+          when all prior auto-logouts are recalc'd, the header switches to
+          "all data-corrected" messaging. Also shipped dormant Stage 1 SMS
+          groundwork: time_logs.reminded_at + extended_at columns, staff
+          phone_number + sms_opt_in_at columns, sms_log audit table, and
+          twilio-sms + twilio-webhook edge functions (return 503 until
+          TWILIO_* secrets set).
 -->
 <html lang="en">
 <head>
@@ -595,8 +611,9 @@
             font-size: 0.7rem; color: #6b7280; font-style: italic; padding: 4px 0;
         }
 
-        /* v1.7 — per-session orange marker for auto_eod-closed sessions
-           (tile itself stays green/red based on live clock-in state) */
+        /* v1.7 / v1.9 — per-session marker styles for auto-closed sessions.
+           .auto-eod  = orange (new 5 PM cron OR legacy 12h cap — both flag "tech didn't clock out")
+           .recalc    = gray  (retroactively fixed from 12h → 8h — data corrected, not a flag) */
         .tile-detail-row.auto-eod {
             background: rgba(249, 115, 22, 0.12);
             border-left: 3px solid #f97316;
@@ -604,8 +621,24 @@
             margin-left: -3px;
             border-radius: 3px;
         }
+        .tile-detail-row.recalc {
+            background: rgba(100, 116, 139, 0.10);
+            border-left: 3px solid #64748b;
+            padding-left: 6px;
+            margin-left: -3px;
+            border-radius: 3px;
+        }
         .tile-detail-row .td-auto-badge {
             background: #f97316;
+            color: #0b1121;
+            font-size: 0.58rem;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 6px;
+            letter-spacing: 0.02em;
+        }
+        .tile-detail-row .td-recalc-badge {
+            background: #64748b;
             color: #0b1121;
             font-size: 0.58rem;
             font-weight: 700;
@@ -976,16 +1009,18 @@ async function loadAllData() {
         if (tlTodayErr) throw tlTodayErr;
         _allTodayTimeLogs = todayLogs || [];
 
-        // 3c. v1.7 — Load auto-closed sessions from the last 14 days for the Staff Status audit.
-        //     close_reason='auto_eod' is set by the auto_close_stale_time_logs() pg_cron
-        //     (GH#32 Session 52). We show these rows with orange styling so chronic
-        //     forget-to-clock-out techs are visible without scanning each session manually.
+        // 3c. v1.7 / v1.9 — Load auto-closed sessions from the last 14 days for the Staff Status audit.
+        //     Close reasons we care about:
+        //       'auto_eod_5pm'       — new M-F 5 PM cron (Session 53, 2026-04-21) — shown orange
+        //       'auto_eod_8h_recalc' — retroactively rewritten from the old 12h cap — shown gray (data-corrected)
+        //       'auto_eod'           — legacy 12h cap (deprecated; rows still exist for any not yet rewritten)
+        //     LIKE 'auto_%' catches all three, and the renderer colors them differently.
         const fourteenDaysAgo = new Date();
         fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
         const { data: autoClosed, error: acAuditErr } = await getSB()
             .from('time_logs')
             .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
-            .eq('close_reason', 'auto_eod')
+            .like('close_reason', 'auto_%')
             .gte('clock_out', fourteenDaysAgo.toISOString())
             .order('clock_out', { ascending: false });
         if (acAuditErr) throw acAuditErr;
@@ -1824,11 +1859,16 @@ function renderStaffTiles() {
                     const mins = (new Date(log.clock_out) - new Date(log.clock_in)) / 60000;
                     totalMinutes += mins;
                     const durStr = mins >= 60 ? (mins / 60).toFixed(1) + 'h' : Math.round(mins) + 'm';
-                    // v1.7 — flag auto-closed sessions in orange so they're visually distinct
-                    // from tech-initiated clock_outs. close_reason is set by auto_close_stale_time_logs().
-                    const isAutoClosed = log.close_reason === 'auto_eod';
-                    if (isAutoClosed) {
-                        rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed by nightly job — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; auto ${durStr}</span></div>`);
+                    // v1.7 / v1.9 — close_reason decides visual treatment.
+                    //   'auto_eod_5pm' / 'auto_eod' (legacy)  → orange flag (tech didn't clock out)
+                    //   'auto_eod_8h_recalc'                  → gray (retroactively corrected, not a flag)
+                    //   other / NULL                          → normal style
+                    const cr = log.close_reason || '';
+                    if (cr === 'auto_eod_5pm' || cr === 'auto_eod') {
+                        const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
+                        rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`);
+                    } else if (cr === 'auto_eod_8h_recalc') {
+                        rows.push(`<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-recalc-badge">&#10003; 8h recalc</span></div>`);
                     } else {
                         rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-dur">${durStr}</span></div>`);
                     }
@@ -1907,6 +1947,13 @@ function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
     const prior = acRows.filter(l => !todayIds.has(l.id));
     if (prior.length === 0) return '';
 
+    // v1.9 — split prior rows into two piles: flagged (orange) vs recalc (gray).
+    //        Only the flagged count shows in the section header.
+    const flagged = prior.filter(l => {
+        const c = l.close_reason || '';
+        return c === 'auto_eod_5pm' || c === 'auto_eod';
+    });
+
     const listHtml = prior.map(log => {
         const ro = log.repair_orders;
         const roLabel = ro ? `${ro.customer_name || 'Unknown'} (${ro.ro_id || ''})` : 'Unknown RO';
@@ -1916,12 +1963,21 @@ function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
         const inT  = inD  ? inD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
         const outT = outD ? outD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
         const durStr = (inD && outD) ? ((outD - inD) / 3600000).toFixed(1) + 'h' : '';
-        return `<div class="tile-detail-row auto-eod" title="Auto-closed by nightly job"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; auto ${durStr}</span></div>`;
+        const cr = log.close_reason || '';
+        if (cr === 'auto_eod_8h_recalc') {
+            return `<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-recalc-badge">&#10003; 8h recalc</span></div>`;
+        }
+        const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
+        return `<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`;
     }).join('');
+
+    const headerText = flagged.length > 0
+        ? `&#9888; ${flagged.length} auto-logout${flagged.length > 1 ? 's' : ''} · last 14 days`
+        : `&#128196; ${prior.length} auto-logout record${prior.length > 1 ? 's' : ''} · last 14 days (all data-corrected)`;
 
     return `
         <div class="tile-auto-section">
-            <div class="tile-auto-header">&#9888; ${prior.length} auto-logout${prior.length > 1 ? 's' : ''} · last 14 days</div>
+            <div class="tile-auto-header">${headerText}</div>
             ${listHtml}
         </div>
     `;
