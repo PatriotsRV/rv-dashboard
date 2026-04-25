@@ -1833,6 +1833,14 @@
             const dateReceived = (formState.mode === 'dropoff' && formState.dropoffChoice === 'today')
                 ? today : null;
 
+            // Planned drop-off date (GH#ER1) — captured for auto-reminder scheduling
+            // Lead mode: leadDropoffDate. Dropoff/scheduled mode: scheduledDropoffDate.
+            const plannedDropoffDate = formState.mode === 'lead'
+                ? (document.getElementById('leadDropoffDate')?.value || null)
+                : (formState.dropoffChoice === 'scheduled'
+                    ? (document.getElementById('scheduledDropoffDate')?.value || null)
+                    : null);
+
             // Generate RO ID
             const candidates = generateROIdCandidates(customerName, rv, today);
 
@@ -1855,6 +1863,7 @@
                     urgency:        roType === 'warranty' ? 'Critical' : null,
                     customer_type:  formState.customerType === 'returning' ? 'Returning' : 'New',
                     ro_type:        roType,
+                    planned_dropoff_date: plannedDropoffDate,
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -1881,6 +1890,54 @@
                         type: 'ro_status',
                         body: `Planned drop-off date: ${dropDate}`,
                     });
+                }
+            }
+
+            // GH#ER1 — auto-schedule "drop-off tomorrow" reminder email
+            // Fires if a planned_dropoff_date was set on the RO. Recipients =
+            // silo manager(s) for the RO's repair_type. Scheduled for the
+            // morning before the drop-off date at 8 AM CDT (= 13:00 UTC).
+            if (plannedDropoffDate) {
+                try {
+                    // Compute reminder time: drop date - 1 day at 13:00:00 UTC (8 AM CDT).
+                    // Note: doesn't auto-adjust for DST (CST = 14:00 UTC). Acceptable
+                    // ±1h drift for v1 — pg_cron runs every 15 min anyway.
+                    const dropD = new Date(plannedDropoffDate + 'T13:00:00Z');
+                    dropD.setUTCDate(dropD.getUTCDate() - 1);
+                    const reminderAtIso = dropD.toISOString();
+
+                    // Recipient: route to repair@ for v1 (same pattern as
+                    // lead_staff_notify per Session 50). Once a manager opens
+                    // the RO via Edit RO, the cascade can re-target to silo
+                    // managers if they edit the planned_dropoff_date.
+                    const recipients = ['repair@patriotsrvservices.com'];
+
+                    const niceDate = new Date(plannedDropoffDate + 'T12:00:00').toLocaleDateString(
+                        'en-US', { weekday:'long', month:'long', day:'numeric' });
+                    const subject = `${customerName} drop-off tomorrow (${niceDate})`;
+                    const services = formState.selectedSilos
+                        .map(k => SERVICE_SILOS.find(s => s.key === k)?.label || k).join(', ');
+                    const body = [
+                        `${customerName} is scheduled to drop off ${rv || 'their RV'} on ${niceDate}.`,
+                        '',
+                        `Services requested: ${services || 'TBD'}`,
+                        `RO ID: ${insertedRO.ro_id}`,
+                        '',
+                        `Reminder fires the morning before the planned drop-off so you can prep parking, intake, and any pre-arrival prep.`,
+                    ].join('\n');
+
+                    await getSB().from('scheduled_notifications').insert({
+                        ro_id:            insertedRO.id,
+                        scheduled_at:     reminderAtIso,
+                        recipient_emails: recipients,
+                        subject:          subject,
+                        body:             body,
+                        source:           'auto_dropoff_reminder',
+                        status:           'pending',
+                        created_by_email: 'customer-checkin',
+                    });
+                } catch (e) {
+                    console.warn('Auto drop-off reminder insert failed (non-fatal):', e);
                 }
             }
 

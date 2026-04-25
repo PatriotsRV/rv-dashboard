@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.410
+    PRVS Dashboard v1.411
     Released: 2026-04-25
+    v1.411: GH#ER1 + GH#ER2 — Unified Scheduled Notifications. New 🔔 Schedule Notification button on every RO card (compact + standard) opens a modal where managers can schedule a future email reminder for that RO with date+time, subject, body, and multi-select recipients (silo managers pre-checked from RO's repair_type). Existing scheduled rows for the RO show with status badges and Cancel buttons. Backed by new `scheduled_notifications` table (RLS authenticated full + anon INSERT only for source='auto_dropoff_reminder'). New `process-scheduled-notifications` edge function (service-role, Gmail SMTP) consumes pending rows on every-15-min pg_cron. ER#1 wired on top: customer-checkin.html "New Customer Entry" + "Drop Off / Scheduled" modes now persist `planned_dropoff_date` on repair_orders AND auto-INSERT a reminder row scheduled for the morning before (8 AM CDT = 13:00 UTC). Edit RO modal gains a "Planned Drop Off Date" field; on save, change cascade cancels existing pending auto-reminder and recreates with new date + silo-manager recipients. Bonus: previously orphaned `scheduledDropoffDate` form field in customer-checkin.html is now persisted. Required Roland actions: run `scheduled_notifications.sql` + `cron_process_scheduled_notifications.sql` migrations + deploy `process-scheduled-notifications` edge function with `--no-verify-jwt`.
     v1.410: GH#ER3 — New RO status "Ready to Work" added between "Awaiting parts" and "In progress". Pure manual flip — manager flips it when blockers are cleared and tech can start. New CSS class `.status-dropdown.status-ready-to-work` (lime #84cc16) wired through all 4 status dropdowns (filter buttons row, New RO modal, card view dropdown, compact view dropdown), STATUS_PROGRESS_MAP (slot 50, between Scheduled-45 and In-progress-60), statusColorMap, ALL_STATUSES order array, Spanish translation table ("Listo para Trabajar"). No DB migration required — `repair_orders.status` is plain TEXT (no CHECK constraint).
     v1.409: GH#30 Admin Delete RO — soft-delete with 1-week auto-scrub. New `deleted_at` + `deleted_by` columns on repair_orders (see add_deleted_at.sql). loadDataFromSupabase now filters `.is('deleted_at', null)` so soft-deleted ROs disappear from the board. 🗑 Delete RO admin-only button in Edit RO modal footer — confirm dialog shows FK counts (notes/parts/time logs/audit). 🗑 Recently Deleted admin-only header button (next to Closed ROs) opens a modal listing all soft-deleted ROs with Restore / Delete Now (name-type-to-confirm) actions and live auto-purge countdown. pg_cron `scrub-soft-deleted-ros` runs daily at 02:00 CDT and cascade-deletes children first (see cron_scrub_deleted_ros.sql). Also adds `.select()` + row-count assertion on the soft-delete UPDATE so silent RLS writes now throw (GH#29c belt-and-suspenders).
     v1.408: GH#29 Status-change bug fix — 13 write-path lookups (updateROUrgency, editField, updateROProgress, updateROStatus, uploadPhoto, uploadDocument, setMainPhoto, archiveRO, openScheduleModal, confirmSchedule, proceedWithSchedule, openPartsModal, openEditRO) were using `customerName + dateReceived` to resolve `currentFilteredData[index] → currentData` — when two ROs shared a (name, date) pair, findIndex returned the FIRST dupe and every write silently targeted the wrong row. Symptom: status/urgency/progress/field edits, photo uploads, archive-to-cashiered, schedule saves, and parts modal all operated on a dupe instead of the RO the user clicked. Fix: UUID-first lookup `ro._supabaseId ? findIndex(item._supabaseId === ro._supabaseId) : fallback(name+date)`. `_supabaseId` is populated from Supabase `row.id` at load time on every RO, so the fallback only ever fires for legacy/edge data.
@@ -3374,7 +3375,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.410</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.411</span>
             </div>
         </header>
 
@@ -6830,6 +6831,220 @@ Notes: ${notes}` : '',
             }
         }
 
+        // ── Scheduled Notifications (GH#ER1 + GH#ER2) ────────────────
+        // 🔔 Schedule a future email reminder/notification for an RO.
+        // Backed by `scheduled_notifications` table + every-15-min pg_cron
+        // → `process-scheduled-notifications` edge function.
+
+        async function openScheduleNotificationModal(filteredIndex) {
+            if (!getSB() || !supabaseSession) { showToast('Please sign in first.', 'warning'); return; }
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
+
+            document.getElementById('scheduleNotifModal')?.remove();
+
+            // Fetch existing scheduled notifications for this RO
+            let existing = [];
+            try {
+                const { data, error } = await getSB()
+                    .from('scheduled_notifications')
+                    .select('*')
+                    .eq('ro_id', ro._supabaseId)
+                    .order('scheduled_at', { ascending: true });
+                if (!error) existing = data || [];
+            } catch (e) { warn('Could not load existing notifications:', e); }
+
+            // Default scheduled time: tomorrow 8 AM local
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const defaultDate = tomorrow.toISOString().slice(0, 10);
+            const defaultTime = '08:00';
+
+            // Pre-check the silo manager(s) for this RO's repair_type
+            const siloKey = ro.repairType ? REPAIR_TYPE_TO_SILO[ro.repairType.toLowerCase()] : null;
+            const preChecked = new Set();
+            if (siloKey) {
+                (_staffCache || []).forEach(s => {
+                    if (s.service_silo === siloKey && (s.role === 'manager' || s.role === 'sr_manager')) {
+                        if (s.email) preChecked.add(s.email.toLowerCase());
+                    }
+                });
+            }
+
+            // Recipient list — managers + sr_managers + parts_managers, exclude shop role + techs
+            const eligibleStaff = (_staffCache || [])
+                .filter(s => s.active !== false && s.email && ['sr_manager','manager','parts_manager'].includes(s.role))
+                .sort((a, b) => {
+                    const order = { sr_manager: 0, manager: 1, parts_manager: 2 };
+                    return (order[a.role] - order[b.role]) || a.name.localeCompare(b.name);
+                });
+
+            const checkboxesHtml = eligibleStaff.map(s => {
+                const checked = preChecked.has(s.email.toLowerCase()) ? 'checked' : '';
+                const roleLabel = s.role === 'sr_manager' ? 'Sr Mgr' : s.role === 'parts_manager' ? 'Parts' : 'Mgr';
+                return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:0.85rem;">
+                    <input type="checkbox" class="sn-recipient" value="${escapeHtml(s.email)}" ${checked}>
+                    <span style="flex:1;">${escapeHtml(s.name)}</span>
+                    <span style="font-size:0.7rem;color:var(--text-secondary);">${roleLabel}${s.service_silo ? ' · ' + s.service_silo : ''}</span>
+                </label>`;
+            }).join('');
+
+            // Existing scheduled rows display
+            const existingHtml = existing.length > 0 ? `
+                <div style="margin-bottom:14px;padding:10px;background:var(--bg-tertiary);border-radius:8px;border:1px solid var(--border-color);">
+                    <div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Existing for this RO (${existing.length})</div>
+                    ${existing.map(n => {
+                        const sa = new Date(n.scheduled_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+                        const statusBadge = {
+                            pending:   '<span style="color:#0a84ff;">⏳ Pending</span>',
+                            sent:      '<span style="color:#34c759;">✓ Sent</span>',
+                            failed:    '<span style="color:#ff3b30;">✗ Failed</span>',
+                            cancelled: '<span style="color:#9ca3af;">⊘ Cancelled</span>',
+                        }[n.status] || n.status;
+                        const sourceTag = n.source === 'auto_dropoff_reminder' ? ' <span style="font-size:0.65rem;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:4px;">AUTO</span>' : '';
+                        const cancelBtn = n.status === 'pending' ? `<button onclick="cancelScheduleNotification('${n.id}', ${filteredIndex})" style="padding:3px 8px;border-radius:5px;border:1px solid var(--border-color);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:0.7rem;">Cancel</button>` : '';
+                        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed var(--border-color);font-size:0.8rem;">
+                            <span style="flex:1;"><strong>${escapeHtml(n.subject)}</strong>${sourceTag}<br><span style="color:var(--text-secondary);font-size:0.7rem;">${sa} → ${(n.recipient_emails || []).length} recipient(s) · ${statusBadge}</span></span>
+                            ${cancelBtn}
+                        </div>`;
+                    }).join('')}
+                </div>
+            ` : '';
+
+            const modal = document.createElement('div');
+            modal.id = 'scheduleNotifModal';
+            modal.className = 'modal-overlay active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width:560px;max-height:90vh;overflow-y:auto;">
+                    <div class="modal-header">
+                        <h2 class="modal-title">🔔 Schedule Notification</h2>
+                        <button class="modal-close" onclick="closeScheduleNotificationModal()">×</button>
+                    </div>
+                    <div style="padding:0 0 12px;color:var(--text-secondary);font-size:0.85rem;border-bottom:1px solid var(--border-color);margin-bottom:14px;">
+                        <strong style="color:var(--text-primary);">${escapeHtml(ro.customerName || '—')}</strong>
+                        &nbsp;·&nbsp; ${escapeHtml(ro.rv) || 'RV'}
+                        ${ro.roId ? `&nbsp;·&nbsp; <span style="font-family:'JetBrains Mono',monospace;color:var(--accent-info);font-size:0.78rem;">${escapeHtml(ro.roId)}</span>` : ''}
+                    </div>
+
+                    ${existingHtml}
+
+                    <div style="display:flex;gap:10px;margin-bottom:12px;">
+                        <div style="flex:1;">
+                            <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Date</label>
+                            <input type="date" id="snDate" value="${defaultDate}" min="${defaultDate.slice(0,10)}"
+                                style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;box-sizing:border-box;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Time</label>
+                            <input type="time" id="snTime" value="${defaultTime}"
+                                style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Subject</label>
+                        <input type="text" id="snSubject" maxlength="120" placeholder="e.g. Window install needs Jesus on site"
+                            style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;box-sizing:border-box;">
+                    </div>
+
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Message</label>
+                        <textarea id="snBody" rows="4" placeholder="Details for the recipient(s)..."
+                            style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;resize:vertical;box-sizing:border-box;line-height:1.5;"></textarea>
+                    </div>
+
+                    <div style="margin-bottom:14px;">
+                        <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Recipients <span style="color:var(--accent-info);font-weight:400;text-transform:none;">(silo managers pre-selected)</span></label>
+                        <div style="background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;padding:6px;max-height:180px;overflow-y:auto;">
+                            ${checkboxesHtml || '<div style="padding:14px;color:var(--text-secondary);font-size:0.85rem;text-align:center;">No staff loaded.</div>'}
+                        </div>
+                    </div>
+
+                    <button id="snSubmitBtn" onclick="saveScheduleNotification(${filteredIndex})"
+                        style="width:100%;padding:12px;border-radius:8px;border:none;background:linear-gradient(135deg,#0a84ff,#0066cc);color:white;font-weight:700;cursor:pointer;font-size:0.95rem;letter-spacing:0.02em;">
+                        🔔 Schedule
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            setTimeout(() => document.getElementById('snSubject')?.focus(), 120);
+        }
+
+        function closeScheduleNotificationModal() {
+            document.getElementById('scheduleNotifModal')?.remove();
+        }
+
+        async function saveScheduleNotification(filteredIndex) {
+            if (!getSB() || !supabaseSession) { showToast('Session expired — please refresh.', 'warning'); return; }
+            const ro = currentFilteredData[filteredIndex];
+            if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
+
+            const date    = document.getElementById('snDate')?.value;
+            const time    = document.getElementById('snTime')?.value || '08:00';
+            const subject = (document.getElementById('snSubject')?.value || '').trim();
+            const body    = (document.getElementById('snBody')?.value || '').trim();
+            const recipients = Array.from(document.querySelectorAll('.sn-recipient:checked'))
+                .map(cb => cb.value).filter(Boolean);
+
+            // Validation
+            if (!date)              { showToast('Pick a date.',     'warning'); return; }
+            if (!subject)           { showToast('Subject is required.', 'warning'); return; }
+            if (!body)              { showToast('Message is required.', 'warning'); return; }
+            if (recipients.length === 0) { showToast('Pick at least one recipient.', 'warning'); return; }
+
+            // Build scheduled_at as a local-time ISO. Browser interprets the
+            // date+time as local time; toISOString converts to UTC for storage.
+            const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
+
+            // Reject past dates (race window allows 60 sec slack for clock skew)
+            if (new Date(scheduledAt).getTime() < Date.now() - 60_000) {
+                showToast('Scheduled time is in the past.', 'warning'); return;
+            }
+
+            const btn = document.getElementById('snSubmitBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving...'; }
+
+            try {
+                const { error } = await getSB().from('scheduled_notifications').insert({
+                    ro_id:            ro._supabaseId,
+                    scheduled_at:     scheduledAt,
+                    recipient_emails: recipients,
+                    subject:          subject,
+                    body:             body,
+                    source:           'manual',
+                    status:           'pending',
+                    created_by_email: currentUser?.email || 'unknown',
+                });
+                if (error) throw error;
+
+                showToast(`🔔 Notification scheduled for ${recipients.length} recipient(s).`, 'success');
+                closeScheduleNotificationModal();
+            } catch (err) {
+                warn('Schedule notification failed:', err);
+                showToast('Failed to schedule: ' + (err.message || err), 'danger');
+                if (btn) { btn.disabled = false; btn.textContent = '🔔 Schedule'; }
+            }
+        }
+
+        async function cancelScheduleNotification(notifId, filteredIndex) {
+            if (!getSB() || !supabaseSession) { showToast('Session expired.', 'warning'); return; }
+            try {
+                const { error } = await getSB().from('scheduled_notifications')
+                    .update({ status: 'cancelled' })
+                    .eq('id', notifId)
+                    .eq('status', 'pending');
+                if (error) throw error;
+                showToast('Notification cancelled.', 'success');
+                // Reopen the modal so the user sees the updated list
+                closeScheduleNotificationModal();
+                openScheduleNotificationModal(filteredIndex);
+            } catch (err) {
+                warn('Cancel failed:', err);
+                showToast('Failed to cancel: ' + (err.message || err), 'danger');
+            }
+        }
+
+
         // ── Parts Management ─────────────────────────────────────────
 
         let partsData = {}; // Cache: { roId: [parts array] }
@@ -7670,7 +7885,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.410 - Released 2026-04-25');
+            log('📦 PRVS Dashboard v1.411 - Released 2026-04-25');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -7848,6 +8063,7 @@ Notes: ${notes}` : '',
                     case 'messages':          openKenectModal(idx);               break;
                     case 'set-parts-status':  openPartsStatusModal(idx);          break;
                     case 'schedule':          openScheduleModal(idx);             break;
+                    case 'schedule-notification': openScheduleNotificationModal(idx); break;
                     case 'archive':           archiveRO(idx);                     break;
                 }
             });
@@ -8616,6 +8832,7 @@ Notes: ${notes}` : '',
                             <button class="compact-action-btn" data-action="edit-ro" data-idx="${index}" title="Edit RO">✏️</button>
                             <button class="compact-action-btn" data-action="manage-parts" data-idx="${index}" title="Manage Parts">🔩</button>
                             <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
+                            <button class="compact-action-btn" data-action="schedule-notification" data-idx="${index}" title="Schedule Notification">🔔</button>
                             ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
                         </div>
                         <div class="compact-mobile-summary">
@@ -8928,6 +9145,7 @@ Notes: ${notes}` : '',
                         </div>
                         <div class="card-actions-secondary">
                         ${canSeeWorkList() ? `<button class="card-secondary-btn" data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
+                        <button class="card-secondary-btn" data-action="schedule-notification" data-idx="${index}" title="Schedule a future email notification for this RO">🔔 ${t('Notify')}</button>
                         ${ro.customerPhone ? `
                         <button class="card-secondary-btn kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer">
                             💬 ${t('Messages')}
@@ -9518,6 +9736,8 @@ Notes: ${notes}` : '',
             'Add Photo / Docs': 'Agregar Foto / Docs',
             '✏️ Edit RO': '✏️ Editar OR',
             '🔩 Manage Parts': '🔩 Gestionar Partes',
+            'Notify': 'Notificar',
+            '🔔 Schedule Notification': '🔔 Programar Notificación',
             '🔩 Request Parts': '🔩 Solicitar Partes',
             '✅ Mark Parts Ordered': '✅ Confirmar Pedido',
             'Schedule': 'Programar',
@@ -10464,6 +10684,7 @@ Notes: ${notes}` : '',
                 partsStatus:              row.parts_status || null,
                 requestedByEmail:         row.requested_by_email || null,
                 isTraining:               !!row.is_training,
+                plannedDropoffDate:       row.planned_dropoff_date || null,
                 _supabaseId:              row.id,  // keep uuid for updates
             };
         }
@@ -10751,6 +10972,7 @@ Notes: ${notes}` : '',
                     customer_type:  formData.customerType || null,
                     ro_type:        currentROType || 'standard',
                     is_training:    !!formData.isTraining,
+                    planned_dropoff_date: formData.plannedDropoffDate || null,
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -10789,6 +11011,9 @@ Notes: ${notes}` : '',
                 return;
             }
 
+            const newPlannedDropoff = formData.plannedDropoffDate || null;
+            const oldPlannedDropoff = ro.plannedDropoffDate || null;
+
             const { error } = await getSB().from('repair_orders').update({
                 customer_name:  formData.customerName,
                 phone:          formData.customerPhone || null,
@@ -10805,10 +11030,70 @@ Notes: ${notes}` : '',
                 parking_spot:   formData.parkingSpot || null,
                 ro_type:        currentROType || 'standard',
                 is_training:    !!formData.isTraining,
+                planned_dropoff_date: newPlannedDropoff,
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
             if (error) throw error;
+
+            // GH#ER1 — cascade planned_dropoff_date change to auto-reminder row.
+            // If the date changed (or was cleared/added), cancel any pending
+            // auto_dropoff_reminder rows for this RO and recreate one with the
+            // new date if applicable.
+            if (newPlannedDropoff !== oldPlannedDropoff) {
+                try {
+                    // Cancel existing pending auto rows for this RO
+                    await getSB().from('scheduled_notifications')
+                        .update({ status: 'cancelled' })
+                        .eq('ro_id', supabaseId)
+                        .eq('source', 'auto_dropoff_reminder')
+                        .eq('status', 'pending');
+
+                    // Insert fresh if a date is now set
+                    if (newPlannedDropoff) {
+                        const dropD = new Date(newPlannedDropoff + 'T13:00:00Z');  // 8 AM CDT
+                        dropD.setUTCDate(dropD.getUTCDate() - 1);
+                        const reminderAtIso = dropD.toISOString();
+
+                        // Recipients: silo manager(s) for repair_type, fall back to repair@
+                        const siloKey = formData.repairType ? REPAIR_TYPE_TO_SILO[String(formData.repairType).toLowerCase()] : null;
+                        let recipients = [];
+                        if (siloKey && Array.isArray(_staffCache)) {
+                            recipients = _staffCache
+                                .filter(s => s.active !== false && s.email
+                                    && (s.role === 'manager' || s.role === 'sr_manager')
+                                    && (s.service_silo === siloKey || s.service_silo == null && s.role === 'sr_manager'))
+                                .map(s => s.email);
+                        }
+                        if (recipients.length === 0) recipients = ['repair@patriotsrvservices.com'];
+
+                        const niceDate = new Date(newPlannedDropoff + 'T12:00:00').toLocaleDateString(
+                            'en-US', { weekday:'long', month:'long', day:'numeric' });
+                        const subject = `${formData.customerName} drop-off tomorrow (${niceDate})`;
+                        const body = [
+                            `${formData.customerName} is scheduled to drop off ${formData.rv || 'their RV'} on ${niceDate}.`,
+                            '',
+                            `Service: ${formData.repairType || 'TBD'}`,
+                            `RO ID: ${ro.roId}`,
+                            '',
+                            `Reminder fires the morning before the planned drop-off so you can prep parking, intake, and any pre-arrival prep.`,
+                        ].join('\n');
+
+                        await getSB().from('scheduled_notifications').insert({
+                            ro_id:            supabaseId,
+                            scheduled_at:     reminderAtIso,
+                            recipient_emails: recipients,
+                            subject:          subject,
+                            body:             body,
+                            source:           'auto_dropoff_reminder',
+                            status:           'pending',
+                            created_by_email: currentUser?.email || 'edit-ro',
+                        });
+                    }
+                } catch (cascadeErr) {
+                    warn('Auto-reminder cascade failed (non-fatal):', cascadeErr);
+                }
+            }
 
             // Write audit log — build array of changed fields
             const auditChanges = Object.entries(formData).map(([field, value]) => ({
@@ -14387,6 +14672,11 @@ function toggleWOTasks(tasksId, chevId) {
                     <div class="form-field shop-hide">
                         <label class="form-label">Promised Date</label>
                         <input type="date" class="form-input" name="promisedDate">
+                    </div>
+                    <div class="form-field shop-hide">
+                        <label class="form-label">Planned Drop Off Date</label>
+                        <input type="date" class="form-input" name="plannedDropoffDate">
+                        <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">When the customer plans to drop off. Auto-fires a reminder email the morning before.</div>
                     </div>
                     <div class="form-field shop-hide">
                         <label class="form-label">Date RV Arrived on Lot</label>
