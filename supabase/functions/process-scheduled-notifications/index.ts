@@ -174,6 +174,25 @@ Deno.serve(async (req: Request) => {
         }).eq("id", row.id);
         sent++;
         results.push({ id: row.id, status: "sent", recipients: recipients.length });
+
+        // Audit trail to RO Status notes (execution log)
+        if (row.ro_id) {
+          try {
+            const ts = new Date().toLocaleString("en-US", {
+              timeZone: "America/Chicago",
+              month: "2-digit", day: "2-digit", year: "2-digit",
+              hour: "2-digit", minute: "2-digit",
+            });
+            const sourceLabel = row.source === "auto_dropoff_reminder" ? "AUTO DROP-OFF REMINDER" : "NOTIFICATION";
+            await sb.from("notes").insert({
+              ro_id: row.ro_id,
+              type:  "ro_status",
+              body:  `[${ts} - Scheduler] 🔔 ${sourceLabel} SENT: "${row.subject}" → ${recipients.length} recipient(s)`,
+            });
+          } catch (auditErr) {
+            console.warn(`Audit note insert failed for row ${row.id}:`, auditErr);
+          }
+        }
       } catch (err: any) {
         const msg = err?.message || String(err);
         console.error(`Send failed for row ${row.id}:`, msg);
@@ -184,6 +203,22 @@ Deno.serve(async (req: Request) => {
         }).eq("id", row.id);
         failed++;
         results.push({ id: row.id, status: "failed", reason: msg });
+
+        // Audit trail for failures too
+        if (row.ro_id) {
+          try {
+            const ts = new Date().toLocaleString("en-US", {
+              timeZone: "America/Chicago",
+              month: "2-digit", day: "2-digit", year: "2-digit",
+              hour: "2-digit", minute: "2-digit",
+            });
+            await sb.from("notes").insert({
+              ro_id: row.ro_id,
+              type:  "ro_status",
+              body:  `[${ts} - Scheduler] 🔔 NOTIFICATION FAILED: "${row.subject}" → ${msg.slice(0, 200)}`,
+            });
+          } catch (_) { /* non-fatal */ }
+        }
       }
     }
 

@@ -1936,6 +1936,17 @@
                         status:           'pending',
                         created_by_email: 'customer-checkin',
                     });
+
+                    // Audit trail to RO Status notes
+                    const ts = new Date().toLocaleString('en-US', {
+                        month: '2-digit', day: '2-digit', year: '2-digit',
+                        hour: '2-digit', minute: '2-digit',
+                    });
+                    await getSB().from('notes').insert({
+                        ro_id: insertedRO.id,
+                        type:  'ro_status',
+                        body:  `[${ts} - Customer Check-In] 🔔 AUTO DROP-OFF REMINDER SCHEDULED: planned drop-off ${niceDate}, reminder fires morning before to ${recipients.length} recipient(s)`,
+                    });
                 } catch (e) {
                     console.warn('Auto drop-off reminder insert failed (non-fatal):', e);
                 }

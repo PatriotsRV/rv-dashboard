@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.411
+    PRVS Dashboard v1.412
     Released: 2026-04-25
+    v1.412: Schedule Notification refinements — (1) prominent red-outlined banner button moved to top of every standard RO card with new label "Schedule Important Tasks or Update Notifications". (2) Old "Notify" button in card-actions-secondary removed. (3) Full audit trail to RO Status notes for every notification lifecycle event: scheduled (manual + auto), cancelled, sent (success), failed. Notes follow the existing `[ts - user] PREFIX: details` convention used by parts requests. Edge function process-scheduled-notifications writes the SENT/FAILED notes via service role. Spanish translation added. Same-day scheduling fix from earlier hotfix is included.
     v1.411: GH#ER1 + GH#ER2 — Unified Scheduled Notifications. New 🔔 Schedule Notification button on every RO card (compact + standard) opens a modal where managers can schedule a future email reminder for that RO with date+time, subject, body, and multi-select recipients (silo managers pre-checked from RO's repair_type). Existing scheduled rows for the RO show with status badges and Cancel buttons. Backed by new `scheduled_notifications` table (RLS authenticated full + anon INSERT only for source='auto_dropoff_reminder'). New `process-scheduled-notifications` edge function (service-role, Gmail SMTP) consumes pending rows on every-15-min pg_cron. ER#1 wired on top: customer-checkin.html "New Customer Entry" + "Drop Off / Scheduled" modes now persist `planned_dropoff_date` on repair_orders AND auto-INSERT a reminder row scheduled for the morning before (8 AM CDT = 13:00 UTC). Edit RO modal gains a "Planned Drop Off Date" field; on save, change cascade cancels existing pending auto-reminder and recreates with new date + silo-manager recipients. Bonus: previously orphaned `scheduledDropoffDate` form field in customer-checkin.html is now persisted. Required Roland actions: run `scheduled_notifications.sql` + `cron_process_scheduled_notifications.sql` migrations + deploy `process-scheduled-notifications` edge function with `--no-verify-jwt`.
     v1.410: GH#ER3 — New RO status "Ready to Work" added between "Awaiting parts" and "In progress". Pure manual flip — manager flips it when blockers are cleared and tech can start. New CSS class `.status-dropdown.status-ready-to-work` (lime #84cc16) wired through all 4 status dropdowns (filter buttons row, New RO modal, card view dropdown, compact view dropdown), STATUS_PROGRESS_MAP (slot 50, between Scheduled-45 and In-progress-60), statusColorMap, ALL_STATUSES order array, Spanish translation table ("Listo para Trabajar"). No DB migration required — `repair_orders.status` is plain TEXT (no CHECK constraint).
     v1.409: GH#30 Admin Delete RO — soft-delete with 1-week auto-scrub. New `deleted_at` + `deleted_by` columns on repair_orders (see add_deleted_at.sql). loadDataFromSupabase now filters `.is('deleted_at', null)` so soft-deleted ROs disappear from the board. 🗑 Delete RO admin-only button in Edit RO modal footer — confirm dialog shows FK counts (notes/parts/time logs/audit). 🗑 Recently Deleted admin-only header button (next to Closed ROs) opens a modal listing all soft-deleted ROs with Restore / Delete Now (name-type-to-confirm) actions and live auto-purge countdown. pg_cron `scrub-soft-deleted-ros` runs daily at 02:00 CDT and cascade-deletes children first (see cron_scrub_deleted_ros.sql). Also adds `.select()` + row-count assertion on the soft-delete UPDATE so silent RLS writes now throw (GH#29c belt-and-suspenders).
@@ -3375,7 +3376,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.411</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.412</span>
             </div>
         </header>
 
@@ -7019,6 +7020,23 @@ Notes: ${notes}` : '',
                 });
                 if (error) throw error;
 
+                // Audit trail to RO Status notes (Item 4)
+                try {
+                    const ts = new Date().toLocaleString('en-US', {
+                        month: '2-digit', day: '2-digit', year: '2-digit',
+                        hour: '2-digit', minute: '2-digit',
+                    });
+                    const userName = currentUser?.name || 'Unknown';
+                    const niceTime = new Date(scheduledAt).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                    });
+                    await getSB().from('notes').insert({
+                        ro_id: ro._supabaseId,
+                        type:  'ro_status',
+                        body:  `[${ts} - ${userName}] 🔔 NOTIFICATION SCHEDULED: "${subject}" → fires ${niceTime} to ${recipients.length} recipient(s)`,
+                    });
+                } catch (auditErr) { warn('Audit note insert failed (non-fatal):', auditErr); }
+
                 showToast(`🔔 Notification scheduled for ${recipients.length} recipient(s).`, 'success');
                 closeScheduleNotificationModal();
             } catch (err) {
@@ -7031,11 +7049,31 @@ Notes: ${notes}` : '',
         async function cancelScheduleNotification(notifId, filteredIndex) {
             if (!getSB() || !supabaseSession) { showToast('Session expired.', 'warning'); return; }
             try {
+                // Fetch the row first so we can log details to the RO note
+                const { data: notifRow } = await getSB().from('scheduled_notifications')
+                    .select('*').eq('id', notifId).maybeSingle();
+
                 const { error } = await getSB().from('scheduled_notifications')
                     .update({ status: 'cancelled' })
                     .eq('id', notifId)
                     .eq('status', 'pending');
                 if (error) throw error;
+
+                // Audit trail
+                if (notifRow?.ro_id) {
+                    try {
+                        const ts = new Date().toLocaleString('en-US', {
+                            month: '2-digit', day: '2-digit', year: '2-digit',
+                            hour: '2-digit', minute: '2-digit',
+                        });
+                        await getSB().from('notes').insert({
+                            ro_id: notifRow.ro_id,
+                            type:  'ro_status',
+                            body:  `[${ts} - ${currentUser?.name || 'Unknown'}] 🔔 NOTIFICATION CANCELLED: "${notifRow.subject}"`,
+                        });
+                    } catch (auditErr) { warn('Audit note insert failed:', auditErr); }
+                }
+
                 showToast('Notification cancelled.', 'success');
                 // Reopen the modal so the user sees the updated list
                 closeScheduleNotificationModal();
@@ -7887,7 +7925,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.411 - Released 2026-04-25');
+            log('📦 PRVS Dashboard v1.412 - Released 2026-04-25');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -8897,6 +8935,11 @@ Notes: ${notes}` : '',
                 /* ── Standard Card View (condensed / regular / expanded) ─ */
                 return `
                     <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
+                        <button class="schedule-notif-banner-btn" data-action="schedule-notification" data-idx="${index}"
+                                title="Schedule a future email reminder for this RO"
+                                style="display:block;width:calc(100% - 20px);margin:8px 10px 14px 10px;padding:10px 12px;border:2px solid #dc2626;background:rgba(220,38,38,0.08);color:#dc2626;font-weight:700;font-size:0.82rem;line-height:1.25;border-radius:8px;cursor:pointer;text-align:center;letter-spacing:0.02em;text-transform:uppercase;">
+                            🔔 ${t('Schedule Important Tasks or Update Notifications')}
+                        </button>
                         ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
@@ -9147,7 +9190,6 @@ Notes: ${notes}` : '',
                         </div>
                         <div class="card-actions-secondary">
                         ${canSeeWorkList() ? `<button class="card-secondary-btn" data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
-                        <button class="card-secondary-btn" data-action="schedule-notification" data-idx="${index}" title="Schedule a future email notification for this RO">🔔 ${t('Notify')}</button>
                         ${ro.customerPhone ? `
                         <button class="card-secondary-btn kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer">
                             💬 ${t('Messages')}
@@ -9740,6 +9782,7 @@ Notes: ${notes}` : '',
             '🔩 Manage Parts': '🔩 Gestionar Partes',
             'Notify': 'Notificar',
             '🔔 Schedule Notification': '🔔 Programar Notificación',
+            'Schedule Important Tasks or Update Notifications': 'Programar Tareas Importantes o Actualizar Notificaciones',
             '🔩 Request Parts': '🔩 Solicitar Partes',
             '✅ Mark Parts Ordered': '✅ Confirmar Pedido',
             'Schedule': 'Programar',
@@ -11090,6 +11133,28 @@ Notes: ${notes}` : '',
                             source:           'auto_dropoff_reminder',
                             status:           'pending',
                             created_by_email: currentUser?.email || 'edit-ro',
+                        });
+
+                        // Audit trail
+                        const ts = new Date().toLocaleString('en-US', {
+                            month: '2-digit', day: '2-digit', year: '2-digit',
+                            hour: '2-digit', minute: '2-digit',
+                        });
+                        await getSB().from('notes').insert({
+                            ro_id: supabaseId,
+                            type:  'ro_status',
+                            body:  `[${ts} - ${currentUser?.name || 'Edit RO'}] 🔔 AUTO DROP-OFF REMINDER SCHEDULED: planned drop-off ${niceDate}, reminder fires morning before to ${recipients.length} recipient(s)`,
+                        });
+                    } else if (oldPlannedDropoff) {
+                        // Date was cleared — log the cancellation
+                        const ts = new Date().toLocaleString('en-US', {
+                            month: '2-digit', day: '2-digit', year: '2-digit',
+                            hour: '2-digit', minute: '2-digit',
+                        });
+                        await getSB().from('notes').insert({
+                            ro_id: supabaseId,
+                            type:  'ro_status',
+                            body:  `[${ts} - ${currentUser?.name || 'Edit RO'}] 🔔 AUTO DROP-OFF REMINDER CANCELLED: planned drop-off date was cleared`,
                         });
                     }
                 } catch (cascadeErr) {
