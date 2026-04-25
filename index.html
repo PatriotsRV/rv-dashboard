@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.409
-    Released: 2026-04-18
+    PRVS Dashboard v1.410
+    Released: 2026-04-25
+    v1.410: GH#ER3 — New RO status "Ready to Work" added between "Awaiting parts" and "In progress". Pure manual flip — manager flips it when blockers are cleared and tech can start. New CSS class `.status-dropdown.status-ready-to-work` (lime #84cc16) wired through all 4 status dropdowns (filter buttons row, New RO modal, card view dropdown, compact view dropdown), STATUS_PROGRESS_MAP (slot 50, between Scheduled-45 and In-progress-60), statusColorMap, ALL_STATUSES order array, Spanish translation table ("Listo para Trabajar"). No DB migration required — `repair_orders.status` is plain TEXT (no CHECK constraint).
     v1.409: GH#30 Admin Delete RO — soft-delete with 1-week auto-scrub. New `deleted_at` + `deleted_by` columns on repair_orders (see add_deleted_at.sql). loadDataFromSupabase now filters `.is('deleted_at', null)` so soft-deleted ROs disappear from the board. 🗑 Delete RO admin-only button in Edit RO modal footer — confirm dialog shows FK counts (notes/parts/time logs/audit). 🗑 Recently Deleted admin-only header button (next to Closed ROs) opens a modal listing all soft-deleted ROs with Restore / Delete Now (name-type-to-confirm) actions and live auto-purge countdown. pg_cron `scrub-soft-deleted-ros` runs daily at 02:00 CDT and cascade-deletes children first (see cron_scrub_deleted_ros.sql). Also adds `.select()` + row-count assertion on the soft-delete UPDATE so silent RLS writes now throw (GH#29c belt-and-suspenders).
     v1.408: GH#29 Status-change bug fix — 13 write-path lookups (updateROUrgency, editField, updateROProgress, updateROStatus, uploadPhoto, uploadDocument, setMainPhoto, archiveRO, openScheduleModal, confirmSchedule, proceedWithSchedule, openPartsModal, openEditRO) were using `customerName + dateReceived` to resolve `currentFilteredData[index] → currentData` — when two ROs shared a (name, date) pair, findIndex returned the FIRST dupe and every write silently targeted the wrong row. Symptom: status/urgency/progress/field edits, photo uploads, archive-to-cashiered, schedule saves, and parts modal all operated on a dupe instead of the RO the user clicked. Fix: UUID-first lookup `ro._supabaseId ? findIndex(item._supabaseId === ro._supabaseId) : fallback(name+date)`. `_supabaseId` is populated from Supabase `row.id` at load time on every RO, so the fallback only ever fires for legacy/edge data.
     v1.407: Header tile bar wrap fix (Session 51) — `.view-mode-section` now `flex-wrap: wrap` with `row-gap: 12px`; stripped `margin-left: 12px` from all 8 header buttons (Admin Settings, Solar, Analytics, Work List Report, Closed ROs, Customer Check-In, Wishes, Merge Dupes) so the container `gap: 12px` cleanly handles spacing across both rows. Buttons now wrap to a second row on narrow viewports instead of overflowing off-screen — the green 📋 Customer Check-In button is now visible at all widths.
@@ -93,6 +94,7 @@
             --status-approval: #ffcc00;
             --status-not-on-lot: #9ca3af;
             --status-on-lot: #34c759;
+            --status-ready-to-work: #84cc16;
             --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
@@ -1394,6 +1396,12 @@
             background: rgba(255, 149, 0, 0.2);
             color: var(--status-parts);
             border-color: var(--status-parts);
+        }
+
+        .status-dropdown.status-ready-to-work {
+            background: rgba(132, 204, 22, 0.2);
+            color: var(--status-ready-to-work);
+            border-color: var(--status-ready-to-work);
         }
 
         .status-dropdown.status-waiting-for-qa-qc {
@@ -3366,7 +3374,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.409</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.410</span>
             </div>
         </header>
 
@@ -3519,6 +3527,7 @@
                             <button class="filter-btn" data-filter="On Lot" data-type="status">On Lot</button>
                             <button class="filter-btn" data-filter="Awaiting Approval" data-type="status">Awaiting Approval</button>
                             <button class="filter-btn" data-filter="Awaiting parts" data-type="status">Awaiting Parts</button>
+                            <button class="filter-btn" data-filter="Ready to Work" data-type="status">Ready to Work</button>
                             <button class="filter-btn" data-filter="In progress" data-type="status">In Progress</button>
                             <button class="filter-btn" data-filter="Repairs Completed" data-type="status">Repairs Completed</button>
                             <button class="filter-btn" data-filter="Waiting for QA/QC" data-type="status">Waiting for QA/QC</button>
@@ -3987,6 +3996,7 @@
             'Awaiting Approval': 20,
             'Awaiting parts': 30,
             'Scheduled': 45,
+            'Ready to Work': 50,
             'In progress': 60,
             'Repairs Completed': 80,
             'Waiting for QA/QC': 85,
@@ -7660,7 +7670,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.409 - Released 2026-04-18');
+            log('📦 PRVS Dashboard v1.410 - Released 2026-04-25');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -8627,6 +8637,7 @@ Notes: ${notes}` : '',
                                         <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
                                         <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>Awaiting Parts</option>
                                         <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
+                                        <option value="Ready to Work" ${ro.status === 'Ready to Work' ? 'selected' : ''}>Ready to Work</option>
                                         <option value="In progress" ${ro.status === 'In progress' ? 'selected' : ''}>In Progress</option>
                                         <option value="Repairs Completed" ${ro.status === 'Repairs Completed' ? 'selected' : ''}>Repairs Completed</option>
                                         <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>Waiting for QA/QC</option>
@@ -8761,6 +8772,7 @@ Notes: ${notes}` : '',
                                 <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>${t('Awaiting Approval')}</option>
                                 <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>${t('Awaiting Parts')}</option>
                                 <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>${t('Scheduled')}</option>
+                                <option value="Ready to Work" ${ro.status === 'Ready to Work' ? 'selected' : ''}>${t('Ready to Work')}</option>
                                 <option value="In progress" ${ro.status === 'In progress' ? 'selected' : ''}>${t('In Progress')}</option>
                                 <option value="Repairs Completed" ${ro.status === 'Repairs Completed' ? 'selected' : ''}>${t('Repairs Completed')}</option>
                                 <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>${t('Waiting for QA/QC')}</option>
@@ -9308,6 +9320,7 @@ Notes: ${notes}` : '',
                 'On Lot':            '#34c759',
                 'Awaiting Approval': '#ffcc00',
                 'Awaiting parts':    '#ff9500',
+                'Ready to Work':     '#84cc16',
                 'In progress':       '#0a84ff',
                 'Repairs Completed': '#5e5ce6',
                 'Waiting for QA/QC': '#FF1493',
@@ -9317,7 +9330,7 @@ Notes: ${notes}` : '',
 
             const ALL_STATUSES = [
                 'Not On Lot', 'On Lot', 'Awaiting Approval', 'Awaiting parts',
-                'In progress', 'Repairs Completed', 'Waiting for QA/QC',
+                'Ready to Work', 'In progress', 'Repairs Completed', 'Waiting for QA/QC',
                 'Ready for pickup', 'Delivered/Cashed Out'
             ];
 
@@ -9449,6 +9462,7 @@ Notes: ${notes}` : '',
             'Awaiting parts': 'Esperando Partes',
             'Awaiting Parts': 'Esperando Partes',
             'Scheduled': 'Programado',
+            'Ready to Work': 'Listo para Trabajar',
             'In progress': 'En Progreso',
             'In Progress': 'En Progreso',
             'Repairs Completed': 'Reparaciones Completadas',
@@ -14344,6 +14358,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="On Lot">On Lot</option>
                             <option value="Awaiting Approval">Awaiting Approval</option>
                             <option value="Awaiting parts">Awaiting parts</option>
+                            <option value="Ready to Work">Ready to Work</option>
                             <option value="In progress">In progress</option>
                             <option value="Repairs Completed">Repairs Completed</option>
                             <option value="Waiting for QA/QC">Waiting for QA/QC</option>
