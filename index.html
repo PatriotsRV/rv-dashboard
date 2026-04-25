@@ -6854,7 +6854,9 @@ Notes: ${notes}` : '',
                 if (!error) existing = data || [];
             } catch (e) { warn('Could not load existing notifications:', e); }
 
-            // Default scheduled time: tomorrow 8 AM local
+            // Default scheduled time: tomorrow 8 AM local. Min selectable date
+            // is TODAY (you may need to schedule something for later today).
+            const todayStr = new Date().toISOString().slice(0, 10);
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const defaultDate = tomorrow.toISOString().slice(0, 10);
@@ -6931,7 +6933,7 @@ Notes: ${notes}` : '',
                     <div style="display:flex;gap:10px;margin-bottom:12px;">
                         <div style="flex:1;">
                             <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Date</label>
-                            <input type="date" id="snDate" value="${defaultDate}" min="${defaultDate.slice(0,10)}"
+                            <input type="date" id="snDate" value="${defaultDate}" min="${todayStr}"
                                 style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;box-sizing:border-box;">
                         </div>
                         <div style="flex:1;">
