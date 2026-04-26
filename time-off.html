@@ -354,6 +354,8 @@ function log(...a) { if (DEBUG) console.log(...a); }
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
+const PRVS_NOTIFY_URL      = SUPABASE_URL + '/functions/v1/send-quote-email';
 
 // ── STATE ──
 let _sb = null, supabaseSession = null, userRoles = [], currentUser = null;
@@ -727,6 +729,7 @@ async function submitRequest() {
     showToast('Time off recorded ✓', 'success');
     closeRequestModal();
     await loadTimeOffData();
+    fireTimeOffNotifications(empEmail, empName, type, start, end, notes);  // fire-and-forget
 }
 
 // ── DELETE ──
@@ -736,6 +739,83 @@ async function deleteRequest(id) {
     if (error) { showToast('Delete failed: ' + error.message, 'error'); return; }
     showToast('Record deleted', 'info');
     await loadTimeOffData();
+}
+
+// ── NOTIFICATIONS ──
+// Fires immediately on submit + schedules day-before + morning-of reminders.
+// Fire-and-forget — called without await so it never blocks the UI.
+async function fireTimeOffNotifications(empEmail, empName, type, start, end, notes) {
+    try {
+        // Recipients: all active sr_manager / manager / admin staff
+        const { data: mgrs } = await getSB()
+            .from('staff')
+            .select('email, name')
+            .eq('active', true)
+            .in('role', ['sr_manager', 'manager', 'admin']);
+        const recipients = (mgrs || []).map(m => m.email).filter(Boolean);
+        if (!recipients.length) { log('No notification recipients found'); return; }
+
+        const days = countDays(start, end);
+
+        // ── Immediate: submitted context ──────────────────────────────────────
+        try {
+            await fetch(PRVS_NOTIFY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-prvs-secret': PRVS_FUNCTION_SECRET,
+                },
+                body: JSON.stringify({
+                    type:            'time_off_notify',
+                    context:         'submitted',
+                    recipients,
+                    employeeName:    empName,
+                    employeeEmail:   empEmail,
+                    requestType:     type,
+                    startDate:       start,
+                    endDate:         end,
+                    totalDays:       days,
+                    notes:           notes || null,
+                    submittedByName: currentUser.name || currentUser.email,
+                }),
+            });
+        } catch(e) { console.warn('Immediate time-off notification failed:', e); }
+
+        // ── Scheduled: day-before + morning-of (future dates only) ───────────
+        const today = fmtDate(new Date());
+        if (start > today) {
+            const dayBeforeDate = new Date(start + 'T00:00:00');
+            dayBeforeDate.setDate(dayBeforeDate.getDate() - 1);
+            const dayBeforeStr = fmtDate(dayBeforeDate);
+            const daysLabel    = days + ' day' + (days !== 1 ? 's' : '');
+            const dateRange    = fmtDisplay(start) + (start !== end ? ' – ' + fmtDisplay(end) : '');
+            const notesLine    = notes ? '\n\nNotes: ' + notes : '';
+
+            const notifRows = [
+                {   // Day-before at 8 AM CDT (13:00 UTC)
+                    source:           'manual',
+                    recipient_emails: recipients,
+                    ro_id:            null,
+                    status:           'pending',
+                    scheduled_at:     dayBeforeStr + 'T13:00:00Z',
+                    subject:          `⏰ Tomorrow — ${empName} — ${typeLabel(type)}`,
+                    body:             `Reminder: ${empName} (${empEmail}) has ${typeLabel(type).toLowerCase()} time off starting TOMORROW.\n\nDates: ${dateRange} (${daysLabel})${notesLine}`,
+                },
+                {   // Morning-of at 8 AM CDT (13:00 UTC)
+                    source:           'manual',
+                    recipient_emails: recipients,
+                    ro_id:            null,
+                    status:           'pending',
+                    scheduled_at:     start + 'T13:00:00Z',
+                    subject:          `🟡 Today — ${empName} — ${typeLabel(type)}`,
+                    body:             `Reminder: ${empName} (${empEmail}) has ${typeLabel(type).toLowerCase()} time off STARTING TODAY.\n\nDates: ${dateRange} (${daysLabel})${notesLine}`,
+                },
+            ];
+
+            const { error: schedErr } = await getSB().from('scheduled_notifications').insert(notifRows);
+            if (schedErr) console.warn('Scheduled notification insert failed:', schedErr.message);
+        }
+    } catch(e) { console.warn('fireTimeOffNotifications error:', e); }
 }
 
 // ── UTILS ──

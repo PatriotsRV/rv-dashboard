@@ -741,6 +741,120 @@ Automated internal notification from the PRVS Dashboard.`;
       });
     }
 
+    // ── TIME OFF NOTIFICATION ──────────────────────────────────────────
+    if (type === "time_off_notify") {
+      const {
+        recipients,      // string[] — manager/admin emails
+        context,         // 'submitted' | 'day_before' | 'morning_of'
+        employeeName,
+        employeeEmail,
+        requestType,     // 'sick' | 'vacation' | 'personal' | 'general'
+        startDate,       // YYYY-MM-DD
+        endDate,         // YYYY-MM-DD
+        totalDays,       // number
+        notes,
+        submittedByName,
+      } = body;
+
+      if (!recipients?.length) {
+        return new Response(JSON.stringify({ error: "No recipients provided" }), {
+          status: 400,
+          headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
+        });
+      }
+
+      const typeLabels: Record<string, string> = {
+        sick: "Sick", vacation: "Vacation", personal: "Personal", general: "General",
+      };
+      const typeColors: Record<string, { bg: string; border: string; text: string }> = {
+        sick:     { bg: "#fff1f0", border: "#ff4d4f", text: "#a8071a" },
+        vacation: { bg: "#e6f4ff", border: "#1677ff", text: "#003eb3" },
+        personal: { bg: "#f9f0ff", border: "#9254de", text: "#531dab" },
+        general:  { bg: "#f5f5f5", border: "#8c8c8c", text: "#3d3d3d" },
+      };
+      const tc = typeColors[requestType] || typeColors.general;
+
+      const banners: Record<string, { bg: string; border: string; text: string; icon: string; heading: string; sub: string }> = {
+        submitted:  { bg: "#f0f9ff", border: "#60a5fa", text: "#1e40af", icon: "🏖", heading: "Time Off Request Recorded",  sub: `${employeeName} will be out — please plan coverage.` },
+        day_before: { bg: "#fff7ed", border: "#fb923c", text: "#9a3412", icon: "⏰", heading: "Reminder: Out Tomorrow",       sub: `${employeeName} is off tomorrow.` },
+        morning_of: { bg: "#fef2f2", border: "#f87171", text: "#7f1d1d", icon: "📅", heading: "Out Today",                   sub: `${employeeName} is not coming in today.` },
+      };
+      const banner = banners[context] || banners.submitted;
+
+      const fmtD = (iso: string) => {
+        try {
+          const [y, m, d] = iso.split("-");
+          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          return `${months[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+        } catch { return iso; }
+      };
+
+      const dateRange = startDate === endDate
+        ? fmtD(startDate)
+        : `${fmtD(startDate)} – ${fmtD(endDate)}`;
+
+      const subjectLabel = context === "submitted" ? "Time Off Request" : context === "day_before" ? "Out Tomorrow" : "Out Today";
+      const subject = `${banner.icon} ${subjectLabel} — ${employeeName} — ${typeLabels[requestType] || requestType} — ${fmtD(startDate)}`;
+
+      const notesRow = notes
+        ? `<tr><td style="padding:6px 0;color:#64748b;vertical-align:top;width:140px;">Notes:</td><td style="padding:6px 0;color:#475569;font-style:italic;">${notes}</td></tr>`
+        : "";
+
+      const htmlBody = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:20px;color:#333;background:#f9fafb;">
+  <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <div style="background:linear-gradient(135deg,#1e3a8a,#1d4ed8);padding:20px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">Patriots RV Services</h1>
+      <p style="margin:4px 0 0;color:#bfdbfe;font-size:11px;text-transform:uppercase;letter-spacing:.08em;">Staff Time Off Notice</p>
+    </div>
+    <div style="padding:22px 20px;">
+      <div style="background:${banner.bg};border:2px solid ${banner.border};border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+        <p style="margin:0 0 3px;font-size:14px;font-weight:700;color:${banner.text};">${banner.icon} ${banner.heading}</p>
+        <p style="margin:0;font-size:13px;color:${banner.text};">${banner.sub}</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <tr><td style="padding:7px 0;color:#64748b;width:140px;vertical-align:top;">Employee:</td><td style="padding:7px 0;font-weight:700;font-size:15px;">${employeeName}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b;vertical-align:top;">Email:</td><td style="padding:7px 0;color:#475569;">${employeeEmail}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b;vertical-align:top;">Type:</td>
+            <td style="padding:7px 0;"><span style="display:inline-block;padding:3px 10px;background:${tc.bg};border:1px solid ${tc.border};color:${tc.text};border-radius:10px;font-size:12px;font-weight:700;">${typeLabels[requestType] || requestType}</span></td></tr>
+        <tr><td style="padding:7px 0;color:#64748b;vertical-align:top;">Date(s):</td><td style="padding:7px 0;font-weight:600;">${dateRange}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b;vertical-align:top;">Days:</td><td style="padding:7px 0;font-family:monospace;font-weight:700;">${totalDays} day${totalDays !== 1 ? "s" : ""}</td></tr>
+        ${notesRow}
+        <tr><td style="padding:7px 0;color:#64748b;vertical-align:top;">Submitted by:</td><td style="padding:7px 0;color:#475569;">${submittedByName}</td></tr>
+      </table>
+      <hr style="border:0;border-top:1px solid #e2e8f0;margin:18px 0 12px;">
+      <p style="font-size:11px;color:#94a3b8;margin:0;">Patriots RV Services — Staff Time Off Notification · <a href="https://patriotsrv.github.io/rv-dashboard/time-off.html" style="color:#60a5fa;">View Time Off Page</a></p>
+    </div>
+  </div>
+</body></html>`;
+
+      const textBody = [
+        `${banner.heading}`,
+        ``,
+        `Employee: ${employeeName} (${employeeEmail})`,
+        `Type: ${typeLabels[requestType] || requestType}`,
+        `Date(s): ${dateRange}`,
+        `Days: ${totalDays}`,
+        notes ? `Notes: ${notes}` : null,
+        `Submitted by: ${submittedByName}`,
+        ``,
+        `View: https://patriotsrv.github.io/rv-dashboard/time-off.html`,
+      ].filter(l => l !== null).join("\n");
+
+      await transporter.sendMail({
+        from:    `"PRVS Dashboard" <${gmailUser}>`,
+        to:      (recipients as string[]).join(", "),
+        subject,
+        text:    textBody,
+        html:    htmlBody,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
+      });
+    }
+
     // ── SOLAR QUOTE EMAIL (original behaviour) ─────────────────────────
     const { to, customerName, quoteNumber, roNumber, grandTotal, body: emailBody, pdfBase64 } = body;
 
