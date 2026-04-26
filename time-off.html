@@ -342,6 +342,23 @@
     </div>
 </div>
 
+<!-- SUBMISSION CONFIRMATION MODAL -->
+<div class="modal-overlay" id="confirmModal" style="display:none;" onclick="if(event.target===this)closeConfirmModal()">
+    <div class="modal" style="max-width:420px;">
+        <div class="modal-body" style="padding:32px 28px;text-align:center;">
+            <div style="font-size:3rem;margin-bottom:16px;">✅</div>
+            <h3 style="font-size:1.4rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:14px;color:var(--text-primary);">Request Submitted</h3>
+            <p style="font-size:1rem;color:var(--text-secondary);line-height:1.6;margin-bottom:8px;">
+                Your request for time off has been submitted and will be reviewed as soon as possible.
+            </p>
+            <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.6;margin-bottom:24px;">
+                <strong style="color:var(--accent-medium);">Note:</strong> Submission does not guarantee approval. You will be contacted if there are any concerns.
+            </p>
+            <button class="btn btn-primary" onclick="closeConfirmModal()" style="width:100%;font-size:1.05rem;padding:12px;">Got It</button>
+        </div>
+    </div>
+</div>
+
 <!-- TOAST -->
 <div id="toastContainer"></div>
 
@@ -726,10 +743,10 @@ async function submitRequest() {
     btn.disabled = false; btn.textContent = 'Save Record';
 
     if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
-    showToast('Time off recorded ✓', 'success');
     closeRequestModal();
     await loadTimeOffData();
     fireTimeOffNotifications(empEmail, empName, type, start, end, notes);  // fire-and-forget
+    openConfirmModal();
 }
 
 // ── DELETE ──
@@ -740,6 +757,10 @@ async function deleteRequest(id) {
     showToast('Record deleted', 'info');
     await loadTimeOffData();
 }
+
+// ── CONFIRMATION MODAL ──
+function openConfirmModal()  { document.getElementById('confirmModal').style.display = 'flex'; }
+function closeConfirmModal() { document.getElementById('confirmModal').style.display = 'none'; }
 
 // ── NOTIFICATIONS ──
 // Fires immediately on submit + schedules day-before + morning-of reminders.
