@@ -753,27 +753,6 @@
     <div class="form-section hidden" id="step4">
         <button class="btn-back" onclick="goToStep(3)">← Back</button>
 
-        <!-- Drop Off: are you leaving RV today? -->
-        <div id="dropoffQuestionWrap">
-            <div class="dropoff-question">
-                <h3>🚐 Are you dropping off your RV today?</h3>
-                <div class="dropoff-options">
-                    <div class="dropoff-opt" data-dropoff="today" onclick="selectDropoff('today')">
-                        ✅ Yes, it's here now
-                    </div>
-                    <div class="dropoff-opt" data-dropoff="scheduled" onclick="selectDropoff('scheduled')">
-                        📅 No, scheduling a future drop-off
-                    </div>
-                </div>
-            </div>
-            <div id="scheduledDateWrap" class="hidden">
-                <div class="field-row">
-                    <label>Planned Drop Off Date <span class="req">*</span></label>
-                    <input type="date" id="scheduledDropoffDate">
-                </div>
-            </div>
-        </div>
-
         <!-- RAF (RV Customer Drop Off mode only) -->
         <div id="rafSection">
             <div class="section-title"><span class="icon">📄</span> Repair Authorization Form</div>
@@ -828,12 +807,6 @@
                 <p>The customer is responsible for the complete repair bill including both the insurance and deductible portions. It is the customer's responsibility to inform their service representative when payment is to be made with an insurance check and to whom the check is made out to. Please note: if the lien is a payee on the check, the check will be taken to the lien holder for inspection, at which time they will endorse the check. All deductibles and customer-pay repairs are to be <strong>paid prior to delivery of vehicle</strong>. Payment in full of the balance is required before the vehicle is delivered.</p>
             </div>
 
-            <!-- RAF acknowledgment checkbox -->
-            <div class="raf-checkbox">
-                <input type="checkbox" id="rafAgree" onchange="checkRafAgreed()">
-                <label for="rafAgree">I have read and agree to all terms and conditions stated in the Repair Authorization Form above. I understand that this is a legally binding agreement.</label>
-            </div>
-
             <!-- Signature -->
             <div style="height:20px"></div>
             <div class="section-title"><span class="icon">✍️</span> Customer Signature</div>
@@ -882,6 +855,37 @@
         <div id="leadStep4" class="hidden">
             <div class="section-title"><span class="icon">✅</span> Review &amp; Submit</div>
             <div id="leadReviewSummary"></div>
+        </div>
+
+        <!-- Drop-off question — moved to bottom so customer sees it last, just before submit (dropoff mode only) -->
+        <div id="dropoffQuestionWrap" class="hidden">
+            <div style="height:16px"></div>
+            <div class="dropoff-question">
+                <h3>🚐 Are you dropping off your RV today?</h3>
+                <div class="dropoff-options">
+                    <div class="dropoff-opt" data-dropoff="today" onclick="selectDropoff('today')">
+                        ✅ Yes, it's here now
+                    </div>
+                    <div class="dropoff-opt" data-dropoff="scheduled" onclick="selectDropoff('scheduled')">
+                        📅 No, scheduling a future drop-off
+                    </div>
+                </div>
+            </div>
+            <div id="scheduledDateWrap" class="hidden">
+                <div class="field-row">
+                    <label>Planned Drop Off Date <span class="req">*</span></label>
+                    <input type="date" id="scheduledDropoffDate">
+                </div>
+            </div>
+        </div>
+
+        <!-- RAF agree checkbox — moved to bottom so it's the last thing customer confirms before submit (dropoff mode only) -->
+        <div id="rafAgreeWrap" class="hidden">
+            <div style="height:8px"></div>
+            <div class="raf-checkbox">
+                <input type="checkbox" id="rafAgree" onchange="checkRafAgreed()">
+                <label for="rafAgree">I have read and agree to all terms and conditions stated in the Repair Authorization Form above. I understand that this is a legally binding agreement.</label>
+            </div>
         </div>
 
         <button class="btn-primary mt-16" onclick="submitCheckin()" id="submitBtn" disabled>Submit Check-In</button>
@@ -1176,6 +1180,7 @@
     function setupStep4() {
         const isDrop = formState.mode === 'dropoff';
         document.getElementById('dropoffQuestionWrap').classList.toggle('hidden', !isDrop);
+        document.getElementById('rafAgreeWrap').classList.toggle('hidden', !isDrop);
         document.getElementById('rafSection').classList.toggle('hidden', !isDrop);
         document.getElementById('leadStep4').classList.toggle('hidden', isDrop);
 
@@ -1999,6 +2004,7 @@
                             serviceDesc:       serviceDesc || null,
                             warrantyDesc:      warrantyDesc || null,
                             promisedDate:      promisedDate || null,
+                            signatureDataUrl:  getSignatureDataURL() || null,
                         });
                     } catch (e) {
                         console.error('RAF email failed:', e);
@@ -2090,11 +2096,12 @@
                 rv: rv || undefined,
                 services: services || undefined,
                 workType: workType || undefined,
-                phone:        extra.phone        || undefined,
-                customerType: extra.customerType || undefined,
-                serviceDesc:  extra.serviceDesc  || undefined,
-                warrantyDesc: extra.warrantyDesc  || undefined,
-                promisedDate: extra.promisedDate  || undefined,
+                phone:            extra.phone            || undefined,
+                customerType:     extra.customerType     || undefined,
+                serviceDesc:      extra.serviceDesc      || undefined,
+                warrantyDesc:     extra.warrantyDesc      || undefined,
+                promisedDate:     extra.promisedDate      || undefined,
+                signatureDataUrl: extra.signatureDataUrl  || undefined,
             }),
         });
         if (!resp.ok) {

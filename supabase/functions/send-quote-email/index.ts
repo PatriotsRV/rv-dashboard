@@ -379,7 +379,9 @@ Deno.serve(async (req: Request) => {
 
     // ── RAF COPY EMAIL (GH#17 Customer Check-In) ──────────────────────
     if (type === "raf_copy") {
-      const { to, cc, customerName, roId, signedDate, rv, services, workType, phone, customerType, serviceDesc, warrantyDesc, promisedDate } = body;
+      const { to, cc, customerName, roId, signedDate, rv, services, workType, phone, customerType, serviceDesc, warrantyDesc, promisedDate, signatureDataUrl } = body;
+      // Extract raw base64 from data URL (e.g. "data:image/png;base64,<b64>")
+      const sigBase64 = signatureDataUrl ? signatureDataUrl.replace(/^data:image\/png;base64,/, "") : null;
 
       // CC group: use provided cc, or the shared env var
       const rafCcGroup = cc || customerCcGroup;
@@ -483,6 +485,10 @@ Deno.serve(async (req: Request) => {
       <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 16px; margin: 16px 0; text-align:center;">
         <p style="margin:0; font-size:14px; color:#15803d; font-weight:700;">&#9989; Signed electronically by ${customerName || "Customer"} on ${signedDate || "today"}</p>
         <p style="margin:6px 0 0; font-size:12px; color:#166534;">This document was acknowledged and agreed to via the PRVS Customer Check-In system.</p>
+        ${sigBase64 ? `<div style="margin-top:14px; padding-top:12px; border-top:1px solid #bbf7d0;">
+          <p style="margin:0 0 8px; font-size:12px; color:#166534; font-weight:600;">Customer Signature:</p>
+          <img src="cid:raf_signature@prvs" alt="Customer Signature" style="max-width:320px; width:100%; border:1px solid #86efac; border-radius:6px; background:#fff; padding:6px;">
+        </div>` : ""}
       </div>
 
       <p style="font-size: 14px; color: #555;">We will take great care of your RV. If you have any questions about your service or need to reference this agreement, you have the full document above. Don't hesitate to reach out.</p>
@@ -503,10 +509,16 @@ Deno.serve(async (req: Request) => {
 
       await transporter.sendMail({
         from:    `"Patriots RV Services" <${gmailUser}>`,
-        replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
+        replyTo:     "Patriots RV Services <info@patriotsrvservices.com>",
         to,
-        cc:      rafCcGroup,
+        cc:          rafCcGroup,
         subject,
+        attachments: sigBase64 ? [{
+          filename:    "signature.png",
+          content:     Buffer.from(sigBase64, "base64"),
+          contentType: "image/png",
+          cid:         "raf_signature@prvs",
+        }] : [],
         text:    `REPAIR AUTHORIZATION CONFIRMATION\n\nDear ${customerName},\n\nThank you for choosing Patriots RV Services. This confirms that you signed our Repair Authorization Form on ${signedDate || "today"}.\n\nRepair Order: ${roId || "Pending"}${rv ? `\nVehicle: ${rv}` : ""}${services ? `\nServices: ${services}` : ""}\n\n${'='.repeat(50)}\nPATRIOTS RV SERVICES\nWORK AUTHORIZATION & REPAIR AGREEMENT\n${'='.repeat(50)}\n\n1. WORK AUTHORIZATION\nI hereby authorize Patriots RV Services ("PRVS") to perform the repairs, upgrades, and/or services described on this Repair Order for the vehicle identified above. I agree that Patriots RV Services is not responsible for loss or damage to this vehicle or articles left in the vehicle due to fire, theft, or any other cause beyond its reasonable control. I further grant permission for PRVS employees to operate the vehicle for the purposes of testing, inspection, and quality assurance.\n\nSealant, maintenance items, and winterization are the responsibility of the customer. Patriots RV Services will not be responsible for water intrusion of any kind or damages resulting thereof, unless the water intrusion is a direct result of work performed by PRVS.\n\n2. MECHANIC'S LIEN & PAYMENT TERMS\nTo secure payment in the amount of the repairs, an expressed mechanic's lien on the vehicle is acknowledged, and I further agree to pay reasonable attorney's fees and court costs in the event that legal action becomes necessary to enforce this agreement. I acknowledge that if analysis reveals additional repairs are necessary, I will be contacted for authorization of any additional charges.\n\nThe total amount of repair charges must be paid before the vehicle can be released for delivery. I acknowledge that said vehicle can be repossessed by Patriots RV Services for non-payment or partial payment, insufficient funds, stop payments, or outstanding balance due over 60 days from delivery.\n\n3. ESTIMATES & COMPLETION TIMELINES\nAll estimated completion dates, repair costs, and other quoted values are approximate and subject to change. All figures provided are estimates only and are not guaranteed until the work is fully completed and a final invoice is issued.\n\n4. SCHEDULED TRIPS & TRAVEL PLANS\nPatriots RV Services cannot guarantee specific completion dates. Removing your RV from our shop before completion will forfeit your current position in the service queue.\n\n5. ADDITIONAL REPAIRS & HIDDEN DAMAGE\nDuring the course of repairs, conditions may be discovered that were not apparent during the initial inspection. If additional work is necessary, Patriots RV Services will contact you for authorization before proceeding.\n\n6. AUTHORIZATION TO TRANSPORT\nI do hereby authorize Patriots RV Services to transport my unit to an authorized facility for additional repairs if needed.\n\n7. STORAGE POLICY\nYou have 5 business days to pick up your vehicle after notification of completion. Storage charges of $80.00 per day apply after that. Vehicles not retrieved within 30 days may be considered abandoned under Texas law.\n\n8. FOOD SPOILAGE & PERISHABLES\nPatriots RV Services is not responsible for food spoilage or damage to any perishable items left in the vehicle.\n\n9. RODENT, PEST & WILDLIFE DAMAGE\nPatriots RV Services is not responsible for any rodent, pest, or wildlife damage.\n\n10. STORM, FREEZE & WEATHER DAMAGE\nPatriots RV Services is not responsible for any damage resulting from weather events.\n\n11. POWER OF ATTORNEY — INSURANCE\nI hereby grant my power of attorney to Patriots RV Services to sign and endorse any checks/drafts as settlement for claim damage.\n\n12. PHOTO & MEDIA AUTHORIZATION\nI hereby authorize photos and video to be taken throughout the course of repairs.\n\n13. PERSONAL PROPERTY DISCLAIMER\nPatriots RV Services is not responsible for any personal property left in the vehicle during repairs.\n\n14. CUSTOMER RESPONSIBILITY — FINAL PAYMENT\nThe customer is responsible for the complete repair bill including both the insurance and deductible portions. Payment in full of the balance is required before the vehicle is delivered.\n\n${'='.repeat(50)}\nSigned electronically by ${customerName || "Customer"} on ${signedDate || "today"}\n${'='.repeat(50)}\n\nPatriots RV Services\n11399 US 380, Krum TX 76249\n(940) 488-5047\npatriotsrvservices.com`,
         html:    htmlBody,
       });
