@@ -1993,7 +1993,13 @@
                     try {
                         const siloLabels = formState.selectedSilos.map(k => SERVICE_SILOS.find(s => s.key === k)).filter(Boolean).map(s => `${s.emoji} ${s.label}`).join(', ');
                         const workTypeLabel = roType === 'hybrid' ? 'Hybrid (New Work + Warranty)' : roType === 'warranty' ? 'Warranty' : 'New Work';
-                        await sendRAFEmail(insertedRO, customerName, email, rv, siloLabels, workTypeLabel);
+                        await sendRAFEmail(insertedRO, customerName, email, rv, siloLabels, workTypeLabel, {
+                            phone:             phone || null,
+                            customerType:      formState.customerType === 'returning' ? 'Returning' : 'New',
+                            serviceDesc:       serviceDesc || null,
+                            warrantyDesc:      warrantyDesc || null,
+                            promisedDate:      promisedDate || null,
+                        });
                     } catch (e) {
                         console.error('RAF email failed:', e);
                         showToast('RO created, but email delivery failed. Staff can resend from the dashboard.', 'warning');
@@ -2065,7 +2071,7 @@
     }
 
     // ── SEND RAF EMAIL ────────────────────────────────────────────
-    async function sendRAFEmail(ro, customerName, email, rv, services, workType) {
+    async function sendRAFEmail(ro, customerName, email, rv, services, workType, extra = {}) {
         // Use the freshest token available
         const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
         const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
@@ -2084,6 +2090,11 @@
                 rv: rv || undefined,
                 services: services || undefined,
                 workType: workType || undefined,
+                phone:        extra.phone        || undefined,
+                customerType: extra.customerType || undefined,
+                serviceDesc:  extra.serviceDesc  || undefined,
+                warrantyDesc: extra.warrantyDesc  || undefined,
+                promisedDate: extra.promisedDate  || undefined,
             }),
         });
         if (!resp.ok) {

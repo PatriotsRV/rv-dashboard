@@ -379,7 +379,7 @@ Deno.serve(async (req: Request) => {
 
     // ── RAF COPY EMAIL (GH#17 Customer Check-In) ──────────────────────
     if (type === "raf_copy") {
-      const { to, cc, customerName, roId, signedDate, rv, services, workType } = body;
+      const { to, cc, customerName, roId, signedDate, rv, services, workType, phone, customerType, serviceDesc, warrantyDesc, promisedDate } = body;
 
       // CC group: use provided cc, or the shared env var
       const rafCcGroup = cc || customerCcGroup;
@@ -415,10 +415,16 @@ Deno.serve(async (req: Request) => {
 
       <div style="background: #f0f9ff; border: 1.5px solid #93c5fd; border-radius: 10px; padding: 16px; margin: 16px 0;">
         <table style="width:100%; border-collapse:collapse; font-size:14px;">
-          <tr><td style="padding:5px 0; color:#64748b; width:130px;">Repair Order:</td><td style="padding:5px 0; font-weight:700; font-family:monospace; font-size:15px;">${roId || "Pending"}</td></tr>
+          <tr><td style="padding:5px 0; color:#64748b; width:150px;">Repair Order:</td><td style="padding:5px 0; font-weight:700; font-family:monospace; font-size:15px;">${roId || "Pending"}</td></tr>
+          ${customerType ? `<tr><td style="padding:5px 0; color:#64748b;">Customer Type:</td><td style="padding:5px 0;">${customerType}</td></tr>` : ""}
+          ${phone ? `<tr><td style="padding:5px 0; color:#64748b;">Phone:</td><td style="padding:5px 0;">${phone}</td></tr>` : ""}
+          ${to ? `<tr><td style="padding:5px 0; color:#64748b;">Email:</td><td style="padding:5px 0;">${to}</td></tr>` : ""}
           ${rv ? `<tr><td style="padding:5px 0; color:#64748b;">Vehicle:</td><td style="padding:5px 0;">${rv}</td></tr>` : ""}
           ${services ? `<tr><td style="padding:5px 0; color:#64748b;">Services:</td><td style="padding:5px 0;">${services}</td></tr>` : ""}
           ${workType ? `<tr><td style="padding:5px 0; color:#64748b;">Work Type:</td><td style="padding:5px 0;">${workType}</td></tr>` : ""}
+          ${serviceDesc ? `<tr><td style="padding:5px 0; color:#64748b; vertical-align:top;">Service Description:</td><td style="padding:5px 0; white-space:pre-wrap;">${serviceDesc}</td></tr>` : ""}
+          ${warrantyDesc ? `<tr><td style="padding:5px 0; color:#64748b; vertical-align:top;">Warranty Description:</td><td style="padding:5px 0; white-space:pre-wrap;">${warrantyDesc}</td></tr>` : ""}
+          ${promisedDate ? `<tr><td style="padding:5px 0; color:#64748b;">Promised Date:</td><td style="padding:5px 0;">${promisedDate}</td></tr>` : ""}
           <tr><td style="padding:5px 0; color:#64748b;">Date Signed:</td><td style="padding:5px 0;">${signedDate || "Today"}</td></tr>
         </table>
       </div>
