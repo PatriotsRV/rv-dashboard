@@ -211,7 +211,7 @@
         .mode-btn .mode-desc { font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
 
         /* ── CUSTOMER TYPE SELECTOR ───────────────────────────────── */
-        .type-selector { display: flex; gap: 10px; margin-bottom: 16px; }
+        .type-selector { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
         .type-btn {
             flex: 1; padding: 14px;
             border: 2px solid var(--border); border-radius: 12px;
@@ -527,7 +527,6 @@
             .main-container { max-width: 100%; padding: 12px 10px 80px; }
             .form-section { padding: 20px 16px; }
             .mode-toggle { flex-direction: column; }
-            .type-selector { flex-direction: column; }
             .dropoff-options { flex-direction: column; align-items: center; }
         }
         @media (min-width: 601px) and (max-width: 1024px) {
@@ -611,15 +610,15 @@
                 <span class="type-icon">🔄</span>
                 Returning Customer
             </div>
-        </div>
 
-        <!-- Returning customer search -->
-        <div id="returningSearch" class="hidden">
-            <div class="search-wrap">
-                <span class="search-icon">🔍</span>
-                <input type="text" id="customerSearch" placeholder="Search by name, phone, email, or VIN..." oninput="searchCustomers(this.value)">
+            <!-- Returning customer search — shown directly under Returning Customer when selected -->
+            <div id="returningSearch" class="hidden">
+                <div class="search-wrap">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="customerSearch" placeholder="Search/lookup your name, phone contact details..." oninput="searchCustomers(this.value)">
+                </div>
+                <div class="search-results" id="searchResults"></div>
             </div>
-            <div class="search-results" id="searchResults"></div>
         </div>
 
         <!-- Contact fields -->
