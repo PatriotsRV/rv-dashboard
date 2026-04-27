@@ -819,24 +819,30 @@
             <!-- Signature -->
             <div style="height:20px"></div>
             <div class="section-title"><span class="icon">✍️</span> Customer Signature</div>
+
+            <!-- Printed name + Generate button -->
+            <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">
+                <div class="field-row" style="flex:1;margin-bottom:0;">
+                    <label>Type Your Name Here to use as Printed Signature <span class="req">*</span></label>
+                    <input type="text" id="sigPrintedName" placeholder="Full name">
+                </div>
+                <button onclick="generateSignatureFromName()" style="background:var(--navy);color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:0.85rem;white-space:nowrap;flex-shrink:0;">✍️ Generate Signature</button>
+            </div>
+
+            <!-- Date below name row -->
+            <div class="field-row" style="margin-bottom:14px;">
+                <label>Date</label>
+                <input type="text" id="sigDate" readonly>
+            </div>
+
+            <!-- Draw pad -->
             <div class="sig-pad-wrap">
                 <canvas id="signatureCanvas"></canvas>
             </div>
             <div class="sig-actions">
                 <button onclick="clearSignature()">Clear Signature</button>
-                <button onclick="generateSignatureFromName()" style="background:var(--navy);color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:0.85rem;">✍️ Generate Signature</button>
             </div>
             <p id="sigStatus" style="font-size:0.82rem;font-weight:600;margin-top:8px;color:#b91c1c;">❌ Signature required</p>
-            <div class="field-grid-2 mt-16">
-                <div class="field-row">
-                    <label>Printed Name <span class="req">*</span></label>
-                    <input type="text" id="sigPrintedName">
-                </div>
-                <div class="field-row">
-                    <label>Date</label>
-                    <input type="text" id="sigDate" readonly>
-                </div>
-            </div>
 
             <!-- Photo capture -->
             <div style="height:20px"></div>
