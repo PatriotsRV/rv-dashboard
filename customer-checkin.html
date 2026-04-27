@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.4
-    Released: 2026-04-15
+    PRVS Customer Check-In v1.6
+    Released: 2026-04-27
+    v1.6: Photo made optional (removed from submit gate); RAF email forced on every submission (removed Send to Email toggle)
+    v1.5: Session 50 — Lead Staff Notification email, mode rename (RV Customer Drop Off / New Customer Entry), X-PRVS-Secret auth
     v1.4: GH#20 Fix signature (init canvas on step 4 visibility), full RAF in email
     v1.3: GH#20 Fix generate-signature (draw in CSS-pixel space, not offscreen canvas)
     v1.2: GH#19 Professional marble visual redesign, wider form, version display
@@ -856,9 +858,9 @@
 
             <!-- Photo capture -->
             <div style="height:20px"></div>
-            <div class="section-title"><span class="icon">📸</span> Photo Verification <span style="color:#b91c1c;font-weight:700;">(Required)</span></div>
-            <p style="font-size:0.82rem;color:#64748b;margin-bottom:4px;">A photo of the customer at time of signing is <strong>required</strong> for verification and dispute resolution.</p>
-            <p id="photoStatus" style="font-size:0.82rem;font-weight:600;margin-bottom:12px;color:#b91c1c;">❌ Photo required</p>
+            <div class="section-title"><span class="icon">📸</span> Photo Verification <span style="color:#64748b;font-weight:600;">(Optional)</span></div>
+            <p style="font-size:0.82rem;color:#64748b;margin-bottom:4px;">A photo of the customer at time of signing is recommended for verification and dispute resolution.</p>
+            <p id="photoStatus" style="font-size:0.82rem;font-weight:600;margin-bottom:12px;color:#64748b;">📷 No photo taken (optional)</p>
             <div class="photo-capture-wrap">
                 <video id="cameraPreview" class="camera-preview" autoplay playsinline></video>
                 <canvas id="photoCaptureCanvas" class="hidden"></canvas>
@@ -872,15 +874,8 @@
 
             <!-- RAF delivery -->
             <div style="height:12px"></div>
-            <div class="section-title"><span class="icon">📧</span> Send Copy of Signed Agreement</div>
-            <div class="field-grid-2">
-                <div class="field-row">
-                    <label><input type="checkbox" id="sendEmail" checked style="width:auto;margin-right:6px;">Send to Email</label>
-                </div>
-                <div class="field-row">
-                    <label><input type="checkbox" id="sendSMS" disabled style="width:auto;margin-right:6px;">Send via SMS (coming soon)</label>
-                </div>
-            </div>
+            <div class="section-title"><span class="icon">📧</span> Signed Agreement Delivery</div>
+            <p style="font-size:0.82rem;color:#64748b;margin-bottom:4px;">✅ A copy of the signed Repair Authorization will be emailed automatically to the customer and our staff upon submission.</p>
         </div>
 
         <!-- New Customer Entry: step 4 is just review + submit -->
@@ -908,7 +903,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.4</div>
+<div class="version-badge">PRVS Customer Check-In v1.6</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1713,8 +1708,7 @@
             const sigPrinted = document.getElementById('sigPrintedName')?.value.trim();
             const hasDropoffChoice = !!formState.dropoffChoice;
             const hasSig = _sigHasData || !!formState.generatedSignature;
-            const hasPhoto = !!formState.capturedPhoto;
-            btn.disabled = !(rafAgreed && sigPrinted && hasDropoffChoice && hasSig && hasPhoto);
+            btn.disabled = !(rafAgreed && sigPrinted && hasDropoffChoice && hasSig);
 
             // Update visual indicators
             const sigStatus = document.getElementById('sigStatus');
@@ -1724,8 +1718,9 @@
                 sigStatus.style.color = hasSig ? '#16a34a' : '#b91c1c';
             }
             if (photoStatus) {
-                photoStatus.textContent = hasPhoto ? '✅ Photo captured' : '❌ Photo required';
-                photoStatus.style.color = hasPhoto ? '#16a34a' : '#b91c1c';
+                const hasPhoto = !!formState.capturedPhoto;
+                photoStatus.textContent = hasPhoto ? '✅ Photo captured' : '📷 No photo taken (optional)';
+                photoStatus.style.color = hasPhoto ? '#16a34a' : '#64748b';
             }
         } else {
             // Lead mode — just need the review to be shown
@@ -1763,11 +1758,6 @@
             const sigPrinted = document.getElementById('sigPrintedName')?.value.trim();
             if (!sigPrinted) {
                 showToast('Please enter a printed name for the signature.', 'error');
-                return;
-            }
-            // Photo: mandatory
-            if (!formState.capturedPhoto) {
-                showToast('A photo of the customer is required. Please open the camera and take a photo.', 'error');
                 return;
             }
         }
@@ -1998,8 +1988,8 @@
                     } catch (e) { warn('Photo upload failed:', e); }
                 }
 
-                // Send RAF copy via email
-                if (document.getElementById('sendEmail')?.checked && email) {
+                // Send RAF copy via email — always sent, no toggle
+                if (email) {
                     try {
                         const siloLabels = formState.selectedSilos.map(k => SERVICE_SILOS.find(s => s.key === k)).filter(Boolean).map(s => `${s.emoji} ${s.label}`).join(', ');
                         const workTypeLabel = roType === 'hybrid' ? 'Hybrid (New Work + Warranty)' : roType === 'warranty' ? 'Warranty' : 'New Work';
