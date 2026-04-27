@@ -496,9 +496,18 @@
 
         /* ── VERSION BADGE ────────────────────────────────────────── */
         .version-badge {
-            text-align: center; padding: 16px;
-            font-size: 0.72rem; color: var(--stone-dark);
-            letter-spacing: 0.5px;
+            position: fixed;
+            bottom: 10px;
+            right: 12px;
+            background: rgba(30,58,138,0.82);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            pointer-events: none;
+            z-index: 9999;
         }
 
         /* ── UTILITIES ────────────────────────────────────────────── */
