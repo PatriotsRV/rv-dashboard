@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.412
-    Released: 2026-04-25
+    PRVS Dashboard v1.413
+    Released: 2026-04-28
+    v1.413: GH#37 Modal readability fix — (1) .modal-overlay backdrop bumped from rgba(0,0,0,0.8) → rgba(0,0,0,0.88) + backdrop-filter:blur(3px) so underlying board content is fully suppressed. (2) Added .modal-content CSS rule with opaque background (var(--bg-surface)), border, border-radius, padding, and box-shadow — the 5 dynamically-created modals (Schedule Notification, Parts Request, Parts Request Details, Parts Status, Recently Deleted) had no background defined so the board bled through; New RO / Edit RO modals use .modal class and were unaffected.
     v1.412: Schedule Notification refinements — (1) prominent red-outlined banner button moved to top of every standard RO card with new label "Schedule Important Tasks or Update Notifications". (2) Old "Notify" button in card-actions-secondary removed. (3) Full audit trail to RO Status notes for every notification lifecycle event: scheduled (manual + auto), cancelled, sent (success), failed. Notes follow the existing `[ts - user] PREFIX: details` convention used by parts requests. Edge function process-scheduled-notifications writes the SENT/FAILED notes via service role. Spanish translation added. Same-day scheduling fix from earlier hotfix is included.
     v1.411: GH#ER1 + GH#ER2 — Unified Scheduled Notifications. New 🔔 Schedule Notification button on every RO card (compact + standard) opens a modal where managers can schedule a future email reminder for that RO with date+time, subject, body, and multi-select recipients (silo managers pre-checked from RO's repair_type). Existing scheduled rows for the RO show with status badges and Cancel buttons. Backed by new `scheduled_notifications` table (RLS authenticated full + anon INSERT only for source='auto_dropoff_reminder'). New `process-scheduled-notifications` edge function (service-role, Gmail SMTP) consumes pending rows on every-15-min pg_cron. ER#1 wired on top: customer-checkin.html "New Customer Entry" + "Drop Off / Scheduled" modes now persist `planned_dropoff_date` on repair_orders AND auto-INSERT a reminder row scheduled for the morning before (8 AM CDT = 13:00 UTC). Edit RO modal gains a "Planned Drop Off Date" field; on save, change cascade cancels existing pending auto-reminder and recreates with new date + silo-manager recipients. Bonus: previously orphaned `scheduledDropoffDate` form field in customer-checkin.html is now persisted. Required Roland actions: run `scheduled_notifications.sql` + `cron_process_scheduled_notifications.sql` migrations + deploy `process-scheduled-notifications` edge function with `--no-verify-jwt`.
     v1.410: GH#ER3 — New RO status "Ready to Work" added between "Awaiting parts" and "In progress". Pure manual flip — manager flips it when blockers are cleared and tech can start. New CSS class `.status-dropdown.status-ready-to-work` (lime #84cc16) wired through all 4 status dropdowns (filter buttons row, New RO modal, card view dropdown, compact view dropdown), STATUS_PROGRESS_MAP (slot 50, between Scheduled-45 and In-progress-60), statusColorMap, ALL_STATUSES order array, Spanish translation table ("Listo para Trabajar"). No DB migration required — `repair_orders.status` is plain TEXT (no CHECK constraint).
@@ -1620,7 +1621,9 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -1640,6 +1643,21 @@
             max-height: 90vh;
             overflow-y: auto;
             padding: 40px;
+            box-shadow: var(--shadow-lg);
+            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Dynamically-created modals (Schedule Notification, Parts Request,
+           Parts Status, Recently Deleted, etc.) use .modal-content as their
+           inner container. Give it the same opaque surface as .modal so the
+           underlying board cannot bleed through. Inline max-width/max-height
+           overrides on each instance still apply. */
+        .modal-content {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            width: 90%;
+            padding: 28px;
             box-shadow: var(--shadow-lg);
             animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -3376,7 +3394,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.412</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.413</span>
             </div>
         </header>
 
@@ -7928,7 +7946,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.412 - Released 2026-04-25');
+            log('📦 PRVS Dashboard v1.413 - Released 2026-04-28');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
