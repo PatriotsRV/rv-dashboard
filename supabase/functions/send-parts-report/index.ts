@@ -7,6 +7,8 @@ import nodemailer from "npm:nodemailer@6";
 // v1.5: Action prompts as standalone div blocks — email client safe
 // v1.6: Larger fonts, numbered action steps per section
 // v1.7: Minified inline styles to fix Gmail clipping
+// v1.8: Exclude parts_status='estimate' from Section 1 (estimate-only requests are for quoting, not ordering)
+//        Also added deleted_at IS NULL guard to Section 1 query
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
@@ -53,12 +55,17 @@ Deno.serve(async (req: Request) => {
       weekday: "long", month: "long", day: "numeric", year: "numeric",
     });
 
-    // ── 1. Open parts requests (has_open_parts_request=true, not received) ──
+    // ── 1. Open parts requests (has_open_parts_request=true, not received, not estimate-only) ──
+    // Exclude 'estimate': estimate-only requests are for quoting purposes — Bobby doesn't need to order them.
+    // Exclude 'received': already fulfilled.
+    // Exclude soft-deleted ROs (deleted_at IS NULL).
     const { data: openROs, error: e1 } = await sb
       .from("repair_orders")
       .select("id, ro_id, customer_name, rv, parts_status, requested_by_email, updated_at")
       .eq("has_open_parts_request", true)
       .not("parts_status", "eq", "received")
+      .not("parts_status", "eq", "estimate")
+      .is("deleted_at", null)
       .order("updated_at", { ascending: false });
     if (e1) console.error("Error fetching open ROs:", e1);
 
@@ -269,7 +276,7 @@ Deno.serve(async (req: Request) => {
 
     const summary = {
       success:        true,
-      version:        "v1.7",
+      version:        "v1.8",
       timeLabel,
       recipients:     recipients.length,
       openRequests:   openROs?.length || 0,
