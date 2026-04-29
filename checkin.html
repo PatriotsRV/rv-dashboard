@@ -1,7 +1,16 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.30
-    Released: 2026-04-21
+    PRVS Tech Check-In v1.31
+    Released: 2026-04-29
+    v1.31: GH#24 Phase 3 — Shop RO work item tracking. When a tech opens a Shop RO
+           (ro_type='shop'), the Service Type picker is replaced by a Shop Activity
+           picker: Shop Cleanup / Moving RVs / Work Break / Running Errands / Part Pickup.
+           Selection is required before clocking in. The chosen activity is stored in the
+           new time_logs.shop_activity column (migration: shop_activity_time_logs.sql).
+           Clock-out summary shows the activity. Spanish translations added for all 5 items.
+           For shop ROs the RO info panel shows a purple 🏪 Shop Operations banner and
+           hides the RV row (shop ROs have no customer RV). service_type is set to 'Shop'
+           on time_logs for shop clock-ins so worklist-report filtering remains clean.
     v1.30: GH#33 Phase 1 — rapid-fire clock-in dupe prevention. (1) Clock In button
            locks instantly on tap (disabled + spinner) to kill double-tap misfires. (2) Pre-INSERT
            SELECT guard checks for existing open row on (tech_email, ro_id) before inserting —
@@ -146,6 +155,34 @@
         .service-chip.selected { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
         .service-chip:hover:not(.selected) { border-color: #94a3b8; background: #f8fafc; }
 
+        /* Shop activity picker — purple palette to match Shop RO badge in index.html */
+        .shop-activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .shop-chip {
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #6b21a8;
+            transition: all 0.15s;
+            text-align: center;
+        }
+        .shop-chip.selected { border-color: #8b5cf6; background: #f5f3ff; color: #6d28d9; }
+        .shop-chip:hover:not(.selected) { border-color: #a78bfa; background: #faf5ff; }
+        .shop-ro-banner {
+            background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+            color: white;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 4px;
+            letter-spacing: 0.3px;
+        }
+
         .notes-section { margin-bottom: 20px; }
         .notes-section h3 { font-size: 14px; color: #475569; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
         .notes-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
@@ -205,7 +242,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.28</div>
+    <div class="version">v1.31</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -225,6 +262,9 @@ function log(...args) { if (DEBUG) console.log(...args); }
 function warn(...args) { if (DEBUG) console.warn(...args); }
 
 const ALL_SERVICE_TYPES = ['Roof', 'Solar', 'Vroom', 'Paint and Body', 'Repairs', 'TrueTopper', 'Detailing', 'Chassis'];
+
+// v1.31: Shop RO activity types (GH#24 Phase 3)
+const SHOP_ACTIVITIES = ['Shop Cleanup', 'Moving RVs', 'Work Break', 'Running Errands', 'Part Pickup'];
 
 // ── Spanish Language Toggle ────────────────────────────────────
 const TRANSLATIONS_ES = {
@@ -281,6 +321,17 @@ const TRANSLATIONS_ES = {
     'Please select a service type before clocking in.': 'Por favor selecciona un tipo de servicio.',
     'You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.': 'Ya estás registrado en esta OR. Si crees que esto es un error, cierra sesión y vuelve a iniciar sesión.',
     'Signed in as': 'Sesión iniciada como',
+    // Shop activity picker (v1.31)
+    '🏪 Shop Operations RO': '🏪 OR de Operaciones de Taller',
+    'Shop Activity': 'Actividad de Taller',
+    'Select your shop task': 'Selecciona tu tarea de taller',
+    'Shop Cleanup':     'Limpieza del Taller',
+    'Moving RVs':       'Moviendo RVs',
+    'Work Break':       'Descanso de Trabajo',
+    'Running Errands':  'Haciendo Diligencias',
+    'Part Pickup':      'Recogida de Piezas',
+    'Please select a shop activity before clocking in.': 'Por favor selecciona una actividad de taller.',
+    'Activity': 'Actividad',
 };
 
 function getLang() { return localStorage.getItem('prvs_lang') || 'en'; }
@@ -345,8 +396,9 @@ let timerInterval    = null;
 let isOnline         = navigator.onLine;
 let recognition      = null;
 let isRecording      = false;
-let selectedService  = null;
-let roServiceTypes   = [];
+let selectedService      = null;
+let selectedShopActivity = null;   // v1.31: set when clocking into a Shop RO
+let roServiceTypes       = [];
 
 const urlParams  = new URLSearchParams(window.location.search);
 const roIdParam  = urlParams.get('ro');
@@ -465,7 +517,7 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    log('📦 PRVS Tech Check-In v1.28 - Released 2026-04-05');
+    log('📦 PRVS Tech Check-In v1.31 - Released 2026-04-29');
     translateStaticUI();
 
     if (!roIdParam) {
@@ -526,7 +578,7 @@ async function showSignIn() {
 
     document.getElementById('app').innerHTML = `
         <div class="signin-container">
-            <p>${t('Sign in with your Patriots RV Google account to check in or out.')}</p>
+            <p>${'Sign in with your Patriots RV Google account to check in or out.'}</p>
             <div id="googleSignInBtn"></div>
         </div>`;
 
@@ -791,12 +843,16 @@ function render() {
     localStorage.setItem('prvs_ro_' + roIdParam, JSON.stringify(roData));
 
     const isClockedIn = !!activeSession;
+    const isShopRO    = roData.ro_type === 'shop';   // v1.31
 
-    roServiceTypes = roData.repair_type
-        ? roData.repair_type.split(',').map(s => s.trim()).filter(s => ALL_SERVICE_TYPES.includes(s))
-        : ALL_SERVICE_TYPES.slice();
-    if (!selectedService && roServiceTypes.length === 1) {
-        selectedService = roServiceTypes[0];
+    // Service type list — only built for non-shop ROs
+    if (!isShopRO) {
+        roServiceTypes = roData.repair_type
+            ? roData.repair_type.split(',').map(s => s.trim()).filter(s => ALL_SERVICE_TYPES.includes(s))
+            : ALL_SERVICE_TYPES.slice();
+        if (!selectedService && roServiceTypes.length === 1) {
+            selectedService = roServiceTypes[0];
+        }
     }
 
     document.getElementById('app').innerHTML = `
@@ -809,14 +865,17 @@ function render() {
 
         <div class="ro-info">
             <h2>${t('📋 Repair Order')}</h2>
+            ${isShopRO ? `
+            <div class="shop-ro-banner">${t('🏪 Shop Operations RO')}</div>` : ''}
             <div class="info-row">
                 <span class="info-label">${t('Customer')}</span>
                 <span class="info-value">${escapeHtml(roData.customer_name) || '—'}</span>
             </div>
+            ${!isShopRO ? `
             <div class="info-row">
                 <span class="info-label">${t('RV')}</span>
                 <span class="info-value">${escapeHtml(roData.rv) || '—'}</span>
-            </div>
+            </div>` : ''}
             <div class="info-row">
                 <span class="info-label">${t('RO ID')}</span>
                 <span class="info-value" style="font-family:monospace;font-size:12px;">${escapeHtml(roData.ro_id)}</span>
@@ -824,10 +883,6 @@ function render() {
             <div class="info-row">
                 <span class="info-label">${t('Status')}</span>
                 <span class="info-value">${escapeHtml(roData.status) || '—'}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">${t('Technician')}</span>
-                <span class="info-value">${escapeHtml(roData.technician) || '—'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">${t('Your Status')}</span>
@@ -848,6 +903,18 @@ function render() {
             <div class="timer-display" id="timerDisplay">00:00:00</div>
         </div>` : ''}
 
+        ${isShopRO ? `
+        <div class="service-types">
+            <h3>${t('Shop Activity')} <span style="color:#ef4444;">*</span></h3>
+            <p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">${t('Select your shop task')}</p>
+            <div class="shop-activity-grid">
+                ${SHOP_ACTIVITIES.map(a => `
+                    <div class="shop-chip ${selectedShopActivity === a ? 'selected' : ''}"
+                         onclick="selectShopActivity('${a}')">
+                        ${t(a)}
+                    </div>`).join('')}
+            </div>
+        </div>` : `
         <div class="service-types">
             <h3>${t('Service Type')} <span style="color:#ef4444;">*</span></h3>
             <p style="font-size:12px;color:#94a3b8;margin-bottom:8px;">${t('Select one service to work on')}</p>
@@ -858,7 +925,7 @@ function render() {
                         ${s}
                     </div>`).join('')}
             </div>
-        </div>
+        </div>`}
 
         <div class="notes-section">
             <h3>${t('Work Notes')}</h3>
@@ -900,6 +967,16 @@ function selectService(type) {
     });
 }
 
+// ── Shop Activity Select (single) — v1.31 ────────────────────
+function selectShopActivity(activity) {
+    selectedShopActivity = (selectedShopActivity === activity) ? null : activity;
+    document.querySelectorAll('.shop-chip').forEach(chip => {
+        // Compare against translated label shown in chip
+        const chipActivity = SHOP_ACTIVITIES.find(a => t(a) === chip.textContent.trim());
+        chip.classList.toggle('selected', chipActivity === selectedShopActivity);
+    });
+}
+
 // ── Clock In ─────────────────────────────────────────────────
 // GH#33 Phase 1 — v1.30: locks clockIn() against concurrent re-entry for the whole
 // tab lifetime of a click. Paired with the button-disabled state, kills double-tap
@@ -913,9 +990,17 @@ async function clockIn() {
         return;
     }
 
-    if (!selectedService) {
-        alert(t('Please select a service type before clocking in.'));
-        return;
+    // v1.31: shop ROs require a shop activity; regular ROs require a service type
+    if (roData.ro_type === 'shop') {
+        if (!selectedShopActivity) {
+            alert(t('Please select a shop activity before clocking in.'));
+            return;
+        }
+    } else {
+        if (!selectedService) {
+            alert(t('Please select a service type before clocking in.'));
+            return;
+        }
     }
 
     // Guard: online clock-in requires an authenticated Supabase session.
@@ -939,13 +1024,16 @@ async function clockIn() {
     const now = new Date().toISOString();
     const notes = document.getElementById('workNotes')?.value || '';
 
+    // v1.31: shop ROs log activity type in shop_activity; service_type='Shop' for report clarity
+    const isShopClockIn = roData.ro_type === 'shop';
     const logData = {
         ro_id:            roData.id,
         tech_email:       currentUser.email,
         tech_name:        currentUser.name,
         clock_in:         now,
         clock_out:        null,
-        service_type:     selectedService,
+        service_type:     isShopClockIn ? 'Shop' : selectedService,
+        shop_activity:    isShopClockIn ? selectedShopActivity : null,
         work_notes:       notes,
         duration_seconds: 0,
     };
@@ -1040,13 +1128,18 @@ async function clockOut() {
     const now      = new Date().toISOString();
     const duration = Math.round((new Date(now) - new Date(activeSession.clock_in)) / 1000);
     const notes    = document.getElementById('workNotes')?.value || activeSession.work_notes || '';
-    const services = selectedService || activeSession.service_type || '';
+
+    // v1.31: for shop ROs, show the shop activity in the clock-out summary
+    const isShopClockOut = roData.ro_type === 'shop';
+    const services = isShopClockOut
+        ? (selectedShopActivity || activeSession.shop_activity || t('Shop'))
+        : (selectedService || activeSession.service_type || '');
 
     const updateData = {
         clock_out:        now,
         duration_seconds: duration,
         work_notes:       notes,
-        service_type:     selectedService || activeSession.service_type || '',
+        service_type:     isShopClockOut ? 'Shop' : (selectedService || activeSession.service_type || ''),
         updated_at:       now,
     };
 
@@ -1064,7 +1157,7 @@ async function clockOut() {
         activeSession = null;
 
         stopTimer();
-        showClockOutSummary(duration, notes, services);
+        showClockOutSummary(duration, notes, services, isShopClockOut);
 
     } catch(e) {
         console.error('Clock-out error:', e);
@@ -1072,11 +1165,13 @@ async function clockOut() {
     }
 }
 
-function showClockOutSummary(durationSec, notes, services) {
+// v1.31: isShop param lets summary show "Activity" label for shop ROs
+function showClockOutSummary(durationSec, notes, services, isShop) {
     const mins  = Math.floor(durationSec / 60);
     const hours = Math.floor(mins / 60);
     const rem   = mins % 60;
     const timeStr = hours > 0 ? `${hours}h ${rem}m` : `${mins}m`;
+    const serviceLabel = isShop ? t('Activity') : t('Services');
 
     document.getElementById('app').innerHTML = `
         <div style="text-align:center;padding:20px 0;">
@@ -1087,20 +1182,20 @@ function showClockOutSummary(durationSec, notes, services) {
             <div style="background:#f0fdf4;border-radius:12px;padding:20px;margin-bottom:20px;text-align:left;">
                 <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
                     <span style="color:#64748b;font-size:14px;">${t('Customer')}</span>
-                    <span style="font-weight:600;font-size:14px;">${roData.customer_name}</span>
+                    <span style="font-weight:600;font-size:14px;">${escapeHtml(roData.customer_name)}</span>
                 </div>
                 <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
                     <span style="color:#64748b;font-size:14px;">${t('Time Worked')}</span>
                     <span style="font-weight:700;font-size:14px;color:#166534;">${timeStr}</span>
                 </div>
                 <div class="info-row" style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #dcfce7;">
-                    <span style="color:#64748b;font-size:14px;">${t('Services')}</span>
-                    <span style="font-weight:600;font-size:13px;">${services || '—'}</span>
+                    <span style="color:#64748b;font-size:14px;">${serviceLabel}</span>
+                    <span style="font-weight:600;font-size:13px;">${escapeHtml(services) || '—'}</span>
                 </div>
                 ${notes ? `
                 <div style="padding:6px 0;">
                     <span style="color:#64748b;font-size:14px;display:block;margin-bottom:4px;">${t('Notes')}</span>
-                    <span style="font-size:13px;color:#1e293b;">${notes}</span>
+                    <span style="font-size:13px;color:#1e293b;">${escapeHtml(notes)}</span>
                 </div>` : ''}
             </div>
 
