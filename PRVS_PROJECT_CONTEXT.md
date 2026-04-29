@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.412 (index.html) · v1.9 (worklist-report.html) · v1.30 (checkin.html) · v1.6 (customer-checkin.html) · v1.0 (time-off.html) · send-parts-report v1.8 — Session 59 |
+| **Current Version** | v1.413 (index.html) · v1.9 (worklist-report.html) · v1.30 (checkin.html) · v1.6 (customer-checkin.html) · v1.0 (time-off.html) · send-parts-report v1.8 — Session 60 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -49,7 +49,7 @@
 
 ### 🟠 High Priority
 - **GH#36 — Realtime sync + auto-refresh** (Session 56) — **Phase 1 (~30 min):** add `setInterval(loadDataFromSupabase, 90_000)` to dashboard pages (index.html, worklist-report, closed-ros, analytics). **Phase 2 (~1 session):** Supabase Realtime channel subscription on `repair_orders` for instant cross-user sync. Phase 2 supersedes Phase 1. ⏳ Open — Phase 1 first
-- **GH#37 — Modal readability (translucent backdrop bleed-through)** (Session 56) — bump `.modal-overlay` alpha to 0.85+ with `backdrop-filter: blur(4px)`, ensure `.modal-content` fully opaque. Sweep all modals. ~30-45 min. ⏳ Open
+- ~~**GH#37 — Modal readability**~~ ✅ **DONE v1.413 (Session 60)** — opaque `.modal-content` CSS + darker overlay. All 5 affected modals fixed.
 - **GH#31 — Finish Work List Reporting (MAJOR umbrella)** — v1.3–v1.9 shipped. ~10 sub-items remaining: aggregate dollar_value rollups, per-RO enriched chips, velocity/throughput analytics, alt chart sort orders, inline time-edit UI, time-window filter, per-silo labor attribution, manager scoring KPI, AI manager-of-managers groundwork, export/print, comparison/trending. 🔄 Initiative — many sessions
 - **GH#33 Phase 2 — Systemic historical dupe scan across all time_logs** — After Phase 1 baseline (1 week), scan full table for (tech, ro) pairs with 2+ clock-ins within 30s. Preview → Roland reviews → batch delete. ⏳ Open — after 1 week of Phase 1 baseline
 - **GH#26 — New RO Statuses: "Not on Lot" + "On Lot"** (Session 51) — Verify CHECK constraint, filter buttons + badge styles, wire customer-checkin modes. Pairs with GH#27. ⏳ Open
@@ -82,23 +82,20 @@
 - **Complete QB Compliance section** — developer.intuit.com → PRVS Dashboard → Keys and credentials → Production → Compliance (~40 min). 🔴 BLOCKS GH#6
 - **Supabase: Maximize log retention** — Settings → Logs. ⏳ Roland action
 - **Create parts@patriotsrvservices.com** — Email group for parts notifications. ⏳ Roland action
-- **GitHub Release v1.410/v1.411/v1.411-hotfix/v1.412** — Optional: tag/release individually or wait for next consolidated release. ⏳ Roland action — optional
+- **GitHub Release v1.410/v1.411/v1.411-hotfix/v1.412/v1.413** — Optional: tag/release individually or wait for next consolidated release. ⏳ Roland action — optional
 - **Modularization** — Long-term. Spec ready in `docs/specs/MODULARIZATION_ROADMAP.md`. ⏳ Not started
 
 ---
 
 ## ✅ Recently Completed
-- ✅ **send-parts-report v1.8 — Parts Report estimate bug fixed (2026-04-28, Session 59)** — Bobby was seeing 5 estimate-only ROs in the "Open Parts Requests" section. Root cause: Section 1 query didn't exclude `parts_status='estimate'`. Fix: added `.not("parts_status","eq","estimate")` + `.is("deleted_at",null)`. Deployed. Verified: `{"version":"v1.8","openRequests":1}`. Commit `521aeb9`.
-- ✅ **Work Orders RLS — Sr Manager bypass added (2026-04-28, Session 59)** — Kevin McHenry (Sr Manager) had no access to Work Orders. Root cause: all 5 write RLS policies only checked `is_silo_manager()` which returns false for NULL silo (all Sr Managers). New `is_sr_manager_or_admin()` DB function + 5 policy updates. Migration run by Roland. Kevin: hard refresh + sign out/in to verify. Commit `042d723`.
-- ✅ **Lynn Shepard added to staff (2026-04-28, Session 59)** — Lynn (lynn@patriotsrvservices.com) has Admin rights but wasn't in `staff` table — invisible in Schedule Notification recipient list. Added with `sr_manager` role, $0 rate (excluded from labor reports), NULL silo (selectable but not pre-checked). Commit `8e13f10`.
-- ✅ **customer-checkin.html v1.6 — 9 UX improvements (2026-04-27, Session 58, commits 760bdef→28948b9)** — (1) Photo made optional. (2) RAF email forced on every submission — toggle removed. (3) Email summary expanded: Service Desc, Warranty Desc, Customer Type, Phone, Email, Promised Date. (4) Customer signature embedded as inline image in RAF email (CID PNG). (5) Drop-off question + agree checkbox moved to bottom above Submit. (6) Fixed version badge pill (bottom-right, always visible). (7) Signature section reordered: Printed Name + Generate Signature above canvas, Date below. (8) "— SELECT ONE —" under drop-off question. (9) Full-width search field under Returning Customer button with updated placeholder. `send-quote-email` redeployed 3×.
-- ✅ **GH#38 Phase 1 — time-off.html v1.0 SHIPPED (2026-04-26, Session 57)** — New `time-off.html` standalone page. Monthly calendar + list views. Sick/vacation/personal/general request types. Manager/admin sees all employees; tech sees own. Backdating supported. Stats strip. 3-trigger notification system: (1) immediate `submitted` email to all active managers/admins on save, (2) day-before reminder via `scheduled_notifications`, (3) morning-of reminder via `scheduled_notifications`. `send-quote-email` v1.9 adds `time_off_notify` type (3 contexts). Confirmation popup modal on submit ("Submission does not guarantee approval"). 🏖 Time Off header button added to index.html. Commits: `855447f` (Phase 1), `2d65f95` (notifications), `14c823d` (confirmation popup).
-- ✅ **GH#6 QB Integration — Intuit app created, App Details 100% (2026-04-26, Session 57)** — Intuit Developer app "PRVS Dashboard" created (App ID: cfb4185b-568e-4011-a732-199bd0ac1fc1). App Details section 100% complete: EULA (patriotsrvservices.com/terms-of-service), Privacy Policy, host domain (patriotsrv.github.io), categories (Time Tracking + Employees and Payroll), regulated industries (none), hosting (US). Compliance section (0% / 40 min) deferred by Roland. Full 8-step roadmap documented in CLAUDE_CONTEXT.md GH#6 TODO.
-- ✅ **GH#35 — Nik Polizzo fully offboarded (2026-04-26, Session 57)** — GitHub org removed + Slack deactivated + shared-secret rotation complete. All access fully revoked across DB + Auth + SSO + GitHub + Slack + secrets.
-- ✅ **v1.412 — Schedule Notification UI refinements + 4-stage audit trail (2026-04-25, Session 56, commit `06df15d`)** — 🔔 button moved to top of every standard RO card as prominent red-outlined banner. Full audit trail to RO Status notes for every lifecycle event: scheduled (manual + auto), cancelled, sent, failed. Edge function v1.0 redeployed.
-- ✅ **v1.411 GH#ER1+ER2 Unified Scheduled Notifications (2026-04-25, Session 56, commit `47fd547`)** — `scheduled_notifications` table + `process-scheduled-notifications` edge function + pg_cron every 15 min. 🔔 modal on RO card. customer-checkin.html auto-inserts morning-before drop-off reminder. Edit RO Planned Drop Off Date field wired. Round-trip smoke test successful.
-- ✅ **v1.410 GH#ER3 "Ready to Work" RO status (2026-04-25, Session 56, commit `f2e6f2a`)** — New status between Awaiting parts and In progress. Lime `#84cc16`. 13 touchpoints. Spanish "Listo para Trabajar."
-- ✅ **v1.409-stable consolidated GitHub Release published (2026-04-25, Session 56)** — Restore-point release supersedes v1.283–v1.409 + worklist v1.3–v1.9 + checkin v1.30 + customer-checkin v1.4 backlog. Tag at commit `b256a17`.
+- ✅ **v1.413 — GH#37 Modal readability fix (2026-04-28, Session 60, commits `263d528` + `6ee6da6`)** — Schedule Notification, Parts Request, Parts Request Details, Parts Status, and Recently Deleted modals were all transparent — `.modal-content` CSS class had zero definition (no background). Fixed: added `.modal-content` rule with opaque `var(--bg-surface)` background, border, border-radius, padding, shadow, animation. Also bumped `.modal-overlay` from `rgba(0,0,0,0.8)` → `rgba(0,0,0,0.88)` + `backdrop-filter:blur(3px)`. Roland confirmed: "Looks great."
+- ✅ **send-parts-report v1.8 — Parts Report estimate bug fixed (2026-04-28, Session 59)** — Bobby was seeing 5 estimate-only ROs in Section 1. Fix: added `.not("parts_status","eq","estimate")` + `.is("deleted_at",null)`. Commit `521aeb9`.
+- ✅ **Work Orders RLS — Sr Manager bypass added (2026-04-28, Session 59)** — Kevin McHenry had no WO access. New `is_sr_manager_or_admin()` DB function + 5 policy updates. Commit `042d723`.
+- ✅ **Lynn Shepard added to staff (2026-04-28, Session 59)** — Admin user now visible in Schedule Notification recipient list. $0 rate, NULL silo. Commit `8e13f10`.
+- ✅ **customer-checkin.html v1.6 — 9 UX improvements (2026-04-27, Session 58)** — Photo optional, RAF email forced, expanded email summary, CID inline signature, drop-off Q moved to bottom, fixed version badge, reordered signature section, SELECT ONE prompt, full-width search. `send-quote-email` redeployed 3×. Commits 760bdef→28948b9.
+- ✅ **GH#38 Phase 1 — time-off.html v1.0 SHIPPED (2026-04-26, Session 57)** — Standalone time-off page. Calendar + list views. 3-trigger notification system (immediate + day-before + morning-of). Confirmation popup on submit. 🏖 Time Off header button on index.html.
+- ✅ **v1.412 — Schedule Notification refinements + 4-stage audit trail (2026-04-25, Session 56)** — 🔔 banner button at top of every RO card. Audit trail to RO Status notes for scheduled/cancelled/sent/failed events.
+- ✅ **v1.411 GH#ER1+ER2 Unified Scheduled Notifications (2026-04-25, Session 56)** — `scheduled_notifications` table + edge function + pg_cron every 15 min. Drop-off reminder auto-insert. Round-trip smoke test passed.
 
 ---
 
