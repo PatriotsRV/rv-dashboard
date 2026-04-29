@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.413 (index.html) · v1.9 (worklist-report.html) · v1.30 (checkin.html) · v1.6 (customer-checkin.html) · v1.0 (time-off.html) · send-parts-report v1.8 — Session 60 |
+| **Current Version** | v1.413 (index.html) · v1.9 (worklist-report.html) · **v1.31 (checkin.html)** · v1.6 (customer-checkin.html) · v1.0 (time-off.html) · send-parts-report v1.8 — Session 61 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -73,7 +73,7 @@
 - **GH#21 — checkin.html Auth Persistence Fix** — Add persistSession + storageKey + getSession() restore. ⏳ Open
 - **GH#20b — QR print layout update** — RV Owner Name + RV Info alongside key-tag QR for 4.3"×6.3" laminating pouch. ⏳ Open
 - **GH#24 Phase 2 — Shop Operations: Parts Returns** — Reverse-direction parts workflow. ⏳ Open
-- **GH#24 Phase 3 — Shop Operations: Shop Tasks + Time Logging** ⏳ Open
+- ~~**GH#24 Phase 3 — Shop Operations: Shop Tasks + Time Logging**~~ ✅ **DONE v1.31 (Session 61)** — Shop activity picker on checkin.html, `shop_activity` column on `time_logs`. **⚠️ Roland must run 2 SQL migrations in Supabase SQL Editor:** `shop_activity_time_logs.sql` + `cron_archive_cashiered_ros.sql`
 - **GH#8 — Switchblade tile view** — Compact tile layout mode. ⏳ Open
 - **Update solar parts pricing** — Current Epoch + Victron catalog pricing. ⏳ Open
 - **`isManagerOrAbove()` helper refactor** — Consolidate 5+ scattered role checks. ⏳ Open
@@ -88,14 +88,13 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **checkin.html v1.31 — GH#24 Phase 3 Shop Activity Picker (2026-04-29, Session 61, commit `1b54a319`)** — Techs clocking into Shop ROs now see a purple activity-chip grid (Shop Cleanup, Moving RVs, Work Break, Running Errands, Part Pickup) instead of the service-type picker. Activity stored in new `time_logs.shop_activity` column. Clock-out summary shows "Activity" label. Spanish translations included. Offline queue carries the activity automatically. **Requires: `shop_activity_time_logs.sql` migration run in Supabase SQL Editor.**
+- ✅ **Saturday Cashiered RO Archiver — pg_cron (2026-04-29, Session 61, commit `1b54a319`)** — Replaces the old Google Sheets Saturday 5 PM archiver. `archive_cashiered_ros()` SECURITY DEFINER function + pg_cron job every Saturday at 22:00 UTC (= 5 PM CDT). Moves only `status='Delivered/Cashed Out'` ROs to the `cashiered` table, then hard-deletes from `repair_orders`. Idempotent (ON CONFLICT DO NOTHING). Analytics page will see archived ROs automatically. **Requires: `cron_archive_cashiered_ros.sql` migration run in Supabase SQL Editor.**
 - ✅ **v1.413 — GH#37 Modal readability fix (2026-04-28, Session 60, commits `263d528` + `6ee6da6`)** — Schedule Notification, Parts Request, Parts Request Details, Parts Status, and Recently Deleted modals were all transparent — `.modal-content` CSS class had zero definition (no background). Fixed: added `.modal-content` rule with opaque `var(--bg-surface)` background, border, border-radius, padding, shadow, animation. Also bumped `.modal-overlay` from `rgba(0,0,0,0.8)` → `rgba(0,0,0,0.88)` + `backdrop-filter:blur(3px)`. Roland confirmed: "Looks great."
 - ✅ **send-parts-report v1.8 — Parts Report estimate bug fixed (2026-04-28, Session 59)** — Bobby was seeing 5 estimate-only ROs in Section 1. Fix: added `.not("parts_status","eq","estimate")` + `.is("deleted_at",null)`. Commit `521aeb9`.
 - ✅ **Work Orders RLS — Sr Manager bypass added (2026-04-28, Session 59)** — Kevin McHenry had no WO access. New `is_sr_manager_or_admin()` DB function + 5 policy updates. Commit `042d723`.
-- ✅ **Lynn Shepard added to staff (2026-04-28, Session 59)** — Admin user now visible in Schedule Notification recipient list. $0 rate, NULL silo. Commit `8e13f10`.
-- ✅ **customer-checkin.html v1.6 — 9 UX improvements (2026-04-27, Session 58)** — Photo optional, RAF email forced, expanded email summary, CID inline signature, drop-off Q moved to bottom, fixed version badge, reordered signature section, SELECT ONE prompt, full-width search. `send-quote-email` redeployed 3×. Commits 760bdef→28948b9.
-- ✅ **GH#38 Phase 1 — time-off.html v1.0 SHIPPED (2026-04-26, Session 57)** — Standalone time-off page. Calendar + list views. 3-trigger notification system (immediate + day-before + morning-of). Confirmation popup on submit. 🏖 Time Off header button on index.html.
-- ✅ **v1.412 — Schedule Notification refinements + 4-stage audit trail (2026-04-25, Session 56)** — 🔔 banner button at top of every RO card. Audit trail to RO Status notes for scheduled/cancelled/sent/failed events.
-- ✅ **v1.411 GH#ER1+ER2 Unified Scheduled Notifications (2026-04-25, Session 56)** — `scheduled_notifications` table + edge function + pg_cron every 15 min. Drop-off reminder auto-insert. Round-trip smoke test passed.
+- ✅ **customer-checkin.html v1.6 — 9 UX improvements (2026-04-27, Session 58)** — Photo optional, RAF email forced, expanded email summary, CID inline signature, drop-off Q moved to bottom, fixed version badge. Commits 760bdef→28948b9.
+- ✅ **GH#38 Phase 1 — time-off.html v1.0 SHIPPED (2026-04-26, Session 57)** — Standalone time-off page. Calendar + list views. 3-trigger notification system. 🏖 Time Off header button on index.html.
 
 ---
 
@@ -140,4 +139,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-28 — Session 59 (END) — send-parts-report v1.8 · index v1.412 · worklist-report v1.9 · checkin.html v1.30 · customer-checkin.html v1.6 · time-off.html v1.0. Session delivered: (1) Parts Report estimate bug fixed (v1.8), (2) Work Orders RLS sr_manager bypass, (3) Lynn Shepard added to staff. Commits 521aeb9 · 042d723 · 8e13f10.*
+*Last updated: 2026-04-29 — Session 61 (END) — index v1.413 · worklist-report v1.9 · checkin.html v1.31 · customer-checkin.html v1.6 · time-off.html v1.0. Session delivered: (1) checkin.html v1.31 — GH#24 Phase 3 shop activity picker, (2) Saturday cashiered RO pg_cron archiver. Commit 1b54a319. ⚠️ Roland must run 2 SQL migrations: shop_activity_time_logs.sql + cron_archive_cashiered_ros.sql.*
