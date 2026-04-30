@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Time Off v1.0
-    Released: 2026-04-26
-    Session 57 — GH#38 Phase 1
+    PRVS Time Off v1.1
+    Released: 2026-04-30
+    Session 62 — GH#38 fix: removed employee selector from Request modal — all users request for themselves only
     All-role access — self-service time off requests (sick/vacation/personal/general)
     Admin/Sr Manager/Manager: view all employees, submit on behalf of anyone
     Tech: view own records only, submit for self
@@ -301,12 +301,6 @@
             <button class="modal-close" onclick="closeRequestModal()">&#x2715;</button>
         </div>
         <div class="modal-body">
-            <div class="form-group" id="employeeSelectGroup" style="display:none;">
-                <label>Employee</label>
-                <select class="form-control" id="modalEmployee">
-                    <option value="">Select employee…</option>
-                </select>
-            </div>
             <div class="form-row">
                 <div class="form-group">
                     <label>Start Date</label>
@@ -482,16 +476,6 @@ async function loadStaff() {
         });
     }
 
-    const modalSel = document.getElementById('modalEmployee');
-    if (isManagerOrAbove()) {
-        document.getElementById('employeeSelectGroup').style.display = 'block';
-        allStaff.forEach(s => {
-            const o = document.createElement('option');
-            o.value = s.email + '|||' + (s.name || s.email);
-            o.textContent = s.name || s.email;
-            modalSel.appendChild(o);
-        });
-    }
 }
 
 async function loadTimeOffData() {
@@ -687,7 +671,6 @@ function openRequestModal() {
     document.getElementById('modalEndDate').value   = today;
     document.getElementById('modalNotes').value     = '';
     document.getElementById('modalType').value      = 'sick';
-    if (isManagerOrAbove()) document.getElementById('modalEmployee').value = '';
     updateDaysPreview();
     document.getElementById('requestModal').style.display = 'flex';
 }
@@ -720,15 +703,8 @@ async function submitRequest() {
     if (!start || !end)  { showToast('Please select start and end dates', 'error'); return; }
     if (end < start)     { showToast('End date must be on or after start date', 'error'); return; }
 
-    let empEmail, empName;
-    if (isManagerOrAbove()) {
-        const val = document.getElementById('modalEmployee').value;
-        if (!val) { showToast('Please select an employee', 'error'); return; }
-        [empEmail, empName] = val.split('|||');
-    } else {
-        empEmail = currentUser.email;
-        empName  = currentUser.name;
-    }
+    const empEmail = currentUser.email;
+    const empName  = currentUser.name;
 
     btn.disabled = true; btn.textContent = 'Saving…';
     const { error } = await getSB().from('time_off_requests').insert({
