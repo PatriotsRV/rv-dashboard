@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <!--
-    PRVS Time Off v1.1
+    PRVS Time Off v1.2
     Released: 2026-04-30
-    Session 62 — GH#38 fix: removed employee selector from Request modal — all users request for themselves only
+    Session 62 — GH#38: partial day requests (hours dropdown, fractional day stats, reason required)
     All-role access — self-service time off requests (sick/vacation/personal/general)
     Admin/Sr Manager/Manager: view all employees, submit on behalf of anyone
     Tech: view own records only, submit for self
     Backdating supported (no min date restriction)
+    Requires migration: add_partial_hours_to_time_off.sql
 -->
 <html lang="en">
 <head>
@@ -157,6 +158,13 @@
         .days-preview .days-num { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 700; color: var(--accent-medium); }
         .days-preview small { font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 2px; }
 
+        /* DAY TYPE TOGGLE */
+        .day-type-toggle { display: flex; margin-bottom: 16px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
+        .day-type-btn { flex: 1; padding: 9px 12px; font-family: 'Barlow Condensed', sans-serif; font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; border: none; background: var(--bg-elevated); color: var(--text-muted); transition: all 0.15s; }
+        .day-type-btn + .day-type-btn { border-left: 1px solid var(--border-color); }
+        .day-type-btn.active { background: rgba(10,132,255,0.15); color: var(--accent-info); }
+        .partial-badge { font-size: 0.65rem; background: rgba(10,132,255,0.2); color: #5ab0ff; border-left: 2px solid var(--accent-info); padding: 2px 4px; border-radius: 3px; }
+
         /* TOAST */
         #toastContainer { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
         .toast { padding: 12px 18px; border-radius: 10px; font-size: 0.95rem; font-weight: 700; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); animation: toastIn 0.25s ease; }
@@ -301,12 +309,17 @@
             <button class="modal-close" onclick="closeRequestModal()">&#x2715;</button>
         </div>
         <div class="modal-body">
+            <!-- Full Day / Partial Day toggle -->
+            <div class="day-type-toggle">
+                <button class="day-type-btn active" id="btnFullDay" onclick="setDayType('full')">&#x1F4C5; Full Day</button>
+                <button class="day-type-btn" id="btnPartialDay" onclick="setDayType('partial')">&#x23F1; Partial Day</button>
+            </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Start Date</label>
+                    <label id="startDateLabel">Start Date</label>
                     <input type="date" class="form-control" id="modalStartDate" oninput="updateDaysPreview()">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="endDateGroup">
                     <label>End Date</label>
                     <input type="date" class="form-control" id="modalEndDate" oninput="updateDaysPreview()">
                 </div>
@@ -314,6 +327,31 @@
             <div class="days-preview" id="daysPreview" style="display:none;">
                 <div class="days-num" id="daysPreviewNum">0</div>
                 <small id="daysPreviewLabel">calendar day(s)</small>
+            </div>
+            <!-- Partial day hours (hidden until partial selected) -->
+            <div id="partialGroup" style="display:none;margin-bottom:16px;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Hours Away <span style="color:var(--accent-urgent)">*</span></label>
+                    <select class="form-control" id="modalHours">
+                        <option value="">Select hours…</option>
+                        <option value="0.5">0.5 h — 30 minutes</option>
+                        <option value="1">1.0 h — 1 hour</option>
+                        <option value="1.5">1.5 h — 1 hour 30 min</option>
+                        <option value="2">2.0 h — 2 hours</option>
+                        <option value="2.5">2.5 h — 2 hours 30 min</option>
+                        <option value="3">3.0 h — 3 hours</option>
+                        <option value="3.5">3.5 h — 3 hours 30 min</option>
+                        <option value="4">4.0 h — 4 hours (half day)</option>
+                        <option value="4.5">4.5 h — 4 hours 30 min</option>
+                        <option value="5">5.0 h — 5 hours</option>
+                        <option value="5.5">5.5 h — 5 hours 30 min</option>
+                        <option value="6">6.0 h — 6 hours</option>
+                        <option value="6.5">6.5 h — 6 hours 30 min</option>
+                        <option value="7">7.0 h — 7 hours</option>
+                        <option value="7.5">7.5 h — 7 hours 30 min</option>
+                        <option value="8">8.0 h — full 8-hour day</option>
+                    </select>
+                </div>
             </div>
             <div class="form-group" style="margin-top:14px;">
                 <label>Type</label>
@@ -325,8 +363,8 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>Notes (optional)</label>
-                <textarea class="form-control" id="modalNotes" rows="3" style="resize:vertical;" placeholder="Any details…"></textarea>
+                <label>Reason <span style="color:var(--accent-urgent)">*</span></label>
+                <textarea class="form-control" id="modalNotes" rows="3" style="resize:vertical;" placeholder="Describe the reason for this time off request…"></textarea>
             </div>
         </div>
         <div class="modal-footer">
@@ -372,6 +410,7 @@ const PRVS_NOTIFY_URL      = SUPABASE_URL + '/functions/v1/send-quote-email';
 let _sb = null, supabaseSession = null, userRoles = [], currentUser = null;
 let allStaff = [], allTimeOff = [], filteredTimeOff = [];
 let currentView = 'calendar';
+let currentDayType = 'full';
 let calYear = new Date().getFullYear(), calMonth = new Date().getMonth();
 let filterYear = new Date().getFullYear(), filterEmployee = '', filterType = '';
 
@@ -481,7 +520,7 @@ async function loadStaff() {
 async function loadTimeOffData() {
     let query = getSB()
         .from('time_off_requests')
-        .select('id,employee_email,employee_name,start_date,end_date,request_type,notes,total_days,submitted_by_email,created_at')
+        .select('id,employee_email,employee_name,start_date,end_date,request_type,notes,total_days,partial_hours,submitted_by_email,created_at')
         .order('start_date', { ascending: false });
 
     if (!isManagerOrAbove()) {
@@ -520,6 +559,16 @@ function applyFilters() {
 }
 
 // ── STATS ──
+function dayValue(r) {
+    // Partial day: count as fraction of 8-hour workday
+    if (r.partial_hours) return parseFloat(r.partial_hours) / 8;
+    return parseFloat(r.total_days) || countDays(r.start_date, r.end_date);
+}
+function fmtStat(n) {
+    // Show up to 2 decimal places, strip trailing zeros
+    return parseFloat(n.toFixed(2)).toString();
+}
+
 function renderStats() {
     const scope = allTimeOff.filter(r => {
         const y = parseInt((r.start_date || '').substring(0, 4));
@@ -529,15 +578,14 @@ function renderStats() {
     });
     const t = { sick: 0, vacation: 0, personal: 0, general: 0 };
     scope.forEach(r => {
-        const d = parseFloat(r.total_days) || countDays(r.start_date, r.end_date);
-        if (t[r.request_type] !== undefined) t[r.request_type] += d;
+        if (t[r.request_type] !== undefined) t[r.request_type] += dayValue(r);
     });
     const total = t.sick + t.vacation + t.personal + t.general;
-    document.getElementById('statSick').textContent     = t.sick     || 0;
-    document.getElementById('statVacation').textContent = t.vacation || 0;
-    document.getElementById('statPersonal').textContent = t.personal || 0;
-    document.getElementById('statGeneral').textContent  = t.general  || 0;
-    document.getElementById('statTotal').textContent    = total || 0;
+    document.getElementById('statSick').textContent     = fmtStat(t.sick);
+    document.getElementById('statVacation').textContent = fmtStat(t.vacation);
+    document.getElementById('statPersonal').textContent = fmtStat(t.personal);
+    document.getElementById('statGeneral').textContent  = fmtStat(t.general);
+    document.getElementById('statTotal').textContent    = fmtStat(total);
 }
 
 // ── CALENDAR ──
@@ -600,8 +648,11 @@ function renderCalendar() {
         (dayMap[dateStr] || []).slice(0, 3).forEach(r => {
             const chip = document.createElement('div');
             chip.className = 'cal-chip ' + r.request_type;
-            chip.textContent = (r.employee_name || r.employee_email).split(' ')[0];
-            chip.title = (r.employee_name || r.employee_email) + ' — ' + typeLabel(r.request_type) + (r.notes ? ': ' + r.notes : '');
+            const firstName = (r.employee_name || r.employee_email).split(' ')[0];
+            chip.textContent = r.partial_hours ? '⏱ ' + firstName + ' ' + parseFloat(r.partial_hours) + 'h' : firstName;
+            const reasonNote = r.notes ? ': ' + r.notes : '';
+            const hoursNote  = r.partial_hours ? ' (' + parseFloat(r.partial_hours) + 'h partial)' : '';
+            chip.title = (r.employee_name || r.employee_email) + ' — ' + typeLabel(r.request_type) + hoursNote + reasonNote;
             cell.appendChild(chip);
         });
         const extra = (dayMap[dateStr] || []).length - 3;
@@ -639,14 +690,16 @@ function renderList() {
         return;
     }
     tbody.innerHTML = filteredTimeOff.map(r => {
-        const days = parseFloat(r.total_days) || countDays(r.start_date, r.end_date);
         const canDel = isAdmin() || r.employee_email === currentUser.email.toLowerCase();
+        const daysChip = r.partial_hours
+            ? '<span class="days-chip" style="color:var(--accent-info)">⏱ ' + parseFloat(r.partial_hours) + 'h</span>'
+            : '<span class="days-chip">' + fmtStat(dayValue(r)) + 'd</span>';
         return '<tr>'
             + '<td><strong>' + esc(r.employee_name || r.employee_email) + '</strong><br><span style="font-size:0.78rem;color:var(--text-muted)">' + esc(r.employee_email) + '</span></td>'
             + '<td><span class="type-badge ' + r.request_type + '">' + typeLabel(r.request_type) + '</span></td>'
             + '<td>' + fmtDisplay(r.start_date) + '</td>'
-            + '<td>' + fmtDisplay(r.end_date) + '</td>'
-            + '<td><span class="days-chip">' + days + 'd</span></td>'
+            + '<td>' + (r.partial_hours ? '<span style="color:var(--text-muted);font-size:0.85rem">same day</span>' : fmtDisplay(r.end_date)) + '</td>'
+            + '<td>' + daysChip + '</td>'
             + '<td style="max-width:180px;color:var(--text-secondary);font-size:0.9rem">' + esc(r.notes || '—') + '</td>'
             + '<td style="font-size:0.82rem;color:var(--text-muted)">' + esc(r.submitted_by_email) + '</td>'
             + '<td>' + (canDel ? '<button class="btn btn-danger btn-sm" onclick="deleteRequest(\'' + r.id + '\')">Delete</button>' : '') + '</td>'
@@ -665,13 +718,28 @@ function setView(v) {
 }
 
 // ── REQUEST MODAL ──
+function setDayType(type) {
+    currentDayType = type;
+    document.getElementById('btnFullDay').classList.toggle('active', type === 'full');
+    document.getElementById('btnPartialDay').classList.toggle('active', type === 'partial');
+    document.getElementById('endDateGroup').style.display  = type === 'full' ? '' : 'none';
+    document.getElementById('partialGroup').style.display  = type === 'partial' ? '' : 'none';
+    document.getElementById('startDateLabel').textContent  = type === 'partial' ? 'Date' : 'Start Date';
+    if (type === 'partial') {
+        document.getElementById('daysPreview').style.display = 'none';
+    } else {
+        updateDaysPreview();
+    }
+}
+
 function openRequestModal() {
     const today = fmtDate(new Date());
     document.getElementById('modalStartDate').value = today;
     document.getElementById('modalEndDate').value   = today;
     document.getElementById('modalNotes').value     = '';
     document.getElementById('modalType').value      = 'sick';
-    updateDaysPreview();
+    document.getElementById('modalHours').value     = '';
+    setDayType('full');
     document.getElementById('requestModal').style.display = 'flex';
 }
 
@@ -694,34 +762,53 @@ function updateDaysPreview() {
 }
 
 async function submitRequest() {
-    const btn   = document.getElementById('submitRequestBtn');
-    const start = document.getElementById('modalStartDate').value;
-    const end   = document.getElementById('modalEndDate').value;
-    const type  = document.getElementById('modalType').value;
-    const notes = document.getElementById('modalNotes').value.trim();
+    const btn    = document.getElementById('submitRequestBtn');
+    const start  = document.getElementById('modalStartDate').value;
+    const type   = document.getElementById('modalType').value;
+    const notes  = document.getElementById('modalNotes').value.trim();
+    const isPartial = currentDayType === 'partial';
 
-    if (!start || !end)  { showToast('Please select start and end dates', 'error'); return; }
-    if (end < start)     { showToast('End date must be on or after start date', 'error'); return; }
+    // Validate dates
+    if (!start) { showToast('Please select a date', 'error'); return; }
+    let end = start; // partial always single day
+    if (!isPartial) {
+        end = document.getElementById('modalEndDate').value;
+        if (!end)       { showToast('Please select an end date', 'error'); return; }
+        if (end < start){ showToast('End date must be on or after start date', 'error'); return; }
+    }
+
+    // Validate hours for partial
+    let partialHours = null;
+    if (isPartial) {
+        const hoursVal = document.getElementById('modalHours').value;
+        if (!hoursVal) { showToast('Please select the number of hours', 'error'); return; }
+        partialHours = parseFloat(hoursVal);
+    }
+
+    // Reason is required for all requests
+    if (!notes) { showToast('Please enter a reason for this request', 'error'); return; }
 
     const empEmail = currentUser.email;
     const empName  = currentUser.name;
 
     btn.disabled = true; btn.textContent = 'Saving…';
-    const { error } = await getSB().from('time_off_requests').insert({
+    const insertData = {
         employee_email:     empEmail.toLowerCase(),
         employee_name:      empName,
         start_date:         start,
         end_date:           end,
         request_type:       type,
-        notes:              notes || null,
-        submitted_by_email: currentUser.email.toLowerCase()
-    });
+        notes:              notes,
+        submitted_by_email: currentUser.email.toLowerCase(),
+        partial_hours:      partialHours,
+    };
+    const { error } = await getSB().from('time_off_requests').insert(insertData);
     btn.disabled = false; btn.textContent = 'Save Record';
 
     if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
     closeRequestModal();
     await loadTimeOffData();
-    fireTimeOffNotifications(empEmail, empName, type, start, end, notes);  // fire-and-forget
+    fireTimeOffNotifications(empEmail, empName, type, start, end, notes, partialHours);  // fire-and-forget
     openConfirmModal();
 }
 
@@ -741,7 +828,7 @@ function closeConfirmModal() { document.getElementById('confirmModal').style.dis
 // ── NOTIFICATIONS ──
 // Fires immediately on submit + schedules day-before + morning-of reminders.
 // Fire-and-forget — called without await so it never blocks the UI.
-async function fireTimeOffNotifications(empEmail, empName, type, start, end, notes) {
+async function fireTimeOffNotifications(empEmail, empName, type, start, end, notes, partialHours) {
     try {
         // Recipients: all active sr_manager / manager / admin staff
         const { data: mgrs } = await getSB()
@@ -752,7 +839,8 @@ async function fireTimeOffNotifications(empEmail, empName, type, start, end, not
         const recipients = (mgrs || []).map(m => m.email).filter(Boolean);
         if (!recipients.length) { log('No notification recipients found'); return; }
 
-        const days = countDays(start, end);
+        const days = partialHours ? parseFloat((partialHours / 8).toFixed(2)) : countDays(start, end);
+        const durationLabel = partialHours ? partialHours + ' hours (partial day)' : days + ' day' + (days !== 1 ? 's' : '');
 
         // ── Immediate: submitted context ──────────────────────────────────────
         try {
@@ -784,9 +872,8 @@ async function fireTimeOffNotifications(empEmail, empName, type, start, end, not
             const dayBeforeDate = new Date(start + 'T00:00:00');
             dayBeforeDate.setDate(dayBeforeDate.getDate() - 1);
             const dayBeforeStr = fmtDate(dayBeforeDate);
-            const daysLabel    = days + ' day' + (days !== 1 ? 's' : '');
-            const dateRange    = fmtDisplay(start) + (start !== end ? ' – ' + fmtDisplay(end) : '');
-            const notesLine    = notes ? '\n\nNotes: ' + notes : '';
+            const dateRange    = fmtDisplay(start) + (!partialHours && start !== end ? ' – ' + fmtDisplay(end) : '');
+            const reasonLine   = notes ? '\n\nReason: ' + notes : '';
 
             const notifRows = [
                 {   // Day-before at 8 AM CDT (13:00 UTC)
@@ -796,7 +883,7 @@ async function fireTimeOffNotifications(empEmail, empName, type, start, end, not
                     status:           'pending',
                     scheduled_at:     dayBeforeStr + 'T13:00:00Z',
                     subject:          `⏰ Tomorrow — ${empName} — ${typeLabel(type)}`,
-                    body:             `Reminder: ${empName} (${empEmail}) has ${typeLabel(type).toLowerCase()} time off starting TOMORROW.\n\nDates: ${dateRange} (${daysLabel})${notesLine}`,
+                    body:             `Reminder: ${empName} (${empEmail}) has ${typeLabel(type).toLowerCase()} time off starting TOMORROW.\n\nDate: ${dateRange} (${durationLabel})${reasonLine}`,
                 },
                 {   // Morning-of at 8 AM CDT (13:00 UTC)
                     source:           'manual',
@@ -805,7 +892,7 @@ async function fireTimeOffNotifications(empEmail, empName, type, start, end, not
                     status:           'pending',
                     scheduled_at:     start + 'T13:00:00Z',
                     subject:          `🟡 Today — ${empName} — ${typeLabel(type)}`,
-                    body:             `Reminder: ${empName} (${empEmail}) has ${typeLabel(type).toLowerCase()} time off STARTING TODAY.\n\nDates: ${dateRange} (${daysLabel})${notesLine}`,
+                    body:             `Reminder: ${empName} (${empEmail}) has ${typeLabel(type).toLowerCase()} time off STARTING TODAY.\n\nDate: ${dateRange} (${durationLabel})${reasonLine}`,
                 },
             ];
 
