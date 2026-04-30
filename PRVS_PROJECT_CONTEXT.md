@@ -14,7 +14,7 @@
 | **Owner** | Roland Shepard — roland@patriotsrvservices.com |
 | **Live URL** | https://patriotsrv.github.io/rv-dashboard/ |
 | **GitHub Repo** | https://github.com/PatriotsRV/rv-dashboard |
-| **Current Version** | v1.413 (index.html) · v1.9 (worklist-report.html) · **v1.31 (checkin.html)** · v1.6 (customer-checkin.html) · v1.0 (time-off.html) · send-parts-report v1.8 — Session 61 |
+| **Current Version** | v1.413 (index.html) · v1.9 (worklist-report.html) · **v1.31 (checkin.html)** · v1.6 (customer-checkin.html) · **v1.2 (time-off.html)** · send-parts-report v1.8 — Session 62 |
 | **Supabase Project** | axfejhudchdejoiwaetq |
 | **Cowork Workspace** | rv-dashboard folder on Roland's laptop |
 
@@ -88,6 +88,7 @@
 ---
 
 ## ✅ Recently Completed
+- ✅ **time-off.html v1.2 — GH#38 partial day + employee dropdown removal (2026-04-30, Session 62, commits `8ec431d` + `5bf2552`)** — v1.1: All users now submit time off for themselves only (employee dropdown removed from request modal). v1.2: Full Day / Partial Day toggle; `partial_hours NUMERIC(4,1)` column on DB (NULL = full day, 0.5–8.0 = partial hours); fractional day stats (e.g., 8.75 days); calendar/list view shows `⏱ Xh` chips for partials; reason field required for all requests. Migration `add_partial_hours_to_time_off.sql` run by Roland 2026-04-30.
 - ✅ **checkin.html v1.31 — GH#24 Phase 3 Shop Activity Picker (2026-04-29, Session 61, commit `1b54a319`)** — Techs clocking into Shop ROs now see a purple activity-chip grid (Shop Cleanup, Moving RVs, Work Break, Running Errands, Part Pickup) instead of the service-type picker. Activity stored in new `time_logs.shop_activity` column. Clock-out summary shows "Activity" label. Spanish translations included. Offline queue carries the activity automatically. **Requires: `shop_activity_time_logs.sql` migration run in Supabase SQL Editor.**
 - ✅ **Saturday Cashiered RO Archiver — pg_cron (2026-04-29, Session 61, commit `1b54a319`)** — Replaces the old Google Sheets Saturday 5 PM archiver. `archive_cashiered_ros()` SECURITY DEFINER function + pg_cron job every Saturday at 22:00 UTC (= 5 PM CDT). Moves only `status='Delivered/Cashed Out'` ROs to the `cashiered` table, then hard-deletes from `repair_orders`. Idempotent (ON CONFLICT DO NOTHING). Analytics page will see archived ROs automatically. **Requires: `cron_archive_cashiered_ros.sql` migration run in Supabase SQL Editor.**
 - ✅ **v1.413 — GH#37 Modal readability fix (2026-04-28, Session 60, commits `263d528` + `6ee6da6`)** — Schedule Notification, Parts Request, Parts Request Details, Parts Status, and Recently Deleted modals were all transparent — `.modal-content` CSS class had zero definition (no background). Fixed: added `.modal-content` rule with opaque `var(--bg-surface)` background, border, border-radius, padding, shadow, animation. Also bumped `.modal-overlay` from `rgba(0,0,0,0.8)` → `rgba(0,0,0,0.88)` + `backdrop-filter:blur(3px)`. Roland confirmed: "Looks great."
@@ -139,4 +140,4 @@ Claude will merge them into CLAUDE_CONTEXT.md automatically.
 
 ---
 
-*Last updated: 2026-04-29 — Session 61 (END) — index v1.413 · worklist-report v1.9 · checkin.html v1.31 · customer-checkin.html v1.6 · time-off.html v1.0. Session delivered: (1) checkin.html v1.31 — GH#24 Phase 3 shop activity picker, (2) Saturday cashiered RO pg_cron archiver. Commit 1b54a319. ⚠️ Roland must run 2 SQL migrations: shop_activity_time_logs.sql + cron_archive_cashiered_ros.sql.*
+*Last updated: 2026-04-30 — Session 62 (END) — index v1.413 · worklist-report v1.9 · checkin.html v1.31 · customer-checkin.html v1.6 · time-off.html v1.2. Session delivered: time-off.html v1.1 (employee dropdown removal) + v1.2 (partial day support + required reason field). Migration add_partial_hours_to_time_off.sql run by Roland. Commits: 8ec431d + 5bf2552.*
