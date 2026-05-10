@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.11
+    PRVS Active Work List Report v1.12
     Released: 2026-05-10
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -41,6 +41,25 @@
           it on their list. Answers "how many active ROs are in Repair across
           all managers?" at a glance. Sits between the Labor Load chart and the
           manager accordions. Collapsible (localStorage persisted).
+    v1.12: Surface the new auto_replaced_by_new_session close_reason — the
+          BEFORE INSERT trigger added in supabase/migrations/cross_ro_clockin_guardrail.sql
+          (GH#33 Phase 4) auto-closes any prior open session for a tech on a
+          different RO when they clock into a new one. Three render paths
+          updated to show this as a distinct purple "↻ switched RO" badge:
+          (1) Today's session list inside the staff tile detail.
+          (2) "Recent auto-closes" prior-day audit section — bucketed with
+              orange-flagged auto-EODs in the header count, since both
+              represent tech-discipline events. Header label changed to
+              "auto-close discipline events" to encompass both.
+          (3) Drill-down modal row classifier — purple badge + tinted row.
+          Also handles the one-time auto_cleanup_pre_uniq_index close_reason
+          (rows closed by the migration's pre-flight cleanup) as a gray
+          "✓ cleanup" badge — informational, not a discipline flag.
+          NOTE: After the trigger ships, NEW data will not have overlapping
+          clock_in/clock_out windows (trigger sets clock_out = next session's
+          clock_in instant). v1.11's OVERLAP detection will only catch
+          historical pre-fix data going forward — the switched-RO badge is
+          how the discipline signal will surface for new occurrences.
     v1.11: Per-tech-day total now uses WALL-CLOCK hours (union of overlapping
           session ranges) instead of raw sum. Roland reported Ignacio's drill-down
           showing 15.5h total from 3 sessions on 2026-05-05, when he only worked
@@ -727,6 +746,23 @@
             border-radius: 6px;
             letter-spacing: 0.02em;
         }
+        /* v1.12 — GH#33 Phase 4 trigger row: tech started new RO without clocking out */
+        .tile-detail-row.auto-switched {
+            background: rgba(168, 85, 247, 0.10);
+            border-left: 3px solid #a855f7;
+            padding-left: 6px;
+            margin-left: -3px;
+            border-radius: 3px;
+        }
+        .tile-detail-row .td-switched-badge {
+            background: #a855f7;
+            color: #1e1b4b;
+            font-size: 0.58rem;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 6px;
+            letter-spacing: 0.02em;
+        }
         .tile-auto-section {
             margin-top: 10px;
             padding-top: 8px;
@@ -887,6 +923,10 @@
         .techday-badge.b-recalc { background: #64748b; color: #0b1121; }
         /* v1.11 — overlapping-session marker (red, takes precedence over other badges) */
         .techday-badge.b-overlap { background: #b91c1c; color: #fef2f2; }
+        /* v1.12 — GH#33 Phase 4 trigger badge: tech started new RO without clocking out */
+        .techday-badge.b-switched { background: #a855f7; color: #1e1b4b; }
+        .techday-table tr.row-switched td { background: rgba(168, 85, 247, 0.08); }
+        .techday-table tr.row-switched td:first-child { box-shadow: inset 3px 0 0 0 #a855f7; }
         .techday-table tr.row-overlap td {
             background: rgba(185, 28, 28, 0.10);
             border-left: 0;
@@ -2269,8 +2309,14 @@ function renderStaffTiles() {
                     if (cr === 'auto_eod_5pm' || cr === 'auto_eod') {
                         const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
                         rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`);
+                    } else if (cr === 'auto_replaced_by_new_session') {
+                        // v1.12 — GH#33 Phase 4 trigger fired: tech started a new RO without clocking out.
+                        rows.push(`<div class="tile-detail-row auto-switched" title="Auto-closed by trigger — tech clocked into a new RO without clocking out of this one"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-switched-badge">&#8631; switched RO ${durStr}</span></div>`);
                     } else if (cr === 'auto_eod_8h_recalc') {
                         rows.push(`<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-recalc-badge">&#10003; 8h recalc</span></div>`);
+                    } else if (cr === 'auto_cleanup_pre_uniq_index') {
+                        // v1.12 — One-time cleanup row from the GH#33 Phase 4 migration.
+                        rows.push(`<div class="tile-detail-row recalc" title="Closed by one-time migration cleanup before installing per-tech UNIQUE index"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-recalc-badge">&#10003; cleanup</span></div>`);
                     } else {
                         rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-dur">${durStr}</span></div>`);
                     }
@@ -2356,11 +2402,14 @@ function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
     const prior = acRows.filter(l => !todayIds.has(l.id));
     if (prior.length === 0) return '';
 
-    // v1.9 — split prior rows into two piles: flagged (orange) vs recalc (gray).
+    // v1.9 — split prior rows into two piles: flagged (orange/red) vs recalc (gray).
     //        Only the flagged count shows in the section header.
+    // v1.12 — auto_replaced_by_new_session is ALSO a discipline flag (tech started
+    //         a new RO without clocking out). Bucketed with the orange/red flagged
+    //         set so it shows up in the header count alongside EOD auto-closes.
     const flagged = prior.filter(l => {
         const c = l.close_reason || '';
-        return c === 'auto_eod_5pm' || c === 'auto_eod';
+        return c === 'auto_eod_5pm' || c === 'auto_eod' || c === 'auto_replaced_by_new_session';
     });
 
     const listHtml = prior.map(log => {
@@ -2376,13 +2425,20 @@ function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
         if (cr === 'auto_eod_8h_recalc') {
             return `<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-recalc-badge">&#10003; 8h recalc</span></div>`;
         }
+        if (cr === 'auto_cleanup_pre_uniq_index') {
+            return `<div class="tile-detail-row recalc" title="Closed by GH#33 Phase 4 migration cleanup"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-recalc-badge">&#10003; cleanup</span></div>`;
+        }
+        if (cr === 'auto_replaced_by_new_session') {
+            // v1.12 — GH#33 Phase 4 trigger fired: tech started a new RO without clocking out.
+            return `<div class="tile-detail-row auto-switched" title="Auto-closed by trigger — tech clocked into a new RO without clocking out of this one"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-switched-badge">&#8631; switched RO ${durStr}</span></div>`;
+        }
         const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
         return `<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`;
     }).join('');
 
     const headerText = flagged.length > 0
-        ? `&#9888; ${flagged.length} auto-logout${flagged.length > 1 ? 's' : ''} · last 14 days`
-        : `&#128196; ${prior.length} auto-logout record${prior.length > 1 ? 's' : ''} · last 14 days (all data-corrected)`;
+        ? `&#9888; ${flagged.length} auto-close discipline event${flagged.length > 1 ? 's' : ''} · last 14 days`
+        : `&#128196; ${prior.length} auto-close record${prior.length > 1 ? 's' : ''} · last 14 days (all data-corrected)`;
 
     return `
         <div class="tile-auto-section">
@@ -2674,9 +2730,16 @@ function openTechDayModal(email, dayKey) {
                 rowClasses.push('row-auto');
                 const lbl = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
                 badges.push(`<span class="techday-badge b-auto">&#9888; ${lbl}</span>`);
+            } else if (cr === 'auto_replaced_by_new_session') {
+                // v1.12 — GH#33 Phase 4 trigger fired: tech started a new RO without clocking out.
+                rowClasses.push('row-switched');
+                badges.push('<span class="techday-badge b-switched" title="Tech clocked into a new RO without clocking out — server trigger auto-closed this session">&#8631; switched RO</span>');
             } else if (cr === 'auto_eod_8h_recalc') {
                 rowClasses.push('row-recalc');
                 badges.push('<span class="techday-badge b-recalc">&#10003; 8h recalc</span>');
+            } else if (cr === 'auto_cleanup_pre_uniq_index') {
+                rowClasses.push('row-recalc');
+                badges.push('<span class="techday-badge b-recalc">&#10003; cleanup</span>');
             }
             return `
                 <tr class="${rowClasses.join(' ')}">

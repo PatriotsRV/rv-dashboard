@@ -1,7 +1,46 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.31
-    Released: 2026-04-29
+    PRVS Tech Check-In v1.32
+    Released: 2026-05-10
+    v1.32: GH#33 Phase 4 — Cross-RO clock-in guardrail. Closes the gap that
+           allowed Ignacio Ochoa to be clocked into 3 ROs simultaneously on
+           Tue May 5 2026 (the bug Roland flagged → display-side fix shipped
+           in worklist-report.html v1.11). The cross-RO check in load() is
+           CLIENT-SIDE ONLY and bypassable when (A) page loaded offline,
+           (B) navigator.onLine returned true but the Supabase fetch
+           silently failed, (C) PWA / cached page reuse skipped re-loading,
+           or (D) offline queue replay reached the DB without the check.
+           This release adds three layers of defense:
+           (Server-side) supabase/migrations/cross_ro_clockin_guardrail.sql:
+              - BEFORE INSERT trigger auto_close_prior_open_session() that
+                auto-closes any prior open session for this tech on a
+                different RO at NEW.clock_in (close_reason
+                'auto_replaced_by_new_session'). Catches every code path.
+              - UNIQUE partial index idx_time_logs_one_open_per_tech ON
+                time_logs(tech_email) WHERE clock_out IS NULL — hard
+                backstop. Throws 23505 if the trigger is ever bypassed.
+           (Client-side, this file)
+              (1) clockIn() 23505 handler now distinguishes per-(tech,ro)
+                  vs per-(tech) conflicts. Per-(tech) shows a clear "you
+                  are already clocked in on X — clock out first" message
+                  and bails (rather than re-syncing local state with a
+                  same-RO existing row, which would be wrong).
+              (2) After successful clockIn() INSERT, queries for any prior
+                  session this tech got auto-closed by the trigger in the
+                  last 5s; if found, shows showAutoCloseToast() — top-of-
+                  screen amber toast naming the prior RO. Self-dismisses
+                  6s; tap to dismiss earlier.
+              (3) drainQueue() accumulates trigger auto-closes during
+                  replay. If any fired, the sync banner stays visible at
+                  the end with "⚠ Sync auto-closed prior sessions: N"
+                  instead of being hidden — surfaces the discipline signal
+                  for offline-replay scenarios where the tech wasn't
+                  present at clock-in time.
+              (4) New Spanish translations for the new strings.
+           Note: load()'s "Still Clocked In!" prompt remains the preferred
+           UX path for online foreground clock-ins because it lets the tech
+           specify how long ago they finished the prior RO (more accurate
+           clock_out adjustment than the trigger's NEW.clock_in default).
     v1.31: GH#24 Phase 3 — Shop RO work item tracking. When a tech opens a Shop RO
            (ro_type='shop'), the Service Type picker is replaced by a Shop Activity
            picker: Shop Cleanup / Moving RVs / Work Break / Running Errands / Part Pickup.
@@ -242,7 +281,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.31</div>
+    <div class="version">v1.32</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -320,6 +359,15 @@ const TRANSLATIONS_ES = {
     'Loading RO...': 'Cargando OR...',
     'Please select a service type before clocking in.': 'Por favor selecciona un tipo de servicio.',
     'You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.': 'Ya estás registrado en esta OR. Si crees que esto es un error, cierra sesión y vuelve a iniciar sesión.',
+    // GH#33 Phase 4 — cross-RO clock-in guardrail strings (v1.32)
+    'You are already clocked in on:': 'Ya estás registrado en:',
+    'Please clock out of that RO before starting a new one.': 'Por favor cierra sesión de esa OR antes de empezar una nueva.',
+    'another RO': 'otra OR',
+    'Auto-closed prior session': 'Sesión anterior cerrada automáticamente',
+    'You were still clocked in to:': 'Aún estabas registrado en:',
+    'previous session': 'sesión anterior',
+    '(tap to dismiss)': '(toca para descartar)',
+    'Sync auto-closed prior sessions:': 'Sincronización cerró sesiones anteriores:',
     'Signed in as': 'Sesión iniciada como',
     // Shop activity picker (v1.31)
     '🏪 Shop Operations RO': '🏪 OR de Operaciones de Taller',
@@ -470,6 +518,10 @@ async function drainQueue() {
     const banner = document.getElementById('syncBanner');
     if (banner) { banner.className = 'sync-banner syncing'; banner.textContent = `🔄 Syncing ${items.length} offline action(s)...`; banner.style.display = 'block'; }
 
+    // GH#33 Phase 4 — accumulator for trigger auto-closes during replay so we can
+    // surface a single banner at the end ("⚠ N prior sessions auto-closed during sync").
+    const triggerClosedRoIds = new Set();
+
     for (const item of items) {
         try {
             if (item.type === 'clock_in') {
@@ -492,13 +544,35 @@ async function drainQueue() {
                         continue;
                     }
                 }
-                const { error } = await getSB().from('time_logs').insert(item.data);
+                const { data: insertedRow, error } = await getSB()
+                    .from('time_logs')
+                    .insert(item.data)
+                    .select('id, clock_in')
+                    .single();
                 if (!error) {
                     await removeQueuedAction(item.id);
+                    // GH#33 Phase 4 — observability for the BEFORE INSERT trigger.
+                    // If the trigger fired (because this tech had a prior open session
+                    // on a different RO at the time of original offline tap), check for
+                    // it and accumulate so we can surface a banner at the end.
+                    if (d.tech_email && insertedRow?.clock_in) {
+                        try {
+                            const since = new Date(new Date(insertedRow.clock_in).getTime() - 1000).toISOString();
+                            const { data: closed } = await getSB()
+                                .from('time_logs')
+                                .select('ro_id')
+                                .eq('tech_email', d.tech_email)
+                                .eq('close_reason', 'auto_replaced_by_new_session')
+                                .gte('clock_out', since)
+                                .neq('id', insertedRow.id);
+                            if (closed) closed.forEach(r => r.ro_id && triggerClosedRoIds.add(r.ro_id));
+                        } catch(e) { warn('Replay trigger-observability check failed:', e); }
+                    }
                 } else if (error.code === '23505') {
-                    // Belt-and-suspenders with the DB unique partial index — if a race
-                    // between queue drain and a foreground clock-in slipped past the
-                    // SELECT-guard above, the DB rejects. Drop the queued item.
+                    // Belt-and-suspenders with the DB unique partial indexes:
+                    //   - Phase 1 (tech, ro)  — same-RO duplicate, drop the queued item
+                    //   - Phase 4 (tech)       — cross-RO duplicate; trigger should have
+                    //     pre-closed the prior, so this branch is rare. Still safe to drop.
                     log('Queue replay 23505 — dropping queued duplicate', d.tech_email, d.ro_id);
                     await removeQueuedAction(item.id);
                 }
@@ -511,13 +585,27 @@ async function drainQueue() {
         }
     }
 
-    if (banner) banner.style.display = 'none';
-    log('✅ Offline queue drained');
+    if (banner) {
+        if (triggerClosedRoIds.size > 0) {
+            // Show the trigger-fired summary instead of just hiding the banner.
+            // Auto-dismiss after 8s; tap to dismiss earlier.
+            banner.className = 'sync-banner';
+            banner.style.background = 'linear-gradient(135deg, #7c2d12, #b45309)';
+            banner.style.color = '#fef3c7';
+            banner.style.cursor = 'pointer';
+            banner.onclick = () => { banner.style.display = 'none'; };
+            banner.innerHTML = `⚠ ${t('Sync auto-closed prior sessions:')} ${triggerClosedRoIds.size}`;
+            setTimeout(() => { banner.style.display = 'none'; }, 8000);
+        } else {
+            banner.style.display = 'none';
+        }
+    }
+    log('✅ Offline queue drained' + (triggerClosedRoIds.size > 0 ? ` (${triggerClosedRoIds.size} prior session(s) auto-closed by trigger)` : ''));
 }
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    log('📦 PRVS Tech Check-In v1.31 - Released 2026-04-29');
+    log('📦 PRVS Tech Check-In v1.32 - Released 2026-05-10');
     translateStaticUI();
 
     if (!roIdParam) {
@@ -1062,29 +1150,70 @@ async function clockIn() {
             const { data, error } = await getSB().from('time_logs').insert(logData).select().single();
             if (error) {
                 // GH#33 Phase 1 — friendly handling for the DB unique_violation (23505).
-                // This fires if a concurrent tap squeezed through the pre-guard (race window
-                // between SELECT and INSERT), or if the offline-queue replay raced us.
+                // Two unique partial indexes can fire here:
+                //   - idx_time_logs_one_open_per_tech_ro (Phase 1, same RO)
+                //   - idx_time_logs_one_open_per_tech    (Phase 4, any RO — should be
+                //     unreachable in practice because the BEFORE INSERT trigger pre-closes
+                //     the prior session; this branch is the belt-and-suspenders backstop)
                 if (error.code === '23505') {
-                    alert(t('You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.'));
-                    // Fetch the existing session so we can re-sync local state.
-                    const { data: raceRow } = await getSB()
+                    // First check if the conflict is on THIS RO (the original Phase 1 case).
+                    const { data: sameRoOpen } = await getSB()
                         .from('time_logs')
                         .select('*')
                         .eq('tech_email', currentUser.email)
                         .eq('ro_id', roData.id)
                         .is('clock_out', null)
                         .maybeSingle();
-                    if (raceRow) {
-                        activeSession = raceRow;
+                    if (sameRoOpen) {
+                        alert(t('You are already clocked in on this RO. If you think this is wrong, sign out and sign back in.'));
+                        activeSession = sameRoOpen;
                         localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
                         render();
+                        return;
                     }
+                    // Phase 4 case — conflict is on a DIFFERENT RO. The trigger should
+                    // have prevented this; if we're here, the trigger wasn't installed
+                    // or was disabled. Fall back to a clear error message.
+                    const { data: otherOpen } = await getSB()
+                        .from('time_logs')
+                        .select('*, repair_orders(ro_id, customer_name)')
+                        .eq('tech_email', currentUser.email)
+                        .is('clock_out', null)
+                        .maybeSingle();
+                    const otherLabel = otherOpen?.repair_orders
+                        ? `${otherOpen.repair_orders.customer_name || ''} (${otherOpen.repair_orders.ro_id || ''})`
+                        : t('another RO');
+                    alert(t('You are already clocked in on:') + ' ' + otherLabel + '. ' + t('Please clock out of that RO before starting a new one.'));
                     return;
                 }
                 throw error;
             }
             activeSession = data;
             log('✅ Clocked in:', activeSession.id);
+
+            // GH#33 Phase 4 — observability for the BEFORE INSERT trigger.
+            // The trigger auto-closes any prior open session for this tech on a
+            // different RO at NEW.clock_in. When that fires, the tech (or whoever
+            // is looking at the page) should see a toast confirming the auto-close
+            // — otherwise it's a silent state change. Best-effort query (failure
+            // is non-blocking).
+            try {
+                const since = new Date(Date.now() - 5000).toISOString();
+                const { data: closedByTrigger } = await getSB()
+                    .from('time_logs')
+                    .select('id, ro_id, repair_orders(ro_id, customer_name)')
+                    .eq('tech_email', currentUser.email)
+                    .eq('close_reason', 'auto_replaced_by_new_session')
+                    .gte('clock_out', since)
+                    .neq('id', activeSession.id);
+                if (closedByTrigger && closedByTrigger.length > 0) {
+                    const labels = closedByTrigger.map(r => {
+                        const ro = r.repair_orders;
+                        return ro ? `${ro.customer_name || ''} (${ro.ro_id || ''})` : t('previous session');
+                    }).join(', ');
+                    showAutoCloseToast(labels);
+                }
+            } catch(e) { warn('Trigger-observability check failed:', e); }
         } else {
             const tempId = 'offline_' + Date.now();
             activeSession = { ...logData, id: tempId, _offline: true };
@@ -1299,6 +1428,21 @@ function showLoading(msg = 'Loading...') {
 
 function showError(msg) {
     document.getElementById('app').innerHTML = `<div class="error">❌ ${msg}</div>`;
+}
+
+// GH#33 Phase 4 — toast for the BEFORE INSERT trigger auto-close. Tells the
+// tech that a prior session was just closed for them so the new clock-in
+// could proceed. Self-dismissing after 6s; tap to dismiss earlier.
+function showAutoCloseToast(prevROLabel) {
+    const existing = document.getElementById('autoCloseToast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.id = 'autoCloseToast';
+    toast.onclick = () => toast.remove();
+    toast.style.cssText = 'position:fixed;top:16px;left:16px;right:16px;z-index:10080;background:linear-gradient(135deg,#7c2d12,#b45309);color:#fef3c7;padding:14px 16px;border:1px solid #f59e0b;border-radius:10px;font-size:14px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,0.4);cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,sans-serif;';
+    toast.innerHTML = `<strong>⚠ ${escapeHtml(t('Auto-closed prior session'))}</strong><div style="margin-top:4px;font-size:13px;opacity:0.95;">${escapeHtml(t('You were still clocked in to:'))} <strong>${escapeHtml(prevROLabel)}</strong></div><div style="margin-top:6px;font-size:11px;opacity:0.7;">${escapeHtml(t('(tap to dismiss)'))}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 6000);
 }
 </script>
 
