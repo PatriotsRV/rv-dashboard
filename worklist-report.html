@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.10
+    PRVS Active Work List Report v1.11
     Released: 2026-05-10
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -41,6 +41,38 @@
           it on their list. Answers "how many active ROs are in Repair across
           all managers?" at a glance. Sits between the Labor Load chart and the
           manager accordions. Collapsible (localStorage persisted).
+    v1.11: Per-tech-day total now uses WALL-CLOCK hours (union of overlapping
+          session ranges) instead of raw sum. Roland reported Ignacio's drill-down
+          showing 15.5h total from 3 sessions on 2026-05-05, when he only worked
+          7:30-4:00. Root cause: tech started Tom's RO at 7:49 AM and Crystal's at
+          11:26 AM without clocking out of Jeannie's 7:36 AM session — Jeannie's
+          session sat open until 5 PM auto-close, then naive sum 9.4 + 1.8 + 4.2
+          = 15.5h. Fix shipped in 4 places:
+          (1) New unionHoursOfRanges() helper merges overlapping intervals via
+              sort+sweep. New detectOverlappingSessionIndices() returns Set of
+              indices that overlap another session.
+          (2) buildWeekByEmailDay restructured to compute rawSumHours (old) +
+              wallClockHours (union) + overlapHours per (email, day). totalHours
+              aliased to wallClockHours so all callers default to the corrected
+              number.
+          (3) Drill-down modal: headline summary chip now reads "X.Xh wall-clock"
+              (was raw sum). Aux line below shows raw-sum when overlap > 3 min.
+              When overlap > 3 min, modal renders a red overlap-warning banner at
+              the top explaining the gap + likely root cause + pointing to the
+              per-row OVERLAP badges. Each overlapping session row gets a red
+              left-bar tint + "⚠ OVERLAP" badge. Coaching banner now thresholds
+              against wallClock (was raw sum) so over-counted days no longer
+              hide an under-logging signal.
+          (4) Tile inline summary "X.Xh today" + week mini-bars use wallClock.
+              Tile summary appends "(⚠ raw X.Xh)" when overlap detected so the
+              admin sees the discipline signal at a glance from the tile grid
+              without expanding the modal.
+          Note: per-RO labor cost / per-silo split / Labor Load chart numbers are
+          UNCHANGED — those aggregations are per-RO (or per-RO-per-silo), not
+          per-tech, so they don't suffer the over-counting. The "Total Logged"
+          chip on the stat strip is still raw sum across all techs across all
+          ROs (would need a second restructure to make it tech-deduped — flagged
+          as a future GH#31 sub-item if Roland wants).
     v1.10: Three changes (Session 65, GH#31 sub-items + reorder + drill-down).
           (1) Per-silo labor split — each silo lane / silo subheader / silo-context
           per-RO labor + hours chip now shows ONLY the labor attributed to that
@@ -634,6 +666,23 @@
         .tile-detail-row .td-gap {
             color: #f59e0b; font-style: italic; font-size: 0.65rem;
         }
+        /* v1.11 — overlapping session badge (tech started new RO without clocking out) */
+        .tile-detail-row .td-overlap-badge {
+            background: #b91c1c;
+            color: #fef2f2;
+            font-size: 0.55rem;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 6px;
+            letter-spacing: 0.04em;
+            margin-left: 4px;
+        }
+        .tile-overlap-warn {
+            color: #fb923c;
+            font-weight: 600;
+            font-size: 0.65rem;
+            margin-left: 4px;
+        }
         .tile-detail-summary {
             font-size: 0.68rem; color: #a78bfa; font-weight: 600;
             margin-top: 6px; padding-top: 4px;
@@ -836,6 +885,42 @@
         .techday-badge.b-active { background: #22c55e; color: #052e16; }
         .techday-badge.b-auto   { background: #f97316; color: #0b1121; }
         .techday-badge.b-recalc { background: #64748b; color: #0b1121; }
+        /* v1.11 — overlapping-session marker (red, takes precedence over other badges) */
+        .techday-badge.b-overlap { background: #b91c1c; color: #fef2f2; }
+        .techday-table tr.row-overlap td {
+            background: rgba(185, 28, 28, 0.10);
+            border-left: 0;
+        }
+        .techday-table tr.row-overlap td:first-child {
+            box-shadow: inset 3px 0 0 0 #b91c1c;
+        }
+        /* v1.11 — modal-level overlap warning banner (renders above coaching banner) */
+        .techday-overlap-banner {
+            background: rgba(185, 28, 28, 0.15);
+            border: 1px solid #b91c1c;
+            color: #fecaca;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-size: 0.84rem;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+        .techday-overlap-banner strong { color: #fef2f2; }
+        .techday-overlap-help {
+            margin-top: 6px;
+            color: #fca5a5;
+            font-size: 0.74rem;
+            font-style: italic;
+        }
+        /* v1.11 — secondary line under summary chip showing the raw-sum number */
+        .techday-summary-aux {
+            margin-top: 4px;
+            font-size: 0.72rem;
+            color: #94a3b8;
+            text-align: right;
+            padding-right: 14px;
+            font-family: 'SF Mono', monospace;
+        }
 
         /* ── Responsive ─────────────────────────────── */
         @media (max-width: 768px) {
@@ -2154,7 +2239,13 @@ function renderStaffTiles() {
         const todayLogs = todayByEmail[email] || [];
         let detailHtml = '';
         if (todayLogs.length > 0) {
-            let totalMinutes = 0;
+            // v1.11 — overlap detection drives the per-row OVERLAP badge AND the
+            // total chip. Use the unified buildWeekByEmailDay numbers for today
+            // (wall-clock + raw + overlap) so the tile summary matches the
+            // drill-down modal.
+            const todayKey = localDayKey(new Date());
+            const todayWeek = (weekByEmailDay[email] || {})[todayKey];
+            const overlappingIdx = detectOverlappingSessionIndices(todayLogs);
             const rows = [];
             for (let i = 0; i < todayLogs.length; i++) {
                 const log = todayLogs[i];
@@ -2163,10 +2254,12 @@ function renderStaffTiles() {
                 const inTime = log.clock_in
                     ? new Date(log.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                     : '';
+                const overlapBadge = overlappingIdx.has(i)
+                    ? '<span class="td-overlap-badge" title="This session overlaps with another clock-in — tech may not have clocked out before starting the next RO">&#9888; OVERLAP</span>'
+                    : '';
                 if (log.clock_out) {
                     const outTime = new Date(log.clock_out).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                     const mins = (new Date(log.clock_out) - new Date(log.clock_in)) / 60000;
-                    totalMinutes += mins;
                     const durStr = mins >= 60 ? (mins / 60).toFixed(1) + 'h' : Math.round(mins) + 'm';
                     // v1.7 / v1.9 — close_reason decides visual treatment.
                     //   'auto_eod_5pm' / 'auto_eod' (legacy)  → orange flag (tech didn't clock out)
@@ -2175,17 +2268,15 @@ function renderStaffTiles() {
                     const cr = log.close_reason || '';
                     if (cr === 'auto_eod_5pm' || cr === 'auto_eod') {
                         const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
-                        rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`);
+                        rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`);
                     } else if (cr === 'auto_eod_8h_recalc') {
-                        rows.push(`<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-recalc-badge">&#10003; 8h recalc</span></div>`);
+                        rows.push(`<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-recalc-badge">&#10003; 8h recalc</span></div>`);
                     } else {
-                        rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-dur">${durStr}</span></div>`);
+                        rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-dur">${durStr}</span></div>`);
                     }
                 } else {
                     // Currently active
-                    const elapsed = (Date.now() - new Date(log.clock_in).getTime()) / 60000;
-                    totalMinutes += elapsed;
-                    rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–now</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-active-badge">ACTIVE</span></div>`);
+                    rows.push(`<div class="tile-detail-row"><span class="td-time">${inTime}–now</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-active-badge">ACTIVE</span></div>`);
                 }
                 // Show gap between sessions
                 if (log.clock_out && i < todayLogs.length - 1) {
@@ -2197,8 +2288,17 @@ function renderStaffTiles() {
                     }
                 }
             }
-            const totalStr = totalMinutes >= 60 ? (totalMinutes / 60).toFixed(1) + 'h' : Math.round(totalMinutes) + 'm';
-            detailHtml = `<div class="tile-detail" id="det_${tileId}">${rows.join('')}<div class="tile-detail-summary">${todayLogs.length} session${todayLogs.length > 1 ? 's' : ''} · ${totalStr} today</div>${buildWeekBarsForTech(staff.email, weekByEmailDay)}${buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail)}</div>`;
+            // v1.11 — wall-clock total replaces raw sum. When overlap > 3 min,
+            // append a small "(⚠ raw Xh)" suffix that exposes the inflated raw
+            // sum without making the headline misleading.
+            const wallH = todayWeek ? todayWeek.wallClockHours : 0;
+            const rawH  = todayWeek ? todayWeek.rawSumHours   : 0;
+            const overlapH = todayWeek ? todayWeek.overlapHours : 0;
+            const totalStr = wallH >= 1 ? wallH.toFixed(1) + 'h' : Math.round(wallH * 60) + 'm';
+            const overlapSuffix = overlapH > 0.05
+                ? ` <span class="tile-overlap-warn" title="Sessions overlap — raw sum was ${rawH.toFixed(1)}h, wall-clock time worked = ${wallH.toFixed(1)}h">(&#9888; raw ${rawH.toFixed(1)}h)</span>`
+                : '';
+            detailHtml = `<div class="tile-detail" id="det_${tileId}">${rows.join('')}<div class="tile-detail-summary">${todayLogs.length} session${todayLogs.length > 1 ? 's' : ''} · ${totalStr} today${overlapSuffix}</div>${buildWeekBarsForTech(staff.email, weekByEmailDay)}${buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail)}</div>`;
         } else {
             detailHtml = `<div class="tile-detail" id="det_${tileId}"><div class="tile-detail-empty">No check-ins today</div>${buildWeekBarsForTech(staff.email, weekByEmailDay)}${buildPriorAutoCloseSection(email, [], autoClosedByEmail)}</div>`;
         }
@@ -2313,9 +2413,76 @@ function localDayKey(date) {
     return `${y}-${m}-${d}`;
 }
 
-/** Group _allWeekTimeLogs into { [tech_email]: { [YYYY-MM-DD]: { totalHours, sessions: [...] } } }.
+/** v1.11 — Wall-clock union of an array of {start, end} time ranges.
+ *  Returns total hours covered by at least one range — overlapping ranges are
+ *  counted once. Active (no end) ranges are clipped at end=Date.now() by caller.
+ *
+ *  Example: ranges [[7:36, 17:00], [7:49, 9:39], [11:26, 15:40]] returns 9.4h
+ *  (the second and third ranges are entirely inside the first — no extra time).
+ *
+ *  Algorithm: sort by start, sweep, merge any range whose start ≤ current end. */
+function unionHoursOfRanges(ranges) {
+    const intervals = (ranges || [])
+        .map(r => ({ s: +new Date(r.start), e: +new Date(r.end) }))
+        .filter(r => Number.isFinite(r.s) && Number.isFinite(r.e) && r.e > r.s)
+        .sort((a, b) => a.s - b.s);
+    if (intervals.length === 0) return 0;
+    let totalMs = 0;
+    let curS = intervals[0].s;
+    let curE = intervals[0].e;
+    for (let i = 1; i < intervals.length; i++) {
+        if (intervals[i].s <= curE) {
+            // Overlaps or abuts — extend current run.
+            if (intervals[i].e > curE) curE = intervals[i].e;
+        } else {
+            totalMs += (curE - curS);
+            curS = intervals[i].s;
+            curE = intervals[i].e;
+        }
+    }
+    totalMs += (curE - curS);
+    return totalMs / 3600000;
+}
+
+/** v1.11 — Return Set of indices of sessions that overlap with at least one
+ *  other session in the array. Two sessions overlap iff their [clock_in,
+ *  clock_out] intervals intersect (touching at a single instant doesn't count).
+ *  Active sessions (no clock_out) treated as ending at Date.now(). O(n^2);
+ *  fine for the < 50 sessions per tech-day we'll ever see. */
+function detectOverlappingSessionIndices(sessions) {
+    const out = new Set();
+    const ranges = (sessions || []).map(s => ({
+        s: s.clock_in ? +new Date(s.clock_in) : NaN,
+        e: s.clock_out ? +new Date(s.clock_out) : Date.now(),
+    }));
+    for (let i = 0; i < ranges.length; i++) {
+        if (!Number.isFinite(ranges[i].s)) continue;
+        for (let j = i + 1; j < ranges.length; j++) {
+            if (!Number.isFinite(ranges[j].s)) continue;
+            // Open intervals: strict inequality so two sessions that abut at the
+            // same instant (back-to-back) are NOT flagged as overlapping.
+            if (ranges[i].e > ranges[j].s && ranges[j].e > ranges[i].s) {
+                out.add(i);
+                out.add(j);
+            }
+        }
+    }
+    return out;
+}
+
+/** Group _allWeekTimeLogs into { [tech_email]: { [YYYY-MM-DD]: { sessions, rawSumHours,
+ *  wallClockHours, overlapHours, totalHours } } }.
  *  Sessions are sorted by clock_in ascending inside each day. Active (clock_out=NULL)
- *  sessions count against Date.now() — matches logHours()/the rest of the report. */
+ *  sessions count against Date.now() — matches logHours()/the rest of the report.
+ *
+ *  v1.11 — Three totals tracked per day:
+ *    - rawSumHours    = sum of each session's duration (the old "total")
+ *    - wallClockHours = union of session ranges (the actual time tech was clocked
+ *                       in somewhere — the "true" workday length)
+ *    - overlapHours   = rawSum - wallClock (≥ 0; large value signals tech started a
+ *                       new RO without clocking out of the previous one)
+ *  totalHours is aliased to wallClockHours so all existing callers (mini-bars,
+ *  modal grand total, tile summary) automatically get the corrected number. */
 function buildWeekByEmailDay() {
     const out = {};
     _allWeekTimeLogs.forEach(log => {
@@ -2323,14 +2490,25 @@ function buildWeekByEmailDay() {
         if (!em || !log.clock_in) return;
         const dKey = localDayKey(log.clock_in);
         if (!out[em]) out[em] = {};
-        if (!out[em][dKey]) out[em][dKey] = { totalHours: 0, sessions: [] };
+        if (!out[em][dKey]) out[em][dKey] = {
+            sessions: [], rawSumHours: 0, wallClockHours: 0, overlapHours: 0, totalHours: 0,
+        };
         out[em][dKey].sessions.push(log);
-        out[em][dKey].totalHours += logHours(log);
+        out[em][dKey].rawSumHours += logHours(log);
     });
-    // Sort each day's sessions by clock_in for chronological display in the modal.
+    // Sort sessions chronologically + compute wall-clock union per day.
     Object.keys(out).forEach(em => {
         Object.keys(out[em]).forEach(d => {
-            out[em][d].sessions.sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in));
+            const day = out[em][d];
+            day.sessions.sort((a, b) => new Date(a.clock_in) - new Date(b.clock_in));
+            const ranges = day.sessions
+                .filter(l => l.clock_in)
+                .map(l => ({ start: l.clock_in, end: l.clock_out || new Date() }));
+            day.wallClockHours = unionHoursOfRanges(ranges);
+            day.overlapHours = Math.max(0, day.rawSumHours - day.wallClockHours);
+            // Default "totalHours" is wall-clock — that's the number that should
+            // appear anywhere a single "hours worked today" figure is shown.
+            day.totalHours = day.wallClockHours;
         });
     });
     return out;
@@ -2412,7 +2590,9 @@ function openTechDayModal(email, dayKey) {
     if (!overlay) return;
     const lcEmail = (email || '').toLowerCase();
     const weekByEmailDay = buildWeekByEmailDay();
-    const dayData = (weekByEmailDay[lcEmail] || {})[dayKey] || { totalHours: 0, sessions: [] };
+    // v1.11 — dayData includes sessions + rawSumHours + wallClockHours + overlapHours
+    const dayData = (weekByEmailDay[lcEmail] || {})[dayKey]
+        || { sessions: [], rawSumHours: 0, wallClockHours: 0, overlapHours: 0, totalHours: 0 };
 
     // Tech display name + role from staff lookup (falls back to email-prefix titlecase).
     const staff = _allStaff.find(s => (s.email || '').toLowerCase() === lcEmail);
@@ -2426,24 +2606,43 @@ function openTechDayModal(email, dayKey) {
     const dow = dateObj.getDay();
     const isWorkday = (dow >= 1 && dow <= 5);
 
+    // v1.11 — Overlap warning banner. Fires whenever overlap > 3 min, regardless
+    // of date. Explains the gap between raw-sum and wall-clock and tells the
+    // admin what root cause to look for. Renders ABOVE the coaching banner so
+    // the admin sees data-quality concerns before behavioral concerns.
+    const overlapBannerHtml = (dayData.overlapHours > 0.05)
+        ? `<div class="techday-overlap-banner">
+            &#9888; <strong>${dayData.overlapHours.toFixed(1)}h of overlapping clock-ins.</strong>
+            Wall-clock time worked: <strong>${dayData.wallClockHours.toFixed(1)}h</strong> &middot;
+            Raw session sum: ${dayData.rawSumHours.toFixed(1)}h.
+            <div class="techday-overlap-help">Usually means ${escHtml(techName)} started a new RO without clocking out of the previous one (often a 5 PM auto-close on the orphan session). Look for the OVERLAP badges below to see which sessions are stepping on each other.</div>
+          </div>`
+        : '';
+
     // Coaching banner: signal under-logging on a workday past mid-afternoon.
     // Only show for TODAY (the only date where "by now" is meaningful).
+    // v1.11 — Threshold compares against wallClockHours (the real workday
+    // length), not raw sum. Without this, an over-counted day could look
+    // healthy at 12h raw sum when wall-clock was actually 5h.
     const todayKey = localDayKey(new Date());
     const showCoachBanner =
         isWorkday &&
         dayKey === todayKey &&
-        dayData.totalHours < 6 &&
+        dayData.wallClockHours < 6 &&
         new Date().getHours() >= 15;
     const coachBannerHtml = showCoachBanner
-        ? `<div class="techday-coach-banner">&#9888; Only ${dayData.totalHours.toFixed(1)}h logged so far on a workday past 3 PM. May warrant a check-in with ${techName} about login discipline or workload.</div>`
+        ? `<div class="techday-coach-banner">&#9888; Only ${dayData.wallClockHours.toFixed(1)}h of actual clocked-in time so far on a workday past 3 PM. May warrant a check-in with ${escHtml(techName)} about login discipline or workload.</div>`
         : '';
+
+    // v1.11 — pre-compute overlap indices once for the per-row OVERLAP badge.
+    const overlappingIdx = detectOverlappingSessionIndices(dayData.sessions);
 
     // Sessions table rows.
     let bodyHtml;
     if (dayData.sessions.length === 0) {
         bodyHtml = '<div class="techday-empty">No clock-ins recorded for this day.</div>';
     } else {
-        const rowsHtml = dayData.sessions.map(s => {
+        const rowsHtml = dayData.sessions.map((s, i) => {
             const inTime = s.clock_in
                 ? new Date(s.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                 : '';
@@ -2461,28 +2660,37 @@ function openTechDayModal(email, dayKey) {
                 : 'Unknown RO';
             const svc = s.service_type || '';
             const cr = s.close_reason || '';
-            let rowCls = '';
-            let badge = '';
+            // v1.11 — combine row classes (overlap can stack with auto/recalc/active)
+            const rowClasses = [];
+            const badges = [];
+            if (overlappingIdx.has(i)) {
+                rowClasses.push('row-overlap');
+                badges.push('<span class="techday-badge b-overlap" title="This session overlaps another clock-in">&#9888; OVERLAP</span>');
+            }
             if (isActive) {
-                rowCls = 'row-active';
-                badge = '<span class="techday-badge b-active">ACTIVE</span>';
+                rowClasses.push('row-active');
+                badges.push('<span class="techday-badge b-active">ACTIVE</span>');
             } else if (cr === 'auto_eod_5pm' || cr === 'auto_eod') {
-                rowCls = 'row-auto';
+                rowClasses.push('row-auto');
                 const lbl = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
-                badge = `<span class="techday-badge b-auto">&#9888; ${lbl}</span>`;
+                badges.push(`<span class="techday-badge b-auto">&#9888; ${lbl}</span>`);
             } else if (cr === 'auto_eod_8h_recalc') {
-                rowCls = 'row-recalc';
-                badge = '<span class="techday-badge b-recalc">&#10003; 8h recalc</span>';
+                rowClasses.push('row-recalc');
+                badges.push('<span class="techday-badge b-recalc">&#10003; 8h recalc</span>');
             }
             return `
-                <tr class="${rowCls}">
+                <tr class="${rowClasses.join(' ')}">
                     <td class="td-time">${inTime}${isActive ? ' &rarr; now' : ' &rarr; ' + outTime}</td>
-                    <td>${escHtml(roLabel)}${badge}</td>
+                    <td>${escHtml(roLabel)}${badges.join('')}</td>
                     <td>${escHtml(svc)}</td>
                     <td class="td-dur">${durStr}</td>
                 </tr>
             `;
         }).join('');
+        // v1.11 — Summary chip headlines wall-clock; raw sum surfaced in a smaller
+        // line below when it differs (so the user can see the over-count signal
+        // without losing access to the raw number).
+        const showRaw = dayData.overlapHours > 0.05;
         bodyHtml = `
             <table class="techday-table">
                 <thead><tr><th>Window</th><th>RO</th><th>Service</th><th>Hours</th></tr></thead>
@@ -2490,8 +2698,9 @@ function openTechDayModal(email, dayKey) {
             </table>
             <div class="techday-summary">
                 <span class="ts-label">${dayData.sessions.length} session${dayData.sessions.length !== 1 ? 's' : ''}</span>
-                <span class="ts-total">${dayData.totalHours.toFixed(1)}h total</span>
+                <span class="ts-total" title="Wall-clock time — overlapping sessions counted once">${dayData.wallClockHours.toFixed(1)}h wall-clock</span>
             </div>
+            ${showRaw ? `<div class="techday-summary-aux">Raw session sum (with double-counts): ${dayData.rawSumHours.toFixed(1)}h</div>` : ''}
         `;
     }
 
@@ -2505,6 +2714,7 @@ function openTechDayModal(email, dayKey) {
                 <button class="techday-close" onclick="closeTechDayModal()" aria-label="Close">&times;</button>
             </div>
             <div class="techday-body">
+                ${overlapBannerHtml}
                 ${coachBannerHtml}
                 ${bodyHtml}
             </div>
