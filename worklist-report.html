@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.12
+    PRVS Active Work List Report v1.13
     Released: 2026-05-10
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -41,6 +41,32 @@
           it on their list. Answers "how many active ROs are in Repair across
           all managers?" at a glance. Sits between the Labor Load chart and the
           manager accordions. Collapsible (localStorage persisted).
+    v1.13: Reframe auto_replaced_by_new_session as informational, not a
+          discipline event. Roland's stated policy is "just clock into the
+          new RO and the system will handle the prior clock-out" — exactly
+          what the GH#33 Phase 4 trigger now does. So techs following that
+          policy will produce a "↻ switched RO" row on every transition,
+          which is EXPECTED behavior. v1.12 incorrectly bucketed those
+          alongside EOD auto-closes ("auto-close discipline events" header
+          count), which would have produced scary numbers for compliant
+          techs. v1.13 changes:
+          (1) buildPriorAutoCloseSection — `flagged` filter renamed to
+              `flaggedEod` and now only matches auto_eod_5pm + auto_eod
+              (the genuine "tech forgot to clock out at end of day"
+              signal). auto_replaced_by_new_session removed from this set.
+          (2) Header text reworded:
+              - When EOD events present: "⚠ N EOD auto-closes (forgot to
+                clock out) · M total auto-closes · last 14 days" — leads
+                with the discipline signal but shows total context.
+              - Otherwise: "📄 N auto-closes · last 14 days" — neutral,
+                no warning emoji. Compliant techs see this.
+          (3) Per-row badge tooltips softened across three render paths
+              (today's session list, prior-day audit, drill-down modal):
+              dropped "without clocking out of this one" judgmental
+              language in favor of "Auto-closed when tech clocked into
+              the next RO (expected behavior)". The purple ↻ badge
+              itself stays — useful visibility into transitions even
+              when expected.
     v1.12: Surface the new auto_replaced_by_new_session close_reason — the
           BEFORE INSERT trigger added in supabase/migrations/cross_ro_clockin_guardrail.sql
           (GH#33 Phase 4) auto-closes any prior open session for a tech on a
@@ -2310,8 +2336,10 @@ function renderStaffTiles() {
                         const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
                         rows.push(`<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`);
                     } else if (cr === 'auto_replaced_by_new_session') {
-                        // v1.12 — GH#33 Phase 4 trigger fired: tech started a new RO without clocking out.
-                        rows.push(`<div class="tile-detail-row auto-switched" title="Auto-closed by trigger — tech clocked into a new RO without clocking out of this one"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-switched-badge">&#8631; switched RO ${durStr}</span></div>`);
+                        // v1.12 — GH#33 Phase 4 trigger fired: closed when tech clocked into the next RO.
+                        // v1.13 — softened tooltip: this is expected behavior under Roland's "just clock
+                        //         into the next RO" policy, not an error.
+                        rows.push(`<div class="tile-detail-row auto-switched" title="Auto-closed when tech clocked into the next RO (expected behavior under the just-clock-into-the-new-RO policy)"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-switched-badge">&#8631; switched RO ${durStr}</span></div>`);
                     } else if (cr === 'auto_eod_8h_recalc') {
                         rows.push(`<div class="tile-detail-row recalc" title="Retroactively corrected from the old 12h cap to 8h"><span class="td-time">${inTime}–${outTime}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span>${overlapBadge}<span class="td-recalc-badge">&#10003; 8h recalc</span></div>`);
                     } else if (cr === 'auto_cleanup_pre_uniq_index') {
@@ -2402,14 +2430,22 @@ function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
     const prior = acRows.filter(l => !todayIds.has(l.id));
     if (prior.length === 0) return '';
 
-    // v1.9 — split prior rows into two piles: flagged (orange/red) vs recalc (gray).
-    //        Only the flagged count shows in the section header.
-    // v1.12 — auto_replaced_by_new_session is ALSO a discipline flag (tech started
-    //         a new RO without clocking out). Bucketed with the orange/red flagged
-    //         set so it shows up in the header count alongside EOD auto-closes.
-    const flagged = prior.filter(l => {
+    // v1.9  — split prior rows into two piles: flagged (orange/red) vs recalc (gray).
+    //         Only the flagged count shows in the section header.
+    // v1.12 — initially bucketed auto_replaced_by_new_session WITH flagged. Reverted
+    //         in v1.13 (see below).
+    // v1.13 — Per Roland's stated policy ("just clock into the new RO, the system
+    //         will handle the prior clock-out"), auto_replaced_by_new_session is
+    //         EXPECTED behavior, not a discipline event. Reclassifying as
+    //         informational: kept out of the flagged count, kept the purple
+    //         "↻ switched RO" badge for visibility, but no warning header.
+    //         Only EOD auto-closes (auto_eod_5pm, auto_eod) remain as the
+    //         genuine discipline signal — they mean the tech truly forgot to
+    //         clock out at end of day with no follow-up clock-in to indicate
+    //         a switch.
+    const flaggedEod = prior.filter(l => {
         const c = l.close_reason || '';
-        return c === 'auto_eod_5pm' || c === 'auto_eod' || c === 'auto_replaced_by_new_session';
+        return c === 'auto_eod_5pm' || c === 'auto_eod';
     });
 
     const listHtml = prior.map(log => {
@@ -2429,16 +2465,21 @@ function buildPriorAutoCloseSection(email, todayLogs, autoClosedByEmail) {
             return `<div class="tile-detail-row recalc" title="Closed by GH#33 Phase 4 migration cleanup"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-recalc-badge">&#10003; cleanup</span></div>`;
         }
         if (cr === 'auto_replaced_by_new_session') {
-            // v1.12 — GH#33 Phase 4 trigger fired: tech started a new RO without clocking out.
-            return `<div class="tile-detail-row auto-switched" title="Auto-closed by trigger — tech clocked into a new RO without clocking out of this one"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-switched-badge">&#8631; switched RO ${durStr}</span></div>`;
+            // v1.12 — GH#33 Phase 4 trigger fired: closed when tech clocked into the next RO.
+            // v1.13 — softened tooltip; this is expected behavior, not a flag.
+            return `<div class="tile-detail-row auto-switched" title="Auto-closed when tech clocked into the next RO (expected behavior)"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-switched-badge">&#8631; switched RO ${durStr}</span></div>`;
         }
         const label = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
         return `<div class="tile-detail-row auto-eod" title="Auto-closed — tech did not clock out"><span class="td-time">${dateStr} ${inT}–${outT}</span><span class="td-ro" title="${escHtml(roLabel)}">${escHtml(roLabel)}</span><span class="td-auto-badge">&#9888; ${label} ${durStr}</span></div>`;
     }).join('');
 
-    const headerText = flagged.length > 0
-        ? `&#9888; ${flagged.length} auto-close discipline event${flagged.length > 1 ? 's' : ''} · last 14 days`
-        : `&#128196; ${prior.length} auto-close record${prior.length > 1 ? 's' : ''} · last 14 days (all data-corrected)`;
+    // v1.13 — header now emphasizes EOD auto-closes (the real discipline signal)
+    // when present, and falls back to a neutral count when only RO switches /
+    // data-corrections are present. Avoids producing scary "discipline events"
+    // counts for techs doing exactly what Roland told them to do.
+    const headerText = flaggedEod.length > 0
+        ? `&#9888; ${flaggedEod.length} EOD auto-close${flaggedEod.length > 1 ? 's' : ''} (forgot to clock out) &middot; ${prior.length} total auto-close${prior.length > 1 ? 's' : ''} &middot; last 14 days`
+        : `&#128196; ${prior.length} auto-close${prior.length > 1 ? 's' : ''} &middot; last 14 days`;
 
     return `
         <div class="tile-auto-section">
@@ -2731,9 +2772,11 @@ function openTechDayModal(email, dayKey) {
                 const lbl = cr === 'auto_eod_5pm' ? '5pm auto' : '12h auto';
                 badges.push(`<span class="techday-badge b-auto">&#9888; ${lbl}</span>`);
             } else if (cr === 'auto_replaced_by_new_session') {
-                // v1.12 — GH#33 Phase 4 trigger fired: tech started a new RO without clocking out.
+                // v1.12 — GH#33 Phase 4 trigger fired: closed when tech clocked into the next RO.
+                // v1.13 — softened badge tooltip; this is expected behavior under Roland's
+                //         "just clock into the next RO" policy.
                 rowClasses.push('row-switched');
-                badges.push('<span class="techday-badge b-switched" title="Tech clocked into a new RO without clocking out — server trigger auto-closed this session">&#8631; switched RO</span>');
+                badges.push('<span class="techday-badge b-switched" title="Auto-closed when tech clocked into the next RO (expected behavior — server trigger handled the prior clock-out)">&#8631; switched RO</span>');
             } else if (cr === 'auto_eod_8h_recalc') {
                 rowClasses.push('row-recalc');
                 badges.push('<span class="techday-badge b-recalc">&#10003; 8h recalc</span>');
