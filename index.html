@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.413
-    Released: 2026-04-28
+    PRVS Dashboard v1.414
+    Released: 2026-05-03
+    v1.414: WO Redesign Phase A1 + A2 (Session 64) — Missing-WO visual reminder + RO-card WO summary polish. (1) NEW: 3-tier escalating "Missing WO" badge on every active RO card and Manager Work List row — soft amber 0–2d, hot orange 3–5d, critical red+pulse 6+d. Detects two states: zero service_work_orders rows ("🔧 No WO yet") OR WOs exist with zero service_tasks ("🔧 WO exists — no tasks"). Skipped on shop ROs, training ROs, and ROs in inactive states (Not On Lot, Delivered/Cashed Out, Ready for pickup). Days computed from date_received for cards; from manager_work_lists.created_at for work list panel. (2) NEW: per-silo WO summary chip block on every standard RO card — "🔧 Repair · 2/3 tasks done · 12.5h est" with completion-percentage color band (gray/amber/blue/green). Tap to open the existing Work Orders modal. (3) loadDataFromSupabase batches a new query for service_work_orders + service_tasks counts alongside the existing parts query — single round-trip extension. Cached on ro._wo_summary. (4) Spanish translations added. (5) Pure additive UI; no schema, no flag, no breaking change. Existing Work Orders modal and behavior unchanged. Edge cases handled: empty currentData, missing RO lookup, zero WOs, WOs with zero tasks. See docs/specs/WO_REDESIGN_SPEC.md for full plan.
     v1.413: GH#37 Modal readability fix — (1) .modal-overlay backdrop bumped from rgba(0,0,0,0.8) → rgba(0,0,0,0.88) + backdrop-filter:blur(3px) so underlying board content is fully suppressed. (2) Added .modal-content CSS rule with opaque background (var(--bg-surface)), border, border-radius, padding, and box-shadow — the 5 dynamically-created modals (Schedule Notification, Parts Request, Parts Request Details, Parts Status, Recently Deleted) had no background defined so the board bled through; New RO / Edit RO modals use .modal class and were unaffected.
     v1.412: Schedule Notification refinements — (1) prominent red-outlined banner button moved to top of every standard RO card with new label "Schedule Important Tasks or Update Notifications". (2) Old "Notify" button in card-actions-secondary removed. (3) Full audit trail to RO Status notes for every notification lifecycle event: scheduled (manual + auto), cancelled, sent (success), failed. Notes follow the existing `[ts - user] PREFIX: details` convention used by parts requests. Edge function process-scheduled-notifications writes the SENT/FAILED notes via service role. Spanish translation added. Same-day scheduling fix from earlier hotfix is included.
     v1.411: GH#ER1 + GH#ER2 — Unified Scheduled Notifications. New 🔔 Schedule Notification button on every RO card (compact + standard) opens a modal where managers can schedule a future email reminder for that RO with date+time, subject, body, and multi-select recipients (silo managers pre-checked from RO's repair_type). Existing scheduled rows for the RO show with status badges and Cancel buttons. Backed by new `scheduled_notifications` table (RLS authenticated full + anon INSERT only for source='auto_dropoff_reminder'). New `process-scheduled-notifications` edge function (service-role, Gmail SMTP) consumes pending rows on every-15-min pg_cron. ER#1 wired on top: customer-checkin.html "New Customer Entry" + "Drop Off / Scheduled" modes now persist `planned_dropoff_date` on repair_orders AND auto-INSERT a reminder row scheduled for the morning before (8 AM CDT = 13:00 UTC). Edit RO modal gains a "Planned Drop Off Date" field; on save, change cascade cancels existing pending auto-reminder and recreates with new date + silo-manager recipients. Bonus: previously orphaned `scheduledDropoffDate` form field in customer-checkin.html is now persisted. Required Roland actions: run `scheduled_notifications.sql` + `cron_process_scheduled_notifications.sql` migrations + deploy `process-scheduled-notifications` edge function with `--no-verify-jwt`.
@@ -3358,6 +3359,98 @@
         .wo-task-desc { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
         .wo-task-meta { font-size: 0.75rem; color: #94a3b8; margin-top: 3px; }
         .wo-task-status-wrap { flex-shrink: 0; }
+
+        /* ── v1.414 WO Redesign Phase A1 — Missing WO badge ─────── */
+        .wo-missing-badge {
+            display: block;
+            margin: 8px 10px 10px 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.3;
+            text-align: center;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            transition: transform 0.15s ease;
+        }
+        .wo-missing-badge:hover { transform: translateY(-1px); }
+        .wo-missing-tier-soft {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid #f59e0b;
+            color: #f59e0b;
+        }
+        .wo-missing-tier-hot {
+            background: rgba(234, 88, 12, 0.15);
+            border: 2px solid #ea580c;
+            color: #ea580c;
+        }
+        .wo-missing-tier-critical {
+            background: rgba(220, 38, 38, 0.18);
+            border: 2px solid #dc2626;
+            color: #dc2626;
+            animation: woMissingPulse 1.6s ease-in-out infinite;
+        }
+        @keyframes woMissingPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+            50%      { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+        }
+        /* Smaller pill variant for compact view + work list */
+        .wo-missing-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            margin-left: 6px;
+        }
+        .wo-missing-pill.wo-missing-tier-soft     { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; }
+        .wo-missing-pill.wo-missing-tier-hot      { background: rgba(234, 88, 12, 0.18); color: #ea580c; border: 1px solid #ea580c; }
+        .wo-missing-pill.wo-missing-tier-critical { background: rgba(220, 38, 38, 0.20); color: #dc2626; border: 1px solid #dc2626; }
+
+        /* ── v1.414 WO Redesign Phase A2 — WO summary chips ─────── */
+        .wo-summary-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 8px 10px 10px 10px;
+        }
+        .wo-summary-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-left-width: 4px;
+            border-radius: 6px;
+            font-size: 0.76rem;
+            line-height: 1.25;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.15s ease;
+        }
+        .wo-summary-chip:hover {
+            background: var(--bg-surface);
+            transform: translateY(-1px);
+        }
+        .wo-summary-chip-empty       { border-left-color: #9ca3af; opacity: 0.85; }
+        .wo-summary-chip-zero        { border-left-color: #9ca3af; }
+        .wo-summary-chip-low         { border-left-color: #f59e0b; }
+        .wo-summary-chip-mid         { border-left-color: #3b82f6; }
+        .wo-summary-chip-done        { border-left-color: #22c55e; }
+        .wo-summary-chip-emoji       { font-size: 0.95rem; }
+        .wo-summary-chip-meta        { font-size: 0.7rem; color: var(--text-secondary); margin-left: 2px; }
+        .wo-summary-chip-bar-wrap    { width: 30px; height: 4px; background: rgba(148, 163, 184, 0.2); border-radius: 2px; overflow: hidden; margin-left: 4px; }
+        .wo-summary-chip-bar         { height: 100%; transition: width 0.3s ease; }
+        .wo-summary-chip-bar.low     { background: #f59e0b; }
+        .wo-summary-chip-bar.mid     { background: #3b82f6; }
+        .wo-summary-chip-bar.done    { background: #22c55e; }
+        /* End v1.414 */
         .wo-task-form-row {
             background: #f8fafc;
             border: 1.5px solid #e2e8f0;
@@ -8291,6 +8384,148 @@ Notes: ${notes}` : '',
             return '#FF1493'; // Neon pink (hottest)
         }
 
+        // ============================================================
+        // v1.414 — WO Redesign Phase A1 + A2 helpers
+        // ------------------------------------------------------------
+        // Default-safe behavior: every helper returns '' when data is
+        // missing or the RO doesn't qualify, so callers can interpolate
+        // them into template literals without conditional checks.
+        // ============================================================
+
+        // RO is "active" for missing-WO purposes — receives the nudge
+        // when its WOs are missing or empty.
+        function isActiveROForWoNudge(ro) {
+            if (!ro) return false;
+            if (ro.roType === 'shop') return false;
+            if (ro.isTraining) return false;
+            if (ro.status === 'Not On Lot') return false;
+            if (ro.status === 'Delivered/Cashed Out') return false;
+            if (ro.status === 'Ready for pickup') return false;
+            return true;
+        }
+
+        // Returns:
+        //   { state: 'missing' | 'empty' | 'healthy', label: string }
+        // Healthy state returns no label.
+        function getWoMissingState(ro) {
+            const sum = ro && ro._woSummary;
+            if (!sum || sum.total_wos === 0) {
+                return { state: 'missing', label: '🔧 ' + t('No WO yet') };
+            }
+            if (sum.total_tasks === 0) {
+                return { state: 'empty', label: '🔧 ' + t('WO exists — no tasks') };
+            }
+            return { state: 'healthy', label: '' };
+        }
+
+        // Days → tier mapping. Used to choose color/animation for the
+        // missing-WO badge.
+        function getWoMissingTier(days) {
+            if (days >= 6) return 'critical';
+            if (days >= 3) return 'hot';
+            return 'soft';
+        }
+
+        // Standard-card variant — block badge across the full card width.
+        // Returns '' when the RO is healthy or doesn't qualify.
+        // daysOverride lets the work list panel pass days-since-added-to-list.
+        function woMissingBadge(ro, daysOverride) {
+            if (!isActiveROForWoNudge(ro)) return '';
+            const m = getWoMissingState(ro);
+            if (m.state === 'healthy') return '';
+            const days = (typeof daysOverride === 'number')
+                ? daysOverride
+                : (calculateDaysOnLot(ro) || 0);
+            const tier = getWoMissingTier(days);
+            const flame = tier === 'critical' ? '🔥 ' : '';
+            const dayTail = days >= 3 ? ' · ' + days + 'd' : '';
+            return '<button class="wo-missing-badge wo-missing-tier-' + tier + '" '
+                 + 'data-action="work-orders" data-idx="' + (typeof ro._idx === 'number' ? ro._idx : '0') + '" '
+                 + 'title="' + escapeHtml(t('Build a Work Order for this RO')) + '">'
+                 + flame + escapeHtml(m.label) + dayTail
+                 + '</button>';
+        }
+
+        // Compact / pill variant — small inline badge for compact view
+        // and Manager Work List rows. No animation (compact discourages it).
+        function woMissingPill(ro, daysOverride) {
+            if (!isActiveROForWoNudge(ro)) return '';
+            const m = getWoMissingState(ro);
+            if (m.state === 'healthy') return '';
+            const days = (typeof daysOverride === 'number')
+                ? daysOverride
+                : (calculateDaysOnLot(ro) || 0);
+            const tier = getWoMissingTier(days);
+            const flame = tier === 'critical' ? '🔥' : '';
+            const shortLabel = m.state === 'missing' ? t('No WO') : t('WO empty');
+            return '<span class="wo-missing-pill wo-missing-tier-' + tier + '" '
+                 + 'title="' + escapeHtml(m.label + (days > 0 ? ' · ' + days + 'd' : '')) + '">'
+                 + flame + ' ' + escapeHtml(shortLabel)
+                 + '</span>';
+        }
+
+        // Per-silo WO summary chips for standard card.
+        // Returns '' when the RO has no _woSummary or no silos.
+        // Tap → opens Work Orders modal scrolled to that silo's section.
+        function woSummaryChips(ro, index) {
+            const sum = ro && ro._woSummary;
+            if (!sum || !sum.silos || sum.silos.length === 0) return '';
+            const out = sum.silos.map(s => {
+                const siloDef = SERVICE_SILOS.find(x => x.key === s.silo);
+                if (!siloDef) return '';
+                const taskCt = s.task_count || 0;
+                const completed = s.completed || 0;
+                const pct = taskCt === 0 ? 0 : Math.round((completed / taskCt) * 100);
+                let bandClass = 'wo-summary-chip-empty';
+                let barClass = '';
+                if (taskCt === 0) {
+                    bandClass = 'wo-summary-chip-empty';
+                } else if (pct === 0) {
+                    bandClass = 'wo-summary-chip-zero';
+                } else if (pct < 67) {
+                    bandClass = 'wo-summary-chip-low';
+                    barClass = 'low';
+                } else if (pct < 100) {
+                    bandClass = 'wo-summary-chip-mid';
+                    barClass = 'mid';
+                } else {
+                    bandClass = 'wo-summary-chip-done';
+                    barClass = 'done';
+                }
+                const meta = taskCt === 0
+                    ? t('empty')
+                    : completed + '/' + taskCt + ' ' + t('done');
+                const estLine = (taskCt > 0 && s.est_hours > 0)
+                    ? ' · ⏱️ ' + s.est_hours + 'h'
+                    : '';
+                const barHtml = (taskCt > 0)
+                    ? '<span class="wo-summary-chip-bar-wrap"><span class="wo-summary-chip-bar ' + barClass + '" style="width:' + pct + '%;"></span></span>'
+                    : '';
+                return '<span class="wo-summary-chip ' + bandClass + '" '
+                     + 'data-action="work-orders" data-idx="' + index + '" '
+                     + 'title="' + escapeHtml(siloDef.label + ' — ' + completed + '/' + taskCt + ' tasks · ' + (s.est_hours || 0) + 'h est') + '">'
+                     + '<span class="wo-summary-chip-emoji">' + siloDef.emoji + '</span>'
+                     + escapeHtml(siloDef.label)
+                     + '<span class="wo-summary-chip-meta"> · ' + escapeHtml(meta) + escapeHtml(estLine) + '</span>'
+                     + barHtml
+                     + '</span>';
+            }).join('');
+            return out ? '<div class="wo-summary-chips">' + out + '</div>' : '';
+        }
+
+        // Days since an RO was added to a manager's work list.
+        // Used by renderWorkList to drive the escalation tier when
+        // rendering inside the work list panel.
+        function daysSinceAddedToWorkList(item) {
+            if (!item || !item.created_at) return 0;
+            const added = new Date(item.created_at);
+            const today = new Date();
+            return Math.floor(Math.abs(today - added) / (1000 * 60 * 60 * 24));
+        }
+        // ============================================================
+        // End v1.414 helpers
+        // ============================================================
+
         function canSeeWorkList() {
             return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
         }
@@ -8601,6 +8836,18 @@ Notes: ${notes}` : '',
                 nameSpan.addEventListener('click', () => scrollToROInBoard(item.ro_id));
                 row.appendChild(nameSpan);
 
+                // v1.414 Phase A1: missing-WO pill — escalates with days-since-added-to-list
+                const linkedRo = currentData.find(r => r._supabaseId === item.ro_id);
+                if (linkedRo) {
+                    const daysOnList = daysSinceAddedToWorkList(item);
+                    const pillHtml = woMissingPill(linkedRo, daysOnList);
+                    if (pillHtml) {
+                        const pillWrap = document.createElement('span');
+                        pillWrap.innerHTML = pillHtml;
+                        if (pillWrap.firstChild) row.appendChild(pillWrap.firstChild);
+                    }
+                }
+
                 // Remove button
                 const removeBtn = document.createElement('button');
                 removeBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;';
@@ -8862,6 +9109,7 @@ Notes: ${notes}` : '',
                     if (ro.roType === 'hybrid') chips += '<span class="compact-chip ch-hybrid">🔧🛡️ Hybrid</span>';
                     if (ro.roType === 'shop') chips += '<span class="compact-chip ch-shop">🏪 Shop</span>';
                     if (ro.isTraining) chips += '<span class="compact-chip ch-training">🎓 Training</span>';
+                    chips += woMissingPill(ro); // v1.414 Phase A1: tiny inline missing-WO pill
 
                     try {
                         const parts = ro.partsJson ? JSON.parse(ro.partsJson) : [];
@@ -8954,6 +9202,8 @@ Notes: ${notes}` : '',
                 }
 
                 /* ── Standard Card View (condensed / regular / expanded) ─ */
+                // v1.414 Phase A1+A2: stash index on ro for woMissingBadge fallback
+                ro._idx = index;
                 return `
                     <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
                         <button class="schedule-notif-banner-btn" data-action="schedule-notification" data-idx="${index}"
@@ -8961,6 +9211,7 @@ Notes: ${notes}` : '',
                                 style="display:block;width:calc(100% - 20px);margin:8px 10px 14px 10px;padding:10px 12px;border:2px solid #dc2626;background:rgba(220,38,38,0.08);color:#dc2626;font-weight:700;font-size:0.82rem;line-height:1.25;border-radius:8px;cursor:pointer;text-align:center;letter-spacing:0.02em;text-transform:uppercase;">
                             🔔 ${t('Schedule Important Tasks or Update Notifications')}
                         </button>
+                        ${woMissingBadge(ro)}
                         ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
@@ -9014,7 +9265,9 @@ Notes: ${notes}` : '',
                         </div>
                         ` : ''}
                         ` : ''}
-                        
+
+                        ${woSummaryChips(ro, index)}
+
                         <!-- QR Code — collapsible toggle always shown, content hidden by default in Regular view -->
                         <div class="qr-collapsible-wrapper">
                             <button class="qr-toggle-btn" data-action="toggle-qr" data-idx="${index}" title="Show/Hide QR Code">
@@ -9816,6 +10069,14 @@ Notes: ${notes}` : '',
             'Requested': 'Solicitado',
             // Empty state
             'No RVs match the current filters': 'Ningún RV coincide con los filtros',
+            // v1.414 WO Redesign Phase A1+A2 — Missing WO badge + WO summary chips
+            'No WO yet': 'Sin Orden de Trabajo',
+            'WO exists — no tasks': 'OT existe — sin tareas',
+            'No WO': 'Sin OT',
+            'WO empty': 'OT vacía',
+            'Build a Work Order for this RO': 'Crea una Orden de Trabajo para esta OR',
+            'empty': 'vacía',
+            'done': 'hecho',
             // Photo modal
             'Photos & Docs': 'Fotos y Docs',
             'Tap a photo to view full size. Set as main from the viewer.': 'Toca para ver tamaño completo.',
@@ -10754,6 +11015,7 @@ Notes: ${notes}` : '',
                 requestedByEmail:         row.requested_by_email || null,
                 isTraining:               !!row.is_training,
                 plannedDropoffDate:       row.planned_dropoff_date || null,
+                _woSummary:               row._wo_summary || null,  // v1.414 Phase A1+A2
                 _supabaseId:              row.id,  // keep uuid for updates
             };
         }
@@ -10785,6 +11047,54 @@ Notes: ${notes}` : '',
                     .select('ro_id, status')
                     .in('ro_id', roIds);
 
+                // v1.414 WO Redesign Phase A1+A2 — Load WO + task summary per RO.
+                // Single round-trip extension. Wrapped in try/catch so a failure here
+                // never blocks the rest of the load (default-safe to "no badge / no chip").
+                let woSummaryMap = {};
+                try {
+                    const { data: wos, error: wosErr } = await getSB()
+                        .from('service_work_orders')
+                        .select('id, ro_id, service_silo')
+                        .in('ro_id', roIds);
+                    if (wosErr) throw wosErr;
+                    const woIds = (wos || []).map(w => w.id);
+                    let tasksByWo = {};
+                    if (woIds.length > 0) {
+                        const { data: tasks, error: taskErr } = await getSB()
+                            .from('service_tasks')
+                            .select('id, work_order_id, status, est_hours')
+                            .in('work_order_id', woIds);
+                        if (taskErr) throw taskErr;
+                        (tasks || []).forEach(tk => {
+                            if (!tasksByWo[tk.work_order_id]) tasksByWo[tk.work_order_id] = [];
+                            tasksByWo[tk.work_order_id].push(tk);
+                        });
+                    }
+                    (wos || []).forEach(wo => {
+                        if (!woSummaryMap[wo.ro_id]) {
+                            woSummaryMap[wo.ro_id] = { total_wos: 0, total_tasks: 0, completed_tasks: 0, silos: [] };
+                        }
+                        const sm = woSummaryMap[wo.ro_id];
+                        const woTasks = tasksByWo[wo.id] || [];
+                        const completed = woTasks.filter(t => t.status === 'completed').length;
+                        const estHours = woTasks.reduce((s, t) => s + (parseFloat(t.est_hours) || 0), 0);
+                        sm.total_wos += 1;
+                        sm.total_tasks += woTasks.length;
+                        sm.completed_tasks += completed;
+                        sm.silos.push({
+                            silo: wo.service_silo,
+                            wo_id: wo.id,
+                            task_count: woTasks.length,
+                            completed: completed,
+                            est_hours: estHours
+                        });
+                    });
+                } catch (woErr) {
+                    warn('WO summary load failed (Phase A1+A2 — non-fatal):', woErr);
+                    woSummaryMap = {};
+                }
+                // End v1.414 WO summary load
+
                 // Build notes map
                 const notesMap = {};
                 if (notes) {
@@ -10810,6 +11120,7 @@ Notes: ${notes}` : '',
                     row._ro_notes   = (nm.ro_status   || []).join('\n');
                     row._comm_notes = (nm.customer_comm || []).join('\n');
                     row._parts_json = partsMap[row.id] ? JSON.stringify(partsMap[row.id]) : '';
+                    row._wo_summary = woSummaryMap[row.id] || null; // v1.414 Phase A1+A2
                     return rowToRO(row);
                 });
 
