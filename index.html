@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.414
-    Released: 2026-05-03
+    PRVS Dashboard v1.415
+    Released: 2026-05-18
+    v1.415: Insurance WO Writer role (Brandon Dillon) — new RBAC tier that grants cross-silo Work Order create/update/template rights without approve/close/reassign/delete/re-price. New role 'Insurance WO Writer' in roles + user_roles (BRANDON_INSURANCE_WO_WRITER.sql). canManageSilo() extended to return true for the role on any silo; isInsuranceWoWriterOnly(silo) gates restricted UI mode. WO form (openBuildWOForm) hides terminal statuses (awaiting_customer_approval/customer_approved/completed), locks dollar_value when already > 0, shows "📋 Insurance WO mode" banner. buildWOTaskRowHtml replaces tech <select> with a "Silo manager assigns" placeholder + hidden field (forced NULL on save), filters task statuses to remove awaiting_approval + completed, hides ✕ Remove on rows that already exist in DB. submitWOForm skips delete-removed-tasks branch for restricted users. DB-level enforcement via two BEFORE triggers: enforce_insurance_wo_writer_swo_limits (blocks dollar_value re-edit + terminal status) and enforce_insurance_wo_writer_st_limits (blocks tech assignment + terminal task status). RLS extended on swo_insert/swo_update/st_insert/st_update via is_insurance_wo_writer() helper; swo_delete + st_delete deliberately not extended.
     v1.414: WO Redesign Phase A1 + A2 (Session 64) — Missing-WO visual reminder + RO-card WO summary polish. (1) NEW: 3-tier escalating "Missing WO" badge on every active RO card and Manager Work List row — soft amber 0–2d, hot orange 3–5d, critical red+pulse 6+d. Detects two states: zero service_work_orders rows ("🔧 No WO yet") OR WOs exist with zero service_tasks ("🔧 WO exists — no tasks"). Skipped on shop ROs, training ROs, and ROs in inactive states (Not On Lot, Delivered/Cashed Out, Ready for pickup). Days computed from date_received for cards; from manager_work_lists.created_at for work list panel. (2) NEW: per-silo WO summary chip block on every standard RO card — "🔧 Repair · 2/3 tasks done · 12.5h est" with completion-percentage color band (gray/amber/blue/green). Tap to open the existing Work Orders modal. (3) loadDataFromSupabase batches a new query for service_work_orders + service_tasks counts alongside the existing parts query — single round-trip extension. Cached on ro._wo_summary. (4) Spanish translations added. (5) Pure additive UI; no schema, no flag, no breaking change. Existing Work Orders modal and behavior unchanged. Edge cases handled: empty currentData, missing RO lookup, zero WOs, WOs with zero tasks. See docs/specs/WO_REDESIGN_SPEC.md for full plan.
     v1.413: GH#37 Modal readability fix — (1) .modal-overlay backdrop bumped from rgba(0,0,0,0.8) → rgba(0,0,0,0.88) + backdrop-filter:blur(3px) so underlying board content is fully suppressed. (2) Added .modal-content CSS rule with opaque background (var(--bg-surface)), border, border-radius, padding, and box-shadow — the 5 dynamically-created modals (Schedule Notification, Parts Request, Parts Request Details, Parts Status, Recently Deleted) had no background defined so the board bled through; New RO / Edit RO modals use .modal class and were unaffected.
     v1.412: Schedule Notification refinements — (1) prominent red-outlined banner button moved to top of every standard RO card with new label "Schedule Important Tasks or Update Notifications". (2) Old "Notify" button in card-actions-secondary removed. (3) Full audit trail to RO Status notes for every notification lifecycle event: scheduled (manual + auto), cancelled, sent (success), failed. Notes follow the existing `[ts - user] PREFIX: details` convention used by parts requests. Edge function process-scheduled-notifications writes the SENT/FAILED notes via service role. Spanish translation added. Same-day scheduling fix from earlier hotfix is included.
@@ -3487,7 +3488,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.413</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.415</span>
             </div>
         </header>
 
@@ -8039,7 +8040,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.413 - Released 2026-04-28');
+            log('📦 PRVS Dashboard v1.415 - Released 2026-05-18');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -14214,8 +14215,23 @@ Notes: ${notes}` : '',
             if (hasRole('Sr Manager')) return true;
             // Silo-specific manager: check staff table silo assignment
             if (hasRole('Manager') && window._currentStaffSilo === silo) return true;
+            // Insurance WO Writer (e.g. Brandon Dillon) — cross-silo WO write privilege,
+            // restricted by submitWOForm + openBuildWOForm + DB triggers from
+            // BRANDON_INSURANCE_WO_WRITER.sql (cannot approve/close/reassign/delete/re-price).
+            if (hasRole('Insurance WO Writer')) return true;
             if (hasRole('Manager') && window._currentStaffRole === 'parts_manager') return false;
             return false;
+        }
+
+        // Returns true if the current user's *only* WO-write privilege is the
+        // 'Insurance WO Writer' role for this silo. Drives the locked-down WO
+        // form UI (no tech assignment, no terminal statuses, no $ re-edit, no delete).
+        function isInsuranceWoWriterOnly(silo) {
+            if (!hasRole('Insurance WO Writer')) return false;
+            if (isAdmin()) return false;
+            if (hasRole('Sr Manager')) return false;
+            if (hasRole('Manager') && window._currentStaffSilo === silo) return false;
+            return true;
         }
 
         function getStaffName(email) {
@@ -14450,6 +14466,17 @@ function toggleWOTasks(tasksId, chevId) {
                 : [];
 
             window._woExistingTasks = existingTasks;
+            // Insurance WO Writer (cross-silo, restricted) — drives task-row + status + $ UI.
+            // Consumed by buildWOTaskRowHtml / addWOTaskRow / applyWOTemplate / submitWOForm.
+            const restricted = isInsuranceWoWriterOnly(silo);
+            window._woFormRestricted = restricted;
+            // Pricing is locked once a non-zero $ is on the WO (mirrors BEFORE UPDATE trigger
+            // enforce_insurance_wo_writer_swo_limits — see BRANDON_INSURANCE_WO_WRITER.sql).
+            const dollarLocked = restricted && Number(existingWO?.dollar_value || 0) > 0;
+            // Restricted users can only move the WO header status between not_started ↔ in_progress.
+            const allowedWoStatuses = restricted
+                ? ['not_started','in_progress']
+                : Object.keys(WO_STATUS_LABELS);
 
             const body = document.getElementById('woModalBody');
             if (!body) return;
@@ -14470,17 +14497,18 @@ function toggleWOTasks(tasksId, chevId) {
                 <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border-radius:10px;padding:12px 16px;margin-bottom:14px;">
                     <div style="font-size:1rem;font-weight:700;">${existingWO ? "Edit" : "Create"} ${siloInfo.emoji} ${siloInfo.label} MASTER Work Order</div>
                     <div style="font-size:0.82rem;opacity:0.8;">${escapeHtml(ro.customerName)} — ${escapeHtml(ro.roId)}</div>
+                    ${restricted ? '<div style="margin-top:6px;font-size:0.72rem;background:rgba(255,255,255,0.18);padding:4px 8px;border-radius:6px;display:inline-block;">📋 Insurance WO mode — silo manager approves, assigns techs, finalizes pricing</div>' : ''}
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
                     <div>
                         <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Status</label>
                         <select id="woFormStatus" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">
-                            ${Object.entries(WO_STATUS_LABELS).map(([k,v]) => `<option value="${k}" ${(existingWO?.status||'not_started')===k?'selected':''}>${v}</option>`).join('')}
+                            ${allowedWoStatuses.map(k => `<option value="${k}" ${(existingWO?.status||'not_started')===k?'selected':''}>${WO_STATUS_LABELS[k]}</option>`).join('')}
                         </select>
                     </div>
                     <div>
-                        <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Total Dollar Value ($)</label>
-                        <input id="woFormDollar" type="number" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="0.00" value="${existingWO?.dollar_value||''}">
+                        <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Total Dollar Value ($)${dollarLocked ? ' <span style="font-weight:500;color:#94a3b8;">— locked</span>' : ''}</label>
+                        <input id="woFormDollar" type="number" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:${dollarLocked ? '#f1f5f9' : '#fff'};color:#1e293b;box-sizing:border-box;${dollarLocked ? 'cursor:not-allowed;' : ''}" placeholder="0.00" value="${existingWO?.dollar_value||''}"${dollarLocked ? ' readonly title="Pricing locked — silo manager must adjust"' : ''}>
                     </div>
                 </div>
                 <div style="margin-bottom:14px;">
@@ -14508,22 +14536,40 @@ function toggleWOTasks(tasksId, chevId) {
             const techOpts = techOptions.replace(`value="${selectedTech}"`, `value="${selectedTech}" selected`);
             const siloInfo = silo ? SERVICE_SILOS.find(s => s.key === silo) : null;
             const siloBadge = siloInfo ? `<span style="font-size:0.72rem;font-weight:600;background:#e0edff;color:#1e3a5f;border-radius:12px;padding:2px 8px;margin-left:8px;">${siloInfo.emoji} ${siloInfo.label}</span>` : '';
+            // Insurance WO Writer restrictions (Brandon): hide ✕ on rows already saved,
+            // hide tech dropdown entirely (forced unassigned), filter terminal task statuses.
+            const restricted     = !!window._woFormRestricted;
+            const isExistingRow  = !!task?.id;
+            const allowedStatuses = restricted
+                ? TASK_STATUSES.filter(s => s !== 'awaiting_approval' && s !== 'completed')
+                : TASK_STATUSES;
+            // Restricted users can only remove rows they themselves added in this session
+            const removeBtnHtml = (restricted && isExistingRow)
+                ? ''
+                : `<button onclick="document.getElementById('${uid}').remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85rem;">✕ Remove</button>`;
+            const techBlockHtml = restricted
+                ? `<input type="hidden" class="wo-task-tech" value="">
+                   <div>
+                     <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Assigned Tech</label>
+                     <div style="padding:10px 12px;border:1.5px dashed #cbd5e1;border-radius:8px;font-size:0.82rem;background:#f8fafc;color:#94a3b8;font-style:italic;">Silo manager assigns</div>
+                   </div>`
+                : `<div>
+                     <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Assigned Tech</label>
+                     <select class="wo-task-tech" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">${techOpts}</select>
+                   </div>`;
             return `<div id="${uid}" class="wo-task-form-row" data-task-id="${task?.id||''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                     <span style="font-size:0.8rem;font-weight:700;color:#475569;">Task ${index+1}${siloBadge}</span>
-                    <button onclick="document.getElementById('${uid}').remove()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.85rem;">✕ Remove</button>
+                    ${removeBtnHtml}
                 </div>
                 <input type="text" placeholder="Task title *" value="${escapeHtml(task?.task_title)||''}" class="wo-task-title" style="width:100%;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" required>
                 <textarea placeholder="Description (optional)" class="wo-task-desc" rows="2" style="width:100%;resize:vertical;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;">${escapeHtml(task?.description)||''}</textarea>
                 <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:8px;">
-                    <div>
-                        <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Assigned Tech</label>
-                        <select class="wo-task-tech" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">${techOpts}</select>
-                    </div>
+                    ${techBlockHtml}
                     <div>
                         <label style="font-size:0.75rem;color:#64748b;display:block;margin-bottom:3px;">Status</label>
                         <select class="wo-task-status" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;">
-                            ${TASK_STATUSES.map(s => `<option value="${s}" ${(task?.status||'not_started')===s?'selected':''}>${TASK_STATUS_LABELS[s]}</option>`).join('')}
+                            ${allowedStatuses.map(s => `<option value="${s}" ${(task?.status||'not_started')===s?'selected':''}>${TASK_STATUS_LABELS[s]}</option>`).join('')}
                         </select>
                     </div>
                     <div>
@@ -14759,6 +14805,10 @@ function toggleWOTasks(tasksId, chevId) {
                     workOrderId = data.id;
                 }
 
+                // Insurance WO Writer restrictions (Brandon): force unassigned tech +
+                // never delete existing tasks (DB RLS blocks st_delete for him anyway).
+                const restricted = !!window._woFormRestricted;
+
                 // Save tasks
                 const taskRows  = document.querySelectorAll('#woTaskRows .wo-task-form-row');
                 const existing  = new Set((window._woExistingTasks||[]).map(t => t.id));
@@ -14770,7 +14820,7 @@ function toggleWOTasks(tasksId, chevId) {
                     const title     = row.querySelector('.wo-task-title').value.trim();
                     if (!title) continue;
                     const desc      = row.querySelector('.wo-task-desc').value.trim();
-                    const techEmail = row.querySelector('.wo-task-tech').value;
+                    const techEmail = restricted ? '' : (row.querySelector('.wo-task-tech')?.value || '');
                     const tStatus   = row.querySelector('.wo-task-status').value;
                     const estHrs    = parseFloat(row.querySelector('.wo-task-est-hours')?.value) || null;
                     const payload   = { task_title: title, description: desc, est_hours: estHrs,
@@ -14790,9 +14840,12 @@ function toggleWOTasks(tasksId, chevId) {
                     sortOrder++;
                 }
 
-                // Delete removed tasks
-                for (const tid of existing) {
-                    if (!seen.has(tid)) await sb.from('service_tasks').delete().eq('id', tid);
+                // Delete removed tasks — skipped for Insurance WO Writer (DB blocks st_delete
+                // and the UI hides ✕ on existing rows so this branch can't legitimately fire)
+                if (!restricted) {
+                    for (const tid of existing) {
+                        if (!seen.has(tid)) await sb.from('service_tasks').delete().eq('id', tid);
+                    }
                 }
 
                 // Roll up total dollar value → repair_orders.dollar_value
