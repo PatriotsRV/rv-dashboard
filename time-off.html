@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <!--
-    PRVS Time Off v1.2
-    Released: 2026-04-30
-    Session 62 — GH#38: partial day requests (hours dropdown, fractional day stats, reason required)
+    PRVS Time Off v1.3
+    Released: 2026-05-18
+    Session 68 — GH#38: Admin-only employee picker restored on request modal.
+        Admins can submit time off records on behalf of ANY active employee
+        (Sr Managers, Managers, Techs). employee_email = selected employee;
+        submitted_by_email = logged-in admin (audit trail preserved).
+        Non-admins (Sr Manager / Manager / Tech) unchanged — self-submit only.
+        Notifications fire with the selected employee's name/email.
+    Session 62 — GH#38 v1.2: partial day requests (hours dropdown, fractional day stats, reason required)
+    Session 62 — GH#38 v1.1: employee dropdown removed from modal (now restored Admin-only in v1.3)
     All-role access — self-service time off requests (sick/vacation/personal/general)
-    Admin/Sr Manager/Manager: view all employees, submit on behalf of anyone
-    Tech: view own records only, submit for self
+    Tech / Manager / Sr Manager: view own records only or all (per role), submit for self
+    Admin: view all, submit for self OR any employee
     Backdating supported (no min date restriction)
     Requires migration: add_partial_hours_to_time_off.sql
 -->
@@ -309,6 +316,12 @@
             <button class="modal-close" onclick="closeRequestModal()">&#x2715;</button>
         </div>
         <div class="modal-body">
+            <!-- Admin-only: submit on behalf of any employee (v1.3) -->
+            <div class="form-group" id="modalEmployeeGroup" style="display:none;">
+                <label>Employee <span style="color:var(--accent-urgent)">*</span></label>
+                <select class="form-control" id="modalEmployee"></select>
+                <small style="display:block;margin-top:6px;color:var(--text-muted);font-size:0.85rem;">Admin override — choose the employee this record belongs to. You will be recorded as the submitter.</small>
+            </div>
             <!-- Full Day / Partial Day toggle -->
             <div class="day-type-toggle">
                 <button class="day-type-btn active" id="btnFullDay" onclick="setDayType('full')">&#x1F4C5; Full Day</button>
@@ -515,6 +528,29 @@ async function loadStaff() {
         });
     }
 
+    // v1.3 — Admin-only: populate modal employee picker so Admins can submit
+    // time off records on behalf of any active staff member.
+    if (isAdmin()) {
+        const meEmail = (currentUser?.email || '').toLowerCase();
+        document.getElementById('modalEmployeeGroup').style.display = 'block';
+        const modalSel = document.getElementById('modalEmployee');
+        modalSel.innerHTML = '';
+        // Always include the admin themselves, even if they're not in the staff table.
+        const hasMe = allStaff.some(s => (s.email || '').toLowerCase() === meEmail);
+        if (!hasMe && meEmail) {
+            const oMe = document.createElement('option');
+            oMe.value = meEmail;
+            oMe.textContent = (currentUser.name || meEmail) + ' (you)';
+            modalSel.appendChild(oMe);
+        }
+        allStaff.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.email;
+            const isMe = (s.email || '').toLowerCase() === meEmail;
+            o.textContent = (s.name || s.email) + (isMe ? ' (you)' : '');
+            modalSel.appendChild(o);
+        });
+    }
 }
 
 async function loadTimeOffData() {
@@ -739,6 +775,11 @@ function openRequestModal() {
     document.getElementById('modalNotes').value     = '';
     document.getElementById('modalType').value      = 'sick';
     document.getElementById('modalHours').value     = '';
+    // v1.3 — Admin-only employee picker: default to the admin themselves on every open.
+    if (isAdmin()) {
+        const modalSel = document.getElementById('modalEmployee');
+        if (modalSel) modalSel.value = (currentUser?.email || '').toLowerCase();
+    }
     setDayType('full');
     document.getElementById('requestModal').style.display = 'flex';
 }
@@ -788,8 +829,18 @@ async function submitRequest() {
     // Reason is required for all requests
     if (!notes) { showToast('Please enter a reason for this request', 'error'); return; }
 
-    const empEmail = currentUser.email;
-    const empName  = currentUser.name;
+    // v1.3 — Admins can submit on behalf of any active employee.
+    // Non-admins always submit for themselves.
+    let empEmail = currentUser.email;
+    let empName  = currentUser.name;
+    if (isAdmin()) {
+        const modalSel = document.getElementById('modalEmployee');
+        const selectedEmail = (modalSel?.value || '').toLowerCase();
+        if (!selectedEmail) { showToast('Please select an employee', 'error'); return; }
+        empEmail = selectedEmail;
+        const match = allStaff.find(s => (s.email || '').toLowerCase() === selectedEmail);
+        empName = match ? (match.name || match.email) : (selectedEmail === (currentUser.email || '').toLowerCase() ? currentUser.name : selectedEmail);
+    }
 
     btn.disabled = true; btn.textContent = 'Saving…';
     const insertData = {
