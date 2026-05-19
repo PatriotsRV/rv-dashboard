@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.13
+    PRVS Active Work List Report v1.14
+    v1.14: Hardened loadUserRoles() — mirrors index.html v1.416 fix. user_roles
+           and staff-table merge are now independent so a missing/duplicate
+           `users` row no longer silently demotes a real staffer (Lynn loss bug).
     Released: 2026-05-10
     Admin-only report: all managers' work lists + time logs per RO
     Auto-refreshes every 3 minutes
@@ -1161,39 +1164,53 @@ function togglePerSilo() {
 // S2 — Role-based access (replaces hardcoded email arrays)
 let userRoles = [];
 
+// v1.14 (Session 70): mirrors the index.html v1.416 hardening — user_roles and
+// staff merges are independent so a missing/duplicate `users` row no longer
+// silently demotes a real staffer. (See index.html loadUserRoles for full notes.)
 async function loadUserRoles() {
     if (!supabaseSession) return;
+    const email = supabaseSession.user.email;
+    let mergedRoles = [];
+
+    // 1) user_roles via users.id — failures don't abort step 2
     try {
-        const email = supabaseSession.user.email;
         const { data: userRecord } = await getSB()
             .from('users')
             .select('id')
             .eq('email', email)
             .maybeSingle();
-        if (!userRecord) return;
-        const { data: roleData } = await getSB()
-            .from('user_roles')
-            .select('roles(name)')
-            .eq('user_id', userRecord.id);
-        if (roleData) {
-            userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
-        }
-        // Merge staff table role
-        try {
-            const { data: staffRecord } = await getSB()
-                .from('staff')
-                .select('role, service_silo, active')
-                .eq('email', email)
-                .single();
-            if (staffRecord && staffRecord.active) {
-                const staffRoleMap = { 'sr_manager': 'Sr Manager', 'manager': 'Manager', 'parts_manager': 'Manager', 'tech': 'Tech' };
-                const mapped = staffRoleMap[staffRecord.role];
-                if (mapped && !userRoles.includes(mapped)) userRoles.push(mapped);
+        if (userRecord) {
+            const { data: roleData } = await getSB()
+                .from('user_roles')
+                .select('roles(name)')
+                .eq('user_id', userRecord.id);
+            if (roleData) {
+                mergedRoles = roleData.map(r => r.roles?.name).filter(Boolean);
             }
-        } catch (e) { /* non-critical */ }
+        } else {
+            warn('⚠️ No users row for', email, '— role derived from staff only.');
+        }
     } catch (e) {
-        warn('Could not load roles:', e);
+        warn('user_roles lookup failed (continuing with staff merge):', e);
     }
+
+    // 2) Staff-table merge — runs unconditionally; .maybeSingle() so 0 rows = quiet null
+    try {
+        const { data: staffRecord } = await getSB()
+            .from('staff')
+            .select('role, service_silo, active')
+            .eq('email', email)
+            .maybeSingle();
+        if (staffRecord && staffRecord.active) {
+            const staffRoleMap = { 'sr_manager': 'Sr Manager', 'manager': 'Manager', 'parts_manager': 'Manager', 'tech': 'Tech' };
+            const mapped = staffRoleMap[staffRecord.role];
+            if (mapped && !mergedRoles.includes(mapped)) mergedRoles.push(mapped);
+        }
+    } catch (e) {
+        warn('staff role merge failed:', e);
+    }
+
+    userRoles = mergedRoles;
 }
 
 function getSB() {

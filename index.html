@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.415
-    Released: 2026-05-18
+    PRVS Dashboard v1.416
+    Released: 2026-05-19
+    v1.416: Hardened loadUserRoles() against silent-demote bug. Lynn (Admin in user_roles + sr_manager in staff) lost every Work List / Admin / Sr-Manager-tier button overnight after Session 69. Root cause: the prior loadUserRoles() early-returned whenever the `users` table lookup-by-email returned 0 rows OR errored (.maybeSingle returns null on missing row, can also error on duplicate). That early-return skipped BOTH the user_roles query AND the staff merge — leaving userRoles=[] for users with even a slightly mis-stamped `users` row, hiding 📋 My Work List sidebar, 📋 Work List Report, 📋 Add to My List per-card button, Admin Settings, Analytics, Recently Deleted, ER admin, Customer Check-In, Solar — every role-gated header button — without surfacing an error. Session 69 itself didn't change any of this code (canManageSilo / isInsuranceWoWriterOnly / openBuildWOForm / buildWOTaskRowHtml / submitWOForm were the only touchpoints, all WO-restricted to Brandon's new 'Insurance WO Writer' role) — the regression was a pre-existing latent bug in loadUserRoles() exposed by changes to Lynn's `users` row state. Fix: split loadUserRoles() into two INDEPENDENT role sources — (1) user_roles via users.id (Admin lives here) wrapped in its own try/catch so a missing/duplicate users row no longer aborts the whole function; (2) staff-table merge runs UNCONDITIONALLY, mapping staff.role → 'Sr Manager' / 'Manager' / 'Tech' even if user_roles failed. Switched the staff query from .single() → .maybeSingle() so 0 rows is a quiet null instead of a 406. Both sources now feed a single mergedRoles array that becomes userRoles at the end. Net effect: real staffers with a valid `staff` row keep their role-derived buttons even when their `users` row is missing, duplicate, or RLS-blocked — Lynn gets 'Sr Manager' from staff regardless, restoring every canSeeWorkList() button. Admin restoration still requires a valid user_roles.Admin row; see GH#41 in TODO for the DB verification step Roland needs to run.
     v1.415: Insurance WO Writer role (Brandon Dillon) — new RBAC tier that grants cross-silo Work Order create/update/template rights without approve/close/reassign/delete/re-price. New role 'Insurance WO Writer' in roles + user_roles (BRANDON_INSURANCE_WO_WRITER.sql). canManageSilo() extended to return true for the role on any silo; isInsuranceWoWriterOnly(silo) gates restricted UI mode. WO form (openBuildWOForm) hides terminal statuses (awaiting_customer_approval/customer_approved/completed), locks dollar_value when already > 0, shows "📋 Insurance WO mode" banner. buildWOTaskRowHtml replaces tech <select> with a "Silo manager assigns" placeholder + hidden field (forced NULL on save), filters task statuses to remove awaiting_approval + completed, hides ✕ Remove on rows that already exist in DB. submitWOForm skips delete-removed-tasks branch for restricted users. DB-level enforcement via two BEFORE triggers: enforce_insurance_wo_writer_swo_limits (blocks dollar_value re-edit + terminal status) and enforce_insurance_wo_writer_st_limits (blocks tech assignment + terminal task status). RLS extended on swo_insert/swo_update/st_insert/st_update via is_insurance_wo_writer() helper; swo_delete + st_delete deliberately not extended.
     v1.414: WO Redesign Phase A1 + A2 (Session 64) — Missing-WO visual reminder + RO-card WO summary polish. (1) NEW: 3-tier escalating "Missing WO" badge on every active RO card and Manager Work List row — soft amber 0–2d, hot orange 3–5d, critical red+pulse 6+d. Detects two states: zero service_work_orders rows ("🔧 No WO yet") OR WOs exist with zero service_tasks ("🔧 WO exists — no tasks"). Skipped on shop ROs, training ROs, and ROs in inactive states (Not On Lot, Delivered/Cashed Out, Ready for pickup). Days computed from date_received for cards; from manager_work_lists.created_at for work list panel. (2) NEW: per-silo WO summary chip block on every standard RO card — "🔧 Repair · 2/3 tasks done · 12.5h est" with completion-percentage color band (gray/amber/blue/green). Tap to open the existing Work Orders modal. (3) loadDataFromSupabase batches a new query for service_work_orders + service_tasks counts alongside the existing parts query — single round-trip extension. Cached on ro._wo_summary. (4) Spanish translations added. (5) Pure additive UI; no schema, no flag, no breaking change. Existing Work Orders modal and behavior unchanged. Edge cases handled: empty currentData, missing RO lookup, zero WOs, WOs with zero tasks. See docs/specs/WO_REDESIGN_SPEC.md for full plan.
     v1.413: GH#37 Modal readability fix — (1) .modal-overlay backdrop bumped from rgba(0,0,0,0.8) → rgba(0,0,0,0.88) + backdrop-filter:blur(3px) so underlying board content is fully suppressed. (2) Added .modal-content CSS rule with opaque background (var(--bg-surface)), border, border-radius, padding, and box-shadow — the 5 dynamically-created modals (Schedule Notification, Parts Request, Parts Request Details, Parts Status, Recently Deleted) had no background defined so the board bled through; New RO / Edit RO modals use .modal class and were unaffected.
@@ -3488,7 +3489,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.415</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.416</span>
             </div>
         </header>
 
@@ -8040,7 +8041,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.415 - Released 2026-05-18');
+            log('📦 PRVS Dashboard v1.416 - Released 2026-05-19');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10296,58 +10297,75 @@ Notes: ${notes}` : '',
             return userRoles.includes(role);
         }
 
-        // Load roles from Supabase for current user
+        // Load roles from Supabase for current user.
+        //
+        // v1.416 (Session 70): hardened against the silent-demote bug that hid every
+        // Work List / Admin button for Lynn after Session 69 shipped. Previously a
+        // failing `users` lookup early-returned, skipping BOTH the user_roles query
+        // AND the staff merge — so a missing/duplicate `users` row left userRoles=[]
+        // and isAdmin() / hasRole('Sr Manager') both false. The two role sources are
+        // now independent: a busted users row no longer wipes out the staff-derived
+        // Sr Manager / Manager / Tech role.
         async function loadUserRoles() {
             if (!supabaseSession) return;
+            const email = supabaseSession.user.email;
+            let mergedRoles = [];
+
+            // 1) Preferred path: user_roles via users.id (Admin lives here, plus any
+            //    hand-assigned roles like 'Insurance WO Writer'). Failures are logged
+            //    but do NOT prevent the staff-table fallback in step 2.
             try {
-                const email = supabaseSession.user.email;
-                // Get user record
                 const { data: userRecord } = await getSB()
                     .from('users')
                     .select('id')
                     .eq('email', email)
                     .maybeSingle(); // .single() returns 406 when no row found; .maybeSingle() returns null
-                if (!userRecord) return;
-                // Get roles via junction table
-                const { data: roleData } = await getSB()
-                    .from('user_roles')
-                    .select('roles(name)')
-                    .eq('user_id', userRecord.id);
-                if (roleData) {
-                    userRoles = roleData.map(r => r.roles?.name).filter(Boolean);
-                    log('✅ User roles:', userRoles);
-                }
-
-                // Merge staff table role into userRoles (S2 Phase 2 — staff → role sync)
-                try {
-                    const { data: staffRecord } = await getSB()
-                        .from('staff')
-                        .select('role, service_silo, active')
-                        .eq('email', email)
-                        .single();
-
-                    if (staffRecord && staffRecord.active) {
-                        const staffRoleMap = {
-                            'sr_manager':    'Sr Manager',
-                            'manager':       'Manager',
-                            'parts_manager': 'Manager',
-                            'tech':          'Tech',
-                        };
-                        const mapped = staffRoleMap[staffRecord.role];
-                        if (mapped && !userRoles.includes(mapped)) {
-                            userRoles.push(mapped);
-                        }
-                        // Store silo for canManageSilo() use
-                        window._currentStaffSilo = staffRecord.service_silo || null;
-                        window._currentStaffRole = staffRecord.role || null;
+                if (userRecord) {
+                    const { data: roleData } = await getSB()
+                        .from('user_roles')
+                        .select('roles(name)')
+                        .eq('user_id', userRecord.id);
+                    if (roleData) {
+                        mergedRoles = roleData.map(r => r.roles?.name).filter(Boolean);
                     }
-                } catch (e) {
-                    // Non-critical — staff record may not exist for this user
+                } else {
+                    warn('⚠️ No users row for', email, '— role will be derived from staff table only.');
                 }
-
-            } catch(e) {
-                warn('Could not load roles:', e);
+            } catch (e) {
+                warn('user_roles lookup failed (continuing with staff merge):', e);
             }
+
+            // 2) Staff-table merge (S2 Phase 2 staff → role sync). Runs unconditionally
+            //    so a missing/duplicate users row can't silently demote a real staffer.
+            //    .maybeSingle() so 0 rows is a quiet null instead of a 406.
+            try {
+                const { data: staffRecord } = await getSB()
+                    .from('staff')
+                    .select('role, service_silo, active')
+                    .eq('email', email)
+                    .maybeSingle();
+
+                if (staffRecord && staffRecord.active) {
+                    const staffRoleMap = {
+                        'sr_manager':    'Sr Manager',
+                        'manager':       'Manager',
+                        'parts_manager': 'Manager',
+                        'tech':          'Tech',
+                    };
+                    const mapped = staffRoleMap[staffRecord.role];
+                    if (mapped && !mergedRoles.includes(mapped)) {
+                        mergedRoles.push(mapped);
+                    }
+                    // Store silo for canManageSilo() use
+                    window._currentStaffSilo = staffRecord.service_silo || null;
+                    window._currentStaffRole = staffRecord.role || null;
+                }
+            } catch (e) {
+                warn('staff role merge failed:', e);
+            }
+
+            userRoles = mergedRoles;
+            log('✅ User roles:', userRoles);
         }
 
         // Ensure user exists in Supabase users table after login
