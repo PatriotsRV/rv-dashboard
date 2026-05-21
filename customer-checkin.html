@@ -1,7 +1,18 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.7
-    Released: 2026-04-27
+    PRVS Customer Check-In v1.8
+    Released: 2026-05-20
+    v1.8: Returning-customer search now queries `cashiered` in addition to
+          `repair_orders` so customers whose last RO has been archived (and any
+          customer arriving for warranty work on a closed RO) can still be
+          found. searchCustomers() runs both queries in parallel, prefers the
+          active `repair_orders` row when a customer exists in both, and shows
+          a small "Past customer" pill on cashiered hits. loadPreviousROs()
+          gets the same dual-table treatment so warranty RO selection can
+          reference completed work. Silent warn() on search errors replaced
+          with a user-visible toast so future RLS/network failures aren't
+          invisible. Fixes "Gilbert not found" reported 2026-05-20 (RO
+          PRVS-7F4E-4370 had been cashiered hours earlier).
     v1.7: Hardened loadUserRoles() — mirrors index.html v1.416 fix. user_roles
           and staff-table merge are now independent so a missing/duplicate
           `users` row no longer silently demotes a real manager (Lynn loss bug).
@@ -303,6 +314,15 @@
         .search-result-item:last-child { border-bottom: none; }
         .search-result-item .sr-name { font-weight: 700; color: var(--navy); font-size: 0.95rem; }
         .search-result-item .sr-detail { font-size: 0.8rem; color: var(--text-light); margin-top: 2px; }
+        /* v1.8: "Past customer" pill for cashiered hits — distinguishes archived ROs
+           from active ones in the returning-customer search results. */
+        .search-result-item .sr-source-pill {
+            display: inline-block; margin-left: 8px; padding: 2px 8px;
+            background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+            border-radius: 999px; font-size: 0.68rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.4px; vertical-align: middle;
+        }
+        .search-result-item .sr-source-pill.archived { background: #ecfeff; color: #0e7490; border-color: #67e8f9; }
 
         /* ── SILO CHIPS ───────────────────────────────────────────── */
         .silo-grid { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -926,7 +946,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.7</div>
+<div class="version-badge">PRVS Customer Check-In v1.8</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -1277,6 +1297,15 @@
     }
 
     // ── RETURNING CUSTOMER SEARCH ─────────────────────────────────
+    // v1.8: Searches BOTH repair_orders (active ROs) and cashiered (archived
+    // ROs). Without this, any customer whose last RO has been moved to
+    // `cashiered` (Saturday 5 PM archiver OR manual Delivered/Cashed Out
+    // archive) is invisible to the returning-customer flow, which makes them
+    // look like a New Customer every time they come back. The two queries run
+    // in parallel via Promise.all; if both fail, the user sees a toast
+    // (replaces the silent DEBUG-gated warn() that masked this bug for weeks).
+    // Dedup prefers the active repair_orders row when a customer exists in
+    // both tables (e.g., they have an open RO AND past cashiered history).
     let _searchTimeout = null;
     async function searchCustomers(query) {
         clearTimeout(_searchTimeout);
@@ -1287,21 +1316,49 @@
         _searchTimeout = setTimeout(async () => {
             try {
                 const q = query.toLowerCase();
-                // Search repair_orders for matching customers
-                const { data, error } = await getSB()
-                    .from('repair_orders')
-                    .select('id, ro_id, customer_name, phone, email, address, rv, vin')
-                    .or(`customer_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,vin.ilike.%${q}%`)
-                    .order('created_at', { ascending: false })
-                    .limit(20);
+                const orClause = `customer_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,vin.ilike.%${q}%`;
 
-                if (error) { warn('Search error:', error); return; }
+                // Run both queries in parallel — active + archived customers.
+                const [activeRes, archivedRes] = await Promise.all([
+                    getSB()
+                        .from('repair_orders')
+                        .select('id, ro_id, customer_name, phone, email, address, rv, vin, created_at')
+                        .or(orClause)
+                        .order('created_at', { ascending: false })
+                        .limit(20),
+                    getSB()
+                        .from('cashiered')
+                        .select('id, ro_id, customer_name, phone, email, address, rv, vin, archived_at')
+                        .or(orClause)
+                        .order('archived_at', { ascending: false })
+                        .limit(20),
+                ]);
 
-                // Deduplicate by customer name+phone
+                // Surface real errors so a future RLS/network failure isn't silent.
+                // Only fail loud if BOTH queries error — a single table being
+                // unreachable shouldn't block the search.
+                if (activeRes.error && archivedRes.error) {
+                    warn('Search error (both tables):', activeRes.error, archivedRes.error);
+                    if (typeof showToast === 'function') {
+                        showToast('Customer search is temporarily unavailable. Please try again or select "New Customer".', 'warning');
+                    }
+                    return;
+                }
+                if (activeRes.error) warn('repair_orders search error:', activeRes.error);
+                if (archivedRes.error) warn('cashiered search error:', archivedRes.error);
+
+                // Tag each row with its source so the UI can show a pill on
+                // archived hits and so the dedup pass below knows which to keep.
+                const activeRows = (activeRes.data || []).map(r => ({ ...r, _source: 'repair_orders' }));
+                const archivedRows = (archivedRes.data || []).map(r => ({ ...r, _source: 'cashiered' }));
+
+                // Dedup by lowercase(customer_name) + phone. Active rows are
+                // processed first, so when a customer appears in both tables
+                // we keep the live repair_orders row (current RO context).
                 const seen = new Map();
                 const unique = [];
-                for (const ro of (data || [])) {
-                    const key = (ro.customer_name || '').toLowerCase() + '|' + (ro.phone || '');
+                for (const ro of [...activeRows, ...archivedRows]) {
+                    const key = (ro.customer_name || '').toLowerCase().trim() + '|' + (ro.phone || '').trim();
                     if (!seen.has(key)) {
                         seen.set(key, true);
                         unique.push(ro);
@@ -1312,16 +1369,25 @@
                 if (unique.length === 0) {
                     resultsEl.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:0.85rem;">No matching customers found. Try a different search or select "New Customer".</div>';
                 } else {
-                    resultsEl.innerHTML = unique.map(ro => `
+                    resultsEl.innerHTML = unique.map(ro => {
+                        const pill = ro._source === 'cashiered'
+                            ? '<span class="sr-source-pill archived" title="This customer&apos;s last RO has been cashiered/archived">↩ Past customer</span>'
+                            : '';
+                        return `
                         <div class="search-result-item" onclick='selectReturningCustomer(${JSON.stringify(ro).replace(/'/g, "&#39;")})'>
-                            <div class="sr-name">${escapeHtml(ro.customer_name || 'Unknown')}</div>
+                            <div class="sr-name">${escapeHtml(ro.customer_name || 'Unknown')}${pill}</div>
                             <div class="sr-detail">${escapeHtml(ro.phone || '')} ${ro.email ? '· ' + escapeHtml(ro.email) : ''}</div>
                             <div class="sr-detail">${escapeHtml(ro.rv || '')} ${ro.vin ? '· VIN: ' + escapeHtml(ro.vin) : ''}</div>
-                        </div>
-                    `).join('');
+                        </div>`;
+                    }).join('');
                 }
                 resultsEl.classList.add('show');
-            } catch (e) { warn('Search failed:', e); }
+            } catch (e) {
+                warn('Search failed:', e);
+                if (typeof showToast === 'function') {
+                    showToast('Customer search failed. Please try again.', 'warning');
+                }
+            }
         }, 350);
     }
 
@@ -1356,24 +1422,59 @@
         loadPreviousROs(ro.customer_name, ro.phone);
     }
 
+    // v1.8: Warranty claims typically reference a COMPLETED prior RO, which
+    // means the relevant RO is almost always in `cashiered`, not `repair_orders`.
+    // Query both tables in parallel and merge — sort newest-first by whichever
+    // timestamp each row has (created_at vs archived_at). Dedup by ro_id in
+    // the unlikely event the same PRVS string is in both tables.
     async function loadPreviousROs(name, phone) {
         try {
-            const { data } = await getSB()
-                .from('repair_orders')
-                .select('id, ro_id, rv, description, date_received, status')
-                .or(`customer_name.ilike.%${name}%,phone.eq.${phone}`)
-                .order('created_at', { ascending: false })
-                .limit(10);
+            const orClause = `customer_name.ilike.%${name}%,phone.eq.${phone}`;
+            const [activeRes, archivedRes] = await Promise.all([
+                getSB()
+                    .from('repair_orders')
+                    .select('id, ro_id, rv, description, date_received, status, created_at')
+                    .or(orClause)
+                    .order('created_at', { ascending: false })
+                    .limit(10),
+                getSB()
+                    .from('cashiered')
+                    .select('id, ro_id, rv, description, date_received, status, archived_at')
+                    .or(orClause)
+                    .order('archived_at', { ascending: false })
+                    .limit(10),
+            ]);
+            if (activeRes.error) warn('loadPreviousROs repair_orders error:', activeRes.error);
+            if (archivedRes.error) warn('loadPreviousROs cashiered error:', archivedRes.error);
+
+            const activeRows = (activeRes.data || []).map(r => ({ ...r, _source: 'repair_orders', _ts: r.created_at }));
+            const archivedRows = (archivedRes.data || []).map(r => ({ ...r, _source: 'cashiered', _ts: r.archived_at }));
+
+            // Dedup by ro_id (PRVS string) and sort by timestamp desc.
+            const seen = new Set();
+            const merged = [];
+            for (const ro of [...activeRows, ...archivedRows]) {
+                if (ro.ro_id && !seen.has(ro.ro_id)) {
+                    seen.add(ro.ro_id);
+                    merged.push(ro);
+                }
+            }
+            merged.sort((a, b) => (b._ts || '').localeCompare(a._ts || ''));
+            const data = merged.slice(0, 10);
 
             if (data && data.length > 0) {
                 document.getElementById('prevROList').innerHTML = '<p style="font-size:0.82rem;color:#64748b;margin-bottom:8px;">Select the original RO for warranty claim:</p>' +
-                    data.map(ro => `
+                    data.map(ro => {
+                        const archivedBadge = ro._source === 'cashiered'
+                            ? ' <span style="display:inline-block;margin-left:6px;padding:1px 7px;background:#ecfeff;color:#0e7490;border:1px solid #67e8f9;border-radius:999px;font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;vertical-align:middle;">Archived</span>'
+                            : '';
+                        return `
                         <div class="prev-ro-item" onclick="selectWarrantyRO('${escapeHtml(ro.ro_id)}', this)">
-                            <div class="ro-label">${escapeHtml(ro.ro_id)}</div>
+                            <div class="ro-label">${escapeHtml(ro.ro_id)}${archivedBadge}</div>
                             <div class="ro-sub">${escapeHtml(ro.rv || '')} — ${escapeHtml(ro.description || '').substring(0, 80)}${(ro.description || '').length > 80 ? '...' : ''}</div>
                             <div class="ro-sub">${ro.date_received || ''} · ${ro.status || ''}</div>
-                        </div>
-                    `).join('');
+                        </div>`;
+                    }).join('');
             }
         } catch (e) { warn('Could not load previous ROs:', e); }
     }
