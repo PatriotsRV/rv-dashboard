@@ -1,8 +1,9 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.416
-    Released: 2026-05-19
+    PRVS Dashboard v1.417
+    Released: 2026-05-21
+    v1.417: Fixed the SECOND silent-demote bug exposed by Lynn's continued flakiness after v1.416. v1.416 hardened loadUserRoles() against missing/duplicate `users` rows, but a separate code path bypassed loadUserRoles() entirely. Session-restore Step 2 ("Fall back to Google token if Supabase session gone") set `sessionRestoredFromCache = true` and called updateViewModeDropdown() WITHOUT loadUserRoles. The Google One Tap prompt was then SKIPPED because the skip-condition keyed on `sessionRestoredFromCache` — which was true even when only a stale Google token had been restored and the Supabase session was actually null. With One Tap skipped, the signInWithIdToken callback never fired, supabaseSession stayed null, userRoles stayed [], and every isAdmin()/hasRole() gate failed silently. Net result: Lynn (Admin user_roles row + active staff row + on v1.416 code) still saw only the role-gateless buttons (+ NEW RO, Closed ROs, Time Off). Fix: 5 surgical edits — (1) line ~10539 getUserInfo() now awaits loadUserRoles() before updateViewModeDropdown so post-login first paint reflects real roles. (2) line ~10653 Step 2 fallback now awaits loadUserRoles() before updateViewModeDropdown so even the anon-key path renders any role data it can read. (3) line ~10802 callback skip condition changed from `sessionRestoredFromCache || supabaseSession` to just `supabaseSession` — only skip Supabase re-auth when we have a real auth session, not when we restored stale UI from cache. (4) line ~10823 after signInWithIdToken success, now calls `await loadUserRoles(); updateViewModeDropdown(); updateAuthStatus(true);` so role-gated UI re-renders the moment Supabase auth comes back. (5) line ~10832 One Tap prompt skip changed from `!sessionRestoredFromCache` to `!supabaseSession` — same logic: prompt whenever Supabase auth isn't live. The `sessionRestoredFromCache` flag is preserved for non-auth uses (skip One Tap prompt UI for already-loaded users) but is no longer used as a proxy for "RBAC is active." Same defensive pattern applied: no changes to worklist-report.html or customer-checkin.html (those don't have the Step 2 fallback path).
     v1.416: Hardened loadUserRoles() against silent-demote bug. Lynn (Admin in user_roles + sr_manager in staff) lost every Work List / Admin / Sr-Manager-tier button overnight after Session 69. Root cause: the prior loadUserRoles() early-returned whenever the `users` table lookup-by-email returned 0 rows OR errored (.maybeSingle returns null on missing row, can also error on duplicate). That early-return skipped BOTH the user_roles query AND the staff merge — leaving userRoles=[] for users with even a slightly mis-stamped `users` row, hiding 📋 My Work List sidebar, 📋 Work List Report, 📋 Add to My List per-card button, Admin Settings, Analytics, Recently Deleted, ER admin, Customer Check-In, Solar — every role-gated header button — without surfacing an error. Session 69 itself didn't change any of this code (canManageSilo / isInsuranceWoWriterOnly / openBuildWOForm / buildWOTaskRowHtml / submitWOForm were the only touchpoints, all WO-restricted to Brandon's new 'Insurance WO Writer' role) — the regression was a pre-existing latent bug in loadUserRoles() exposed by changes to Lynn's `users` row state. Fix: split loadUserRoles() into two INDEPENDENT role sources — (1) user_roles via users.id (Admin lives here) wrapped in its own try/catch so a missing/duplicate users row no longer aborts the whole function; (2) staff-table merge runs UNCONDITIONALLY, mapping staff.role → 'Sr Manager' / 'Manager' / 'Tech' even if user_roles failed. Switched the staff query from .single() → .maybeSingle() so 0 rows is a quiet null instead of a 406. Both sources now feed a single mergedRoles array that becomes userRoles at the end. Net effect: real staffers with a valid `staff` row keep their role-derived buttons even when their `users` row is missing, duplicate, or RLS-blocked — Lynn gets 'Sr Manager' from staff regardless, restoring every canSeeWorkList() button. Admin restoration still requires a valid user_roles.Admin row; see GH#41 in TODO for the DB verification step Roland needs to run.
     v1.415: Insurance WO Writer role (Brandon Dillon) — new RBAC tier that grants cross-silo Work Order create/update/template rights without approve/close/reassign/delete/re-price. New role 'Insurance WO Writer' in roles + user_roles (BRANDON_INSURANCE_WO_WRITER.sql). canManageSilo() extended to return true for the role on any silo; isInsuranceWoWriterOnly(silo) gates restricted UI mode. WO form (openBuildWOForm) hides terminal statuses (awaiting_customer_approval/customer_approved/completed), locks dollar_value when already > 0, shows "📋 Insurance WO mode" banner. buildWOTaskRowHtml replaces tech <select> with a "Silo manager assigns" placeholder + hidden field (forced NULL on save), filters task statuses to remove awaiting_approval + completed, hides ✕ Remove on rows that already exist in DB. submitWOForm skips delete-removed-tasks branch for restricted users. DB-level enforcement via two BEFORE triggers: enforce_insurance_wo_writer_swo_limits (blocks dollar_value re-edit + terminal status) and enforce_insurance_wo_writer_st_limits (blocks tech assignment + terminal task status). RLS extended on swo_insert/swo_update/st_insert/st_update via is_insurance_wo_writer() helper; swo_delete + st_delete deliberately not extended.
     v1.414: WO Redesign Phase A1 + A2 (Session 64) — Missing-WO visual reminder + RO-card WO summary polish. (1) NEW: 3-tier escalating "Missing WO" badge on every active RO card and Manager Work List row — soft amber 0–2d, hot orange 3–5d, critical red+pulse 6+d. Detects two states: zero service_work_orders rows ("🔧 No WO yet") OR WOs exist with zero service_tasks ("🔧 WO exists — no tasks"). Skipped on shop ROs, training ROs, and ROs in inactive states (Not On Lot, Delivered/Cashed Out, Ready for pickup). Days computed from date_received for cards; from manager_work_lists.created_at for work list panel. (2) NEW: per-silo WO summary chip block on every standard RO card — "🔧 Repair · 2/3 tasks done · 12.5h est" with completion-percentage color band (gray/amber/blue/green). Tap to open the existing Work Orders modal. (3) loadDataFromSupabase batches a new query for service_work_orders + service_tasks counts alongside the existing parts query — single round-trip extension. Cached on ro._wo_summary. (4) Spanish translations added. (5) Pure additive UI; no schema, no flag, no breaking change. Existing Work Orders modal and behavior unchanged. Edge cases handled: empty currentData, missing RO lookup, zero WOs, WOs with zero tasks. See docs/specs/WO_REDESIGN_SPEC.md for full plan.
@@ -3489,7 +3490,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.416</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.417</span>
             </div>
         </header>
 
@@ -8041,7 +8042,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.416 - Released 2026-05-19');
+            log('📦 PRVS Dashboard v1.417 - Released 2026-05-21');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10534,10 +10535,14 @@ Notes: ${notes}` : '',
                     };
                     log('✓ Logged in as:', currentUser.name, '(' + currentUser.email + ')');
                     localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                    
-                    // Update view mode dropdown based on admin status
+
+                    // v1.417: load roles BEFORE first paint so role-gated buttons never
+                    // render empty during fresh-login paths. Without this, the first
+                    // updateViewModeDropdown() call ran with userRoles=[] until a later
+                    // paint overwrote it.
+                    await loadUserRoles();
                     updateViewModeDropdown();
-                    
+
                     return currentUser;
                 } else {
                     warn('Could not fetch user info (status:', response.status + ')');
@@ -10650,6 +10655,13 @@ Notes: ${notes}` : '',
                         try {
                             currentUser = JSON.parse(savedUser);
                             log('Loaded saved user:', currentUser.name);
+                            // v1.417: load roles BEFORE updateViewModeDropdown so role-gated
+                            // buttons reflect actual state, not the empty userRoles=[] default.
+                            // Even if Supabase session is gone (we're in the Google-only fallback
+                            // path), this call won't hurt — and the One Tap prompt below will
+                            // re-auth Supabase and trigger a follow-up role load via the
+                            // signInWithIdToken callback (see v1.417 changes at line ~10823).
+                            await loadUserRoles();
                             updateViewModeDropdown();
                         } catch(e) {}
                     }
@@ -10798,9 +10810,13 @@ Notes: ${notes}` : '',
                 callback: async (credentialResponse) => {
                     if (credentialResponse.credential) {
                         googleIdToken = credentialResponse.credential;
-                        // Skip if session was restored from cache
-                        if (sessionRestoredFromCache || supabaseSession) {
-                            log('\u2705 Session already active — skipping signInWithIdToken');
+                        // v1.417: skip ONLY if Supabase session is actually live. The previous
+                        // condition (sessionRestoredFromCache || supabaseSession) also returned
+                        // early when Step 2 restored UI from a stale Google-only cache without
+                        // a Supabase session — silently aborting the re-auth that would have
+                        // fixed Lynn's missing admin buttons.
+                        if (supabaseSession) {
+                            log('\u2705 Supabase session already active — skipping signInWithIdToken');
                             return;
                         }
                         try {
@@ -10821,6 +10837,17 @@ Notes: ${notes}` : '',
                                 // Clear nonce after successful use
                                 localStorage.removeItem('prvs_sb_nonce');
                                 localStorage.removeItem('prvs_sb_nonce_hash');
+                                // v1.417: re-render role-gated UI now that Supabase auth is back.
+                                // Required when Step 2 fallback fired and userRoles is stale [].
+                                // Without this, the buttons stay hidden even though RBAC is live.
+                                try {
+                                    await loadUserRoles();
+                                    updateViewModeDropdown();
+                                    updateAuthStatus(true);
+                                    log('\u2705 Roles reloaded post-One-Tap; buttons refreshed');
+                                } catch(refreshErr) {
+                                    warn('\u26a0\ufe0f Post-One-Tap role refresh failed:', refreshErr.message);
+                                }
                             }
                         } catch(e) {
                             warn('\u26a0\ufe0f Supabase auth exchange failed:', e.message);
@@ -10829,11 +10856,15 @@ Notes: ${notes}` : '',
                 },
                 auto_select: true,
             });
-            // Only prompt if session not already restored from cache
-            if (!sessionRestoredFromCache) {
+            // v1.417: prompt One Tap whenever Supabase session is NOT live, regardless of
+            // whether some UI was restored from cache. The previous `!sessionRestoredFromCache`
+            // check was a misleading proxy — Step 2 set the flag true even when the cache
+            // only contained a stale Google token, suppressing the One Tap prompt that would
+            // have re-authed Supabase. This is the root-cause edit for Lynn's flakiness.
+            if (!supabaseSession) {
                 google.accounts.id.prompt();
             } else {
-                log('✅ Session already restored — skipping One Tap prompt');
+                log('✅ Supabase session live — skipping One Tap prompt');
             }
 
             tokenClient = google.accounts.oauth2.initTokenClient({
