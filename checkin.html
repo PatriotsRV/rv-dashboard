@@ -1,7 +1,48 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.32
-    Released: 2026-05-10
+    PRVS Tech Check-In v1.33
+    Released: 2026-05-22
+    v1.33: GH#29c/GH#29d — FIX the ghost-write to repair_orders.status
+           AND the long-standing casing bug ('In Progress' vs 'In progress').
+           Tech clock-in has, since the very first upload of this file on
+           2026-03-08, silently rewritten status on the parent RO with TWO
+           independent bugs:
+              (1) ZERO audit_log entry — Session 67 "ghost-write" pattern.
+                  Manager audits "→ On Lot" / "→ Awaiting parts", a tech
+                  opens checkin.html and clicks Clock In, status silently
+                  flips, audit_log is silent. Production data scan (Session
+                  71) shows 11 of 16 cross-RO ghost-write rows trace to
+                  this single line — Ed Gordon, Jeannie Hickman, David
+                  Hensley, Rick Hinton, Neal Silvers, Mark Saint Pe, Steve
+                  & Alana Smith, Dez Rock, Don Mullins, Roland's training
+                  RO PRVS-7CFE-2397, even PRVS-6020-CE43 (Shop).
+              (2) WRONG CASING — pre-v1.33 wrote 'In Progress' (capital P)
+                  but index.html's canonical value (used by every status
+                  dropdown, filter button, STATUS_PROGRESS_MAP, statusColor
+                  Map, ALL_STATUSES, Spanish key, stats filter) is
+                  'In progress' (lowercase p). So every tech clock-in left
+                  behind a row whose status didn't match the dropdown,
+                  rendered with default-gray badge, missed the In-Progress
+                  filter, undercounted stats, and fell back to literal
+                  English for Spanish users. This is the same casing bug
+                  GH#29c documented in audit_log (Bobby's manual lowercase
+                  vs Brandon's auto-clock-in capital).
+           Fix: keep the same auto-status behavior (techs still see the
+           RO move into "In progress" the moment they clock in), but
+              (a) constant IN_PROGRESS = 'In progress' (lowercase, canonical),
+              (b) snapshot the prior status BEFORE mutating it,
+              (c) write an audit_log row attributed to the tech with
+                  field_changed='status', old_value=<prior>, new_value=
+                  'In progress', user_name='<tech> (auto via clock-in)',
+              (d) write a notes-table 'ro_status' line so the change is
+                  visible on the RO card timeline ("⏱ AUTO-STATUS: ..."),
+              (e) audit + note inserts wrapped in try/catch — non-fatal;
+                  the status flip itself remains the primary action.
+           No DB schema change. No behavior change for the user. Pure
+           attribution + visibility + correctness fix. checkin.html now
+           contains its first-ever calls to audit_log + notes — git blame
+           shows the audit gap traces to commit b5ed919 on 2026-03-08
+           (the original 'Add files via upload'), NOT a Claude regression.
     v1.32: GH#33 Phase 4 — Cross-RO clock-in guardrail. Closes the gap that
            allowed Ignacio Ochoa to be clocked into 3 ROs simultaneously on
            Tue May 5 2026 (the bug Roland flagged → display-side fix shipped
@@ -281,7 +322,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.32</div>
+    <div class="version">v1.33</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -605,7 +646,7 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    log('📦 PRVS Tech Check-In v1.32 - Released 2026-05-10');
+    log('📦 PRVS Tech Check-In v1.33 - Released 2026-05-22');
     translateStaticUI();
 
     if (!roIdParam) {
@@ -1223,13 +1264,67 @@ async function clockIn() {
 
         localStorage.setItem('prvs_session_' + roIdParam + '_' + currentUser.email, JSON.stringify(activeSession));
 
-        if (isOnline && roData.status !== 'In Progress') {
+        // ── v1.33 (GH#29c/GH#29d) — Audited auto-status flip ─────────
+        // Snapshot the prior status BEFORE the UPDATE so the audit_log
+        // captures the actual reversion source. Then write the audit_log
+        // row and a notes-table 'ro_status' entry so the change is visible
+        // (a) in the RO Status Notes timeline on the card and
+        // (b) in the per-RO audit query managers run from worklist-report.
+        // Failure of the audit/note insert is non-fatal — the status flip
+        // itself is the primary action, attribution is best-effort.
+        //
+        // CRITICAL casing fix: index.html's canonical status value is
+        // 'In progress' (lowercase p) — used by every status dropdown,
+        // filter button, STATUS_PROGRESS_MAP, statusColorMap, ALL_STATUSES,
+        // Spanish translation key, and stats filter. Pre-v1.33 this file
+        // wrote 'In Progress' (capital P), so EVERY tech clock-in not only
+        // ghost-wrote without audit, it also wrote the wrong casing —
+        // causing capital-P rows to render with default-gray badges,
+        // disappear from the In-progress filter, undercount stats, and
+        // fall back to literal English instead of "En Progreso" for
+        // Spanish users. v1.33 fixes both: audit attribution + correct
+        // casing in the same write.
+        const IN_PROGRESS = 'In progress';  // canonical value matching index.html
+        if (isOnline && roData.status !== IN_PROGRESS) {
+            const priorStatus = roData.status || '';
             await getSB().from('repair_orders').update({
-                status: 'In Progress',
+                status: IN_PROGRESS,
                 pct_complete: 60,
                 updated_at: now,
             }).eq('id', roData.id);
-            roData.status = 'In Progress';
+            roData.status = IN_PROGRESS;
+
+            // Audit log — attributes the silent flip to the tech who clocked in.
+            try {
+                await getSB().from('audit_log').insert({
+                    ro_id:         roData.id,
+                    user_id:       supabaseSession?.user?.id || null,
+                    user_email:    currentUser?.email || 'unknown',
+                    user_name:     (currentUser?.name || currentUser?.email || 'Tech') + ' (auto via clock-in)',
+                    field_changed: 'status',
+                    old_value:     priorStatus,
+                    new_value:     IN_PROGRESS,
+                    changed_at:    now,
+                });
+            } catch(e) { warn('Clock-in audit_log write failed (non-fatal):', e); }
+
+            // Status note — surfaces the flip on the RO card timeline so
+            // a returning manager sees "auto-set by clock-in" instead of
+            // wondering why their manual status change reverted.
+            try {
+                const ts = new Date(now).toLocaleString('en-US', {
+                    timeZone: 'America/Chicago',
+                    month: '2-digit', day: '2-digit', year: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                });
+                const who = currentUser?.name || currentUser?.email || 'Tech';
+                const fromLabel = priorStatus ? `from "${priorStatus}" ` : '';
+                await getSB().from('notes').insert({
+                    ro_id: roData.id,
+                    type:  'ro_status',
+                    body:  `[${ts} - ${who}] ⏱ AUTO-STATUS: ${fromLabel}→ "${IN_PROGRESS}" (set automatically when ${who} clocked in)`,
+                });
+            } catch(e) { warn('Clock-in status note write failed (non-fatal):', e); }
         }
 
         render();
