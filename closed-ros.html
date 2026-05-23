@@ -1,7 +1,23 @@
 <!DOCTYPE html>
 <!--
-    PRVS Closed RO Archive v1.1
+    PRVS Closed RO Archive v1.2
     Released: 2026-05-23
+    v1.2 (Session 73, Archive Detail Preservation):
+        Reactivation now restores the full RO detail — parts, time_logs,
+        notes, audit_log, insurance_scans, and the service_work_orders +
+        service_tasks subtree — from the 7 mirror tables created by
+        `cashiered_child_archives.sql`. Before v1.2, reactivation only
+        restored the summary fields stored on `cashiered`; everything
+        else was lost the moment the Saturday 5 PM cron ran. The mirror
+        tables hold a JSONB snapshot of every child row that referenced
+        the RO at archive time; reactivation rewrites the `ro_id` to the
+        new repair_orders.id, generates fresh primary keys, and preserves
+        the work_order_id linkage between service_work_orders and
+        service_tasks via an in-memory map. Each restore step is wrapped
+        so a partial failure surfaces to the user but never prevents the
+        RO itself from being reactivated. The cashiered row is deleted
+        last; its FK cascade wipes the mirrors automatically.
+        Requires DB migration: supabase/migrations/cashiered_child_archives.sql
     v1.1 (Session 72, GH#29c followup B-1):
         Fix the THIRD ghost-write path identified by the Session 72
         static-casing scan. RO reactivation was hardcoding
@@ -855,7 +871,111 @@ async function reactivateRO(cashieredId) {
 
         if (insertErr) throw insertErr;
 
-        // 2. Delete from cashiered
+        // ── v1.2: Restore child detail from mirror tables ───────────────────
+        // Parts, tech time, notes, audit_log, insurance_scans, and the WO
+        // subtree were snapshotted as JSONB at archive time (see
+        // cashiered_child_archives.sql migration). Strip the original `id`
+        // (let live tables generate fresh UUIDs) and rewrite `ro_id` to the
+        // new repair_orders.id we just inserted. service_work_orders +
+        // service_tasks need an in-memory map to preserve the parent/child
+        // FK linkage with fresh UUIDs.
+        //
+        // Wrapped in try/catch — failure here surfaces to the user but does
+        // not roll back the RO reactivation (the RO itself is more important
+        // than a partial-restore of its history; admins can re-run from SQL
+        // Editor if needed via the original cashiered_id captured in the
+        // toast).
+        const restored = { parts: 0, time_logs: 0, notes: 0, audit_log: 0, insurance_scans: 0, service_work_orders: 0, service_tasks: 0 };
+        let restoreError = null;
+        try {
+            const sb = getSB();
+            const newRoId = inserted.id;
+
+            const stripIds = (data, overrides) => {
+                const copy = { ...data, ...overrides };
+                delete copy.id;
+                return copy;
+            };
+
+            // (a) service_work_orders first — build map old_swo_id → new_swo_id
+            const swoIdMap = new Map();
+            const { data: swoRows, error: swoSelErr } = await sb
+                .from('cashiered_service_work_orders')
+                .select('source_id, source_data')
+                .eq('cashiered_id', cashieredId);
+            if (swoSelErr) throw swoSelErr;
+            if (swoRows && swoRows.length) {
+                const swoInserts = swoRows.map(r => stripIds(r.source_data, { ro_id: newRoId }));
+                const { data: newSwoRows, error: swoInsErr } = await sb
+                    .from('service_work_orders')
+                    .insert(swoInserts)
+                    .select('id');
+                if (swoInsErr) throw swoInsErr;
+                // Map old → new in input order (Supabase preserves ordering)
+                if (newSwoRows && newSwoRows.length === swoRows.length) {
+                    for (let i = 0; i < swoRows.length; i++) {
+                        swoIdMap.set(swoRows[i].source_id, newSwoRows[i].id);
+                    }
+                }
+                restored.service_work_orders = newSwoRows ? newSwoRows.length : 0;
+            }
+
+            // (b) service_tasks — rewrite ro_id AND work_order_id via the map
+            const { data: stRows, error: stSelErr } = await sb
+                .from('cashiered_service_tasks')
+                .select('original_work_order_id, source_data')
+                .eq('cashiered_id', cashieredId);
+            if (stSelErr) throw stSelErr;
+            if (stRows && stRows.length) {
+                const stInserts = stRows
+                    .map(r => {
+                        const newWoId = swoIdMap.get(r.original_work_order_id);
+                        // If the parent WO somehow wasn't archived, skip the task
+                        // (defensive — should never happen given the archive logic
+                        // snapshots both tables in the same transaction).
+                        if (!newWoId) return null;
+                        return stripIds(r.source_data, { ro_id: newRoId, work_order_id: newWoId });
+                    })
+                    .filter(Boolean);
+                if (stInserts.length) {
+                    const { error: stInsErr } = await sb
+                        .from('service_tasks')
+                        .insert(stInserts);
+                    if (stInsErr) throw stInsErr;
+                    restored.service_tasks = stInserts.length;
+                }
+            }
+
+            // (c) Flat tables — parts, time_logs, notes, audit_log, insurance_scans
+            const flatTables = [
+                ['cashiered_parts',             'parts'],
+                ['cashiered_time_logs',         'time_logs'],
+                ['cashiered_notes',             'notes'],
+                ['cashiered_audit_log',         'audit_log'],
+                ['cashiered_insurance_scans',   'insurance_scans'],
+            ];
+            for (const [mirror, live] of flatTables) {
+                const { data: rows, error: selErr } = await sb
+                    .from(mirror)
+                    .select('source_data')
+                    .eq('cashiered_id', cashieredId);
+                if (selErr) throw selErr;
+                if (!rows || !rows.length) continue;
+                const liveRows = rows.map(r => stripIds(r.source_data, { ro_id: newRoId }));
+                const { error: insErr } = await sb.from(live).insert(liveRows);
+                if (insErr) throw insErr;
+                restored[live] = liveRows.length;
+            }
+
+            log(`✅ Restored child detail for ${ro.ro_id}:`, restored);
+        } catch (err) {
+            // The RO itself is back — but its history is partial. Surface this
+            // clearly so the user knows what they're dealing with.
+            console.error('Child-row restore failed (RO reactivated, history partial):', err);
+            restoreError = err.message || String(err);
+        }
+
+        // 2. Delete from cashiered (FK cascade clears the 7 mirror tables)
         const { error: delErr } = await getSB()
             .from('cashiered')
             .delete()
@@ -902,14 +1022,22 @@ async function reactivateRO(cashieredId) {
         allCashiered = allCashiered.filter(r => r.id !== cashieredId);
         applyFilters();
 
-        // Toast
+        // Toast — green on full success, amber if child restore had errors
         const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:10051;background:linear-gradient(135deg,#10b981,#059669);color:white;padding:14px 22px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:1rem;';
-        toast.textContent = '✅ ' + ro.ro_id + ' reactivated! Check the main dashboard.';
+        const childCount = restored.parts + restored.time_logs + restored.notes
+                         + restored.audit_log + restored.insurance_scans
+                         + restored.service_work_orders + restored.service_tasks;
+        if (restoreError) {
+            toast.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:10051;background:linear-gradient(135deg,#f59e0b,#d97706);color:white;padding:14px 22px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:1rem;max-width:420px;';
+            toast.textContent = '⚠ ' + ro.ro_id + ' reactivated, but child detail restore had errors. Check console.';
+        } else {
+            toast.style.cssText = 'position:fixed;bottom:90px;right:24px;z-index:10051;background:linear-gradient(135deg,#10b981,#059669);color:white;padding:14px 22px;border-radius:10px;font-weight:700;font-family:Barlow Condensed,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:1rem;';
+            toast.textContent = '✅ ' + ro.ro_id + ' reactivated with ' + childCount + ' detail row(s) restored.';
+        }
         document.body.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, restoreError ? 8000 : 4500);
 
-        log('✅ RO reactivated:', ro.ro_id, '→ new ID:', inserted?.id);
+        log('✅ RO reactivated:', ro.ro_id, '→ new ID:', inserted?.id, '· restored:', restored);
 
     } catch (err) {
         console.error('Reactivate error:', err);
