@@ -206,6 +206,7 @@ DECLARE
   now_ts          timestamptz := now();
   archived_count  int := 0;
   new_cashiered_id uuid;
+  ins_jsonb       jsonb;
 BEGIN
   -- Week label matches getWeekLabel() in index.html
   week_num   := EXTRACT(week FROM now_ts)::int;
@@ -226,6 +227,20 @@ BEGIN
       ELSE 0
     END;
 
+    -- Safely parse insurance_data — column may be TEXT or JSONB and may
+    -- contain empty strings, malformed JSON, or NULL. Any parse failure
+    -- resolves to NULL instead of aborting the entire archive transaction.
+    BEGIN
+      IF ro_row.insurance_data IS NULL
+         OR length(trim(ro_row.insurance_data::text)) = 0 THEN
+        ins_jsonb := NULL;
+      ELSE
+        ins_jsonb := ro_row.insurance_data::text::jsonb;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      ins_jsonb := NULL;
+    END;
+
     -- Insert into cashiered. Returning id gives us the new cashiered.id —
     -- we only snapshot children if a new cashiered row was actually written
     -- (ON CONFLICT returns nothing, keeping the prior archive intact).
@@ -236,18 +251,13 @@ BEGIN
       promised_date, pct_complete, dollar_value, status, urgency, customer_type,
       ro_type, photo_url, insurance_data, days_on_lot, date_closed, week_label, archived_at
     ) VALUES (
-      ro_row.id, ro_row.ro_id, ro_row.customer_name, ro_row.customer_phone,
-      ro_row.customer_email, ro_row.customer_address, ro_row.rv, ro_row.vin,
+      ro_row.id, ro_row.ro_id, ro_row.customer_name, ro_row.phone,
+      ro_row.email, ro_row.address, ro_row.rv, ro_row.vin,
       ro_row.repair_type, ro_row.description, ro_row.technician,
       ro_row.date_received, ro_row.date_arrived, ro_row.promised_date,
       COALESCE(ro_row.pct_complete, 0), ro_row.dollar_value, ro_row.status,
       ro_row.urgency, ro_row.customer_type, COALESCE(ro_row.ro_type, 'standard'),
-      ro_row.photo_url,
-      CASE
-        WHEN ro_row.insurance_data IS NOT NULL AND ro_row.insurance_data <> ''
-          THEN ro_row.insurance_data::jsonb
-        ELSE NULL
-      END,
+      ro_row.photo_url, ins_jsonb,
       days_on_lot, now_ts::date, week_label, now_ts
     )
     ON CONFLICT (original_ro_id) DO NOTHING
