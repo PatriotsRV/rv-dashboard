@@ -1,10 +1,13 @@
 // js/app.js — PRVS Dashboard module entry point
 // Modules are added phase-by-phase per docs/specs/MODULARIZATION_ROADMAP.md.
 //
-// Current phase: 4B-C (config.js + utils.js + state.js + auth.js [Groups A+B+C]
+// Current phase: 4B-D (config.js + utils.js + state.js + auth.js [Groups A+B+C+D]
 // + i18n.js populated). Inline <script> in index.html still owns runtime
 // behavior; this entry point only loads the modules so future code can
-// import from them without disturbing prod.
+// import from them without disturbing prod. With Phase 4B-D, all 18
+// originally-inline auth functions are now also exported from auth.js —
+// Phase 4.5 (delete-inline cleanup) can run any time after a full
+// regression matrix.
 //
 // Phase 4A scope notes:
 //   - auth.js exports 10 of the 18 auth functions (Groups A + B).
@@ -22,8 +25,17 @@
 //   - config.js gains SB_AUTH_OPTIONS (moved from inline).
 //   - index.html: `let _sb` → `var _sb` so module and inline share the
 //     same cached Supabase client via window._sb.
-//   - 3 Group-D functions (getUserInfo, loadSavedToken, gisLoaded) deferred
-//     to Phase 4B-D in this same session's next commit.
+//
+// Phase 4B-D scope notes (Session 77, 2026-05-25):
+//   - auth.js gains Group D — getUserInfo, loadSavedToken, gisLoaded. The
+//     3 large Lynn-fix-surface functions (session restore + One Tap +
+//     signInWithIdToken). v1.417 fixes preserved verbatim in module
+//     versions: skip-if-supabaseSession in id callback + post-One-Tap
+//     role refresh + One Tap prompt skip-if-supabaseSession.
+//   - All 18 originally-inline auth functions now also live in auth.js
+//     as real ES module exports. Inline copies still own runtime;
+//     window bridge ensures the module exports overwrite the inline
+//     auto-globalized versions in a behaviorally identical way.
 
 import * as Config from './config.js';
 import * as Utils from './utils.js';
@@ -43,4 +55,4 @@ window.PRVS_State  = State;
 window.PRVS_Auth   = Auth;
 window.PRVS_I18n   = I18n;
 
-console.log('[PRVS] Module system loaded — Phase 4B-C (config.js + utils.js + state.js + auth.js [Groups A+B+C] + i18n.js)');
+console.log('[PRVS] Module system loaded — Phase 4B-D (config.js + utils.js + state.js + auth.js [Groups A+B+C+D — all 19 auth fns] + i18n.js)');

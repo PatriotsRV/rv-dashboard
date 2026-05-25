@@ -1,8 +1,31 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.423
+    PRVS Dashboard v1.424
     Released: 2026-05-25
+    v1.424: Modularization Phase 4B-D — js/auth.js gains Group D (the 3
+    large Lynn-fix-surface functions): getUserInfo, loadSavedToken,
+    gisLoaded. All 18 originally-inline auth functions are now also
+    exported from auth.js as real ES module exports — Phase 4.5
+    (delete-inline cleanup) can run any time after a full regression
+    matrix proves the module copies are equivalent in every runtime
+    path. v1.416 + v1.417 Lynn-fix code preserved verbatim in module
+    versions: (1) loadSavedToken Step 2 awaits loadUserRoles before
+    updateViewModeDropdown so role-gated buttons reflect actual state
+    even during the Google-only fallback path; (2) gisLoaded id callback
+    skip-condition narrowed to `if (window.supabaseSession) return` (not
+    `(sessionRestoredFromCache || supabaseSession)` which silently
+    aborted re-auth); (3) post-signInWithIdToken success block re-runs
+    loadUserRoles + updateViewModeDropdown + updateAuthStatus; (4) One
+    Tap prompt skip uses `!window.supabaseSession` instead of the
+    `sessionRestoredFromCache` flag. Module versions read/write window-
+    attached state for all 14 referenced globals (supabaseSession,
+    accessToken, currentUser, userRoles, tokenClient, googleIdToken,
+    gapiInited, gisInited, initialLoadDone, sessionRestoredFromCache,
+    _pendingScheduleIndex, _currentStaffSilo, _currentStaffRole, _sb).
+    Inline copies of all 3 Group D functions retained as runtime owner;
+    3 PHASE 4B-D MIGRATED comment blocks added. Window bridge now
+    exposes 19 exports (was 16 in v1.423). Zero runtime behavior change.
     v1.423: Modularization Phase 4B-C — js/auth.js gains Group C (6 more
     auth functions): getSB, loadUserRoles, upsertUser,
     initSupabaseAuthListener, updateAuthStatus, handleAuthClick. Pure
@@ -3588,7 +3611,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.423</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.424</span>
             </div>
         </header>
 
@@ -8160,7 +8183,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.423 - Released 2026-05-25 - Modularization Phase 4B-C (config.js + utils.js + state.js + auth.js [Groups A+B+C] + i18n.js)');
+            log('📦 PRVS Dashboard v1.424 - Released 2026-05-25 - Modularization Phase 4B-D (config.js + utils.js + state.js + auth.js [Groups A+B+C+D — all 19 auth fns] + i18n.js)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10694,6 +10717,11 @@ Notes: ${notes}` : '',
         }
 
         // Get current user info
+        // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): getUserInfo also exported
+        // from js/auth.js. Inline copy retained as runtime owner. The v1.417 fix
+        // (await loadUserRoles() BEFORE first paint) is preserved verbatim in
+        // both copies. Module version reads window.accessToken + writes
+        // window.currentUser + calls loadUserRoles + window.updateViewModeDropdown.
         async function getUserInfo() {
             if (!accessToken) {
                 warn('No access token available for user info');
@@ -10761,6 +10789,13 @@ Notes: ${notes}` : '',
         }
 
         // Load saved token on page load
+        // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): loadSavedToken also
+        // exported from js/auth.js. Inline copy retained as runtime owner — it
+        // is what app boot invokes from DOMContentLoaded. v1.417 hardening of
+        // the Step 2 fallback (await loadUserRoles before updateViewModeDropdown)
+        // preserved verbatim in both copies. Module version reads/writes
+        // window-attached state: supabaseSession, currentUser, accessToken,
+        // initialLoadDone, sessionRestoredFromCache.
         async function loadSavedToken() {
             log('🔍 loadSavedToken called');
             const savedToken = localStorage.getItem('google_access_token');
@@ -10978,6 +11013,15 @@ Notes: ${notes}` : '',
             }
         }
 
+        // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): gisLoaded also exported
+        // from js/auth.js. Inline copy retained as runtime owner — the CDN
+        // <script src=".../client?onload=gisLoaded"> attribute hook resolves to
+        // the inline auto-globalized function declaration. Window bridge from
+        // js/auth.js OVERWRITES window.gisLoaded with the module version, but
+        // the two are behavioral verbatim copies so this is observationally
+        // identical. v1.417 fixes #3 (callback skip-if-supabaseSession), #4
+        // (post-signInWithIdToken role refresh), and #5 (One Tap prompt
+        // skip-if-supabaseSession) preserved verbatim in both copies.
         async function gisLoaded() {
             if (typeof google === 'undefined' || !google.accounts) {
                 console.error('google identity services not loaded yet, retrying...');

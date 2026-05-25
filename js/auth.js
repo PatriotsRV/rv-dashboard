@@ -10,6 +10,13 @@
 // Supabase-plumbing functions). Pure-additive: inline copies still own
 // runtime. Module versions read/write window-attached state.
 //
+// PHASE 4B-D (Session 77, 2026-05-25) — Group D extracted (3 large
+// session-restore + One Tap + signInWithIdToken functions). Pure-additive:
+// inline copies still own runtime. v1.416 + v1.417 Lynn-fix code surface
+// preserved verbatim in module versions. With Phase 4B-D, ALL 18 originally
+// inline auth functions are now also exported from this module — Phase 4.5
+// (delete-inline cleanup) can run any time after a full regression matrix.
+//
 // Functions exported so far:
 //
 //   GROUP A — pure role helpers (read-only against window.userRoles):
@@ -34,23 +41,28 @@
 //     updateAuthStatus           — DOM update for connection indicator + buttons
 //     handleAuthClick            — Connect-button onClick handler
 //
-// DEFERRED to Phase 4B-D (this session, next commit):
-//   getUserInfo, loadSavedToken, gisLoaded
-//
-// These three are the session-restore + One Tap + signInWithIdToken paths
-// where the Lynn-silent-demote bugs (v1.416, v1.417) lived. Larger surface
-// area → own commit so any regression at DevTools verify is bisectable.
+//   GROUP D — Session restore + One Tap + signInWithIdToken (Lynn-fix surface):
+//     getUserInfo                — fetch Google userinfo, populate currentUser
+//     loadSavedToken             — DOMContentLoaded entry; Step 1 Supabase
+//                                  session restore, Step 2 Google token fallback
+//     gisLoaded                  — google.accounts initializer (One Tap +
+//                                  tokenClient); CDN onload= hook
 //
 // State references:
 //   - Reads window.userRoles, window.accessToken, window.currentUser,
 //     window.tokenClient, window._currentStaffSilo, window._currentStaffRole,
-//     window.supabaseSession, window._sb, window.gapiInited, window.gisInited
+//     window.supabaseSession, window._sb, window.gapiInited, window.gisInited,
+//     window.initialLoadDone, window.sessionRestoredFromCache,
+//     window._pendingScheduleIndex, window.googleIdToken
 //   - Writes window.gapiInited, window.accessToken, window.currentUser,
 //     window.userRoles, window._sb, window.supabaseSession,
-//     window._currentStaffSilo, window._currentStaffRole, window.currentData
+//     window._currentStaffSilo, window._currentStaffRole, window.currentData,
+//     window.initialLoadDone, window.sessionRestoredFromCache,
+//     window.gisInited, window.googleIdToken, window._pendingScheduleIndex
 //
 // Imports from config.js:
-//   - GOOGLE_CONFIG (API_KEY + DISCOVERY_DOCS for gapi.client.init)
+//   - GOOGLE_CONFIG (API_KEY + DISCOVERY_DOCS for gapi.client.init,
+//     CLIENT_ID + SCOPES for gisLoaded's tokenClient)
 //   - SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS (for getSB)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -434,10 +446,437 @@ export function handleAuthClick() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// GROUP D — Session restore + One Tap + signInWithIdToken (Lynn-fix surface)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch Google userinfo for the current access token and populate
+ * window.currentUser. Called from the gisLoaded tokenClient callback after
+ * a fresh login. On failure (expired token, network error, missing scope)
+ * sets currentUser to an Unknown User stub and returns it.
+ *
+ * v1.417 fix preserved: awaits loadUserRoles() BEFORE updateViewModeDropdown()
+ * so role-gated buttons never render empty during fresh-login paths.
+ */
+export async function getUserInfo() {
+    if (!window.accessToken) {
+        console.warn('No access token available for user info');
+        window.currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
+        return window.currentUser;
+    }
+
+    try {
+        console.log('Fetching user info...');
+
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: {
+                'Authorization': `Bearer ${window.accessToken}`,
+            },
+        });
+
+        if (response.ok) {
+            const userInfo = await response.json();
+            window.currentUser = {
+                email: userInfo.email || 'unknown@user.com',
+                name:  userInfo.name || userInfo.email?.split('@')[0] || 'Unknown User',
+            };
+            console.log('✓ Logged in as:', window.currentUser.name, '(' + window.currentUser.email + ')');
+            localStorage.setItem('currentUser', JSON.stringify(window.currentUser));
+
+            // v1.417: load roles BEFORE first paint so role-gated buttons never
+            // render empty during fresh-login paths. Without this, the first
+            // updateViewModeDropdown() call ran with userRoles=[] until a later
+            // paint overwrote it.
+            await loadUserRoles();
+            if (typeof window.updateViewModeDropdown === 'function') window.updateViewModeDropdown();
+
+            return window.currentUser;
+        } else {
+            console.warn('Could not fetch user info (status:', response.status + ')');
+            console.warn('You need to disconnect and reconnect to grant userinfo permissions.');
+            window.currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
+            return window.currentUser;
+        }
+    } catch (error) {
+        console.error('Error getting user info:', error);
+        window.currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
+        return window.currentUser;
+    }
+}
+
+/**
+ * Page-boot session restorer. Two-step strategy:
+ *
+ *   Step 1 — Supabase first: if getSB().auth.getSession() returns a live
+ *   session, restore window.supabaseSession + window.currentUser, opportunistically
+ *   restore the Google access token if still valid, load all data, mark
+ *   initialLoadDone and sessionRestoredFromCache true, return true.
+ *
+ *   Step 2 — Google token fallback: if Supabase session is gone but a non-expired
+ *   Google access token is in localStorage, restore the Google session, load
+ *   data, fire One Tap (via gisLoaded) to re-auth Supabase in the background.
+ *
+ *   Step 3 — Silent refresh (Chrome only, < 24h since last auth): try
+ *   tokenClient.requestAccessToken({prompt:''}). If that fails, clearToken().
+ *
+ *   No saved state → return false, app shows Connect button.
+ *
+ * v1.417 hardening preserved: Step 2 awaits loadUserRoles() before
+ * updateViewModeDropdown() so role-gated buttons reflect actual state even
+ * during the Google-only fallback path (and the One Tap that follows will
+ * re-auth Supabase and refresh roles again via the signInWithIdToken callback).
+ */
+export async function loadSavedToken() {
+    console.log('🔍 loadSavedToken called');
+    const savedToken    = localStorage.getItem('google_access_token');
+    const tokenExpiry   = localStorage.getItem('google_token_expiry');
+    const savedUser     = localStorage.getItem('currentUser');
+    const lastAuthTime  = localStorage.getItem('last_auth_time');
+    const isSafari      = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    console.log('Saved token exists:', !!savedToken, '| Expiry:', tokenExpiry);
+
+    // Register auth state listener once (idempotent — Supabase deduplicates)
+    initSupabaseAuthListener();
+
+    // ── STEP 1: Always check Supabase session first ──────────
+    // Supabase persists its own session in localStorage for weeks.
+    // If valid, load data immediately regardless of Google token state.
+    try {
+        const { data: { session } } = await getSB().auth.getSession();
+        if (session) {
+            window.supabaseSession = session;
+            console.log('✅ Supabase session active — loading data');
+
+            // Restore user from Supabase session
+            if (!window.currentUser) {
+                const u = session.user;
+                window.currentUser = {
+                    email: u.email,
+                    name:  u.user_metadata?.full_name || u.email,
+                    id:    u.id,
+                };
+                localStorage.setItem('currentUser', JSON.stringify(window.currentUser));
+            } else if (savedUser) {
+                try { window.currentUser = JSON.parse(savedUser); } catch (e) {}
+            }
+
+            // Restore Google token if still valid (for Drive compat)
+            const now = Date.now();
+            if (savedToken && tokenExpiry && now < (parseInt(tokenExpiry) - 300000)) {
+                window.accessToken = savedToken;
+                gapi.client.setToken({ access_token: savedToken });
+                console.log('✅ Google token also valid');
+            }
+
+            await loadUserRoles();
+            if (typeof window.updateViewModeDropdown === 'function') window.updateViewModeDropdown();
+            updateAuthStatus(true);
+            if (typeof window.loadDataFromSupabase === 'function') await window.loadDataFromSupabase();
+            if (typeof window.loadTimeLogsFromSupabase === 'function') await window.loadTimeLogsFromSupabase();
+            if (typeof window.loadStaff === 'function') window.loadStaff(); // GH#5 — staff roster for WO assignment
+            if (typeof window.loadAppConfig === 'function') window.loadAppConfig(); // S7 — calendar IDs from Supabase
+
+            window.initialLoadDone = true;
+            if (typeof window.startTimeLogsAutoRefresh === 'function') window.startTimeLogsAutoRefresh();
+            if (!isSafari) setupTokenRefresh();
+
+            window.sessionRestoredFromCache = true;
+            console.log('✅ Session restored via Supabase');
+            return true;
+        }
+    } catch (e) {
+        console.warn('Supabase session check failed:', e);
+    }
+
+    // ── STEP 2: Fall back to Google token if Supabase session gone ──
+    if (savedToken && tokenExpiry) {
+        const now = Date.now();
+        const expiryTime = parseInt(tokenExpiry);
+
+        console.log('Time until Google token expiry (minutes):', Math.round((expiryTime - now) / 60000));
+
+        if (now < (expiryTime - 300000)) {
+            console.log('✅ Google token valid, loading...');
+            window.accessToken = savedToken;
+            gapi.client.setToken({ access_token: savedToken });
+
+            if (savedUser) {
+                try {
+                    window.currentUser = JSON.parse(savedUser);
+                    console.log('Loaded saved user:', window.currentUser.name);
+                    // v1.417: load roles BEFORE updateViewModeDropdown so role-gated
+                    // buttons reflect actual state, not the empty userRoles=[] default.
+                    // Even if Supabase session is gone (we're in the Google-only fallback
+                    // path), this call won't hurt — and the One Tap prompt below will
+                    // re-auth Supabase and trigger a follow-up role load via the
+                    // signInWithIdToken callback (see v1.417 changes in gisLoaded).
+                    await loadUserRoles();
+                    if (typeof window.updateViewModeDropdown === 'function') window.updateViewModeDropdown();
+                } catch (e) {}
+            }
+
+            updateAuthStatus(true);
+            if (typeof window.loadDataFromSupabase === 'function') await window.loadDataFromSupabase();
+            if (typeof window.loadTimeLogsFromSupabase === 'function') await window.loadTimeLogsFromSupabase();
+
+            window.initialLoadDone = true;
+            if (typeof window.startTimeLogsAutoRefresh === 'function') window.startTimeLogsAutoRefresh();
+            if (!isSafari) setupTokenRefresh();
+            window.sessionRestoredFromCache = true;
+
+            return true;
+        } else if (lastAuthTime && !isSafari) {
+            console.log('Token expired, attempting silent refresh (Chrome only)...');
+            // Token expired but user had recent session - try silent refresh
+            // SKIP on Safari - silent refresh not supported
+            const lastAuth = parseInt(lastAuthTime);
+            const hoursSinceAuth = (now - lastAuth) / (1000 * 60 * 60);
+
+            if (hoursSinceAuth < 24) {
+                console.log('Token expired but recent session detected, attempting silent refresh...');
+                // Load user info first
+                if (savedUser) {
+                    try {
+                        window.currentUser = JSON.parse(savedUser);
+                    } catch (e) {}
+                }
+                // Try silent token refresh
+                try {
+                    window.tokenClient.requestAccessToken({ prompt: '' });
+                } catch (e) {
+                    console.log('Silent refresh not supported, clearing token');
+                    clearToken();
+                }
+                return true;
+            } else {
+                console.log('Session too old, clearing...');
+                clearToken();
+            }
+        } else {
+            console.log('❌ Saved token expired, clearing...');
+            clearToken();
+        }
+    } else {
+        console.log('❌ No saved token found');
+    }
+    return false;
+}
+
+/**
+ * google.accounts CDN initializer. Sets up BOTH:
+ *   1. google.accounts.id (for Supabase signInWithIdToken via id_token / One Tap)
+ *   2. google.accounts.oauth2 tokenClient (for access_token / Drive + Calendar)
+ *
+ * Nonce is persisted in localStorage as a hex string (both raw + SHA-256 hash)
+ * so it survives async callback gaps and page reloads. Supabase verifies the
+ * hashed nonce in the JWT against the raw nonce we pass to signInWithIdToken.
+ *
+ * v1.417 fixes preserved verbatim:
+ *   - id callback skip-condition: `if (window.supabaseSession) return` —
+ *     NOT `(sessionRestoredFromCache || supabaseSession)` which silently
+ *     aborted re-auth when only a stale Google token had been restored.
+ *   - post-signInWithIdToken success block re-runs loadUserRoles +
+ *     updateViewModeDropdown + updateAuthStatus so role-gated UI re-renders
+ *     once Supabase auth is back.
+ *   - One Tap prompt skip uses `!window.supabaseSession` — not the
+ *     `sessionRestoredFromCache` flag.
+ */
+export async function gisLoaded() {
+    if (typeof google === 'undefined' || !google.accounts) {
+        console.error('google identity services not loaded yet, retrying...');
+        setTimeout(gisLoaded, 500);
+        return;
+    }
+
+    // Initialize ID token client — captures id_token for Supabase RBAC
+    // Nonce persisted in localStorage so it survives async callback gaps and page reloads.
+    // IMPORTANT: both raw nonce and hash must be hex strings — Supabase verifies using hex SHA-256.
+    let sbNonce = localStorage.getItem('prvs_sb_nonce');
+    let sbHashedNonce = localStorage.getItem('prvs_sb_nonce_hash');
+    if (!sbNonce) {
+        const rawNonceBytes = crypto.getRandomValues(new Uint8Array(16));
+        sbNonce = Array.from(rawNonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        const nonceBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sbNonce));
+        sbHashedNonce = Array.from(new Uint8Array(nonceBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem('prvs_sb_nonce', sbNonce);
+        localStorage.setItem('prvs_sb_nonce_hash', sbHashedNonce);
+    }
+
+    google.accounts.id.initialize({
+        client_id: GOOGLE_CONFIG.CLIENT_ID,
+        nonce: sbHashedNonce,             // top-level: current Chrome support
+        params: { nonce: sbHashedNonce }, // inside params: required by Chrome 145+
+        callback: async (credentialResponse) => {
+            if (credentialResponse.credential) {
+                window.googleIdToken = credentialResponse.credential;
+                // v1.417: skip ONLY if Supabase session is actually live. The previous
+                // condition (sessionRestoredFromCache || supabaseSession) also returned
+                // early when Step 2 restored UI from a stale Google-only cache without
+                // a Supabase session — silently aborting the re-auth that would have
+                // fixed Lynn's missing admin buttons.
+                if (window.supabaseSession) {
+                    console.log('✅ Supabase session already active — skipping signInWithIdToken');
+                    return;
+                }
+                try {
+                    const retrievedNonce = localStorage.getItem('prvs_sb_nonce');
+                    const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
+                        provider: 'google',
+                        token:    window.googleIdToken,
+                        nonce:    retrievedNonce,
+                    });
+                    if (sbError) {
+                        console.warn('⚠️ Supabase signInWithIdToken failed:', sbError.message);
+                        // Clear nonce on failure — fresh one generated on next attempt
+                        localStorage.removeItem('prvs_sb_nonce');
+                        localStorage.removeItem('prvs_sb_nonce_hash');
+                    } else {
+                        window.supabaseSession = sbData.session;
+                        console.log('✅ Supabase authenticated session created — RBAC active');
+                        // Clear nonce after successful use
+                        localStorage.removeItem('prvs_sb_nonce');
+                        localStorage.removeItem('prvs_sb_nonce_hash');
+                        // v1.417: re-render role-gated UI now that Supabase auth is back.
+                        // Required when Step 2 fallback fired and userRoles is stale [].
+                        // Without this, the buttons stay hidden even though RBAC is live.
+                        try {
+                            await loadUserRoles();
+                            if (typeof window.updateViewModeDropdown === 'function') window.updateViewModeDropdown();
+                            updateAuthStatus(true);
+                            console.log('✅ Roles reloaded post-One-Tap; buttons refreshed');
+                        } catch (refreshErr) {
+                            console.warn('⚠️ Post-One-Tap role refresh failed:', refreshErr.message);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Supabase auth exchange failed:', e.message);
+                }
+            }
+        },
+        auto_select: true,
+    });
+    // v1.417: prompt One Tap whenever Supabase session is NOT live, regardless of
+    // whether some UI was restored from cache. The previous `!sessionRestoredFromCache`
+    // check was a misleading proxy — Step 2 set the flag true even when the cache
+    // only contained a stale Google token, suppressing the One Tap prompt that would
+    // have re-authed Supabase. This is the root-cause edit for Lynn's flakiness.
+    if (!window.supabaseSession) {
+        google.accounts.id.prompt();
+    } else {
+        console.log('✅ Supabase session live — skipping One Tap prompt');
+    }
+
+    window.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CONFIG.CLIENT_ID,
+        scope:     GOOGLE_CONFIG.SCOPES,
+        callback: async (resp) => {
+            console.log('Auth callback received:', resp);
+            if (resp.error !== undefined) {
+                console.error('Auth error:', resp.error);
+                return;
+            }
+            window.accessToken = resp.access_token;
+
+            // CRITICAL: always set token in gapi client — covers both fresh login and silent refresh
+            gapi.client.setToken({ access_token: window.accessToken });
+            console.log('✅ Token set in gapi client');
+
+            const expiresIn = resp.expires_in || 3600;
+            saveToken(window.accessToken, expiresIn);
+            setupTokenRefresh();
+
+            // If re-auth was triggered from inside the Schedule modal, re-open it
+            if (window._pendingScheduleIndex !== null && window._pendingScheduleIndex !== undefined) {
+                const idx = window._pendingScheduleIndex;
+                window._pendingScheduleIndex = null;
+                if (typeof window.closeScheduleModal === 'function') window.closeScheduleModal();
+                if (typeof window.openScheduleModal === 'function') window.openScheduleModal(idx);
+                return;
+            }
+
+            // Only do full load if this is a fresh login (no data yet)
+            if (!window.initialLoadDone) {
+                await getUserInfo();
+                updateAuthStatus(true);
+
+                if (window.currentUser?.email) {
+                    // ── Store identity for persistent sessions ──────
+                    localStorage.setItem('prvs_user_identity', JSON.stringify({
+                        email:   window.currentUser.email,
+                        name:    window.currentUser.name,
+                        savedAt: Date.now(),
+                    }));
+                    console.log('✅ User identity saved for persistent sessions');
+
+                    // ── Wire Supabase authenticated session ──────────
+                    // Exchange Google ID token for a real Supabase session.
+                    // This enables proper RLS enforcement and replaces anon key writes.
+                    try {
+                        // Use Google id_token (JWT) for Supabase signInWithIdToken
+                        // id_token comes from google.accounts.id.initialize callback
+                        const idTokenToUse = window.googleIdToken || resp.id_token;
+                        if (!idTokenToUse) {
+                            console.warn('⚠️ No Google id_token available — requesting via prompt...');
+                            google.accounts.id.prompt();
+                        }
+                        const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
+                            provider: 'google',
+                            token:    idTokenToUse || '',
+                            nonce:    localStorage.getItem('prvs_sb_nonce') || undefined,
+                        });
+                        if (sbError) {
+                            console.warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
+                            console.log('Continuing with anon key — RBAC not enforced this session');
+                        } else {
+                            window.supabaseSession = sbData.session;
+                            console.log('✅ Supabase authenticated session created — RBAC active');
+                            console.log('Session expires:', new Date(window.supabaseSession.expires_at * 1000).toLocaleString());
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Supabase auth exchange failed (non-fatal):', e.message);
+                    }
+                    // ─────────────────────────────────────────────────
+
+                    await loadUserRoles();
+                    if (typeof window.updateViewModeDropdown === 'function') window.updateViewModeDropdown();
+                }
+
+                if (typeof window.loadDataFromSupabase === 'function') await window.loadDataFromSupabase();
+                if (typeof window.loadTimeLogsFromSupabase === 'function') await window.loadTimeLogsFromSupabase();
+                if (typeof window.loadAppConfig === 'function') window.loadAppConfig(); // S7 — calendar IDs from Supabase
+
+                window.initialLoadDone = true;
+                if (typeof window.startTimeLogsAutoRefresh === 'function') window.startTimeLogsAutoRefresh();
+                if (typeof window.loadCustomFieldConfig === 'function') window.loadCustomFieldConfig();
+                if (typeof window.loadPartsFromSupabase === 'function') window.loadPartsFromSupabase();
+            } else {
+                console.log('✅ Token silently refreshed — session continues');
+                // Refresh Supabase session on Google token refresh
+                if (window.supabaseSession) {
+                    const { data } = await getSB().auth.getSession();
+                    if (data?.session) {
+                        window.supabaseSession = data.session;
+                        console.log('✅ Supabase session refreshed');
+                    }
+                }
+            }
+        },
+    });
+    window.gisInited = true;
+    console.log('gis initialized successfully');
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Window bridge — expose all exports on window so inline onclick handlers
 // and CDN script onload= attributes can still find them. When Phase 4.5
 // deletes the inline copies, these assignments take over runtime ownership
-// for the 16 functions in Groups A + B + C.
+// for ALL 19 functions in Groups A + B + C + D.
+//
+// Note: with the Group D additions, ALL 18 originally-inline auth functions
+// are now also exported from this module. Phase 4.5 (delete-inline cleanup)
+// can run any time after a full regression matrix proves the module copies
+// are equivalent to the inline copies in every runtime path.
 // ─────────────────────────────────────────────────────────────────────
 
 Object.assign(window, {
@@ -460,4 +899,8 @@ Object.assign(window, {
     initSupabaseAuthListener,
     updateAuthStatus,
     handleAuthClick,
+    // Group D (Phase 4B-D)
+    getUserInfo,
+    loadSavedToken,
+    gisLoaded,
 });
