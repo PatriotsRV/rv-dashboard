@@ -1,8 +1,29 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.420
+    PRVS Dashboard v1.421
     Released: 2026-05-25
+    v1.421: Modularization Phase 4A — js/auth.js populated with Groups A + B
+    (10 of 18 auth functions). Group A (pure role helpers): isAdmin, hasRole,
+    canSeeWorkList, isSrManagerOrAdmin, canManageSilo. Group B (token + GAPI
+    bootstrap): saveToken, clearToken, setupTokenRefresh, gapiLoaded,
+    initializeGapiClient. Each export is a real implementation (not a shim)
+    that reads window-attached state (userRoles, accessToken, currentUser,
+    tokenClient, _currentStaffSilo, _currentStaffRole) — Phase 3.5 made
+    supabaseSession + userRoles var-declared so they auto-attach to window.
+    Inline copies retained as runtime owner; module is additive. Window
+    bridge attaches all 10 exports to window so when Phase 4.5 (future)
+    deletes the inline copies, the module versions take over runtime
+    ownership without changing the call sites. Groups C + D (getSB,
+    initSupabaseAuthListener, loadSavedToken, getUserInfo, loadUserRoles,
+    upsertUser, gisLoaded, handleAuthClick, updateAuthStatus) deferred to
+    Phase 4B — they are the session restore + One Tap + signInWithIdToken
+    paths where v1.416/v1.417 Lynn-silent-demote bugs lived and warrant
+    their own focused regression session. 6 PHASE 4A MIGRATED comment
+    blocks added covering all 10 inline copies (some comments group
+    contiguous functions). Purely additive: zero runtime behavior
+    change. js/app.js imports auth as a namespace and exposes it as
+    window.PRVS_Auth for DevTools spot-checks.
     v1.420: Modularization Phase 3 — js/state.js populated (Path B
     additive schema). 43 module-level state items now schema-documented
     in a real ES module: filter/view (11), time-logs (2), new-RO-form
@@ -3540,7 +3561,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.420</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.421</span>
             </div>
         </header>
 
@@ -8112,7 +8133,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.420 - Released 2026-05-25 - Modularization Phase 3 (config.js + utils.js + state.js)');
+            log('📦 PRVS Dashboard v1.421 - Released 2026-05-25 - Modularization Phase 4A (config.js + utils.js + state.js + auth.js [Groups A+B])');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -8603,6 +8624,9 @@ Notes: ${notes}` : '',
         // End v1.414 helpers
         // ============================================================
 
+        // PHASE 4A MIGRATED — also exported from js/auth.js. Inline copy
+        // retained as runtime owner; module version on window.PRVS_Auth +
+        // window bridge identical (returns same boolean for any userRoles state).
         function canSeeWorkList() {
             return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
         }
@@ -10393,6 +10417,10 @@ Notes: ${notes}` : '',
         // for cross-module read access from js/auth.js (Phase 4) and future modules.
         var userRoles = []; // array of role names e.g. ['Admin', 'Manager']
 
+        // PHASE 4A MIGRATED — isAdmin + hasRole also exported from js/auth.js.
+        // Inline copies retained as runtime owner; module versions on
+        // window.PRVS_Auth read the same window.userRoles array and return
+        // identical booleans.
         function isAdmin() {
             return userRoles.includes('Admin');
         }
@@ -10815,12 +10843,17 @@ Notes: ${notes}` : '',
             return false;
         }
 
+        // PHASE 4A MIGRATED — saveToken + clearToken + setupTokenRefresh also
+        // exported from js/auth.js. Inline copies retained as runtime owner.
+        // Module versions write to localStorage identically and set
+        // window.accessToken / window.currentUser via the explicit window.
+        // prefix (modules are strict mode; bare `accessToken = X` would throw).
         function saveToken(token, expiresIn) {
             localStorage.setItem('google_access_token', token);
             // expiresIn is in seconds, convert to milliseconds and add to current time
             const expiry = Date.now() + (expiresIn * 1000);
             localStorage.setItem('google_token_expiry', expiry.toString());
-            
+
             // Save last successful auth time for session tracking
             localStorage.setItem('last_auth_time', Date.now().toString());
         }
@@ -10861,6 +10894,12 @@ Notes: ${notes}` : '',
             }
         }
 
+        // PHASE 4A MIGRATED — gapiLoaded + initializeGapiClient also exported
+        // from js/auth.js. Inline copies retained as runtime owner. The CDN
+        // <script src="apis.google.com/.../api.js" onload="gapiLoaded()">
+        // attribute resolves to the inline copy via auto-globalization;
+        // module exports are bridged to window so a future Phase 4.5 cleanup
+        // can delete inline copies without breaking the CDN onload= hook.
         function gapiLoaded() {
             if (typeof gapi === 'undefined') {
                 console.error('gapi not loaded yet, retrying...');
@@ -14369,10 +14408,17 @@ Notes: ${notes}` : '',
             return _staffCache.filter(s => s.role === 'tech');
         }
 
+        // PHASE 4A MIGRATED — also exported from js/auth.js. Inline copy
+        // retained as runtime owner; module version on window.PRVS_Auth
+        // identical (returns isAdmin() || hasRole('Sr Manager')).
         function isSrManagerOrAdmin() {
             return isAdmin() || hasRole('Sr Manager');
         }
 
+        // PHASE 4A MIGRATED — canManageSilo also exported from js/auth.js.
+        // Inline copy retained as runtime owner; module version reads identical
+        // window-attached state (userRoles + _currentStaffSilo + _currentStaffRole)
+        // and returns identical boolean for any input silo string.
         function canManageSilo(silo) {
             if (isAdmin()) return true;
             if (hasRole('Sr Manager')) return true;
