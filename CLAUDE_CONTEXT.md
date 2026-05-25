@@ -56,6 +56,31 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 ---
 
+## 🛑 SESSION WORKFLOW RULES
+
+These rules govern HOW Claude collaborates with Roland during the session, separate from non-negotiable code rules.
+
+### Rule: One step at a time — never bundle commands with forward-looking questions
+
+When Claude asks Roland to run a command, test, or query (DevTools console, SQL, CLI — anything that needs Roland's action):
+
+1. **Explain HOW to run it BEFORE listing the command.** Examples:
+   - DevTools console queries: *"paste ONE LINE AT A TIME and hit Enter; the console only echoes the LAST expression, so a block-paste of multiple queries only returns the last one's value."*
+   - Supabase SQL: *"paste the full block into Supabase SQL Editor and Run."*
+   - Don't assume Roland knows the console / shell / IDE quirks for the tool in question.
+2. **WAIT** for Roland to run it and paste back the result.
+3. **Verify** the result against expected return values.
+4. **Only after verification passes**, ask about the next step (next phase, branch strategy, deploy / merge, scope question, etc.).
+
+**Never bundle "run X" + "tell me Y" in the same response.** If Roland is being asked to validate something AND choose a future direction in the same turn, he can't answer the direction question without first running the validation — and if the validation fails, his direction answer is moot. Phase-verification steps must be STOP-AND-VALIDATE gates, not stack-and-continue.
+
+**Added 2026-05-25 (Session 75)** after Roland called this out during Phase 1 modularization verification:
+> *"We can't move forward with commands until I validate the command return. Stop giving me commands to run simultaneously to giving me tests to run with verified or questionable responses."*
+
+Persisted to both CLAUDE_CONTEXT.md AND Claude's auto-memory ([[one-step-at-a-time]]) so the rule survives a memory wipe.
+
+---
+
 ## 🗂 Project Identity
 
 | Field | Value |

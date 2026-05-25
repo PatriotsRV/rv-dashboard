@@ -1,8 +1,23 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.418
+    PRVS Dashboard v1.419
     Released: 2026-05-25
+    v1.419: Modularization Phase 2 — js/utils.js populated. 17 stateless
+    helpers now also exported from a real ES module: DEBUG flag, log(),
+    warn() (deferred from Phase 1); isVideoUrl, escapeHtml, calculateDaysOnLot,
+    calculatePriority, getPriorityLevel, getDaysHeatColor, formatHours,
+    driveImgUrl, loadDriveImage, loadAllDriveImages, generateROId,
+    generateROIdCandidates, normalisePhone, rowToRO. Inline copies stay until
+    callers import from the module (Phase 19 cleanup). Purely additive: no
+    runtime behavior change. js/app.js imports utils as a namespace and
+    exposes it as window.PRVS_Utils for DevTools inspection. Each inline
+    declaration carries a `PHASE 2 MIGRATED` comment pointing at the module.
+    Spec deltas vs MODULARIZATION_ROADMAP.md noted in js/utils.js header
+    (getPriorityLevel + loadAllDriveImages added as bonuses, DEBUG/log/warn
+    pulled in from Phase 1 deferral, parseCSV/toCamelCase deferred — not
+    pure, shouldShow deferred to Phase 3 state, getBaseROId deferred to
+    Phase 17 duplicates).
     v1.418: Modularization Phase 1 — js/config.js populated. 19 application-wide
     constants now also exported from a real ES module (GOOGLE_CONFIG,
     SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, TRANSLATIONS_ES,
@@ -3505,7 +3520,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.418</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.419</span>
             </div>
         </header>
 
@@ -4482,6 +4497,8 @@
         }
 
         // Returns true if a stored URL points to a video file
+        // PHASE 2 MIGRATED — also exported from js/utils.js. Inline copy
+        // stays until callers import from the module (Phase 19 cleanup).
         function isVideoUrl(url) {
             return /\.(mp4|mov|avi|mkv|webm|m4v|3gp)(\?|$)/i.test(url || '');
         }
@@ -8064,7 +8081,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.418 - Released 2026-05-25 - Modularization Phase 1 (config.js)');
+            log('📦 PRVS Dashboard v1.419 - Released 2026-05-25 - Modularization Phase 2 (config.js + utils.js)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -8320,6 +8337,10 @@ Notes: ${notes}` : '',
             }).replace(/\s+/g, '');
         }
 
+        // PHASE 2 MIGRATED — calculateDaysOnLot, escapeHtml, calculatePriority,
+        // getPriorityLevel, and getDaysHeatColor are all also exported from
+        // js/utils.js. Inline copies stay until callers import from the module
+        // (Phase 19 cleanup).
         // calculateDaysOnLot: pass full RO object for smart logic, or a date string for legacy use
         function calculateDaysOnLot(roOrDate) {
             if (!roOrDate) return 0;
@@ -9994,6 +10015,9 @@ Notes: ${notes}` : '',
          * DEBUG — set to true locally for verbose logging; false in production.
          * Never commit with DEBUG = true.
          */
+        // PHASE 2 MIGRATED — DEBUG, log, warn all also exported from
+        // js/utils.js. Inline copies stay until callers import from the module
+        // (Phase 19 cleanup).
         const DEBUG = false;
         /** log() — gated console.log. Use instead of console.log throughout. */
         function log(...args) { if (DEBUG) console.log(...args); }
@@ -11062,6 +11086,8 @@ Notes: ${notes}` : '',
         // ══════════════════════════════════════════════════════════════
 
         // Map Supabase row → camelCase RO object (matches existing app keys)
+        // PHASE 2 MIGRATED — also exported from js/utils.js. Inline copy
+        // stays until callers import from the module (Phase 19 cleanup).
         function rowToRO(row) {
             if (!row) return null;
             return {
@@ -12052,6 +12078,10 @@ Notes: ${notes}` : '',
             };
         }
         
+        // PHASE 2 MIGRATED — formatHours, driveImgUrl, loadDriveImage,
+        // loadAllDriveImages, generateROId, and generateROIdCandidates are all
+        // also exported from js/utils.js. Inline copies stay until callers
+        // import from the module (Phase 19 cleanup).
         function formatHours(seconds) {
             if (seconds < 60) return `${seconds}s`;
             if (seconds < 3600) {
@@ -13374,6 +13404,8 @@ Notes: ${notes}` : '',
         const KENECT_PROXY_URL = `${SUPABASE_URL}/functions/v1/kenect-proxy`;
 
         /** Normalise a phone number to E.164 (+1XXXXXXXXXX) for Kenect */
+        // PHASE 2 MIGRATED — also exported from js/utils.js. Inline copy
+        // stays until callers import from the module (Phase 19 cleanup).
         function normalisePhone(raw) {
             if (!raw) return null;
             const digits = raw.replace(/\D/g, '');
