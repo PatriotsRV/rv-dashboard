@@ -1,8 +1,18 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.421
+    PRVS Dashboard v1.422
     Released: 2026-05-25
+    v1.422: Modularization Phase 5 — js/i18n.js populated. All 5 translation
+    functions exported as a real ES module: getLang, setLang, t,
+    translateStaticUI, setupI18n. Imports TRANSLATIONS_ES from config.js
+    (already there since Phase 1). Pure additive: inline copies in
+    index.html still own runtime; window bridge attaches all 5 exports to
+    window for future cleanup. No state.js dependency — language pref is
+    persisted in localStorage 'prvs_lang' and that IS the source of truth.
+    5 PHASE 5 MIGRATED comment markers added at inline copies. js/app.js
+    imports i18n as a namespace and exposes window.PRVS_I18n for DevTools
+    spot-checks. Boot log updated. Zero runtime behavior change.
     v1.421: Modularization Phase 4A — js/auth.js populated with Groups A + B
     (10 of 18 auth functions). Group A (pure role helpers): isAdmin, hasRole,
     canSeeWorkList, isSrManagerOrAdmin, canManageSilo. Group B (token + GAPI
@@ -3561,7 +3571,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.421</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.422</span>
             </div>
         </header>
 
@@ -8133,7 +8143,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.421 - Released 2026-05-25 - Modularization Phase 4A (config.js + utils.js + state.js + auth.js [Groups A+B])');
+            log('📦 PRVS Dashboard v1.422 - Released 2026-05-25 - Modularization Phase 5 (config.js + utils.js + state.js + auth.js [Groups A+B] + i18n.js)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10202,6 +10212,12 @@ Notes: ${notes}` : '',
             '✕ Close': '✕ Cerrar',
         };
 
+        // PHASE 5 MIGRATED — all 5 i18n functions (getLang, setLang, t,
+        // translateStaticUI, setupI18n) also exported from js/i18n.js. Inline
+        // copies retained as runtime owner; module versions on window.PRVS_I18n
+        // + window bridge are functionally identical. TRANSLATIONS_ES is
+        // imported by the module from config.js (Phase 1). Language preference
+        // lives in localStorage 'prvs_lang' — no in-memory state.
         function getLang() { return localStorage.getItem('prvs_lang') || 'en'; }
 
         function setLang(lang) {
