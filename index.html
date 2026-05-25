@@ -1,8 +1,28 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.419
+    PRVS Dashboard v1.420
     Released: 2026-05-25
+    v1.420: Modularization Phase 3 — js/state.js populated (Path B
+    additive schema). 43 module-level state items now schema-documented
+    in a real ES module: filter/view (11), time-logs (2), new-RO-form
+    (2), parts (2), deep-link (1), work-list (3), auth (13), editing (1),
+    caches (3), enhancement-request (3), window-attached pseudo-state (2
+    bonus). (Plan message rounded to ~37; actual census after building
+    the module came out to 43 with the bonus items.) Inline `let`/`var` declarations are untouched — they remain
+    the runtime owner of every live value. js/state.js exposes
+    STATE_DEFAULTS (frozen), a mutable `state` scratch object, and a
+    `snapshot()` helper that reads the ~12 window-resident globals into
+    state. window.PRVS_State + window.state both reference the same
+    object for DevTools/spec compatibility. Purely additive: zero
+    runtime behavior change. 11 PHASE 3 MIGRATED comments added at each
+    inline declaration block pointing at the module. Subtle gotcha
+    surfaced during planning and documented inline: `let X` at script
+    top level does NOT auto-attach to window (only `var X` does), so
+    25 of the 37 state items cannot be live-read from this module
+    without a future targeted let→var conversion. Phase 3.5 (separate
+    session) will wire live sync for specific items when a future
+    module needs them.
     v1.419: Modularization Phase 2 — js/utils.js populated. 17 stateless
     helpers now also exported from a real ES module: DEBUG flag, log(),
     warn() (deferred from Phase 1); isVideoUrl, escapeHtml, calculateDaysOnLot,
@@ -3520,7 +3540,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.419</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.420</span>
             </div>
         </header>
 
@@ -3925,6 +3945,13 @@
             }
         ];
 
+        // PHASE 3 MIGRATED — the let/var state declarations below
+        // (currentData through tileVisibility) are also documented in
+        // js/state.js as the future single source of truth. Path B
+        // additive: this inline block remains the runtime owner. State
+        // module is schema-only until a future phase wires live sync
+        // (let-declared values are NOT visible on window.X, so the module
+        // cannot read them live without an explicit conversion).
         let currentData = [];
         let currentFilteredData = []; // Track current filtered view
         let currentStatusFilters = []; // Changed to array for multi-select
@@ -5360,6 +5387,7 @@
 
         // ── Custom Insurance Fields System ───────────────────────────
 
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let customInsuranceFields = [];
 
         async function loadCustomFieldConfig() { return loadCustomFieldConfigFromSupabase(); }
@@ -5560,6 +5588,7 @@
             openManageFieldsModal();
         }
 
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let currentROType = 'standard'; // 'standard' or 'insurance'
 
         function setROType(type, context) {
@@ -7238,6 +7267,7 @@ Notes: ${notes}` : '',
 
         // ── Parts Management ─────────────────────────────────────────
 
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let partsData = {}; // Cache: { roId: [parts array] }
 
         // PHASE 1 MIGRATED — PART_STATUSES + PART_STATUS_COLORS also exported
@@ -7902,6 +7932,7 @@ Notes: ${notes}` : '',
 
         // Deep-link: scroll to + highlight an RO tile when ?ro= is in the URL
         // Fires once on the first renderBoard() that contains the target RO, then clears.
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let _deepLinkRoId = new URLSearchParams(window.location.search).get('ro');
 
         function handleDeepLink() {
@@ -8081,7 +8112,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.419 - Released 2026-05-25 - Modularization Phase 2 (config.js + utils.js)');
+            log('📦 PRVS Dashboard v1.420 - Released 2026-05-25 - Modularization Phase 3 (config.js + utils.js + state.js)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -8582,6 +8613,7 @@ Notes: ${notes}` : '',
         // ============================================================
         // GH#16 — Manager Work List
         // ============================================================
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let _workListOpen = false;
         let _workListData = [];
         let _workListViewEmail = null;
@@ -10220,6 +10252,14 @@ Notes: ${notes}` : '',
         }
 
         // Lazy Supabase client — initialized on first use after SDK loads
+        // PHASE 3 MIGRATED — _sb through userRoles (the auth state block)
+        // are also schema-documented in js/state.js. The `var` items in
+        // this block (gapiInited, gisInited, initialLoadDone, tokenClient,
+        // accessToken, googleIdToken, _pendingScheduleIndex, supabaseNonce,
+        // sessionRestoredFromCache, currentUser) ARE live-readable via
+        // state.snapshot() because they auto-attach to window.X. The
+        // `let` items (_sb, supabaseSession, userRoles) are NOT — they
+        // remain inline-script-only until a future phase wires them.
         let _sb = null;
         const SB_AUTH_OPTIONS = {
             auth: {
@@ -10344,6 +10384,7 @@ Notes: ${notes}` : '',
         }
         
         // User roles loaded from Supabase
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let userRoles = []; // array of role names e.g. ['Admin', 'Manager']
 
         function isAdmin() {
@@ -12486,6 +12527,7 @@ Notes: ${notes}` : '',
         // ══════════════════════════════════════════════════════════════
 
         // Module-level file list — survives the async file-picker callback
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let _partsRequestFiles = [];
 
         // Called by the hidden <input type="file"> when user picks photos
@@ -13180,6 +13222,7 @@ Notes: ${notes}` : '',
         }
 
         // Modal Controls
+        // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let editingROIndex = null; // Track which RO is being edited
 
         async function openTimeLogsModal(index) {
@@ -14283,6 +14326,8 @@ Notes: ${notes}` : '',
         // GH#5 — Work Assignment System
         // ============================================================
 
+        // PHASE 3 MIGRATED — _staffCache, _workOrderCache, _appConfig are
+        // also schema-documented in js/state.js.
         let _staffCache = [];
         let _workOrderCache = {}; // { [supabase_ro_uuid]: { orders:[], tasks:[] } }
 
@@ -16107,6 +16152,9 @@ async function submitEnhancementRequest() {
 }
 
 // ── GH#19: Enhancement Request Admin View ───────────────────────────
+// PHASE 3 MIGRATED — _erData / _erFilterStatus / _erFilterCategory are
+// also schema-documented in js/state.js. (This is the 2nd <script>
+// block, hence the column-0 indentation.)
 let _erData = [];
 let _erFilterStatus = 'all';
 let _erFilterCategory = 'all';
