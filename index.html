@@ -10283,7 +10283,11 @@ Notes: ${notes}` : '',
             }
             return _sb;
         }
-        let supabaseSession = null;
+        // PHASE 3.5 (Session 76, 2026-05-25): let → var so it auto-attaches to window
+        // for cross-module read access from js/auth.js (Phase 4) and future modules.
+        // No behavior change — top-level var and let are observationally identical
+        // except for the window auto-attach.
+        var supabaseSession = null;
 
         var gapiInited = false;
         var gisInited = false;
@@ -10385,7 +10389,9 @@ Notes: ${notes}` : '',
         
         // User roles loaded from Supabase
         // PHASE 3 MIGRATED — also schema-documented in js/state.js.
-        let userRoles = []; // array of role names e.g. ['Admin', 'Manager']
+        // PHASE 3.5 (Session 76, 2026-05-25): let → var so it auto-attaches to window
+        // for cross-module read access from js/auth.js (Phase 4) and future modules.
+        var userRoles = []; // array of role names e.g. ['Admin', 'Manager']
 
         function isAdmin() {
             return userRoles.includes('Admin');
