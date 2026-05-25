@@ -1,8 +1,26 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.424
+    PRVS Dashboard v1.425
     Released: 2026-05-25
+    v1.425: Modularization Phase 4.5-A — delete-inline cleanup of auth Group A.
+    First subgroup of Phase 4.5 (the high-risk step where the module
+    becomes sole runtime owner; no inline fallback). Five inline auth
+    function bodies removed from index.html: isAdmin, hasRole,
+    canSeeWorkList, isSrManagerOrAdmin, canManageSilo. js/auth.js
+    exports now own every call site at runtime via the module's window
+    bridge (window.isAdmin / window.hasRole / window.canSeeWorkList /
+    window.isSrManagerOrAdmin / window.canManageSilo). Each deletion site
+    leaves a "PHASE 4.5-A DELETED" comment block in place of the function
+    body to preserve git-history breadcrumbs and signal the new ownership.
+    KEPT INLINE: the legacy alias isSrOrAdmin() — NOT in module exports;
+    6 inline call sites still reference it (lines ~7415, ~8715, ~8760,
+    ~8892, ~14169, ~14236). Body now resolves isAdmin() and hasRole() to
+    the module's window-attached versions via global scope lookup. Future
+    cleanup: rewrite those 6 call sites to isSrManagerOrAdmin and delete
+    the alias. ON BRANCH refactor/auth-phase-4.5 — does NOT land on main
+    until full Phase 4.5 regression matrix + incognito test pass AND
+    Roland explicitly green-lights the merge.
     v1.424: Modularization Phase 4B-D — js/auth.js gains Group D (the 3
     large Lynn-fix-surface functions): getUserInfo, loadSavedToken,
     gisLoaded. All 18 originally-inline auth functions are now also
@@ -3611,7 +3629,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.424</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.425</span>
             </div>
         </header>
 
@@ -8183,7 +8201,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.424 - Released 2026-05-25 - Modularization Phase 4B-D (config.js + utils.js + state.js + auth.js [Groups A+B+C+D — all 19 auth fns] + i18n.js)');
+            log('📦 PRVS Dashboard v1.425 - Released 2026-05-25 - Modularization Phase 4.5-A (delete-inline auth Group A: isAdmin, hasRole, canSeeWorkList, isSrManagerOrAdmin, canManageSilo — module is sole runtime owner)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -8674,12 +8692,18 @@ Notes: ${notes}` : '',
         // End v1.414 helpers
         // ============================================================
 
-        // PHASE 4A MIGRATED — also exported from js/auth.js. Inline copy
-        // retained as runtime owner; module version on window.PRVS_Auth +
-        // window bridge identical (returns same boolean for any userRoles state).
-        function canSeeWorkList() {
-            return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
-        }
+        // PHASE 4.5-A DELETED (Session 78, 2026-05-25, v1.425): inline
+        // canSeeWorkList removed — js/auth.js export is sole runtime owner
+        // via window.canSeeWorkList from the module's window bridge.
+        // ---
+        // isSrOrAdmin() KEPT INLINE as a legacy alias. It is NOT exported
+        // from js/auth.js (the module exports the longer-named
+        // isSrManagerOrAdmin instead). 6 inline call sites still reference
+        // isSrOrAdmin (lines ~7415, ~8715, ~8760, ~8892, ~14169, ~14236).
+        // Follow-up: replace those call sites with isSrManagerOrAdmin and
+        // then this alias can be deleted. Body calls isAdmin() + hasRole(),
+        // both of which resolve to window.* from auth.js after the module
+        // window-bridge runs.
         function isSrOrAdmin() {
             return isAdmin() || hasRole('Sr Manager');
         }
@@ -10484,16 +10508,11 @@ Notes: ${notes}` : '',
         // for cross-module read access from js/auth.js (Phase 4) and future modules.
         var userRoles = []; // array of role names e.g. ['Admin', 'Manager']
 
-        // PHASE 4A MIGRATED — isAdmin + hasRole also exported from js/auth.js.
-        // Inline copies retained as runtime owner; module versions on
-        // window.PRVS_Auth read the same window.userRoles array and return
-        // identical booleans.
-        function isAdmin() {
-            return userRoles.includes('Admin');
-        }
-        function hasRole(role) {
-            return userRoles.includes(role);
-        }
+        // PHASE 4.5-A DELETED (Session 78, 2026-05-25, v1.425): inline
+        // isAdmin + hasRole removed — js/auth.js exports are sole runtime
+        // owner via window.isAdmin / window.hasRole from the module's
+        // window bridge. Both read window.userRoles (same array this
+        // inline scope declares above), so behavior is identical.
 
         // Load roles from Supabase for current user.
         //
@@ -14512,29 +14531,18 @@ Notes: ${notes}` : '',
             return _staffCache.filter(s => s.role === 'tech');
         }
 
-        // PHASE 4A MIGRATED — also exported from js/auth.js. Inline copy
-        // retained as runtime owner; module version on window.PRVS_Auth
-        // identical (returns isAdmin() || hasRole('Sr Manager')).
-        function isSrManagerOrAdmin() {
-            return isAdmin() || hasRole('Sr Manager');
-        }
+        // PHASE 4.5-A DELETED (Session 78, 2026-05-25, v1.425): inline
+        // isSrManagerOrAdmin removed — js/auth.js export is sole runtime
+        // owner via window.isSrManagerOrAdmin from the module's window
+        // bridge.
 
-        // PHASE 4A MIGRATED — canManageSilo also exported from js/auth.js.
-        // Inline copy retained as runtime owner; module version reads identical
-        // window-attached state (userRoles + _currentStaffSilo + _currentStaffRole)
-        // and returns identical boolean for any input silo string.
-        function canManageSilo(silo) {
-            if (isAdmin()) return true;
-            if (hasRole('Sr Manager')) return true;
-            // Silo-specific manager: check staff table silo assignment
-            if (hasRole('Manager') && window._currentStaffSilo === silo) return true;
-            // Insurance WO Writer (e.g. Brandon Dillon) — cross-silo WO write privilege,
-            // restricted by submitWOForm + openBuildWOForm + DB triggers from
-            // BRANDON_INSURANCE_WO_WRITER.sql (cannot approve/close/reassign/delete/re-price).
-            if (hasRole('Insurance WO Writer')) return true;
-            if (hasRole('Manager') && window._currentStaffRole === 'parts_manager') return false;
-            return false;
-        }
+        // PHASE 4.5-A DELETED (Session 78, 2026-05-25, v1.425): inline
+        // canManageSilo removed — js/auth.js export is sole runtime owner
+        // via window.canManageSilo from the module's window bridge.
+        // Module reads identical state (window.userRoles +
+        // window._currentStaffSilo + window._currentStaffRole) and applies
+        // the same role precedence (Admin → Sr Manager → silo-matched
+        // Manager → Insurance WO Writer → parts_manager-exclusion → deny).
 
         // Returns true if the current user's *only* WO-write privilege is the
         // 'Insurance WO Writer' role for this silo. Drives the locked-down WO
