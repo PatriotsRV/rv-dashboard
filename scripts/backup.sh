@@ -92,13 +92,18 @@ for FILE in "${FILES[@]}"; do
   fi
 done
 
-# Trim to MAX_BACKUPS — delete oldest snapshots beyond the limit
-BACKUP_COUNT=$(ls -1 "$BACKUP_DIR" | wc -l | tr -d ' ')
+# Trim to MAX_BACKUPS — delete oldest snapshots beyond the limit.
+# Only timestamped snapshot directories (YYYY-MM-DD_HH-MM-SS) count toward
+# the limit and are eligible for deletion. Legacy .bak files or any other
+# entries in .backups/ are ignored so they don't cause the just-created
+# snapshot to be reaped on the very same run.
+SNAPSHOT_PATTERN='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$'
+BACKUP_COUNT=$(ls -1 "$BACKUP_DIR" | grep -E "$SNAPSHOT_PATTERN" | wc -l | tr -d ' ')
 if [ "$BACKUP_COUNT" -gt "$MAX_BACKUPS" ]; then
   EXCESS=$(( BACKUP_COUNT - MAX_BACKUPS ))
   echo ""
   echo "🗑  Removing $EXCESS old snapshot(s) (keeping last $MAX_BACKUPS)..."
-  ls -1 "$BACKUP_DIR" | sort | head -n "$EXCESS" | while read -r OLD; do
+  ls -1 "$BACKUP_DIR" | grep -E "$SNAPSHOT_PATTERN" | sort | head -n "$EXCESS" | while read -r OLD; do
     rm -rf "$BACKUP_DIR/$OLD"
     echo "  Deleted: $OLD"
   done
@@ -106,7 +111,7 @@ fi
 
 echo ""
 echo "✅ Snapshot saved → .backups/$TIMESTAMP"
-echo "   $(ls -1 "$BACKUP_DIR" | wc -l | tr -d ' ') snapshot(s) on file (max $MAX_BACKUPS)"
+echo "   $(ls -1 "$BACKUP_DIR" | grep -E "$SNAPSHOT_PATTERN" | wc -l | tr -d ' ') snapshot(s) on file (max $MAX_BACKUPS)"
 
 # --- Step 2: Supabase Table Export (optional) ---
 if [ "$DO_SUPABASE" = true ]; then
