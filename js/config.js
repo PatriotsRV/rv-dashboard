@@ -28,6 +28,22 @@
 export const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 
+// Supabase JS client options used by getSB() (auth.js Phase 4B-C and the
+// inline copy in index.html). Persists session in localStorage across page
+// loads under a dedicated key so multiple PRVS pages don't collide.
+// PHASE 4B-C (Session 77, 2026-05-25): moved here from inline declaration
+// in index.html so the module's getSB() and the inline getSB() construct
+// the Supabase client with identical options. Same shape, same storageKey
+// → same persisted session.
+export const SB_AUTH_OPTIONS = {
+    auth: {
+        persistSession:     true,             // keep session in localStorage across page loads
+        autoRefreshToken:   true,             // silently refresh JWT before expiry using refresh token
+        storageKey:         'prvs_supabase_auth', // dedicated localStorage key
+        detectSessionInUrl: true,             // handle OAuth redirects
+    },
+};
+
 // Shared-secret header for send-quote-email edge function. Matches Supabase
 // secret PRVS_FUNCTION_SECRET. Not true security (visible in client source)
 // but raises the bar against casual abuse of the public function URL.

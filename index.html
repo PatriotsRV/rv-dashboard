@@ -1,8 +1,25 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.422
+    PRVS Dashboard v1.423
     Released: 2026-05-25
+    v1.423: Modularization Phase 4B-C — js/auth.js gains Group C (6 more
+    auth functions): getSB, loadUserRoles, upsertUser,
+    initSupabaseAuthListener, updateAuthStatus, handleAuthClick. Pure
+    additive: inline copies still own runtime; window bridge attaches all
+    16 exports (Groups A+B+C). Lynn-fix code surface (v1.416 hardening
+    in loadUserRoles) preserved verbatim — both try/catch blocks for
+    user_roles and staff merge remain independent. Two prep changes:
+    (1) `let _sb` → `var _sb` in inline so the cached Supabase client
+    auto-attaches to window — module and inline both read/write
+    window._sb, guaranteeing ONE client per page load (two would mean
+    two separate Supabase auth sessions and two separate JWTs).
+    (2) SB_AUTH_OPTIONS moved to js/config.js so module and inline
+    construct the client with identical options. Inline copies of all
+    Group C functions retained as runtime owner; 6 PHASE 4B-C MIGRATED
+    comment blocks added. Remaining 3 auth functions (getUserInfo,
+    loadSavedToken, gisLoaded) deferred to Phase 4B-D (next commit).
+    Zero runtime behavior change.
     v1.422: Modularization Phase 5 — js/i18n.js populated. All 5 translation
     functions exported as a real ES module: getLang, setLang, t,
     translateStaticUI, setupI18n. Imports TRANSLATIONS_ES from config.js
@@ -3571,7 +3588,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.422</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.423</span>
             </div>
         </header>
 
@@ -8143,7 +8160,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.422 - Released 2026-05-25 - Modularization Phase 5 (config.js + utils.js + state.js + auth.js [Groups A+B] + i18n.js)');
+            log('📦 PRVS Dashboard v1.423 - Released 2026-05-25 - Modularization Phase 4B-C (config.js + utils.js + state.js + auth.js [Groups A+B+C] + i18n.js)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10297,10 +10314,18 @@ Notes: ${notes}` : '',
         // this block (gapiInited, gisInited, initialLoadDone, tokenClient,
         // accessToken, googleIdToken, _pendingScheduleIndex, supabaseNonce,
         // sessionRestoredFromCache, currentUser) ARE live-readable via
-        // state.snapshot() because they auto-attach to window.X. The
-        // `let` items (_sb, supabaseSession, userRoles) are NOT — they
-        // remain inline-script-only until a future phase wires them.
-        let _sb = null;
+        // state.snapshot() because they auto-attach to window.X.
+        //
+        // PHASE 4B-C (Session 77, 2026-05-25): `let _sb` converted to
+        // `var _sb` so it auto-attaches to window. Critical so the inline
+        // getSB() and js/auth.js getSB() share ONE cached Supabase client
+        // — otherwise we'd construct two clients pointed at the same project
+        // with two separate auth sessions and two separate JWTs.
+        //
+        // PHASE 4B-C (Session 77, 2026-05-25): SB_AUTH_OPTIONS moved to
+        // js/config.js so the module and inline construct the client with
+        // the same options. Inline copy retained below as runtime owner.
+        var _sb = null;
         const SB_AUTH_OPTIONS = {
             auth: {
                 persistSession:   true,   // keep session in localStorage across page loads
@@ -10309,6 +10334,9 @@ Notes: ${notes}` : '',
                 detectSessionInUrl: true, // handle OAuth redirects
             }
         };
+        // PHASE 4B-C MIGRATED — getSB also exported from js/auth.js. Inline
+        // copy retained as runtime owner; module version reads/writes
+        // window._sb so both share the same cached client.
         function getSB() {
             if (!_sb) {
                 // UMD build exposes supabase.createClient globally
@@ -10453,6 +10481,13 @@ Notes: ${notes}` : '',
         // and isAdmin() / hasRole('Sr Manager') both false. The two role sources are
         // now independent: a busted users row no longer wipes out the staff-derived
         // Sr Manager / Manager / Tech role.
+        //
+        // PHASE 4B-C MIGRATED (Session 77, 2026-05-25): loadUserRoles also exported
+        // from js/auth.js. Inline copy retained as runtime owner; module version
+        // reads window.supabaseSession and writes window.userRoles +
+        // window._currentStaffSilo + window._currentStaffRole exactly as inline does.
+        // Lynn-fix structure preserved verbatim: two independent try/catch blocks
+        // so a failure in either source can't suppress the other.
         async function loadUserRoles() {
             if (!supabaseSession) return;
             const email = supabaseSession.user.email;
@@ -10516,6 +10551,8 @@ Notes: ${notes}` : '',
         }
 
         // Ensure user exists in Supabase users table after login
+        // PHASE 4B-C MIGRATED — upsertUser also exported from js/auth.js. Inline
+        // copy retained as runtime owner.
         async function upsertUser(session) {
             if (!session) return;
             try {
@@ -10706,6 +10743,8 @@ Notes: ${notes}` : '',
         // ── Supabase auth state listener ──────────────────────────────
         // Keeps supabaseSession in sync whenever Supabase silently auto-refreshes
         // the JWT (every ~55 min) so the UI and connection checks never go stale.
+        // PHASE 4B-C MIGRATED — initSupabaseAuthListener also exported from
+        // js/auth.js. Inline copy retained as runtime owner.
         function initSupabaseAuthListener() {
             getSB().auth.onAuthStateChange((event, session) => {
                 if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
@@ -11124,6 +11163,11 @@ Notes: ${notes}` : '',
             log('gis initialized successfully');
         }
 
+        // PHASE 4B-C MIGRATED — handleAuthClick + updateAuthStatus also exported
+        // from js/auth.js. Inline copies retained as runtime owner; updateAuthStatus
+        // wires onclick handlers to the inline functions (handleAuthClick / getSB /
+        // clearToken / renderBoard) — module bridge ensures these resolve identically
+        // post-Phase-4.5.
         function handleAuthClick() {
             log('=== handleAuthClick called ===');
             // Always try silent first, only show popup on explicit user click

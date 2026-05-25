@@ -1,21 +1,29 @@
 // js/app.js — PRVS Dashboard module entry point
 // Modules are added phase-by-phase per docs/specs/MODULARIZATION_ROADMAP.md.
 //
-// Current phase: 5 (config.js + utils.js + state.js + auth.js [Groups A+B]
+// Current phase: 4B-C (config.js + utils.js + state.js + auth.js [Groups A+B+C]
 // + i18n.js populated). Inline <script> in index.html still owns runtime
 // behavior; this entry point only loads the modules so future code can
 // import from them without disturbing prod.
 //
 // Phase 4A scope notes:
 //   - auth.js exports 10 of the 18 auth functions (Groups A + B).
-//   - Groups C + D (session restore, One Tap, Supabase signInWithIdToken)
-//     deferred to Phase 4B — they contain the Lynn-fix code paths
-//     (v1.416/v1.417) and deserve a dedicated regression session.
 //
 // Phase 5 scope notes:
 //   - i18n.js exports all 5 translation functions (getLang, setLang, t,
 //     translateStaticUI, setupI18n). Pure additive; localStorage IS the
 //     state, so no state.js dependency was needed.
+//
+// Phase 4B-C scope notes (Session 77, 2026-05-25):
+//   - auth.js gains Group C — 6 more Supabase-plumbing functions: getSB,
+//     loadUserRoles, upsertUser, initSupabaseAuthListener, updateAuthStatus,
+//     handleAuthClick. Lynn-fix code surface (v1.416 in loadUserRoles)
+//     preserved verbatim.
+//   - config.js gains SB_AUTH_OPTIONS (moved from inline).
+//   - index.html: `let _sb` → `var _sb` so module and inline share the
+//     same cached Supabase client via window._sb.
+//   - 3 Group-D functions (getUserInfo, loadSavedToken, gisLoaded) deferred
+//     to Phase 4B-D in this same session's next commit.
 
 import * as Config from './config.js';
 import * as Utils from './utils.js';
@@ -35,4 +43,4 @@ window.PRVS_State  = State;
 window.PRVS_Auth   = Auth;
 window.PRVS_I18n   = I18n;
 
-console.log('[PRVS] Module system loaded — Phase 5 (config.js + utils.js + state.js + auth.js [Groups A+B] + i18n.js)');
+console.log('[PRVS] Module system loaded — Phase 4B-C (config.js + utils.js + state.js + auth.js [Groups A+B+C] + i18n.js)');
