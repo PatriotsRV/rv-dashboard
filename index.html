@@ -1,8 +1,23 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.417
-    Released: 2026-05-21
+    PRVS Dashboard v1.418
+    Released: 2026-05-25
+    v1.418: Modularization Phase 1 — js/config.js populated. 19 application-wide
+    constants now also exported from a real ES module (GOOGLE_CONFIG,
+    SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, TRANSLATIONS_ES,
+    SERVICE_SILOS, REPAIR_TYPE_TO_SILO, SILO_TO_REPAIR_TYPE,
+    CALENDAR_IDS_FALLBACK, STATUS_PROGRESS_MAP, WO_STATUS_LABELS,
+    WO_STATUS_COLORS, TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_COLORS,
+    PART_STATUSES, PART_STATUS_COLORS, ALL_PART_FIELDS, DAY_BASED_SERVICES).
+    Inline copies stay until callers import from the module (Phase 19 cleanup).
+    Purely additive: no runtime behavior change. js/app.js imports the
+    namespace and exposes it as window.PRVS_Config for DevTools inspection.
+    Each inline declaration carries a `PHASE 1 MIGRATED` comment pointing
+    at the module. Spec deltas vs docs/specs/MODULARIZATION_ROADMAP.md noted
+    in the js/config.js header (ADMIN_EMAILS dropped by S2, CALENDAR_IDS
+    renamed by S7, PRVS_FUNCTION_SECRET new since spec, statusColorMap/
+    ALL_STATUSES deferred to Phase 6, DEBUG deferred to Phase 2).
     v1.417: Fixed the SECOND silent-demote bug exposed by Lynn's continued flakiness after v1.416. v1.416 hardened loadUserRoles() against missing/duplicate `users` rows, but a separate code path bypassed loadUserRoles() entirely. Session-restore Step 2 ("Fall back to Google token if Supabase session gone") set `sessionRestoredFromCache = true` and called updateViewModeDropdown() WITHOUT loadUserRoles. The Google One Tap prompt was then SKIPPED because the skip-condition keyed on `sessionRestoredFromCache` — which was true even when only a stale Google token had been restored and the Supabase session was actually null. With One Tap skipped, the signInWithIdToken callback never fired, supabaseSession stayed null, userRoles stayed [], and every isAdmin()/hasRole() gate failed silently. Net result: Lynn (Admin user_roles row + active staff row + on v1.416 code) still saw only the role-gateless buttons (+ NEW RO, Closed ROs, Time Off). Fix: 5 surgical edits — (1) line ~10539 getUserInfo() now awaits loadUserRoles() before updateViewModeDropdown so post-login first paint reflects real roles. (2) line ~10653 Step 2 fallback now awaits loadUserRoles() before updateViewModeDropdown so even the anon-key path renders any role data it can read. (3) line ~10802 callback skip condition changed from `sessionRestoredFromCache || supabaseSession` to just `supabaseSession` — only skip Supabase re-auth when we have a real auth session, not when we restored stale UI from cache. (4) line ~10823 after signInWithIdToken success, now calls `await loadUserRoles(); updateViewModeDropdown(); updateAuthStatus(true);` so role-gated UI re-renders the moment Supabase auth comes back. (5) line ~10832 One Tap prompt skip changed from `!sessionRestoredFromCache` to `!supabaseSession` — same logic: prompt whenever Supabase auth isn't live. The `sessionRestoredFromCache` flag is preserved for non-auth uses (skip One Tap prompt UI for already-loaded users) but is no longer used as a proxy for "RBAC is active." Same defensive pattern applied: no changes to worklist-report.html or customer-checkin.html (those don't have the Step 2 fallback path).
     v1.416: Hardened loadUserRoles() against silent-demote bug. Lynn (Admin in user_roles + sr_manager in staff) lost every Work List / Admin / Sr-Manager-tier button overnight after Session 69. Root cause: the prior loadUserRoles() early-returned whenever the `users` table lookup-by-email returned 0 rows OR errored (.maybeSingle returns null on missing row, can also error on duplicate). That early-return skipped BOTH the user_roles query AND the staff merge — leaving userRoles=[] for users with even a slightly mis-stamped `users` row, hiding 📋 My Work List sidebar, 📋 Work List Report, 📋 Add to My List per-card button, Admin Settings, Analytics, Recently Deleted, ER admin, Customer Check-In, Solar — every role-gated header button — without surfacing an error. Session 69 itself didn't change any of this code (canManageSilo / isInsuranceWoWriterOnly / openBuildWOForm / buildWOTaskRowHtml / submitWOForm were the only touchpoints, all WO-restricted to Brandon's new 'Insurance WO Writer' role) — the regression was a pre-existing latent bug in loadUserRoles() exposed by changes to Lynn's `users` row state. Fix: split loadUserRoles() into two INDEPENDENT role sources — (1) user_roles via users.id (Admin lives here) wrapped in its own try/catch so a missing/duplicate users row no longer aborts the whole function; (2) staff-table merge runs UNCONDITIONALLY, mapping staff.role → 'Sr Manager' / 'Manager' / 'Tech' even if user_roles failed. Switched the staff query from .single() → .maybeSingle() so 0 rows is a quiet null instead of a 406. Both sources now feed a single mergedRoles array that becomes userRoles at the end. Net effect: real staffers with a valid `staff` row keep their role-derived buttons even when their `users` row is missing, duplicate, or RLS-blocked — Lynn gets 'Sr Manager' from staff regardless, restoring every canSeeWorkList() button. Admin restoration still requires a valid user_roles.Admin row; see GH#41 in TODO for the DB verification step Roland needs to run.
     v1.415: Insurance WO Writer role (Brandon Dillon) — new RBAC tier that grants cross-silo Work Order create/update/template rights without approve/close/reassign/delete/re-price. New role 'Insurance WO Writer' in roles + user_roles (BRANDON_INSURANCE_WO_WRITER.sql). canManageSilo() extended to return true for the role on any silo; isInsuranceWoWriterOnly(silo) gates restricted UI mode. WO form (openBuildWOForm) hides terminal statuses (awaiting_customer_approval/customer_approved/completed), locks dollar_value when already > 0, shows "📋 Insurance WO mode" banner. buildWOTaskRowHtml replaces tech <select> with a "Silo manager assigns" placeholder + hidden field (forced NULL on save), filters task statuses to remove awaiting_approval + completed, hides ✕ Remove on rows that already exist in DB. submitWOForm skips delete-removed-tasks branch for restricted users. DB-level enforcement via two BEFORE triggers: enforce_insurance_wo_writer_swo_limits (blocks dollar_value re-edit + terminal status) and enforce_insurance_wo_writer_st_limits (blocks tech assignment + terminal task status). RLS extended on swo_insert/swo_update/st_insert/st_update via is_insurance_wo_writer() helper; swo_delete + st_delete deliberately not extended.
@@ -3490,7 +3505,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.417</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.418</span>
             </div>
         </header>
 
@@ -4109,6 +4124,8 @@
 
         // Update RO Status
         // Status to Progress mapping
+        // PHASE 1 MIGRATED — also exported from js/config.js. Inline copy
+        // stays until callers import from the module (Phase 19 cleanup).
         const STATUS_PROGRESS_MAP = {
             'Not On Lot': 0,
             'On Lot': 10,
@@ -7206,6 +7223,9 @@ Notes: ${notes}` : '',
 
         let partsData = {}; // Cache: { roId: [parts array] }
 
+        // PHASE 1 MIGRATED — PART_STATUSES + PART_STATUS_COLORS also exported
+        // from js/config.js. Inline copies stay until callers import from the
+        // module (Phase 19 cleanup).
         const PART_STATUSES = ['Ordered','In Transit','Sourcing','Received','Installed','Backordered','Returned','Lost'];
 
         const PART_STATUS_COLORS = {
@@ -7602,6 +7622,8 @@ Notes: ${notes}` : '',
             window._partsModalContext = null;
         }
 
+        // PHASE 1 MIGRATED — also exported from js/config.js. Inline copy
+        // stays until callers import from the module (Phase 19 cleanup).
         const ALL_PART_FIELDS = [
             'partName','partNumber','condition','qty','status','notes',
             'partsSource','poNumber','orderedBy','dateOrdered','eta','trackingNumber','partUrl','returnDeadline',
@@ -8042,7 +8064,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.417 - Released 2026-05-21');
+            log('📦 PRVS Dashboard v1.418 - Released 2026-05-25 - Modularization Phase 1 (config.js)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -9931,6 +9953,15 @@ Notes: ${notes}` : '',
             }
         }
 
+        // PHASE 1 MIGRATED — the constants in this block (GOOGLE_CONFIG,
+        // SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, TRANSLATIONS_ES,
+        // SERVICE_SILOS, REPAIR_TYPE_TO_SILO, SILO_TO_REPAIR_TYPE,
+        // CALENDAR_IDS_FALLBACK, WO_STATUS_LABELS, WO_STATUS_COLORS,
+        // TASK_STATUSES, TASK_STATUS_LABELS, TASK_STATUS_COLORS,
+        // DAY_BASED_SERVICES) now also live in js/config.js (Phase 1 of
+        // MODULARIZATION_ROADMAP.md). The inline declarations remain for
+        // backward compat until every caller imports from the module —
+        // do NOT delete them. Cleanup is the final modularization phase.
         // Google Sheets Integration
         const GOOGLE_CONFIG = {
             CLIENT_ID: '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com',
