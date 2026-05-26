@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.8
-    Released: 2026-05-20
+    PRVS Customer Check-In v1.9
+    Released: 2026-05-26
+    v1.9: Kiosk-mode Step 1 — when logged in as the shared front-desk account
+          (KIOSK_EMAIL = customerservice@patriotsrvservices.com), Step 1 hides
+          the "New Customer Entry" mode button so walk-in customers only see
+          the single "RV Customer Drop Off" option. The remaining button is
+          full-width (CSS flex:1 already handles this). All other PRVS staff
+          logins see both options exactly as before. Strict email match — no
+          role-based gating, no second-kiosk-account list. setupStep1Modes()
+          runs inside showForm() after loadUserRoles so the email is known.
     v1.8: Returning-customer search now queries `cashiered` in addition to
           `repair_orders` so customers whose last RO has been archived (and any
           customer arriving for warranty work on a closed RO) can still be
@@ -946,7 +954,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.8</div>
+<div class="version-badge">PRVS Customer Check-In v1.9</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -963,6 +971,12 @@
     // but raises the bar against casual abuse of the public function URL.
     const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
     const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+    // Shared front-desk "kiosk" account — walk-in customers use this login on the
+    // iPad/console. When this email is the active Supabase session, Step 1 hides
+    // the staff-only "New Customer Entry" mode so the customer sees only the
+    // RV Customer Drop Off box. Strict email match by design (see v1.9 notes).
+    const KIOSK_EMAIL = 'customerservice@patriotsrvservices.com';
 
     const SB_AUTH_OPTIONS = {
         auth: {
@@ -1155,6 +1169,29 @@
         return isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
     }
 
+    // v1.9 — strict-email check for the shared front-desk kiosk login.
+    // When true, Step 1 hides the staff-only "New Customer Entry" button so
+    // walk-in customers only see the single RV Customer Drop Off option.
+    function isKioskAccount() {
+        const email = supabaseSession?.user?.email;
+        return !!email && email.toLowerCase() === KIOSK_EMAIL.toLowerCase();
+    }
+
+    // v1.9 — hide the "New Customer Entry" mode button when logged in as the
+    // kiosk account. The remaining .mode-btn keeps flex:1 so it fills the row.
+    // No-op for every other manager+ login, so the existing two-button UX is
+    // preserved for staff.
+    function setupStep1Modes() {
+        const leadBtn = document.querySelector('.mode-btn[data-mode="lead"]');
+        if (!leadBtn) return; // defensive — markup hasn't changed but don't crash if it does
+        if (isKioskAccount()) {
+            leadBtn.classList.add('hidden');
+            log('[customer-checkin v1.9] kiosk account active — New Customer Entry hidden');
+        } else {
+            leadBtn.classList.remove('hidden');
+        }
+    }
+
     function showForm() {
         // Gate: Manager or above only
         if (!isManagerOrAbove()) {
@@ -1169,6 +1206,7 @@
         document.getElementById('formArea').classList.remove('hidden');
         document.getElementById('staffBar').classList.remove('hidden');
         document.getElementById('staffName').textContent = supabaseSession.user.email;
+        setupStep1Modes(); // v1.9 — kiosk-aware mode-button visibility
         buildSiloGrid();
         // NOTE: initSignaturePad() is called in setupStep4() so the canvas is visible
         document.getElementById('sigDate').value = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
