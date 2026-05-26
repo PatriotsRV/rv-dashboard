@@ -10,17 +10,18 @@
 > **Storage strategy:** CLAUDE_CONTEXT.md lives **locally** in the `PRVS RO Dashboard` Cowork workspace folder (primary). GitHub is a **backup only**, pushed at end of session. Always read from local. Always write to local first.
 
 ### 🟢 START OF SESSION — Roland's command:
-> *"Read CLAUDE_CONTEXT.md from the workspace folder before doing anything else. Confirm the current index.html version, read the Active TODO List out loud to me grouped by priority, and flag any blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask me: 'Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start.' If I provide mobile updates, merge them into the TODO list immediately — mark completed items ✅, add new items with the correct priority — and confirm what changed before continuing. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
+> *"Read CLAUDE_CONTEXT.md from the workspace folder before doing anything else. Confirm the workspace is on `pre-prod` (default working branch) — if not, switch via `git checkout pre-prod`. Run the drift check: `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline` — both should return empty. If either returns commits, surface the divergence and resolve before any other work. Confirm the current index.html version matches the File Inventory. Read the Active TODO List out loud to me grouped by priority. Flag any 🔴 blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
 
 Claude must complete all of these before doing any work:
 
 - [ ] 1. Read this file from the local workspace folder (not GitHub)
-- [ ] 2. Confirm the current `index.html` version matches the File Inventory table below
-- [ ] 3. Read and acknowledge the **Active TODO List** section aloud to Roland, grouped by priority
-- [ ] 4. Flag any 🔴 blocking items and any pending Roland-action items
-- [ ] 5. Ask Roland for iPhone updates — merge any provided before starting work
-- [ ] 6. Ask: *"Is there anything else to add or change before we start?"* and wait
-- [ ] 7. Only then begin work — starting with highest-priority TODO item unless Roland redirects
+- [ ] 2. **Confirm workspace is on `pre-prod`** (default working branch). If on `main` or another branch, switch via `git checkout pre-prod`. See 🌿 BRANCH MODEL section below for the full model.
+- [ ] 3. **Run the drift check** — `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. BOTH should return empty. If either returns commits, surface the divergence and resolve before any other work (see 🌿 BRANCH MODEL → Drift Prevention Rules).
+- [ ] 4. Confirm the current `index.html` version matches the File Inventory table below
+- [ ] 5. Read and acknowledge the **Active TODO List** section aloud to Roland, grouped by priority
+- [ ] 6. Flag any 🔴 blocking items and any pending Roland-action items
+- [ ] 7. Ask: *"Is there anything else to add or change before we start?"* and wait
+- [ ] 8. Only then begin work — starting with highest-priority TODO item unless Roland redirects
 
 ### ⏸ PAUSE / CHECKPOINT — Roland's command:
 > *"Pause what you're doing and save progress now. Run bash scripts/backup.sh, then update CLAUDE_CONTEXT.md with everything completed so far this session — TODO list, session log, any new gotchas — and save it to the workspace folder. Then push to GitHub as a backup. Confirm the push with the commit hash. Then tell me exactly where we are and what's next before continuing."*
@@ -34,7 +35,7 @@ Claude must:
 - [ ] 5. Report: exactly where we are and what's next
 
 ### 🔴 END OF SESSION — Roland's command:
-> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, and Known Issues in CLAUDE_CONTEXT.md. Update Completed Work and Version History in CLAUDE_CONTEXT_HISTORY.md. Save both files to the workspace folder, then push both to GitHub as a backup. Do not end the session until the push is confirmed with a commit hash."*
+> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, and Known Issues in CLAUDE_CONTEXT.md. Update Completed Work and Version History in CLAUDE_CONTEXT_HISTORY.md. Save both files to the workspace folder. Push to GitHub `pre-prod` branch by default — only push to `main` if a release shipped this session. If a release shipped to main: tag the release commit (`git tag v1.XXX && git push origin v1.XXX`) and confirm pre-prod and main are at the same hash. Do not end the session until the push is confirmed with a commit hash AND (if a release shipped) pre-prod ≡ main is verified."*
 
 Claude must complete ALL of these before the session ends (context limit, user stops, etc.):
 
@@ -48,7 +49,8 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - [ ] 7. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
 - [ ] 8. ~~Update `PRVS_PROJECT_CONTEXT.md`~~ — **DISABLED 2026-05-25 (Session 74).** iPhone Claude Project integration removed; do NOT touch PRVS_PROJECT_CONTEXT.md. If the `prvs-end-session` skill instructs you to update it, skip that step.
 - [ ] 9. **Save CLAUDE_CONTEXT.md to the local workspace folder** (primary)
-- [ ] 10. **Push CLAUDE_CONTEXT.md to GitHub** (backup) — confirm with commit hash
+- [ ] 10. **Push CLAUDE_CONTEXT.md to GitHub `pre-prod` branch** (default; backup) — confirm with commit hash. Only push to `main` if a release shipped this session.
+- [ ] 11. **If a release shipped to main this session:** tag the release commit (`git tag v1.XXX && git push origin v1.XXX`); confirm `pre-prod` and `main` are at the same hash via `git rev-parse main` and `git rev-parse pre-prod` (both must match before declaring End Session complete). See 🌿 BRANCH MODEL section for workflow details.
 
 > ⚠️ If the session is about to end due to context limits, Claude should say:
 > *"Context is getting full — let me update CLAUDE_CONTEXT.md before we lose this session."*
@@ -78,6 +80,65 @@ When Claude asks Roland to run a command, test, or query (DevTools console, SQL,
 > *"We can't move forward with commands until I validate the command return. Stop giving me commands to run simultaneously to giving me tests to run with verified or questionable responses."*
 
 Persisted to both CLAUDE_CONTEXT.md AND Claude's auto-memory ([[one-step-at-a-time]]) so the rule survives a memory wipe.
+
+---
+
+## 🌿 BRANCH MODEL
+
+> Established 2026-05-26 (Session 79) after the Phase 4.5 merge proved the topic-branch-then-FF-merge pattern. All work follows this model going forward — no exceptions without Roland's explicit approval in chat.
+
+### Branch Tiers
+
+| Branch | Role | Receives From | Promotes To |
+|---|---|---|---|
+| `main` | **Production** — auto-deploys to GitHub Pages within ~60s of push | fast-forward merges from `pre-prod`; emergency merges from `hotfix/*` | (terminal — nothing) |
+| `pre-prod` | **Default working / integration branch** — Roland tests locally here before promoting to main | direct commits (low-risk work); fast-forward merges from `refactor/*` and `feature/*` topic branches; back-merges from `main` after hotfixes | fast-forward merge to `main` when stable |
+| `refactor/<topic>` or `feature/<topic>` | **Isolated high-risk work** — auth, RLS, schema migrations, big multi-file refactors, anything with rollback risk | direct commits | fast-forward merge to `pre-prod` |
+| `hotfix/<topic>` | **Emergency production patch** — used ONLY when production is broken (security, broken auth, data loss) | direct commits | fast-forward merge to `main` AND back-merge to `pre-prod` (mandatory same-session) |
+
+### Workflow Patterns
+
+**Normal session** (low/medium risk work):
+1. Claude checks out `pre-prod` at session start.
+2. Drift check: `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline` — both should be empty. If either returns commits, surface and resolve before any work.
+3. Work happens on `pre-prod` directly. Claude edits, Roland commits + pushes (per the `feedback_claude_edits_roland_git` memory rule).
+4. Roland tests locally against `pre-prod` via `python3 -m http.server 8765` from a pre-prod checkout.
+5. When stable, Roland fast-forwards main: `git checkout main && git pull --ff-only origin main && git merge --ff-only pre-prod && git push origin main`.
+6. If a version bumped, tag the release on main: `git tag v1.XXX && git push origin v1.XXX`.
+7. Live-URL verify on production GitHub Pages.
+
+**High-risk session** (auth, RLS, schema, big refactor):
+1. Branch off pre-prod: `git checkout pre-prod && git checkout -b refactor/<topic>` (or `feature/<topic>`).
+2. Work + commit on the topic branch.
+3. Local verification matrix on the topic branch (per session-specific test plan).
+4. Fast-forward merge into pre-prod: `git checkout pre-prod && git pull --ff-only origin pre-prod && git merge --ff-only refactor/<topic> && git push origin pre-prod`.
+5. Soak period on pre-prod (length varies by risk — sometimes overnight, sometimes a few hours).
+6. Fast-forward merge pre-prod → main when ready (Normal session step 5).
+7. Delete the topic branch local + remote: `git branch -d refactor/<topic> && git push origin --delete refactor/<topic>`.
+
+**Hotfix flow** (emergency only — production is broken):
+1. Branch off main directly: `git checkout main && git pull --ff-only origin main && git checkout -b hotfix/<topic>`.
+2. Commit message prefix: `HOTFIX:` (e.g., `HOTFIX: revert auth.js loadUserRoles change causing silent demote`). Makes hotfixes trivially greppable in `git log`.
+3. Tag the fix commit: `git tag hotfix-YYYY-MM-DD-<slug> && git push origin hotfix-YYYY-MM-DD-<slug>`.
+4. Fast-forward merge into main: `git checkout main && git merge --ff-only hotfix/<topic> && git push origin main`.
+5. **MANDATORY same-session back-merge** to keep pre-prod in sync: `git checkout pre-prod && git merge main && git push origin pre-prod`. No "I'll do it later." No exceptions. This is THE rule that prevents drift.
+6. Add an entry to the 🚨 HOTFIX LOG section (below the Key Architecture Decisions section) — date, what broke, what fixed it, commit hashes, back-merge commit hash.
+7. Delete the hotfix branch local + remote.
+
+### Drift Prevention Rules
+
+1. **Mandatory back-merge after hotfix.** Any `hotfix/*` → `main` push MUST be immediately followed by `git checkout pre-prod && git merge main && git push origin pre-prod`, in the same session. No exceptions. This is THE most important drift rule.
+2. **Drift check at session start.** START SESSION runs `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline` — both should be empty. If not, flag and resolve before any other work.
+3. **Hotfix log.** Every hotfix gets a row in the 🚨 HOTFIX LOG section below. Date, trigger, fix, main commit, back-merge commit, branches synced.
+4. **Hotfix commit message convention.** Prefix `HOTFIX:` in every hotfix commit. Tag the fix commit `hotfix-YYYY-MM-DD-<slug>`.
+5. **Tag every release.** When pre-prod merges to main with a version bump, tag main with the new version (`git tag v1.XXX && git push origin v1.XXX`). Makes rollback trivial; gives GitHub Releases a target.
+6. **Delete merged branches.** Post-merge, delete the topic branch local + remote (`git branch -d <name> && git push origin --delete <name>`). Keeps `git branch -a` clean and prevents confusion about active vs stale work.
+7. **Cap feature branch life at 7 days.** If a `refactor/*` or `feature/*` branch goes past a week, weekly-merge `pre-prod` INTO the branch (`git merge pre-prod` on the branch) to keep it from diverging. The longer a branch lives, the harder the eventual merge.
+8. **Forward-only flow.** Code flows feature → pre-prod → main (forward). Hotfixes flow hotfix → main → pre-prod (back-merge). Any other merge direction needs an explicit reason in the commit message.
+
+### When in Doubt
+
+A topic branch is cheaper than a regression. If a change feels risky or touches auth/RLS/schema/multi-file/multi-table — branch first, ask Roland later. The 30-second cost of `git checkout -b refactor/foo` has saved hours of revert work many times in this project's history.
 
 ---
 
@@ -972,6 +1033,16 @@ Kenect refused to supply API keys. Edge Function deleted, all UI code removed. S
 - Pushes to private repo `prvshepard/rv-dashboard-backups`, rolling 30-day retention
 - Required secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GH_BACKUP_PAT`
 - **Status: ✅ Live and tested**
+
+---
+
+## 🚨 HOTFIX LOG
+
+> Every hotfix logged here. See 🌿 BRANCH MODEL → Hotfix flow for the full workflow. Rule #1 of drift prevention is non-negotiable: hotfix-to-main MUST be followed by same-session back-merge to pre-prod.
+
+| Date | Trigger | Fix | Main Commit | Back-Merge to Pre-Prod | Tag |
+|---|---|---|---|---|---|
+| _(none yet)_ | | | | | |
 
 ---
 
