@@ -1,8 +1,30 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.427
+    PRVS Dashboard v1.428
     Released: 2026-05-25
+    v1.428: Modularization Phase 4.5-D — delete-inline cleanup of auth Group D
+    (boot path — most subtle subgroup because this is where v1.416 +
+    v1.417 Lynn-fix code lives). Two of the three Group D inline function
+    bodies removed: getUserInfo (fetches Google profile + persists
+    currentUser + awaits loadUserRoles before first paint) and
+    loadSavedToken (the page-boot session-restore router — Step 1 Supabase
+    cache → Step 2 Google-token fallback). js/auth.js exports now own
+    these at runtime via the module's window bridge.
+    KEPT INLINE for now: gisLoaded. Reached through the
+    `<script src=".../gsi/client" async defer onload="gisLoaded()">` tag,
+    whose `async` attribute means the onload can fire BEFORE the module's
+    deferred window bridge runs. Same CDN-onload-coupling carve-out
+    pattern as gapiLoaded + initializeGapiClient in Phase 4.5-B —
+    scheduled for Phase 4.5-E, which adds explicit `defer` to the CDN
+    script tags so the module's window bridge installs first, then
+    deletes the inline survivors.
+    Net inline deletions so far in Phase 4.5: 5 (A) + 3 (B) + 6 (C) +
+    2 (D) = 16 of 19. Inline survivors: isSrOrAdmin (legacy alias),
+    gapiLoaded + initializeGapiClient + gisLoaded (CDN-onload-coupled).
+    Phase 4.5-E follow-up resolves the last 3.
+    ON BRANCH refactor/auth-phase-4.5 — does NOT land on main until full
+    regression matrix passes AND Roland green-lights the merge.
     v1.427: Modularization Phase 4.5-C — delete-inline cleanup of auth Group C
     (Supabase plumbing — the heart of the auth flow). Six inline function
     bodies removed: getSB, loadUserRoles (v1.416 Lynn-fix surface),
@@ -3665,7 +3687,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.427</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.428</span>
             </div>
         </header>
 
@@ -8248,7 +8270,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.427 - Released 2026-05-25 - Modularization Phase 4.5-C (delete-inline auth Group C: getSB, loadUserRoles, upsertUser, initSupabaseAuthListener, updateAuthStatus, handleAuthClick — module is sole runtime owner; const sampleData → var sampleData for module disconnect-onclick window.sampleData reach)');
+            log('📦 PRVS Dashboard v1.428 - Released 2026-05-25 - Modularization Phase 4.5-D (delete-inline auth Group D: getUserInfo, loadSavedToken — module is sole runtime owner; gisLoaded kept inline for CDN async onload timing, scheduled for 4.5-E)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10694,57 +10716,14 @@ Notes: ${notes}` : '',
             selector.value = currentViewMode;
         }
 
-        // Get current user info
-        // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): getUserInfo also exported
-        // from js/auth.js. Inline copy retained as runtime owner. The v1.417 fix
-        // (await loadUserRoles() BEFORE first paint) is preserved verbatim in
-        // both copies. Module version reads window.accessToken + writes
-        // window.currentUser + calls loadUserRoles + window.updateViewModeDropdown.
-        async function getUserInfo() {
-            if (!accessToken) {
-                warn('No access token available for user info');
-                currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
-                return currentUser;
-            }
-
-            try {
-                log('Fetching user info...');
-                
-                const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-                
-                if (response.ok) {
-                    const userInfo = await response.json();
-                    currentUser = {
-                        email: userInfo.email || 'unknown@user.com',
-                        name: userInfo.name || userInfo.email?.split('@')[0] || 'Unknown User'
-                    };
-                    log('✓ Logged in as:', currentUser.name, '(' + currentUser.email + ')');
-                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
-
-                    // v1.417: load roles BEFORE first paint so role-gated buttons never
-                    // render empty during fresh-login paths. Without this, the first
-                    // updateViewModeDropdown() call ran with userRoles=[] until a later
-                    // paint overwrote it.
-                    await loadUserRoles();
-                    updateViewModeDropdown();
-
-                    return currentUser;
-                } else {
-                    warn('Could not fetch user info (status:', response.status + ')');
-                    warn('You need to disconnect and reconnect to grant userinfo permissions.');
-                    currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
-                    return currentUser;
-                }
-            } catch (error) {
-                console.error('Error getting user info:', error);
-                currentUser = { email: 'unknown@user.com', name: 'Unknown User' };
-                return currentUser;
-            }
-        }
+        // PHASE 4.5-D DELETED (Session 78, 2026-05-25, v1.428): inline
+        // getUserInfo removed — js/auth.js export is sole runtime owner
+        // via window.getUserInfo from the module's window bridge. v1.417
+        // fix (await loadUserRoles() BEFORE first paint so role-gated
+        // buttons never render empty during fresh-login paths) is
+        // preserved verbatim in the module. Module reads window.accessToken,
+        // writes window.currentUser, awaits window.loadUserRoles, then
+        // calls window.updateViewModeDropdown — same sequence as inline.
 
         // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
         // initSupabaseAuthListener removed — js/auth.js export is sole
@@ -10754,150 +10733,21 @@ Notes: ${notes}` : '',
         // in sync across silent JWT refreshes (every ~55 min) so UI and
         // connection checks never go stale.
 
-        // Load saved token on page load
-        // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): loadSavedToken also
-        // exported from js/auth.js. Inline copy retained as runtime owner — it
-        // is what app boot invokes from DOMContentLoaded. v1.417 hardening of
-        // the Step 2 fallback (await loadUserRoles before updateViewModeDropdown)
-        // preserved verbatim in both copies. Module version reads/writes
-        // window-attached state: supabaseSession, currentUser, accessToken,
-        // initialLoadDone, sessionRestoredFromCache.
-        async function loadSavedToken() {
-            log('🔍 loadSavedToken called');
-            const savedToken = localStorage.getItem('google_access_token');
-            const tokenExpiry = localStorage.getItem('google_token_expiry');
-            const savedUser = localStorage.getItem('currentUser');
-            const lastAuthTime = localStorage.getItem('last_auth_time');
-            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-            log('Saved token exists:', !!savedToken, '| Expiry:', tokenExpiry);
-
-            // Register auth state listener once (idempotent — Supabase deduplicates)
-            initSupabaseAuthListener();
-
-            // ── STEP 1: Always check Supabase session first ──────────
-            // Supabase persists its own session in localStorage for weeks.
-            // If valid, load data immediately regardless of Google token state.
-            try {
-                const { data: { session } } = await getSB().auth.getSession();
-                if (session) {
-                    supabaseSession = session;
-                    log('✅ Supabase session active — loading data');
-
-                    // Restore user from Supabase session
-                    if (!currentUser) {
-                        const u = session.user;
-                        currentUser = {
-                            email: u.email,
-                            name:  u.user_metadata?.full_name || u.email,
-                            id:    u.id,
-                        };
-                        localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                    } else if (savedUser) {
-                        try { currentUser = JSON.parse(savedUser); } catch(e) {}
-                    }
-
-                    // Restore Google token if still valid (for Drive compat)
-                    const now = Date.now();
-                    if (savedToken && tokenExpiry && now < (parseInt(tokenExpiry) - 300000)) {
-                        accessToken = savedToken;
-                        gapi.client.setToken({access_token: savedToken});
-                        log('✅ Google token also valid');
-                    }
-
-                    await loadUserRoles();
-                    updateViewModeDropdown();
-                    updateAuthStatus(true);
-                    await loadDataFromSupabase();
-                    await loadTimeLogsFromSupabase();
-                    loadStaff(); // GH#5 — load staff roster for work order assignment
-                    loadAppConfig(); // S7 — load calendar IDs + future config from Supabase
-
-                    initialLoadDone = true;
-                    startTimeLogsAutoRefresh();
-                    if (!isSafari) setupTokenRefresh();
-
-                    sessionRestoredFromCache = true;
-                    log('✅ Session restored via Supabase');
-                    return true;
-                }
-            } catch(e) {
-                warn('Supabase session check failed:', e);
-            }
-
-            // ── STEP 2: Fall back to Google token if Supabase session gone ──
-            if (savedToken && tokenExpiry) {
-                const now = Date.now();
-                const expiryTime = parseInt(tokenExpiry);
-
-                log('Time until Google token expiry (minutes):', Math.round((expiryTime - now) / 60000));
-
-                if (now < (expiryTime - 300000)) {
-                    log('✅ Google token valid, loading...');
-                    accessToken = savedToken;
-                    gapi.client.setToken({access_token: savedToken});
-
-                    if (savedUser) {
-                        try {
-                            currentUser = JSON.parse(savedUser);
-                            log('Loaded saved user:', currentUser.name);
-                            // v1.417: load roles BEFORE updateViewModeDropdown so role-gated
-                            // buttons reflect actual state, not the empty userRoles=[] default.
-                            // Even if Supabase session is gone (we're in the Google-only fallback
-                            // path), this call won't hurt — and the One Tap prompt below will
-                            // re-auth Supabase and trigger a follow-up role load via the
-                            // signInWithIdToken callback (see v1.417 changes at line ~10823).
-                            await loadUserRoles();
-                            updateViewModeDropdown();
-                        } catch(e) {}
-                    }
-
-                    updateAuthStatus(true);
-                    await loadDataFromSupabase();
-                    await loadTimeLogsFromSupabase();
-
-                    initialLoadDone = true;
-                    startTimeLogsAutoRefresh();
-                    if (!isSafari) setupTokenRefresh();
-                    sessionRestoredFromCache = true;
-
-                    return true;
-                } else if (lastAuthTime && !isSafari) {
-                    log('Token expired, attempting silent refresh (Chrome only)...');
-                    // Token expired but user had recent session - try silent refresh
-                    // SKIP on Safari - silent refresh not supported
-                    const lastAuth = parseInt(lastAuthTime);
-                    const hoursSinceAuth = (now - lastAuth) / (1000 * 60 * 60);
-                    
-                    if (hoursSinceAuth < 24) {
-                        log('Token expired but recent session detected, attempting silent refresh...');
-                        // Load user info first
-                        if (savedUser) {
-                            try {
-                                currentUser = JSON.parse(savedUser);
-                            } catch (e) {}
-                        }
-                        // Try silent token refresh
-                        try {
-                            tokenClient.requestAccessToken({prompt: ''});
-                        } catch (e) {
-                            log('Silent refresh not supported, clearing token');
-                            clearToken();
-                        }
-                        return true;
-                    } else {
-                        log('Session too old, clearing...');
-                        clearToken();
-                    }
-                } else {
-                    log('❌ Saved token expired, clearing...');
-                    clearToken();
-                }
-            } else {
-                log('❌ No saved token found');
-            }
-            return false;
-        }
+        // PHASE 4.5-D DELETED (Session 78, 2026-05-25, v1.428): inline
+        // loadSavedToken removed — js/auth.js export is sole runtime owner
+        // via window.loadSavedToken from the module's window bridge. This
+        // is the page-boot session restore router invoked by init() from
+        // DOMContentLoaded. v1.417 hardening of the Step 2 fallback
+        // (await loadUserRoles before updateViewModeDropdown so role-gated
+        // buttons reflect actual state during the Google-only fallback
+        // path) is preserved verbatim in the module. Module reads/writes
+        // window-attached state for supabaseSession, currentUser,
+        // accessToken, initialLoadDone, sessionRestoredFromCache — same
+        // contract as inline. Two paths: STEP 1 (Supabase session restore
+        // via getSB().auth.getSession()) and STEP 2 (Google-token-only
+        // fallback). Both end with the same loadDataFromSupabase +
+        // loadTimeLogsFromSupabase + loadStaff (Step 1 only) +
+        // loadAppConfig (Step 1 only) + setupTokenRefresh sequence.
 
         // PHASE 4.5-B DELETED (Session 78, 2026-05-25, v1.426): inline
         // saveToken + clearToken + setupTokenRefresh removed — js/auth.js
