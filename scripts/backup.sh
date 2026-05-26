@@ -4,7 +4,9 @@
 # =============================================================================
 # Creates a timestamped snapshot of all key files and optionally exports
 # Supabase tables and/or creates a git tag for major milestones.
-# Keeps the last 6 file snapshots. Older ones are deleted automatically.
+# Keeps the last 9 file snapshots. Older ones are deleted automatically.
+# (Bumped from 6 → 9 on 2026-05-25 during Phase 4.5 refactor so we can
+# walk further back if a multi-subgroup regression surfaces later.)
 #
 # Usage:
 #   bash scripts/backup.sh                         # File snapshot only (default)
@@ -25,7 +27,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="$REPO_ROOT/.backups"
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 SNAPSHOT_DIR="$BACKUP_DIR/$TIMESTAMP"
-MAX_BACKUPS=6
+MAX_BACKUPS=9
 
 # --- Parse flags ---
 DO_SUPABASE=false
