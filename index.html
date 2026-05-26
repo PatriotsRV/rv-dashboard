@@ -1,8 +1,29 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.426
+    PRVS Dashboard v1.427
     Released: 2026-05-25
+    v1.427: Modularization Phase 4.5-C — delete-inline cleanup of auth Group C
+    (Supabase plumbing — the heart of the auth flow). Six inline function
+    bodies removed: getSB, loadUserRoles (v1.416 Lynn-fix surface),
+    upsertUser, initSupabaseAuthListener, updateAuthStatus, handleAuthClick.
+    js/auth.js exports now own runtime for all 6 via the module's window
+    bridge. v1.416 hardening (two independent try/catch blocks in
+    loadUserRoles so a missing/duplicate `users` row can't silently demote
+    a real staff manager) is preserved verbatim inside the module — see
+    js/auth.js GROUP C section for the bug-history docstring; this file no
+    longer carries that text since the source of truth is now js/auth.js.
+    BONUS CHANGE: `const sampleData` → `var sampleData` at the inline
+    declaration so window.sampleData auto-attaches. Required because the
+    module's updateAuthStatus disconnect onclick guards
+    `if (typeof window.sampleData !== 'undefined') window.currentData =
+    window.sampleData;` — without the var flip, strict-mode modules would
+    have no way to reach the inline-const placeholder, and the
+    post-disconnect "fall back to sample data" UX would silently break.
+    `sampleData` is never reassigned; const→var is observationally
+    identical except for the window auto-attach.
+    ON BRANCH refactor/auth-phase-4.5 — does NOT land on main until full
+    regression matrix passes AND Roland green-lights the merge.
     v1.426: Modularization Phase 4.5-B — delete-inline cleanup of auth Group B
     (token + GAPI bootstrap). Three of the five Group B inline function
     bodies removed: saveToken, clearToken, setupTokenRefresh. js/auth.js
@@ -3644,7 +3665,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.426</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.427</span>
             </div>
         </header>
 
@@ -3857,7 +3878,18 @@
 
     <script>
         // Sample data structure
-        const sampleData = [
+        // PHASE 4.5-C (Session 78, 2026-05-25, v1.427): const → var so it
+        // auto-attaches to window. Required because the module version of
+        // updateAuthStatus (now sole runtime owner) reads window.sampleData
+        // through a defensive `typeof window.sampleData !== 'undefined'`
+        // guard in the disconnect onclick. With `const`, the placeholder
+        // sample data was scoped to the inline IIFE and unreachable from
+        // strict-mode modules — disconnect would silently skip the reset.
+        // `var` auto-globalizes at top-level inline scope so window.sampleData
+        // is the same array as inline `sampleData`. No other semantics change
+        // (sampleData is never reassigned; const→var is observationally
+        // identical except for the window auto-attach).
+        var sampleData = [
             {
                 customerName: "John Martinez",
                 customerPhone: "555-0123",
@@ -8216,7 +8248,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.426 - Released 2026-05-25 - Modularization Phase 4.5-B (delete-inline auth Group B: saveToken, clearToken, setupTokenRefresh — module is sole runtime owner; gapiLoaded + initializeGapiClient kept inline for CDN onload timing, scheduled for 4.5-E)');
+            log('📦 PRVS Dashboard v1.427 - Released 2026-05-25 - Modularization Phase 4.5-C (delete-inline auth Group C: getSB, loadUserRoles, upsertUser, initSupabaseAuthListener, updateAuthStatus, handleAuthClick — module is sole runtime owner; const sampleData → var sampleData for module disconnect-onclick window.sampleData reach)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10396,23 +10428,15 @@ Notes: ${notes}` : '',
                 detectSessionInUrl: true, // handle OAuth redirects
             }
         };
-        // PHASE 4B-C MIGRATED — getSB also exported from js/auth.js. Inline
-        // copy retained as runtime owner; module version reads/writes
-        // window._sb so both share the same cached client.
-        function getSB() {
-            if (!_sb) {
-                // UMD build exposes supabase.createClient globally
-                if (typeof supabase !== 'undefined' && supabase.createClient) {
-                    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS);
-                } else if (window.supabase && window.supabase.createClient) {
-                    _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS);
-                } else {
-                    console.error('Supabase SDK not available yet');
-                    return { from: () => ({ select: () => Promise.resolve({data:[], error: new Error('Supabase not ready')}) }), auth: { getSession: () => Promise.resolve({data:{session:null}}), signInWithIdToken: () => Promise.resolve({data:null, error: new Error('Supabase not ready')}) } };
-                }
-            }
-            return _sb;
-        }
+        // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
+        // getSB removed — js/auth.js export is sole runtime owner via
+        // window.getSB from the module's window bridge. Module reads/writes
+        // window._sb (declared `var` above so both module and any leftover
+        // inline reference share the same cached client). Module imports
+        // SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS from
+        // js/config.js. The `var _sb` declaration and the inline
+        // SB_AUTH_OPTIONS object above are intentionally left in place —
+        // they cost nothing and document the shared state contract.
         // PHASE 3.5 (Session 76, 2026-05-25): let → var so it auto-attaches to window
         // for cross-module read access from js/auth.js (Phase 4) and future modules.
         // No behavior change — top-level var and let are observationally identical
@@ -10529,102 +10553,22 @@ Notes: ${notes}` : '',
         // window bridge. Both read window.userRoles (same array this
         // inline scope declares above), so behavior is identical.
 
-        // Load roles from Supabase for current user.
-        //
-        // v1.416 (Session 70): hardened against the silent-demote bug that hid every
-        // Work List / Admin button for Lynn after Session 69 shipped. Previously a
-        // failing `users` lookup early-returned, skipping BOTH the user_roles query
-        // AND the staff merge — so a missing/duplicate `users` row left userRoles=[]
-        // and isAdmin() / hasRole('Sr Manager') both false. The two role sources are
-        // now independent: a busted users row no longer wipes out the staff-derived
-        // Sr Manager / Manager / Tech role.
-        //
-        // PHASE 4B-C MIGRATED (Session 77, 2026-05-25): loadUserRoles also exported
-        // from js/auth.js. Inline copy retained as runtime owner; module version
-        // reads window.supabaseSession and writes window.userRoles +
-        // window._currentStaffSilo + window._currentStaffRole exactly as inline does.
-        // Lynn-fix structure preserved verbatim: two independent try/catch blocks
-        // so a failure in either source can't suppress the other.
-        async function loadUserRoles() {
-            if (!supabaseSession) return;
-            const email = supabaseSession.user.email;
-            let mergedRoles = [];
+        // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
+        // loadUserRoles removed — js/auth.js export is sole runtime owner
+        // via window.loadUserRoles from the module's window bridge. The
+        // v1.416 Lynn-fix hardening (two independent try/catch blocks for
+        // user_roles + staff merge so a missing/duplicate `users` row
+        // can't silently demote a real staff manager) is preserved verbatim
+        // in the module — see js/auth.js section "GROUP C — Supabase
+        // plumbing" + module-level docstring on loadUserRoles for the bug
+        // history. Module reads window.supabaseSession and writes
+        // window.userRoles + window._currentStaffSilo + window._currentStaffRole.
 
-            // 1) Preferred path: user_roles via users.id (Admin lives here, plus any
-            //    hand-assigned roles like 'Insurance WO Writer'). Failures are logged
-            //    but do NOT prevent the staff-table fallback in step 2.
-            try {
-                const { data: userRecord } = await getSB()
-                    .from('users')
-                    .select('id')
-                    .eq('email', email)
-                    .maybeSingle(); // .single() returns 406 when no row found; .maybeSingle() returns null
-                if (userRecord) {
-                    const { data: roleData } = await getSB()
-                        .from('user_roles')
-                        .select('roles(name)')
-                        .eq('user_id', userRecord.id);
-                    if (roleData) {
-                        mergedRoles = roleData.map(r => r.roles?.name).filter(Boolean);
-                    }
-                } else {
-                    warn('⚠️ No users row for', email, '— role will be derived from staff table only.');
-                }
-            } catch (e) {
-                warn('user_roles lookup failed (continuing with staff merge):', e);
-            }
-
-            // 2) Staff-table merge (S2 Phase 2 staff → role sync). Runs unconditionally
-            //    so a missing/duplicate users row can't silently demote a real staffer.
-            //    .maybeSingle() so 0 rows is a quiet null instead of a 406.
-            try {
-                const { data: staffRecord } = await getSB()
-                    .from('staff')
-                    .select('role, service_silo, active')
-                    .eq('email', email)
-                    .maybeSingle();
-
-                if (staffRecord && staffRecord.active) {
-                    const staffRoleMap = {
-                        'sr_manager':    'Sr Manager',
-                        'manager':       'Manager',
-                        'parts_manager': 'Manager',
-                        'tech':          'Tech',
-                    };
-                    const mapped = staffRoleMap[staffRecord.role];
-                    if (mapped && !mergedRoles.includes(mapped)) {
-                        mergedRoles.push(mapped);
-                    }
-                    // Store silo for canManageSilo() use
-                    window._currentStaffSilo = staffRecord.service_silo || null;
-                    window._currentStaffRole = staffRecord.role || null;
-                }
-            } catch (e) {
-                warn('staff role merge failed:', e);
-            }
-
-            userRoles = mergedRoles;
-            log('✅ User roles:', userRoles);
-        }
-
-        // Ensure user exists in Supabase users table after login
-        // PHASE 4B-C MIGRATED — upsertUser also exported from js/auth.js. Inline
-        // copy retained as runtime owner.
-        async function upsertUser(session) {
-            if (!session) return;
-            try {
-                const { user } = session;
-                await getSB().from('users').upsert({
-                    id: user.id,
-                    email: user.email,
-                    name: user.user_metadata?.full_name || user.email,
-                    avatar_url: user.user_metadata?.avatar_url || null,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'id' });
-            } catch(e) {
-                warn('Could not upsert user:', e);
-            }
-        }
+        // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
+        // upsertUser removed — js/auth.js export is sole runtime owner
+        // via window.upsertUser from the module's window bridge. Module
+        // upserts to `users` table with same payload shape (id, email,
+        // name from user_metadata.full_name, avatar_url, updated_at).
         
         function updateViewModeDropdown() {
             const selector = document.getElementById('viewModeSelector');
@@ -10802,25 +10746,13 @@ Notes: ${notes}` : '',
             }
         }
 
-        // ── Supabase auth state listener ──────────────────────────────
-        // Keeps supabaseSession in sync whenever Supabase silently auto-refreshes
-        // the JWT (every ~55 min) so the UI and connection checks never go stale.
-        // PHASE 4B-C MIGRATED — initSupabaseAuthListener also exported from
-        // js/auth.js. Inline copy retained as runtime owner.
-        function initSupabaseAuthListener() {
-            getSB().auth.onAuthStateChange((event, session) => {
-                if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-                    supabaseSession = session;
-                    log('✅ Supabase session updated via onAuthStateChange:', event);
-                    updateAuthStatus(true);
-                } else if (event === 'SIGNED_OUT') {
-                    supabaseSession = null;
-                    currentUser = null;
-                    updateAuthStatus(false);
-                    log('🔒 Supabase session signed out');
-                }
-            });
-        }
+        // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
+        // initSupabaseAuthListener removed — js/auth.js export is sole
+        // runtime owner via window.initSupabaseAuthListener from the
+        // module's window bridge. Module subscribes to
+        // getSB().auth.onAuthStateChange and keeps window.supabaseSession
+        // in sync across silent JWT refreshes (every ~55 min) so UI and
+        // connection checks never go stale.
 
         // Load saved token on page load
         // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): loadSavedToken also
@@ -11207,68 +11139,22 @@ Notes: ${notes}` : '',
             log('gis initialized successfully');
         }
 
-        // PHASE 4B-C MIGRATED — handleAuthClick + updateAuthStatus also exported
-        // from js/auth.js. Inline copies retained as runtime owner; updateAuthStatus
-        // wires onclick handlers to the inline functions (handleAuthClick / getSB /
-        // clearToken / renderBoard) — module bridge ensures these resolve identically
-        // post-Phase-4.5.
-        function handleAuthClick() {
-            log('=== handleAuthClick called ===');
-            // Always try silent first, only show popup on explicit user click
-            if (accessToken === null) {
-                log('Requesting new token...');
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            } else {
-                log('Refreshing existing token silently...');
-                try {
-                    tokenClient.requestAccessToken({prompt: ''});
-                } catch (e) {
-                    log('Silent refresh not available');
-                }
-            }
-        }
-
-        function updateAuthStatus(connected) {
-            const indicator = document.getElementById('authIndicator');
-            const status = document.getElementById('authStatus');
-            const authButton = document.getElementById('authButton');
-            const connectSheetsBtn = document.getElementById('connectSheetsBtn');
-            const connectionStatus = document.getElementById('connectionStatus');
-            
-            if (connected) {
-                // Modal button
-                indicator.classList.add('connected');
-                status.textContent = 'Connected to PRVS Database';
-                authButton.textContent = 'Disconnect';
-                authButton.onclick = async () => {
-                    await getSB().auth.signOut(); // end Supabase session
-                    clearToken();                 // clear Google OAuth token
-                    updateAuthStatus(false);
-                    currentData = sampleData;
-                    renderBoard();
-                };
-                
-                // Header button
-                connectSheetsBtn.classList.add('connected');
-                connectionStatus.textContent = '✓ Connected to PRVS';
-            } else {
-                // Modal button
-                indicator.classList.remove('connected');
-                status.textContent = 'Not connected to PRVS Database';
-                authButton.textContent = 'Connect to PRVS';
-                authButton.onclick = () => {
-                    if (!gapiInited || !gisInited) {
-                        showToast('Google APIs are still loading. Please wait and try again.', 'info', { duration: 6000 });
-                        return;
-                    }
-                    handleAuthClick();
-                };
-                
-                // Header button
-                connectSheetsBtn.classList.remove('connected');
-                connectionStatus.textContent = '🔗 Connect to PRVS';
-            }
-        }
+        // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
+        // handleAuthClick + updateAuthStatus removed — js/auth.js exports
+        // are sole runtime owners via window.handleAuthClick /
+        // window.updateAuthStatus from the module's window bridge.
+        //
+        // Module's updateAuthStatus rewires the disconnect onclick to call
+        // window.clearToken / window.renderBoard / window.getSB through
+        // the bridge — identical to the inline version. Critical detail:
+        // the module's disconnect onclick uses
+        // `if (typeof window.sampleData !== 'undefined') window.currentData
+        // = window.sampleData;` as a defensive guard (strict-mode modules
+        // would throw on a bare `sampleData` reference if it weren't on
+        // window). Phase 4.5-C also flipped `const sampleData` → `var
+        // sampleData` at the inline declaration so it auto-attaches to
+        // window — that preserves the post-disconnect "reset to sample
+        // data" behavior across the runtime-owner flip.
 
 
         // ══════════════════════════════════════════════════════════════
