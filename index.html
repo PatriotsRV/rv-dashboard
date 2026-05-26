@@ -1,8 +1,23 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.425
+    PRVS Dashboard v1.426
     Released: 2026-05-25
+    v1.426: Modularization Phase 4.5-B — delete-inline cleanup of auth Group B
+    (token + GAPI bootstrap). Three of the five Group B inline function
+    bodies removed: saveToken, clearToken, setupTokenRefresh. js/auth.js
+    exports own these at runtime via the module's window bridge. KEPT
+    INLINE for now: gapiLoaded + initializeGapiClient. Both are reached
+    through the synchronous `<script src="apis.google.com/.../api.js"
+    onload="gapiLoaded()">` tag at the document bottom, whose onload fires
+    BEFORE the deferred ES module's window bridge runs. Deleting them
+    here would leave the CDN onload calling `undefined` and break GAPI
+    initialization (Google Drive uploads, Calendar events, Sheets).
+    Scheduled for Phase 4.5-E, which adds `defer` to the CDN script tags
+    so the module's window bridge installs first, then deletes the inline
+    survivors. Documented carve-out — not a regression. ON BRANCH
+    refactor/auth-phase-4.5 — does NOT land on main until full regression
+    matrix passes AND Roland green-lights the merge.
     v1.425: Modularization Phase 4.5-A — delete-inline cleanup of auth Group A.
     First subgroup of Phase 4.5 (the high-risk step where the module
     becomes sole runtime owner; no inline fallback). Five inline auth
@@ -3629,7 +3644,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.425</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.426</span>
             </div>
         </header>
 
@@ -8201,7 +8216,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.425 - Released 2026-05-25 - Modularization Phase 4.5-A (delete-inline auth Group A: isAdmin, hasRole, canSeeWorkList, isSrManagerOrAdmin, canManageSilo — module is sole runtime owner)');
+            log('📦 PRVS Dashboard v1.426 - Released 2026-05-25 - Modularization Phase 4.5-B (delete-inline auth Group B: saveToken, clearToken, setupTokenRefresh — module is sole runtime owner; gapiLoaded + initializeGapiClient kept inline for CDN onload timing, scheduled for 4.5-E)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10952,56 +10967,22 @@ Notes: ${notes}` : '',
             return false;
         }
 
-        // PHASE 4A MIGRATED — saveToken + clearToken + setupTokenRefresh also
-        // exported from js/auth.js. Inline copies retained as runtime owner.
-        // Module versions write to localStorage identically and set
-        // window.accessToken / window.currentUser via the explicit window.
-        // prefix (modules are strict mode; bare `accessToken = X` would throw).
-        function saveToken(token, expiresIn) {
-            localStorage.setItem('google_access_token', token);
-            // expiresIn is in seconds, convert to milliseconds and add to current time
-            const expiry = Date.now() + (expiresIn * 1000);
-            localStorage.setItem('google_token_expiry', expiry.toString());
-
-            // Save last successful auth time for session tracking
-            localStorage.setItem('last_auth_time', Date.now().toString());
-        }
-
-        function clearToken() {
-            localStorage.removeItem('google_access_token');
-            localStorage.removeItem('google_token_expiry');
-            localStorage.removeItem('currentUser');
-            localStorage.removeItem('last_auth_time');
-            accessToken = null;
-            currentUser = null;
-        }
-        
-        // Silent token refresh before expiry
-        function setupTokenRefresh() {
-            const tokenExpiry = localStorage.getItem('google_token_expiry');
-            if (!tokenExpiry) return;
-            
-            const expiryTime = parseInt(tokenExpiry);
-            const now = Date.now();
-            const timeUntilExpiry = expiryTime - now;
-            
-            // Refresh 5 minutes before expiry
-            const refreshTime = timeUntilExpiry - 300000;
-            
-            if (refreshTime > 0) {
-                log('Token refresh scheduled in', Math.round(refreshTime / 60000), 'minutes');
-                setTimeout(() => {
-                    log('Auto-refreshing token silently...');
-                    // Silent refresh only — no popup ever
-                    // If it fails, user just reconnects manually when needed (Drive uploads)
-                    try {
-                        tokenClient.requestAccessToken({prompt: '', hint: currentUser?.email || ''});
-                    } catch (e) {
-                        log('Silent refresh not available — token will expire naturally');
-                    }
-                }, refreshTime);
-            }
-        }
+        // PHASE 4.5-B DELETED (Session 78, 2026-05-25, v1.426): inline
+        // saveToken + clearToken + setupTokenRefresh removed — js/auth.js
+        // exports are sole runtime owner via window.saveToken /
+        // window.clearToken / window.setupTokenRefresh from the module's
+        // window bridge. Module versions write to localStorage identically
+        // and set window.accessToken / window.currentUser via explicit
+        // window prefix (modules are strict-mode; bare `accessToken = X`
+        // would throw). Internal call sites (handleAuthClick, token
+        // callback, loadSavedToken, etc.) resolve via global scope to the
+        // module versions. NOT DELETED in Phase 4.5-B: gapiLoaded +
+        // initializeGapiClient — both are referenced through the synchronous
+        // `<script src="apis.google.com/.../api.js" onload="gapiLoaded()">`
+        // hook at the bottom of the document, which fires BEFORE the
+        // module's deferred window bridge runs. Inline declarations of
+        // those two stay until Phase 4.5-E adds `defer` to the CDN script
+        // tags.
 
         // PHASE 4A MIGRATED — gapiLoaded + initializeGapiClient also exported
         // from js/auth.js. Inline copies retained as runtime owner. The CDN
