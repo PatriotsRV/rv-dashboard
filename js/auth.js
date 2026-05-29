@@ -748,6 +748,25 @@ export async function gisLoaded() {
                         } catch (refreshErr) {
                             console.warn('⚠️ Post-One-Tap role refresh failed:', refreshErr.message);
                         }
+                        // Phase 4.5-E follow-up (v1.429): Step 2 fallback skipped
+                        // loadStaff + loadAppConfig (those run only on Step 1). The
+                        // One Tap → signInWithIdToken success block now backfills
+                        // them so My Work List button renders (gated by
+                        // _initWorkListBtn which is called from loadStaff),
+                        // app_config (calendar IDs, etc.) is loaded, and the open
+                        // Session 79 backlog item "post-OAuth board-stays-on-
+                        // sampleData quirk" closes (loadDataFromSupabase re-fetches
+                        // real data if the Step 2 run raced and got sampleData).
+                        // Wrapped in try/catch so a transient backfill failure does
+                        // not break the auth path.
+                        try {
+                            if (typeof window.loadStaff === 'function')            await window.loadStaff();
+                            if (typeof window.loadAppConfig === 'function')        await window.loadAppConfig();
+                            if (typeof window.loadDataFromSupabase === 'function') await window.loadDataFromSupabase();
+                            console.log('✅ Post-One-Tap Step-2 backfill complete (staff + app_config + data)');
+                        } catch (stepTwoErr) {
+                            console.warn('⚠️ Post-One-Tap Step-2 backfill failed:', stepTwoErr.message);
+                        }
                     }
                 } catch (e) {
                     console.warn('⚠️ Supabase auth exchange failed:', e.message);
