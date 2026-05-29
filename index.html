@@ -1,8 +1,35 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.428
-    Released: 2026-05-25
+    PRVS Dashboard v1.429
+    Released: 2026-05-29
+    v1.429: Modularization Phase 4.5-E — delete-inline cleanup of the final
+    three CDN-onload-coupled auth functions: gapiLoaded, initializeGapiClient,
+    and gisLoaded. The two Google CDN script tags at document bottom now
+    carry explicit `defer` (the gsi/client tag also dropped `async` since
+    async overrides defer's in-order execution guarantee). With both CDN
+    scripts deferred AND js/app.js loaded as type="module" (also deferred)
+    appearing EARLIER in the document, the browser guarantees the module's
+    window bridge installs window.gapiLoaded / window.initializeGapiClient /
+    window.gisLoaded BEFORE either CDN onload= attribute fires. The CDN
+    onload hooks then resolve through the bridge straight into the module
+    versions in js/auth.js.
+
+    gisLoaded module body preserves v1.417 fixes verbatim:
+      (1) callback skip-if-supabaseSession (not the misleading
+          sessionRestoredFromCache flag),
+      (2) post-signInWithIdToken success block re-runs loadUserRoles +
+          updateViewModeDropdown + updateAuthStatus,
+      (3) One Tap prompt skip-if-supabaseSession.
+
+    Net Phase 4.5 inline deletions: 5 (A) + 3 (B) + 6 (C) + 2 (D) + 3 (E)
+    = 19 of 19. Closes the auth chapter — nothing inline owns auth runtime
+    anymore. Only legacy alias isSrOrAdmin remains inline (not in module
+    exports — separate future cleanup pass).
+    ON BRANCH refactor/auth-phase-4.5-e — does NOT land on pre-prod or main
+    until the GIS init-order verification matrix passes AND Roland green-
+    lights the promotion.
+
     v1.428: Modularization Phase 4.5-D — delete-inline cleanup of auth Group D
     (boot path — most subtle subgroup because this is where v1.416 +
     v1.417 Lynn-fix code lives). Two of the three Group D inline function
@@ -3687,7 +3714,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.428</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.429</span>
             </div>
         </header>
 
@@ -8270,7 +8297,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.428 - Released 2026-05-25 - Modularization Phase 4.5-D (delete-inline auth Group D: getUserInfo, loadSavedToken — module is sole runtime owner; gisLoaded kept inline for CDN async onload timing, scheduled for 4.5-E)');
+            log('📦 PRVS Dashboard v1.429 - Released 2026-05-29 - Modularization Phase 4.5-E (delete-inline final 3 CDN-onload-coupled auth fns: gapiLoaded, initializeGapiClient, gisLoaded; both Google CDN tags now `defer` so module bridge installs first; 19/19 inline auth deletions complete)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
@@ -10758,236 +10785,48 @@ Notes: ${notes}` : '',
         // window prefix (modules are strict-mode; bare `accessToken = X`
         // would throw). Internal call sites (handleAuthClick, token
         // callback, loadSavedToken, etc.) resolve via global scope to the
-        // module versions. NOT DELETED in Phase 4.5-B: gapiLoaded +
-        // initializeGapiClient — both are referenced through the synchronous
+        // module versions.
+        //
+        // Originally NOT DELETED in Phase 4.5-B: gapiLoaded +
+        // initializeGapiClient — both referenced through the synchronous
         // `<script src="apis.google.com/.../api.js" onload="gapiLoaded()">`
-        // hook at the bottom of the document, which fires BEFORE the
-        // module's deferred window bridge runs. Inline declarations of
-        // those two stay until Phase 4.5-E adds `defer` to the CDN script
-        // tags.
+        // hook at the bottom of the document, which fired BEFORE the
+        // module's deferred window bridge ran. Resolved by Phase 4.5-E
+        // (v1.429): `defer` added to both Google CDN tags, forcing in-order
+        // execution after the type="module" js/app.js bridge has installed
+        // module versions on window. Inline survivors deleted below.
 
-        // PHASE 4A MIGRATED — gapiLoaded + initializeGapiClient also exported
-        // from js/auth.js. Inline copies retained as runtime owner. The CDN
-        // <script src="apis.google.com/.../api.js" onload="gapiLoaded()">
-        // attribute resolves to the inline copy via auto-globalization;
-        // module exports are bridged to window so a future Phase 4.5 cleanup
-        // can delete inline copies without breaking the CDN onload= hook.
-        function gapiLoaded() {
-            if (typeof gapi === 'undefined') {
-                console.error('gapi not loaded yet, retrying...');
-                setTimeout(gapiLoaded, 500);
-                return;
-            }
-            gapi.load('client', initializeGapiClient);
-        }
-
-        async function initializeGapiClient() {
-            try {
-                await gapi.client.init({
-                    apiKey: GOOGLE_CONFIG.API_KEY,
-                    discoveryDocs: GOOGLE_CONFIG.DISCOVERY_DOCS,
-                });
-                gapiInited = true;
-                log('gapi initialized successfully');
-            } catch (error) {
-                console.error('Error initializing gapi:', error);
-                setTimeout(initializeGapiClient, 1000);
-            }
-        }
-
-        // PHASE 4B-D MIGRATED (Session 77, 2026-05-25): gisLoaded also exported
-        // from js/auth.js. Inline copy retained as runtime owner — the CDN
-        // <script src=".../client?onload=gisLoaded"> attribute hook resolves to
-        // the inline auto-globalized function declaration. Window bridge from
-        // js/auth.js OVERWRITES window.gisLoaded with the module version, but
-        // the two are behavioral verbatim copies so this is observationally
-        // identical. v1.417 fixes #3 (callback skip-if-supabaseSession), #4
-        // (post-signInWithIdToken role refresh), and #5 (One Tap prompt
-        // skip-if-supabaseSession) preserved verbatim in both copies.
-        async function gisLoaded() {
-            if (typeof google === 'undefined' || !google.accounts) {
-                console.error('google identity services not loaded yet, retrying...');
-                setTimeout(gisLoaded, 500);
-                return;
-            }
-
-            // Initialize ID token client — captures id_token for Supabase RBAC
-            // Nonce persisted in localStorage so it survives async callback gaps and page reloads.
-            // IMPORTANT: both raw nonce and hash must be hex strings — Supabase verifies using hex SHA-256.
-            let sbNonce = localStorage.getItem('prvs_sb_nonce');
-            let sbHashedNonce = localStorage.getItem('prvs_sb_nonce_hash');
-            if (!sbNonce) {
-                const rawNonceBytes = crypto.getRandomValues(new Uint8Array(16));
-                sbNonce = Array.from(rawNonceBytes).map(b => b.toString(16).padStart(2,'0')).join('');
-                const nonceBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sbNonce));
-                sbHashedNonce = Array.from(new Uint8Array(nonceBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
-                localStorage.setItem('prvs_sb_nonce', sbNonce);
-                localStorage.setItem('prvs_sb_nonce_hash', sbHashedNonce);
-            }
-
-            google.accounts.id.initialize({
-                client_id: GOOGLE_CONFIG.CLIENT_ID,
-                nonce: sbHashedNonce,             // top-level: current Chrome support
-                params: { nonce: sbHashedNonce }, // inside params: required by Chrome 145+
-                callback: async (credentialResponse) => {
-                    if (credentialResponse.credential) {
-                        googleIdToken = credentialResponse.credential;
-                        // v1.417: skip ONLY if Supabase session is actually live. The previous
-                        // condition (sessionRestoredFromCache || supabaseSession) also returned
-                        // early when Step 2 restored UI from a stale Google-only cache without
-                        // a Supabase session — silently aborting the re-auth that would have
-                        // fixed Lynn's missing admin buttons.
-                        if (supabaseSession) {
-                            log('\u2705 Supabase session already active — skipping signInWithIdToken');
-                            return;
-                        }
-                        try {
-                            const retrievedNonce = localStorage.getItem('prvs_sb_nonce');
-                            const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
-                                provider: 'google',
-                                token: googleIdToken,
-                                nonce: retrievedNonce,
-                            });
-                            if (sbError) {
-                                warn('\u26a0\ufe0f Supabase signInWithIdToken failed:', sbError.message);
-                                // Clear nonce on failure — fresh one generated on next attempt
-                                localStorage.removeItem('prvs_sb_nonce');
-                                localStorage.removeItem('prvs_sb_nonce_hash');
-                            } else {
-                                supabaseSession = sbData.session;
-                                log('\u2705 Supabase authenticated session created — RBAC active');
-                                // Clear nonce after successful use
-                                localStorage.removeItem('prvs_sb_nonce');
-                                localStorage.removeItem('prvs_sb_nonce_hash');
-                                // v1.417: re-render role-gated UI now that Supabase auth is back.
-                                // Required when Step 2 fallback fired and userRoles is stale [].
-                                // Without this, the buttons stay hidden even though RBAC is live.
-                                try {
-                                    await loadUserRoles();
-                                    updateViewModeDropdown();
-                                    updateAuthStatus(true);
-                                    log('\u2705 Roles reloaded post-One-Tap; buttons refreshed');
-                                } catch(refreshErr) {
-                                    warn('\u26a0\ufe0f Post-One-Tap role refresh failed:', refreshErr.message);
-                                }
-                            }
-                        } catch(e) {
-                            warn('\u26a0\ufe0f Supabase auth exchange failed:', e.message);
-                        }
-                    }
-                },
-                auto_select: true,
-            });
-            // v1.417: prompt One Tap whenever Supabase session is NOT live, regardless of
-            // whether some UI was restored from cache. The previous `!sessionRestoredFromCache`
-            // check was a misleading proxy — Step 2 set the flag true even when the cache
-            // only contained a stale Google token, suppressing the One Tap prompt that would
-            // have re-authed Supabase. This is the root-cause edit for Lynn's flakiness.
-            if (!supabaseSession) {
-                google.accounts.id.prompt();
-            } else {
-                log('✅ Supabase session live — skipping One Tap prompt');
-            }
-
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: GOOGLE_CONFIG.CLIENT_ID,
-                scope: GOOGLE_CONFIG.SCOPES,
-                callback: async (resp) => {
-                    log('Auth callback received:', resp);
-                    if (resp.error !== undefined) {
-                        console.error('Auth error:', resp.error);
-                        return;
-                    }
-                    accessToken = resp.access_token;
-
-                    // CRITICAL: always set token in gapi client — covers both fresh login and silent refresh
-                    gapi.client.setToken({access_token: accessToken});
-                    log('✅ Token set in gapi client');
-
-                    const expiresIn = resp.expires_in || 3600;
-                    saveToken(accessToken, expiresIn);
-                    setupTokenRefresh();
-
-                    // If re-auth was triggered from inside the Schedule modal, re-open it
-                    if (_pendingScheduleIndex !== null) {
-                        const idx = _pendingScheduleIndex;
-                        _pendingScheduleIndex = null;
-                        closeScheduleModal();
-                        openScheduleModal(idx);
-                        return;
-                    }
-
-                    // Only do full load if this is a fresh login (no data yet)
-                    if (!initialLoadDone) {
-                        await getUserInfo();
-                        updateAuthStatus(true);
-
-                        if (currentUser?.email) {
-                            // ── Store identity for persistent sessions ──────
-                            localStorage.setItem('prvs_user_identity', JSON.stringify({
-                                email: currentUser.email,
-                                name:  currentUser.name,
-                                savedAt: Date.now(),
-                            }));
-                            log('✅ User identity saved for persistent sessions');
-
-                            // ── Wire Supabase authenticated session ──────────
-                            // Exchange Google ID token for a real Supabase session.
-                            // This enables proper RLS enforcement and replaces anon key writes.
-                            try {
-                                // Use Google id_token (JWT) for Supabase signInWithIdToken
-                                // id_token comes from google.accounts.id.initialize callback
-                                const idTokenToUse = googleIdToken || resp.id_token;
-                                if (!idTokenToUse) {
-                                    warn('⚠️ No Google id_token available — requesting via prompt...');
-                                    google.accounts.id.prompt();
-                                }
-                                const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
-                                    provider: 'google',
-                                    token: idTokenToUse || '',
-                                    nonce: localStorage.getItem('prvs_sb_nonce') || undefined,
-                                });
-                                if (sbError) {
-                                    warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
-                                    log('Continuing with anon key — RBAC not enforced this session');
-                                } else {
-                                    supabaseSession = sbData.session;
-                                    log('✅ Supabase authenticated session created — RBAC active');
-                                    log('Session expires:', new Date(supabaseSession.expires_at * 1000).toLocaleString());
-                                }
-                            } catch(e) {
-                                warn('⚠️ Supabase auth exchange failed (non-fatal):', e.message);
-                            }
-                            // ─────────────────────────────────────────────────
-
-                            await loadUserRoles();
-                            updateViewModeDropdown();
-                        }
-
-                        await loadDataFromSupabase();
-                        await loadTimeLogsFromSupabase();
-                        loadAppConfig(); // S7 — load calendar IDs + future config from Supabase
-
-                        initialLoadDone = true;
-                        startTimeLogsAutoRefresh();
-                        loadCustomFieldConfig();
-                        loadPartsFromSupabase();
-                    } else {
-                        log('✅ Token silently refreshed — session continues');
-                        // Refresh Supabase session on Google token refresh
-                        if (supabaseSession) {
-                            const { data } = await getSB().auth.getSession();
-                            if (data?.session) {
-                                supabaseSession = data.session;
-                                log('✅ Supabase session refreshed');
-                            }
-                        }
-                    }
-                },
-            });
-            gisInited = true;
-            log('gis initialized successfully');
-        }
+        // PHASE 4.5-E DELETED (Session 82, 2026-05-29, v1.429): inline
+        // gapiLoaded + initializeGapiClient + gisLoaded removed —
+        // js/auth.js exports are sole runtime owner via
+        // window.gapiLoaded / window.initializeGapiClient / window.gisLoaded
+        // from the module's window bridge.
+        //
+        // The two Google CDN tags at document bottom now carry explicit
+        // `defer`. With defer, browsers execute the scripts after document
+        // parsing finishes but before DOMContentLoaded, in document order.
+        // Because js/app.js (type="module", also deferred) appears EARLIER
+        // in the document than either CDN tag, the module bridge installs
+        // window.gapiLoaded / window.initializeGapiClient / window.gisLoaded
+        // BEFORE either onload= attribute fires — so the CDN onload hooks
+        // resolve through the bridge straight into the module versions.
+        //
+        // gisLoaded module body preserves v1.417 fixes verbatim:
+        //   (1) callback skip-if-supabaseSession (not the misleading
+        //       sessionRestoredFromCache flag),
+        //   (2) post-signInWithIdToken success block re-runs
+        //       loadUserRoles + updateViewModeDropdown + updateAuthStatus,
+        //   (3) One Tap prompt skip-if-supabaseSession.
+        //
+        // gisLoaded also preserves the localStorage nonce persistence
+        // pattern (raw + hashed nonces stored as hex strings; cleared on
+        // signInWithIdToken success/failure).
+        //
+        // Net Phase 4.5 inline deletions: 5 (A) + 3 (B) + 6 (C) + 2 (D)
+        // + 3 (E) = 19 of 19. The CDN-onload-coupled survivors are gone;
+        // nothing inline owns auth runtime anymore. Only legacy alias
+        // isSrOrAdmin remains inline (not in module exports — separate
+        // future cleanup pass).
 
         // PHASE 4.5-C DELETED (Session 78, 2026-05-25, v1.427): inline
         // handleAuthClick + updateAuthStatus removed — js/auth.js exports
@@ -15848,10 +15687,15 @@ function toggleWOTasks(tasksId, chevId) {
     <!-- Phase 0: module entry point (currently a no-op; modules will be populated phase by phase per docs/specs/MODULARIZATION_ROADMAP.md) -->
     <script type="module" src="js/app.js"></script>
 
-    <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
+    <!-- Phase 4.5-E (v1.429): `defer` added to both Google CDN tags so the
+         module's window bridge (js/app.js, loaded above as type="module" — also
+         deferred) installs js/auth.js's gapiLoaded/initializeGapiClient/gisLoaded
+         onto window BEFORE either onload= attribute fires. `async` removed from
+         gsi/client because async overrides defer's in-document-order guarantee. -->
+    <script src="https://accounts.google.com/gsi/client" defer onload="gisLoaded()"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-    <script src="https://apis.google.com/js/api.js?v=2" onload="gapiLoaded()"></script>
+    <script src="https://apis.google.com/js/api.js?v=2" defer onload="gapiLoaded()"></script>
     <script>
         // Timeout if Google APIs don't load within 10 seconds
         setTimeout(function() {

@@ -55,4 +55,4 @@ window.PRVS_State  = State;
 window.PRVS_Auth   = Auth;
 window.PRVS_I18n   = I18n;
 
-console.log('[PRVS] Module system loaded — Phase 4B-D (config.js + utils.js + state.js + auth.js [Groups A+B+C+D — all 19 auth fns] + i18n.js)');
+console.log('[PRVS] Module system loaded — Phase 4.5-E (config.js + utils.js + state.js + auth.js [all 19 fns; module is sole runtime owner — 0 inline auth survivors except legacy isSrOrAdmin alias] + i18n.js)');
