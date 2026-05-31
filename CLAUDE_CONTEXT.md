@@ -10,13 +10,13 @@
 > **Storage strategy:** CLAUDE_CONTEXT.md lives **locally** in the `PRVS RO Dashboard` Cowork workspace folder (primary). GitHub is a **backup only**, pushed at end of session. Always read from local. Always write to local first.
 
 ### 🟢 START OF SESSION — Roland's command:
-> *"Read CLAUDE_CONTEXT.md from the workspace folder before doing anything else. Confirm the workspace is on `pre-prod` (default working branch) — if not, switch via `git checkout pre-prod`. Run the drift check: `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline` — both should return empty. If either returns commits, surface the divergence and resolve before any other work. Confirm the current index.html version matches the File Inventory. Read the Active TODO List out loud to me grouped by priority. Flag any 🔴 blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
+> *"Read CLAUDE_CONTEXT.md from the workspace folder before doing anything else. Confirm the workspace is on `pre-prod` (default working branch) — if not, switch via `git checkout pre-prod`. Run the drift check: `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. The hard invariant is that `pre-prod..main` MUST be empty (`main` is never ahead of `pre-prod`); if it returns anything, that is Session-83-class drift — surface it and resolve via fast-forward back-merge before any other work. `main..pre-prod` returning commits is fine (unreleased work soaking on pre-prod). Confirm the current index.html version matches the File Inventory. Read the Active TODO List out loud to me grouped by priority. Flag any 🔴 blocking issues or Roland-action items still pending. Follow the Start of Session Checklist in that file. Then ask: 'Is there anything else to add or change before we start?' and wait for my answer before beginning any work."*
 
 Claude must complete all of these before doing any work:
 
 - [ ] 1. Read this file from the local workspace folder (not GitHub)
 - [ ] 2. **Confirm workspace is on `pre-prod`** (default working branch). If on `main` or another branch, switch via `git checkout pre-prod`. See 🌿 BRANCH MODEL section below for the full model.
-- [ ] 3. **Run the drift check** — `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. BOTH should return empty. If either returns commits, surface the divergence and resolve before any other work (see 🌿 BRANCH MODEL → Drift Prevention Rules).
+- [ ] 3. **Run the drift check** — `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. **The hard invariant: `git log pre-prod..main` MUST be empty** — `main` must never contain a commit `pre-prod` lacks. If it returns ANYTHING, that is the Session-83-class drift (`main` ahead of `pre-prod`) — surface it and resolve via a fast-forward back-merge (`git checkout pre-prod && git merge main && git push origin pre-prod`) before any other work. `git log main..pre-prod` returning commits is OK — that is just unreleased work soaking on `pre-prod`; note what's pending promotion but do not treat it as an error (see 🌿 BRANCH MODEL → Drift Prevention Rules and the 🔒 END-SESSION BRANCH SYNC GATE).
 - [ ] 4. Confirm the current `index.html` version matches the File Inventory table below
 - [ ] 5. Read and acknowledge the **Active TODO List** section aloud to Roland, grouped by priority
 - [ ] 6. Flag any 🔴 blocking items and any pending Roland-action items
@@ -35,7 +35,7 @@ Claude must:
 - [ ] 5. Report: exactly where we are and what's next
 
 ### 🔴 END OF SESSION — Roland's command:
-> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, and Known Issues in CLAUDE_CONTEXT.md. Update Completed Work and Version History in CLAUDE_CONTEXT_HISTORY.md. Save both files to the workspace folder. Push to GitHub `pre-prod` branch by default — only push to `main` if a release shipped this session. If a release shipped to main: tag the release commit (`git tag v1.XXX && git push origin v1.XXX`) and confirm pre-prod and main are at the same hash. Do not end the session until the push is confirmed with a commit hash AND (if a release shipped) pre-prod ≡ main is verified."*
+> *"Before we stop: run bash scripts/backup.sh, then run the End of Session Checklist from CLAUDE_CONTEXT.md. Update the TODO list, File Inventory, Session Log, and Known Issues in CLAUDE_CONTEXT.md. Update Completed Work and Version History in CLAUDE_CONTEXT_HISTORY.md. Save both files to the workspace folder. Then run the 🔒 END-SESSION BRANCH SYNC GATE: ALWAYS commit the doc update on `pre-prod` first and push pre-prod; promote forward to `main` (fast-forward + tag) ONLY if a release shipped this session. Do not end the session until the Gate's HARD ASSERTION passes — paste the real `git rev-parse` output for local + origin of both branches and confirm it matches the expected end-state for the case you ran. Never report the sync done from memory; the words 'branches synced' may only be written after the pasted hashes visibly match."*
 
 Claude must complete ALL of these before the session ends (context limit, user stops, etc.):
 
@@ -49,12 +49,63 @@ Claude must complete ALL of these before the session ends (context limit, user s
 - [ ] 7. Add any new bugs, gotchas, or design decisions to the **Known Issues & Gotchas** section
 - [ ] 8. ~~Update `PRVS_PROJECT_CONTEXT.md`~~ — **DISABLED 2026-05-25 (Session 74).** iPhone Claude Project integration removed; do NOT touch PRVS_PROJECT_CONTEXT.md. If the `prvs-end-session` skill instructs you to update it, skip that step.
 - [ ] 9. **Save CLAUDE_CONTEXT.md to the local workspace folder** (primary)
-- [ ] 10. **Push CLAUDE_CONTEXT.md to GitHub `pre-prod` branch** (default; backup) — confirm with commit hash. Only push to `main` if a release shipped this session.
-- [ ] 11. **If a release shipped to main this session:** tag the release commit (`git tag v1.XXX && git push origin v1.XXX`); confirm `pre-prod` and `main` are at the same hash via `git rev-parse main` and `git rev-parse pre-prod` (both must match before declaring End Session complete). See 🌿 BRANCH MODEL section for workflow details.
+- [ ] 10. **Run the 🔒 END-SESSION BRANCH SYNC GATE (below).** This single gate REPLACES the old "push to pre-prod / confirm pre-prod ≡ main" steps. The doc commit is ALWAYS made on `pre-prod` first, then promoted forward to `main` ONLY if a release shipped. The session is NOT complete until the Gate's hard `rev-parse` assertion passes with **pasted output that visibly matches** — not a from-memory claim. See the gate procedure immediately below this checklist.
 
 > ⚠️ If the session is about to end due to context limits, Claude should say:
 > *"Context is getting full — let me update CLAUDE_CONTEXT.md before we lose this session."*
 > Then complete the End of Session Checklist immediately without waiting for Roland to ask.
+
+---
+
+### 🔒 END-SESSION BRANCH SYNC GATE
+
+> **Added 2026-05-31 (Session 84) after the Session 83 doc-drift.** Session 83 shipped v1.429 + v1.430 to `main` correctly (production was never at risk), but the End-Session doc commit (`13c80b5`, `CLAUDE_CONTEXT.md` + `CLAUDE_CONTEXT_HISTORY.md` only) landed on `main` **without** syncing `pre-prod`, and the "pre-prod ≡ main verified" claim was reported from memory instead of actually run. Result: `main` sat one doc commit AHEAD of `pre-prod` until Session 84 Start caught it. This gate makes the sync a real, pasted-output assertion that cannot be faked.
+
+> 🚨 **ROOT CAUSE — this gate OVERRIDES the `prvs-end-session` skill's STEP 4.** The live skill hardcodes `git add … && git commit && git push origin main` with **no `pre-prod` awareness** — it predates the pre-prod branch model (codified Session 79). That bare `git push origin main` is the literal mechanism that caused the Session 83 drift. **Ignore the skill's STEP 4 push command and run THIS gate instead.** The skill source must be patched in the plugin to match (Session 84 TODO); until it is, this CLAUDE_CONTEXT gate is the binding authority — the skill's own STEP 2 already instructs Claude to follow the CLAUDE_CONTEXT checklist, so this override is in force every session.
+
+**The mandatory invariant (memorize this):** `git log pre-prod..main --oneline` MUST be empty — **`main` must never contain a commit that `pre-prod` lacks.** That is the exact condition Session 83 violated. The reverse, `git log main..pre-prod --oneline`, MAY legitimately show commits — that is just unreleased work soaking on `pre-prod` awaiting promotion, which is normal and fine.
+
+**Core rule:** the End-Session doc commit is ALWAYS made on `pre-prod` first, then promoted forward to `main` ONLY if a release shipped this session. Forward-only flow (pre-prod → main) is preserved; `main` only ever moves by fast-forward from `pre-prod`.
+
+**Run the matching case. Paste the REAL output of every `rev-parse` — never declare the session complete from memory.**
+
+**CASE A — NO release shipped this session** (work stayed on pre-prod; main untouched):
+```
+git checkout pre-prod
+git add -A && git commit -m "Session NN End — <summary>"
+git push origin pre-prod
+# HARD ASSERTION — these two MUST print identical hashes:
+git rev-parse pre-prod
+git rev-parse origin/pre-prod
+# INVARIANT CHECK — this MUST print nothing (main is not ahead of pre-prod):
+git log pre-prod..main --oneline
+```
+`main` legitimately stays behind by the doc commit (and any other unreleased pre-prod work) until the next release promotes pre-prod → main. Next Start Session's drift check will show `main..pre-prod` non-empty (expected) and `pre-prod..main` empty (required). Record the pending-promotion delta in the Session Log.
+
+**CASE B — a release SHIPPED to main this session:**
+```
+# 1. Commit the doc update on pre-prod (NEVER directly on main):
+git checkout pre-prod
+git add -A && git commit -m "Session NN End — <summary>"
+git push origin pre-prod
+# 2. Promote forward to main (fast-forward only):
+git checkout main
+git pull --ff-only origin main
+git merge --ff-only pre-prod
+git push origin main
+# 3. Tag the release:
+git tag v1.XXX && git push origin v1.XXX
+# 4. HARD ASSERTION — all FOUR MUST print the SAME hash:
+git rev-parse main
+git rev-parse origin/main
+git rev-parse pre-prod
+git rev-parse origin/pre-prod
+# 5. Leave workspace on the default working branch:
+git checkout pre-prod
+```
+If any of the four hashes differs in Case B, the session is **NOT complete** — resolve before declaring done.
+
+**Why this prevents a repeat:** the old steps let the doc commit land on whichever branch happened to be checked out (it was `main` in Session 83) and treated the sync verification as a checkbox rather than a gate. Pinning the doc commit to `pre-prod` + forward-only promotion + a pasted hash assertion removes both the ambiguity and the ability to report success without proof.
 
 ---
 
@@ -100,7 +151,7 @@ Persisted to both CLAUDE_CONTEXT.md AND Claude's auto-memory ([[one-step-at-a-ti
 
 **Normal session** (low/medium risk work):
 1. Claude checks out `pre-prod` at session start.
-2. Drift check: `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline` — both should be empty. If either returns commits, surface and resolve before any work.
+2. Drift check: `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. Hard invariant: `pre-prod..main` MUST be empty (`main` never ahead of `pre-prod`). `main..pre-prod` may show unreleased work soaking on pre-prod — that's fine. If `pre-prod..main` returns anything, surface and resolve (fast-forward back-merge) before any work.
 3. Work happens on `pre-prod` directly. Claude edits, Roland commits + pushes (per the `feedback_claude_edits_roland_git` memory rule).
 4. Roland tests locally against `pre-prod` via `python3 -m http.server 8765` from a pre-prod checkout.
 5. When stable, Roland fast-forwards main: `git checkout main && git pull --ff-only origin main && git merge --ff-only pre-prod && git push origin main`.
@@ -128,7 +179,7 @@ Persisted to both CLAUDE_CONTEXT.md AND Claude's auto-memory ([[one-step-at-a-ti
 ### Drift Prevention Rules
 
 1. **Mandatory back-merge after hotfix.** Any `hotfix/*` → `main` push MUST be immediately followed by `git checkout pre-prod && git merge main && git push origin pre-prod`, in the same session. No exceptions. This is THE most important drift rule.
-2. **Drift check at session start.** START SESSION runs `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline` — both should be empty. If not, flag and resolve before any other work.
+2. **Drift check at session start.** START SESSION runs `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. **Hard invariant: `pre-prod..main` MUST be empty — `main` must never contain a commit `pre-prod` lacks (this is the exact condition Session 83 violated via a doc commit pushed to main only).** `main..pre-prod` returning commits is allowed (unreleased work soaking on pre-prod). If `pre-prod..main` is non-empty, flag and resolve via fast-forward back-merge before any other work. The End-Session doc commit is pinned to `pre-prod` first precisely to keep this invariant true — see 🔒 END-SESSION BRANCH SYNC GATE.
 3. **Hotfix log.** Every hotfix gets a row in the 🚨 HOTFIX LOG section below. Date, trigger, fix, main commit, back-merge commit, branches synced.
 4. **Hotfix commit message convention.** Prefix `HOTFIX:` in every hotfix commit. Tag the fix commit `hotfix-YYYY-MM-DD-<slug>`.
 5. **Tag every release.** When pre-prod merges to main with a version bump, tag main with the new version (`git tag v1.XXX && git push origin v1.XXX`). Makes rollback trivial; gives GitHub Releases a target.
