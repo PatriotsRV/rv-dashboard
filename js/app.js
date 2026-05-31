@@ -42,6 +42,7 @@ import * as Utils from './utils.js';
 import * as State from './state.js';
 import * as Auth from './auth.js';
 import * as I18n from './i18n.js';
+import * as Render from './render.js';
 
 // Expose the namespaces on window so they can be inspected from DevTools
 // while we verify each phase in production. These are the migration shims,
@@ -54,5 +55,6 @@ window.PRVS_Utils  = Utils;
 window.PRVS_State  = State;
 window.PRVS_Auth   = Auth;
 window.PRVS_I18n   = I18n;
+window.PRVS_Render = Render;
 
-console.log('[PRVS] Module system loaded — Phase 4.5-E (config.js + utils.js + state.js + auth.js [all 19 fns; module is sole runtime owner — 0 inline auth survivors except legacy isSrOrAdmin alias] + i18n.js)');
+console.log('[PRVS] Module system loaded — Phase 6 v1.430 (config.js + utils.js + state.js + auth.js + i18n.js + render.js [renderBoard, updateStats, shouldShow, renderERAdminList — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies])');

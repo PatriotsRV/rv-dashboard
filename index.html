@@ -1,8 +1,19 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.429
-    Released: 2026-05-29
+    PRVS Dashboard v1.430
+    Released: 2026-05-31
+    v1.430: Modularization Phase 6 (ADDITIVE) — board rendering engine extracted
+    to js/render.js: renderBoard, updateStats, shouldShow, renderERAdminList.
+    Functions copied VERBATIM (no reference rewriting); inline copies REMAIN and
+    the module's window bridge re-points window.renderBoard etc. to the
+    byte-identical module copies. Every bare reference resolves through the
+    shared global environment to the same symbol the inline copy used, so
+    behavior is unchanged. QR functions (generateAllQRCodes, generateQRCode,
+    openQRModal, printQRLabel, ...) deliberately left inline — they belong to a
+    future qr.js, not render.js. Proper ESM imports + inline-copy deletion are
+    deferred to the Phase 6 delete-inline cleanup after this build soaks.
+
     v1.429: Modularization Phase 4.5-E — delete-inline cleanup of the final
     three CDN-onload-coupled auth functions: gapiLoaded, initializeGapiClient,
     and gisLoaded. The two Google CDN script tags at document bottom now
@@ -3714,7 +3725,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.429</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.430</span>
             </div>
         </header>
 
@@ -8297,7 +8308,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.429 - Released 2026-05-29 - Modularization Phase 4.5-E (delete-inline final 3 CDN-onload-coupled auth fns: gapiLoaded, initializeGapiClient, gisLoaded; both Google CDN tags now `defer` so module bridge installs first; 19/19 inline auth deletions complete)');
+            log('📦 PRVS Dashboard v1.430 - Released 2026-05-31 - Modularization Phase 6 ADDITIVE (render.js: renderBoard, updateStats, shouldShow, renderERAdminList copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; zero behavior change)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
