@@ -44,6 +44,7 @@ import * as Auth from './auth.js';
 import * as I18n from './i18n.js';
 import * as Render from './render.js';
 import * as RoCrud from './ro-crud.js';
+import * as Parts from './parts.js';
 
 // Expose the namespaces on window so they can be inspected from DevTools
 // while we verify each phase in production. These are the migration shims,
@@ -58,5 +59,6 @@ window.PRVS_Auth   = Auth;
 window.PRVS_I18n   = I18n;
 window.PRVS_Render = Render;
 window.PRVS_RoCrud = RoCrud;
+window.PRVS_Parts  = Parts;
 
-console.log('[PRVS] Module system loaded — Phase 7 v1.431 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js [loadDataFromSupabase, appendToSupabase, updateROInSupabase, updateFieldInSupabase, archiveROInSupabase, updateROStatus, updateROUrgency, updateROProgress, editField, openEditRO, closeEditModal, writeAuditLog, loadCustomFieldConfigFromSupabase, loadDataFromSheets — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies])');
+console.log('[PRVS] Module system loaded — Phase 8 v1.432 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js [17 live fns: loadPartsFromSupabase, openPartsModal, showAddPartForm, savePartForm, editPartRow, deletePartRow, markPartReceived, appendPartToSupabase, updatePartInSupabase, deletePartFromSupabase, openPartsRequestModal, submitPartsRequest, openPartsStatusModal, setPartsStatus, notifyPartsRequester, notifyPartsEtaUpdate, renderPartsPhotoPreview — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies; markPartsOrdered left inline for the upcoming Requested/Ordered feature])');

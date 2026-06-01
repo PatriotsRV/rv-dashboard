@@ -1,8 +1,22 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.431
-    Released: 2026-05-31
+    PRVS Dashboard v1.432
+    Released: 2026-06-01
+    v1.432: Modularization Phase 8 (ADDITIVE) — parts system extracted to
+    js/parts.js (17 live functions): loadPartsFromSupabase, openPartsModal,
+    showAddPartForm, savePartForm, editPartRow, deletePartRow, markPartReceived,
+    appendPartToSupabase, updatePartInSupabase, deletePartFromSupabase,
+    openPartsRequestModal, submitPartsRequest, openPartsStatusModal, setPartsStatus,
+    notifyPartsRequester, notifyPartsEtaUpdate, renderPartsPhotoPreview. Copied
+    VERBATIM (only an export keyword inserted); inline copies REMAIN and the module
+    window bridge re-points window.* to the byte-identical copies. WRITE paths
+    (savePartForm, markPartReceived, setPartsStatus, appendPartToSupabase,
+    updatePartInSupabase, deletePartFromSupabase) — validated with a non-destructive
+    $0 staff-tester write test before promotion. Zero behavior change. NOTE:
+    markPartsOrdered + _doMarkPartsOrdered are orphaned (no live call site) and were
+    deliberately LEFT INLINE — they will be repurposed by the upcoming Requested/Ordered
+    parts-status feature.
     v1.431: Modularization Phase 7 (ADDITIVE) — repair-order CRUD + Supabase
     read/write layer extracted to js/ro-crud.js: loadDataFromSupabase,
     loadDataFromSheets, appendToSupabase, updateROInSupabase, updateFieldInSupabase,
@@ -3734,7 +3748,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.431</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.432</span>
             </div>
         </header>
 
@@ -8317,7 +8331,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.431 - Released 2026-05-31 - Modularization Phase 7 ADDITIVE (ro-crud.js: loadDataFromSupabase, appendToSupabase, updateROInSupabase, updateFieldInSupabase, archiveROInSupabase, updateROStatus, updateROUrgency, updateROProgress, editField, openEditRO, closeEditModal, writeAuditLog, loadCustomFieldConfigFromSupabase, loadDataFromSheets copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; WRITE paths validated w/ non-destructive $0 staff-tester test; zero behavior change)');
+            log('📦 PRVS Dashboard v1.432 - Released 2026-06-01 - Modularization Phase 8 ADDITIVE (parts.js: 17 live fns - loadPartsFromSupabase, openPartsModal, showAddPartForm, savePartForm, editPartRow, deletePartRow, markPartReceived, appendPartToSupabase, updatePartInSupabase, deletePartFromSupabase, openPartsRequestModal, submitPartsRequest, openPartsStatusModal, setPartsStatus, notifyPartsRequester, notifyPartsEtaUpdate, renderPartsPhotoPreview copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; markPartsOrdered left inline for upcoming Requested/Ordered feature; WRITE paths validated w/ non-destructive $0 staff-tester test; zero behavior change)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
