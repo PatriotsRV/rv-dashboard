@@ -45,6 +45,7 @@ import * as I18n from './i18n.js';
 import * as Render from './render.js';
 import * as RoCrud from './ro-crud.js';
 import * as Parts from './parts.js';
+import * as WorkOrders from './work-orders.js';
 
 // Expose the namespaces on window so they can be inspected from DevTools
 // while we verify each phase in production. These are the migration shims,
@@ -60,5 +61,6 @@ window.PRVS_I18n   = I18n;
 window.PRVS_Render = Render;
 window.PRVS_RoCrud = RoCrud;
 window.PRVS_Parts  = Parts;
+window.PRVS_WorkOrders = WorkOrders;
 
-console.log('[PRVS] Module system loaded — Phase 8 v1.432 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js [17 live fns: loadPartsFromSupabase, openPartsModal, showAddPartForm, savePartForm, editPartRow, deletePartRow, markPartReceived, appendPartToSupabase, updatePartInSupabase, deletePartFromSupabase, openPartsRequestModal, submitPartsRequest, openPartsStatusModal, setPartsStatus, notifyPartsRequester, notifyPartsEtaUpdate, renderPartsPhotoPreview — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies; markPartsOrdered left inline for the upcoming Requested/Ordered feature])');
+console.log('[PRVS] Module system loaded — Phase 9 v1.433 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js [14 live fns: loadStaff, loadWorkOrdersForRO, openWorkOrderModal, renderWorkOrderView, openAddServicePicker, addServiceToRO, openBuildWOForm, buildWOTaskRowHtml, loadWOTemplate, applyWOTemplate, saveWOTemplate, submitWOForm, updateTaskStatusWO, computeAndSaveWORollup — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies])');
