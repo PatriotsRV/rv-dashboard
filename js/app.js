@@ -69,4 +69,4 @@ window.PRVS_Photos = Photos;
 window.PRVS_TimeTracking = TimeTracking;
 window.PRVS_Scheduling = Scheduling;
 
-console.log('[PRVS] Module system loaded — Phase 12 v1.436 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js + scheduling.js [4 live fns: reauthorizeCalendar, openScheduleModal, confirmSchedule, proceedWithSchedule — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies; creates real Google Calendar events via gapi])');
+console.log('[PRVS] Module system loaded — v1.437 DELETE-INLINE cleanup (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js + scheduling.js). Phases 6-12 inline twins DELETED (73 fns); these modules are now SOLE runtime owners via this window bridge — no inline fallback remains. Byte-identical extraction verified before deletion; zero behavior change. Dependencies still resolve via the shared global environment (inline let/const state + constants remain; ESM imports deferred to Phase 19).');
