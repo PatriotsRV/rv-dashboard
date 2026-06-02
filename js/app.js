@@ -47,6 +47,7 @@ import * as RoCrud from './ro-crud.js';
 import * as Parts from './parts.js';
 import * as WorkOrders from './work-orders.js';
 import * as Photos from './photos.js';
+import * as TimeTracking from './time-tracking.js';
 
 // Expose the namespaces on window so they can be inspected from DevTools
 // while we verify each phase in production. These are the migration shims,
@@ -64,5 +65,6 @@ window.PRVS_RoCrud = RoCrud;
 window.PRVS_Parts  = Parts;
 window.PRVS_WorkOrders = WorkOrders;
 window.PRVS_Photos = Photos;
+window.PRVS_TimeTracking = TimeTracking;
 
-console.log('[PRVS] Module system loaded — Phase 10 v1.434 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js [13 live fns: uploadPhoto, openPhotoLibrary, switchLibTab, uploadDocument, closePhotoLibrary, setMainPhoto, openPhotoLightbox, navigateLightbox, closePhotoLightbox, openPhotoEmailModal, sendPhotosToCustomer, uploadToSupabaseStorage, openPhotoMigrationTool — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies])');
+console.log('[PRVS] Module system loaded — Phase 11 v1.435 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js [7 live fns: loadTimeLogsFromSupabase, loadTimeLogsFromSheets, startTimeLogsAutoRefresh, manualRefreshTimeLogs, getTimeLogsForRO, calculateTotalHours, openTimeLogsModal — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies; timeLogsData + timeLogsRefreshInterval shared via global lexical env])');

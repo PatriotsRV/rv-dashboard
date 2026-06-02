@@ -1,8 +1,20 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.434
+    PRVS Dashboard v1.435
     Released: 2026-06-02
+    v1.435: Modularization Phase 11 (ADDITIVE) — time-tracking system extracted to
+    js/time-tracking.js (7 functions): loadTimeLogsFromSupabase, loadTimeLogsFromSheets,
+    startTimeLogsAutoRefresh, manualRefreshTimeLogs, getTimeLogsForRO, calculateTotalHours,
+    openTimeLogsModal. Copied VERBATIM (only an export keyword inserted); inline copies
+    REMAIN and the module window bridge re-points window.* to the byte-identical copies.
+    The timeLogsData + timeLogsRefreshInterval inline `let` globals are read AND written
+    across the inline/module boundary via the shared global lexical environment, so the
+    inline siblings that stay behind (stopTimeLogsAutoRefresh, closeTimeLogsModal,
+    refreshAndReopenTimeLogsModal) see the same state. ALL 7 are bridged (not the 5 in the
+    draft roadmap) because js/auth.js calls loadTimeLogsFromSupabase + startTimeLogsAutoRefresh
+    and js/render.js calls calculateTotalHours as bare refs. Auto-refresh fires on a 60s
+    interval; validated clean before promote. Zero behavior change.
     v1.434: Modularization Phase 10 (ADDITIVE) — photo library + documents system
     extracted to js/photos.js (13 functions): uploadPhoto, openPhotoLibrary,
     switchLibTab, uploadDocument, closePhotoLibrary, setMainPhoto, openPhotoLightbox,
@@ -3770,7 +3782,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.434</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.435</span>
             </div>
         </header>
 
@@ -8353,7 +8365,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.434 - Released 2026-06-02 - Modularization Phase 10 ADDITIVE (photos.js: 13 fns - uploadPhoto, openPhotoLibrary, switchLibTab, uploadDocument, closePhotoLibrary, setMainPhoto, openPhotoLightbox, navigateLightbox, closePhotoLightbox, openPhotoEmailModal, sendPhotosToCustomer, uploadToSupabaseStorage, openPhotoMigrationTool copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; parts.js bare uploadToSupabaseStorage call now bridged to module copy; WRITE paths pending non-destructive staff-tester test; zero behavior change)');
+            log('📦 PRVS Dashboard v1.435 - Released 2026-06-02 - Modularization Phase 11 ADDITIVE (time-tracking.js: 7 fns - loadTimeLogsFromSupabase, loadTimeLogsFromSheets, startTimeLogsAutoRefresh, manualRefreshTimeLogs, getTimeLogsForRO, calculateTotalHours, openTimeLogsModal copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; timeLogsData + timeLogsRefreshInterval shared across inline/module via global lexical env; auth.js + render.js bare calls now bridged to module copies; auto-refresh 60s interval pending staff-tester validation; zero behavior change)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
