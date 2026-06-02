@@ -1,8 +1,20 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.433
-    Released: 2026-06-01
+    PRVS Dashboard v1.434
+    Released: 2026-06-02
+    v1.434: Modularization Phase 10 (ADDITIVE) — photo library + documents system
+    extracted to js/photos.js (13 functions): uploadPhoto, openPhotoLibrary,
+    switchLibTab, uploadDocument, closePhotoLibrary, setMainPhoto, openPhotoLightbox,
+    navigateLightbox, closePhotoLightbox, openPhotoEmailModal, sendPhotosToCustomer,
+    uploadToSupabaseStorage, openPhotoMigrationTool. (renderPhotosTab + renderDocsTab
+    are inner closures of openPhotoLibrary and move with it.) Copied VERBATIM (only an
+    export keyword inserted); inline copies REMAIN and the module window bridge
+    re-points window.* to the byte-identical copies. js/parts.js's bare
+    uploadToSupabaseStorage call now resolves to the module copy via the bridge. WRITE
+    paths (uploadPhoto/uploadDocument/uploadToSupabaseStorage/setMainPhoto/
+    sendPhotosToCustomer + the migration tool) require a non-destructive staff-tester
+    validation before promote to main. Zero behavior change.
     v1.433: Modularization Phase 9 (ADDITIVE) — work order system extracted to
     js/work-orders.js (14 functions): loadStaff, loadWorkOrdersForRO,
     openWorkOrderModal, renderWorkOrderView, openAddServicePicker, addServiceToRO,
@@ -3758,7 +3770,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.433</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.434</span>
             </div>
         </header>
 
@@ -8341,7 +8353,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.433 - Released 2026-06-01 - Modularization Phase 9 ADDITIVE (work-orders.js: 14 fns - loadStaff, loadWorkOrdersForRO, openWorkOrderModal, renderWorkOrderView, openAddServicePicker, addServiceToRO, openBuildWOForm, buildWOTaskRowHtml, loadWOTemplate, applyWOTemplate, saveWOTemplate, submitWOForm, updateTaskStatusWO, computeAndSaveWORollup copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; WRITE paths validated w/ non-destructive $0 staff-tester test; zero behavior change)');
+            log('📦 PRVS Dashboard v1.434 - Released 2026-06-02 - Modularization Phase 10 ADDITIVE (photos.js: 13 fns - uploadPhoto, openPhotoLibrary, switchLibTab, uploadDocument, closePhotoLibrary, setMainPhoto, openPhotoLightbox, navigateLightbox, closePhotoLightbox, openPhotoEmailModal, sendPhotosToCustomer, uploadToSupabaseStorage, openPhotoMigrationTool copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; parts.js bare uploadToSupabaseStorage call now bridged to module copy; WRITE paths pending non-destructive staff-tester test; zero behavior change)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
