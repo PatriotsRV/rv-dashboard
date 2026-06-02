@@ -1,8 +1,17 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.435
+    PRVS Dashboard v1.436
     Released: 2026-06-02
+    v1.436: Modularization Phase 12 (ADDITIVE) — Google Calendar scheduling extracted to
+    js/scheduling.js (4 functions): reauthorizeCalendar, openScheduleModal, confirmSchedule,
+    proceedWithSchedule. Copied VERBATIM (only an export keyword inserted); inline copies
+    REMAIN and the module window bridge re-points window.* to the byte-identical copies. The
+    inline siblings closeScheduleModal + openScheduleNotificationModal stay behind and are
+    reached via the global object. ALL 4 bridged (js/auth.js calls openScheduleModal as a
+    bare ref; all 4 also have inline onclick handlers). NOTE: confirmSchedule +
+    proceedWithSchedule create REAL Google Calendar events via gapi.client.calendar
+    (external WRITE); validated non-destructively before promote. Zero behavior change.
     v1.435: Modularization Phase 11 (ADDITIVE) — time-tracking system extracted to
     js/time-tracking.js (7 functions): loadTimeLogsFromSupabase, loadTimeLogsFromSheets,
     startTimeLogsAutoRefresh, manualRefreshTimeLogs, getTimeLogsForRO, calculateTotalHours,
@@ -3782,7 +3791,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.435</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.436</span>
             </div>
         </header>
 
@@ -8365,7 +8374,7 @@ Notes: ${notes}` : '',
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.435 - Released 2026-06-02 - Modularization Phase 11 ADDITIVE (time-tracking.js: 7 fns - loadTimeLogsFromSupabase, loadTimeLogsFromSheets, startTimeLogsAutoRefresh, manualRefreshTimeLogs, getTimeLogsForRO, calculateTotalHours, openTimeLogsModal copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; timeLogsData + timeLogsRefreshInterval shared across inline/module via global lexical env; auth.js + render.js bare calls now bridged to module copies; auto-refresh 60s interval pending staff-tester validation; zero behavior change)');
+            log('📦 PRVS Dashboard v1.436 - Released 2026-06-02 - Modularization Phase 12 ADDITIVE (scheduling.js: 4 fns - reauthorizeCalendar, openScheduleModal, confirmSchedule, proceedWithSchedule copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; auth.js bare openScheduleModal call now bridged to module copy; confirmSchedule + proceedWithSchedule create real Google Calendar events via gapi - validated non-destructively; zero behavior change)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');

@@ -48,6 +48,7 @@ import * as Parts from './parts.js';
 import * as WorkOrders from './work-orders.js';
 import * as Photos from './photos.js';
 import * as TimeTracking from './time-tracking.js';
+import * as Scheduling from './scheduling.js';
 
 // Expose the namespaces on window so they can be inspected from DevTools
 // while we verify each phase in production. These are the migration shims,
@@ -66,5 +67,6 @@ window.PRVS_Parts  = Parts;
 window.PRVS_WorkOrders = WorkOrders;
 window.PRVS_Photos = Photos;
 window.PRVS_TimeTracking = TimeTracking;
+window.PRVS_Scheduling = Scheduling;
 
-console.log('[PRVS] Module system loaded — Phase 11 v1.435 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js [7 live fns: loadTimeLogsFromSupabase, loadTimeLogsFromSheets, startTimeLogsAutoRefresh, manualRefreshTimeLogs, getTimeLogsForRO, calculateTotalHours, openTimeLogsModal — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies; timeLogsData + timeLogsRefreshInterval shared via global lexical env])');
+console.log('[PRVS] Module system loaded — Phase 12 v1.436 (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js + scheduling.js [4 live fns: reauthorizeCalendar, openScheduleModal, confirmSchedule, proceedWithSchedule — ADDITIVE: inline copies still present, module bridge re-points window.* to byte-identical copies; creates real Google Calendar events via gapi])');
