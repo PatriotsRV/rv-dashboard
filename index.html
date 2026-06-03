@@ -1,8 +1,13 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.437
-    Released: 2026-06-02
+    PRVS Dashboard v1.438
+    Released: 2026-06-03
+    v1.438: Modularization Phase 13 (ADDITIVE) - QR codes + deep links extracted to
+    js/qr.js (3 fns: openQRModal, printQRLabel, handleDeepLink) copied VERBATIM
+    (byte-identical; only an export keyword inserted) + window bridge; inline copies
+    retained; js/app.js imports it (window.PRVS_QR). Zero behavior change. Delete-inline
+    cleanup deferred until soak.
     v1.437: Modularization DELETE-INLINE cleanup (Phases 6-12). Removed the 73
     now-dead inline function bodies whose byte-identical module twins already own
     window.* at runtime (render 4, ro-crud 14, parts 17, work-orders 14, photos 13,
@@ -3804,7 +3809,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.437</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.438</span>
             </div>
         </header>
 
@@ -6927,7 +6932,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.437 - Released 2026-06-02 - Modularization DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge; byte-identical extraction verified pre-delete; markPartsOrdered/_doMarkPartsOrdered + isSrOrAdmin retained; zero behavior change) - prior: Phase 12 ADDITIVE (scheduling.js: 4 fns - reauthorizeCalendar, openScheduleModal, confirmSchedule, proceedWithSchedule copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; auth.js bare openScheduleModal call now bridged to module copy; confirmSchedule + proceedWithSchedule create real Google Calendar events via gapi - validated non-destructively; zero behavior change)');
+            log('📦 PRVS Dashboard v1.438 - Released 2026-06-03 - Modularization Phase 13 ADDITIVE (qr.js: 3 fns - openQRModal, printQRLabel, handleDeepLink copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_QR; zero behavior change) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge) - prior: Phase 12 ADDITIVE (scheduling.js: 4 fns - reauthorizeCalendar, openScheduleModal, confirmSchedule, proceedWithSchedule copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; auth.js bare openScheduleModal call now bridged to module copy; confirmSchedule + proceedWithSchedule create real Google Calendar events via gapi - validated non-destructively; zero behavior change)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
