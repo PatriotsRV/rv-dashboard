@@ -53,6 +53,7 @@ import * as QR from './qr.js';
 import * as WorkList from './work-list.js';
 import * as Insurance from './insurance.js';
 import * as Duplicates from './duplicates.js';
+import * as Enhancement from './enhancement.js';
 
 // Expose the namespaces on window so they can be inspected from DevTools
 // while we verify each phase in production. These are the migration shims,
@@ -76,5 +77,6 @@ window.PRVS_QR  = QR;
 window.PRVS_WorkList = WorkList;
 window.PRVS_Insurance = Insurance;
 window.PRVS_Duplicates = Duplicates;
+window.PRVS_Enhancement = Enhancement;
 
-console.log('[PRVS] Module system loaded — v1.441 Phase 17 ADDITIVE (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js + scheduling.js + qr.js + work-list.js + insurance.js + duplicates.js). Phase 17 duplicates.js (5 dupe-manager fns: getBaseROId + findDuplicateGroups + openDuplicateManager + highlightDupeRows + executeDupeMerge; getBaseROId and highlightDupeRows absent from the stale roadmap list) extracted verbatim + window bridge; inline copies RETAINED (additive). Phases 6-12 inline twins remain DELETED (73 fns) — those modules are SOLE runtime owners. Byte-identical extraction verified; zero behavior change. Dependencies still resolve via the shared global environment (inline let/const state + constants remain; ESM imports deferred to Phase 19).');
+console.log('[PRVS] Module system loaded — v1.442 Phase 18 ADDITIVE (config.js + utils.js + state.js + auth.js + i18n.js + render.js + ro-crud.js + parts.js + work-orders.js + photos.js + time-tracking.js + scheduling.js + qr.js + work-list.js + insurance.js + duplicates.js + enhancement.js). Phase 18 enhancement.js (11 GH#19 genie-lamp fns from the second classic script block; closeERAdminView + loadERAdminData + saveERNote absent from the stale roadmap list; renderERAdminList stays in render.js since Phase 6) extracted verbatim + window bridge; inline copies RETAINED (additive). ALL roadmap extraction phases are now COMPLETE — remaining: delete-inline cleanups for Phases 13-15/17/18 after soak + Phase 19 final ESM/CSS cleanup. Phases 6-12 inline twins remain DELETED (73 fns). Byte-identical extraction verified; zero behavior change. Dependencies still resolve via the shared global environment.');

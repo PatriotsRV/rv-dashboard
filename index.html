@@ -1,8 +1,21 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.441
+    PRVS Dashboard v1.442
     Released: 2026-06-04
+    v1.442: Modularization Phase 18 (ADDITIVE) - Genie lamp / Enhancement Requests
+    (GH#19) extracted to js/enhancement.js (11 fns from the SECOND classic script
+    block: openERModal, closeERModal, startERDictation, submitEnhancementRequest,
+    loadERUnreviewedCount, openERAdminView, closeERAdminView, loadERAdminData,
+    filterERAdmin, updateERStatus, saveERNote) copied VERBATIM (byte-identical; only
+    an export keyword inserted) + window bridge; inline copies retained; js/app.js
+    imports it (window.PRVS_Enhancement). closeERAdminView/loadERAdminData/saveERNote
+    are NOT in the stale roadmap Phase 18 list (post-roadmap additions).
+    renderERAdminList stays in render.js (Phase 6 owner; inline deleted v1.437).
+    _erData/_erFilterStatus/_erFilterCategory let-state stays inline (global lexical
+    env; declared, so module bare writes are strict-mode safe). Session 89
+    implicit-global pre-scan PASSED. Zero behavior change. Delete-inline deferred
+    until soak. ALL roadmap extraction phases (1-18) are now COMPLETE.
     v1.441: Modularization Phase 17 (ADDITIVE) - Duplicate RO detection + merging
     extracted to js/duplicates.js (5 fns: getBaseROId, findDuplicateGroups,
     openDuplicateManager, highlightDupeRows, executeDupeMerge) copied VERBATIM
@@ -3838,7 +3851,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.441</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.442</span>
             </div>
         </header>
 
@@ -6961,7 +6974,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.441 - Released 2026-06-04 - Modularization Phase 17 ADDITIVE (duplicates.js: 5 dupe-manager fns copied verbatim - getBaseROId, findDuplicateGroups, openDuplicateManager, highlightDupeRows, executeDupeMerge; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_Duplicates; window._dupeGroups scratch state always window.-prefixed; Session 89 implicit-global pre-scan PASSED; zero behavior change) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge)');
+            log('📦 PRVS Dashboard v1.442 - Released 2026-06-04 - Modularization Phase 18 ADDITIVE (enhancement.js: 11 GH#19 genie-lamp fns copied verbatim from the second classic script block - openERModal, closeERModal, startERDictation, submitEnhancementRequest, loadERUnreviewedCount, openERAdminView, closeERAdminView, loadERAdminData, filterERAdmin, updateERStatus, saveERNote; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_Enhancement; _erData/_erFilterStatus/_erFilterCategory let-state stays inline; renderERAdminList stays in render.js; Session 89 implicit-global pre-scan PASSED; zero behavior change; ALL roadmap extraction phases 1-18 now COMPLETE) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
