@@ -1,8 +1,19 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.440
+    PRVS Dashboard v1.441
     Released: 2026-06-04
+    v1.441: Modularization Phase 17 (ADDITIVE) - Duplicate RO detection + merging
+    extracted to js/duplicates.js (5 fns: getBaseROId, findDuplicateGroups,
+    openDuplicateManager, highlightDupeRows, executeDupeMerge) copied VERBATIM
+    (byte-identical; only an export keyword inserted) + window bridge; inline copies
+    retained; js/app.js imports it (window.PRVS_Duplicates). getBaseROId (deferred to
+    Phase 17 by the utils.js Phase 2 note) and highlightDupeRows (post-roadmap helper,
+    called from the master-picker radio onchange in generated HTML) are NOT in the
+    stale roadmap Phase 17 list. window._dupeGroups scratch state is always
+    window.-prefixed; Session 89 implicit-global pre-scan PASSED (zero bare
+    undeclared writes). Zero behavior change. Delete-inline deferred until soak.
+    Phase 16 (kenect.js) was REMOVED 2026-04-11 with the Kenect teardown.
     v1.440: Modularization Phase 15 (ADDITIVE) - Claude Vision insurance estimate
     scanner extracted to js/insurance.js (8 fns: renderCustomFields, openEstimateScanner,
     handleEstimateFile, callClaudeVision, renderSuggestions, applyChip, applyChipConflict,
@@ -3827,7 +3838,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.440</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.441</span>
             </div>
         </header>
 
@@ -6950,7 +6961,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.440 - Released 2026-06-04 - Modularization Phase 15 ADDITIVE (insurance.js: 8 Claude Vision estimate-scanner fns copied verbatim - renderCustomFields, openEstimateScanner, handleEstimateFile, callClaudeVision, renderSuggestions, applyChip, applyChipConflict, writeInsuranceData; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_Insurance; scanner helpers + _lastEstimateScan/_pendingEstimateDoc window-state stay inline; Session 89 implicit-global pre-scan PASSED; zero behavior change) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge)');
+            log('📦 PRVS Dashboard v1.441 - Released 2026-06-04 - Modularization Phase 17 ADDITIVE (duplicates.js: 5 dupe-manager fns copied verbatim - getBaseROId, findDuplicateGroups, openDuplicateManager, highlightDupeRows, executeDupeMerge; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_Duplicates; window._dupeGroups scratch state always window.-prefixed; Session 89 implicit-global pre-scan PASSED; zero behavior change) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
