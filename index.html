@@ -1,8 +1,21 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.439
-    Released: 2026-06-03
+    PRVS Dashboard v1.440
+    Released: 2026-06-04
+    v1.440: Modularization Phase 15 (ADDITIVE) - Claude Vision insurance estimate
+    scanner extracted to js/insurance.js (8 fns: renderCustomFields, openEstimateScanner,
+    handleEstimateFile, callClaudeVision, renderSuggestions, applyChip, applyChipConflict,
+    writeInsuranceData) copied VERBATIM (byte-identical; only an export keyword inserted)
+    + window bridge; inline copies retained; js/app.js imports it (window.PRVS_Insurance).
+    applyChipConflict is NOT in the stale roadmap Phase 15 list (added post-roadmap; it is
+    the conflict-chip sibling of applyChip, called from renderConflictChip onclick HTML).
+    Scanner helpers (uploadEstimateToDrive, fileToBase64, checkScanMilestone,
+    clearAllSuggestions, renderSimpleChip, renderConflictChip, normalizeExtractedValue,
+    addExtraFieldToRO, toggleExtraFields) stay inline, reached via the shared global env.
+    Session 89 pre-scan for undeclared implicit globals PASSED (window._lastEstimateScan /
+    window._pendingEstimateDoc are always window.-prefixed; zero bare undeclared writes).
+    Zero behavior change. Delete-inline deferred until soak.
     v1.439: Modularization Phase 14 (ADDITIVE) - Manager Work List sidebar (GH#16)
     extracted to js/work-list.js (13 fns) copied VERBATIM (byte-identical; only an
     export keyword inserted) + window bridge; inline copies retained; js/app.js imports
@@ -3814,7 +3827,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.439</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.440</span>
             </div>
         </header>
 
@@ -6937,7 +6950,7 @@ Always prefer mapping to a standard key over creating a new one.`;
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.439 - Released 2026-06-03 - Modularization Phase 14 ADDITIVE (work-list.js: 13 Manager Work List fns copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_WorkList; isSrOrAdmin + _workList let-state stay inline; zero behavior change) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge) - prior: Phase 12 ADDITIVE (scheduling.js: 4 fns - reauthorizeCalendar, openScheduleModal, confirmSchedule, proceedWithSchedule copied verbatim; inline copies remain, window bridge re-points to byte-identical module copies; auth.js bare openScheduleModal call now bridged to module copy; confirmSchedule + proceedWithSchedule create real Google Calendar events via gapi - validated non-destructively; zero behavior change)');
+            log('📦 PRVS Dashboard v1.440 - Released 2026-06-04 - Modularization Phase 15 ADDITIVE (insurance.js: 8 Claude Vision estimate-scanner fns copied verbatim - renderCustomFields, openEstimateScanner, handleEstimateFile, callClaudeVision, renderSuggestions, applyChip, applyChipConflict, writeInsuranceData; inline copies remain, window bridge re-points to byte-identical module copies; js/app.js imports window.PRVS_Insurance; scanner helpers + _lastEstimateScan/_pendingEstimateDoc window-state stay inline; Session 89 implicit-global pre-scan PASSED; zero behavior change) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 dead inline fn bodies removed; modules are sole runtime owners via app.js window bridge)');
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');
