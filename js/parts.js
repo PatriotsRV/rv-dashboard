@@ -426,16 +426,8 @@
                 await updatePartInSheet(part);
                 await updatePartsJsonInSheet(ctx.originalIndex);
 
-                // GH#20: Slack — part received (GH#24: skip training ROs)
+                // [SLACK TEARDOWN v1.445 S92] part_received notifySlack call site deleted; ro lookup retained for the auto-flip below
                 const ro = currentFilteredData[filteredIndex];
-                if (!ro?.isTraining) {
-                    notifySlack('part_received', {
-                        partName: part.partName || 'Part',
-                        customerName: ro?.customerName || '',
-                        roId: ro?.roId || '',
-                        technicianAssigned: ro?.technicianAssigned || '',
-                    });
-                }
 
                 // Auto-flip parts_status to 'received' if ALL parts are now Received or Installed
                 const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed');

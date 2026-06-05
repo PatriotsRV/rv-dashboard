@@ -541,11 +541,7 @@
                         </div>
                         <div class="card-actions-secondary">
                         ${canSeeWorkList() ? `<button class="card-secondary-btn" data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
-                        ${ro.customerPhone ? `
-                        <button class="card-secondary-btn kenect-msg-btn" data-action="messages" data-idx="${index}" title="View Kenect conversation for this customer">
-                            💬 ${t('Messages')}
-                        </button>
-                        ` : ''}
+                        ${''/* [KENECT TEARDOWN v1.445 S92] Messages button removed — kenect-proxy edge fn was deleted 2026-04-11; clicking threw CORS/ERR_FAILED */}
                         ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
                         <button class="mark-ordered-btn" data-action="set-parts-status" data-idx="${index}" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}

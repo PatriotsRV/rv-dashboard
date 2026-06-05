@@ -586,15 +586,7 @@
                 }
                 log('✓ Status and progress updated in Supabase');
 
-                // GH#20: Slack — Ready for Pickup (GH#24: skip training ROs)
-                if (newStatus === 'Ready for pickup' && !ro.isTraining) {
-                    notifySlack('ro_ready_pickup', {
-                        customerName: ro?.customerName || '',
-                        rv: ro?.rv || '',
-                        roId: ro?.roId || '',
-                        parkingSpot: ro?.parkingSpot || '',
-                    });
-                }
+                // [SLACK TEARDOWN v1.445 S92] ro_ready_pickup notifySlack call site deleted
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
@@ -664,15 +656,7 @@
                 await writeAuditLog(ro.roId, [{ field: 'urgency', oldValue: ro.urgency, newValue: newUrgency }]);
                 log('✓ Urgency updated in Supabase');
 
-                // GH#20: Slack — urgency changed to Critical (GH#24: skip training ROs)
-                if (newUrgency === 'Critical' && !ro.isTraining) {
-                    notifySlack('ro_urgency_critical', {
-                        customerName: ro?.customerName || '',
-                        rv: ro?.rv || '',
-                        roId: ro?.roId || '',
-                        technicianAssigned: ro?.technicianAssigned || '',
-                    });
-                }
+                // [SLACK TEARDOWN v1.445 S92] ro_urgency_critical notifySlack call site deleted
 
                 // Show success feedback
                 dropdown.style.opacity = '1';
