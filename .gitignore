@@ -20,3 +20,7 @@ claude_desktop_config.json
 *.log
 npm-debug.log*
 supabase/.temp/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
