@@ -616,7 +616,7 @@
                 const isEstimateOnly = !!(document.getElementById('estimateOnlyCheck')?.checked);
                 const notePrefix = isEstimateOnly ? '📋 PARTS ESTIMATE (for estimate only):' : '🔩 PARTS REQUESTED:';
                 const noteText   = `[${ts} - ${userName}] ${notePrefix} ${description}`;
-                const newPartsStatus = isEstimateOnly ? 'estimate' : 'outstanding';
+                const newPartsStatus = isEstimateOnly ? 'estimate' : 'requested';
 
                 // 1. Write a single ro_status note
                 const { error: prErr } = await getSB().from('notes').insert({
@@ -714,7 +714,7 @@
                 const origIdx = currentData.findIndex(d => d._supabaseId === ro._supabaseId);
                 if (origIdx !== -1) {
                     currentData[origIdx].hasOpenPartsRequest = true;
-                    currentData[origIdx].partsStatus = 'outstanding';
+                    currentData[origIdx].partsStatus = 'requested';
                     currentData[origIdx].requestedByEmail = userEmail || null;
                     currentData[origIdx].roStatusNotes = (currentData[origIdx].roStatusNotes ? currentData[origIdx].roStatusNotes + '\n' : '') + noteText;
                 }
@@ -743,9 +743,10 @@
             const modal = document.createElement('div');
             modal.id = 'partsStatusModal';
             modal.className = 'modal-overlay active';
+            const _psLabel = (s) => s === 'requested' ? '🙋 PARTS REQUESTED' : s === 'sourcing' ? '🔍 PART SOURCING' : (s === 'ordered' || s === 'outstanding') ? '📦 PARTS ORDERED' : s === 'estimate' ? '📋 PARTS ESTIMATE' : '✅ PARTS RECEIVED';
             const currentChip = ro.partsStatus
-                ? `<span class="parts-status-chip ${ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${ro.partsStatus === 'sourcing' ? '🔍 PART SOURCING' : ro.partsStatus === 'outstanding' ? '⚠️ PARTS OUTSTANDING' : ro.partsStatus === 'estimate' ? '📋 PARTS ESTIMATE' : '✅ PARTS RECEIVED'}</span>`
-                : ro.hasOpenPartsRequest ? `<span class="parts-status-chip outstanding" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">⚠️ PARTS OUTSTANDING</span>` : '<em style="color:var(--text-secondary); font-size:0.85rem;">None set</em>';
+                ? `<span class="parts-status-chip ${ro.partsStatus === 'outstanding' ? 'ordered' : ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${_psLabel(ro.partsStatus)}</span>`
+                : ro.hasOpenPartsRequest ? `<span class="parts-status-chip requested" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">🙋 PARTS REQUESTED</span>` : '<em style="color:var(--text-secondary); font-size:0.85rem;">None set</em>';
 
             modal.innerHTML = `
                 <div class="modal-content" style="max-width:460px;">
@@ -761,16 +762,19 @@
                         Current: ${currentChip}
                     </div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+                        <button class="parts-status-modal-btn requested" onclick="setPartsStatus(${filteredIndex},'requested')">
+                            🙋 Requested<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Tech asked — not yet ordered</span>
+                        </button>
                         <button class="parts-status-modal-btn sourcing" onclick="setPartsStatus(${filteredIndex},'sourcing')">
                             🔍 Part Sourcing<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Actively hunting for parts</span>
                         </button>
-                        <button class="parts-status-modal-btn outstanding" onclick="setPartsStatus(${filteredIndex},'outstanding')">
-                            ⚠️ Parts Outstanding<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Ordered — awaiting delivery</span>
+                        <button class="parts-status-modal-btn ordered" onclick="setPartsStatus(${filteredIndex},'ordered')">
+                            📦 Parts Ordered<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Order placed — awaiting delivery</span>
                         </button>
                         <button class="parts-status-modal-btn received" onclick="setPartsStatus(${filteredIndex},'received')">
                             ✅ Parts Received<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">All parts have arrived</span>
                         </button>
-                        <button class="parts-status-modal-btn estimate" onclick="setPartsStatus(${filteredIndex},'estimate')">
+                        <button class="parts-status-modal-btn estimate" onclick="setPartsStatus(${filteredIndex},'estimate')" style="grid-column:1/-1;">
                             📋 Parts Estimate<br><span style="font-size:0.72rem; font-weight:400; opacity:0.8;">Pricing/labor needed, no order yet</span>
                         </button>
                         <button class="parts-status-modal-btn clear" onclick="setPartsStatus(${filteredIndex},null)" style="grid-column:1/-1;">
@@ -791,11 +795,11 @@
             const ro = currentFilteredData[filteredIndex];
             if (!ro || !ro._supabaseId) { showToast('Error: RO not found.', 'error'); return; }
 
-            const oldStatus = ro.partsStatus || (ro.hasOpenPartsRequest ? 'outstanding' : null);
+            const oldStatus = ro.partsStatus || (ro.hasOpenPartsRequest ? 'requested' : null);
             const userName = currentUser?.name || 'Unknown';
             const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 
-            const labels = { sourcing: '🔍 PART SOURCING', outstanding: '⚠️ PARTS OUTSTANDING', received: '✅ PARTS RECEIVED', estimate: '📋 PARTS ESTIMATE' };
+            const labels = { requested: '🙋 PARTS REQUESTED', sourcing: '🔍 PART SOURCING', ordered: '📦 PARTS ORDERED', outstanding: '📦 PARTS ORDERED', received: '✅ PARTS RECEIVED', estimate: '📋 PARTS ESTIMATE' };
             const noteText = newStatus
                 ? `[${ts} - ${userName}] Parts status set to: ${labels[newStatus]}`
                 : `[${ts} - ${userName}] Parts status cleared`;

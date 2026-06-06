@@ -119,8 +119,9 @@
             if (currentPartsFilter !== 'all') {
                 filtered = filtered.filter(ro => {
                     // Parts status chip filters (RO-level parts_status field)
+                    if (currentPartsFilter === 'ps-requested')   return ro.partsStatus === 'requested' || (!ro.partsStatus && ro.hasOpenPartsRequest);
                     if (currentPartsFilter === 'ps-sourcing')    return ro.partsStatus === 'sourcing';
-                    if (currentPartsFilter === 'ps-outstanding') return ro.partsStatus === 'outstanding' || (!ro.partsStatus && ro.hasOpenPartsRequest);
+                    if (currentPartsFilter === 'ps-ordered')     return ro.partsStatus === 'ordered' || ro.partsStatus === 'outstanding';
                     if (currentPartsFilter === 'ps-received')    return ro.partsStatus === 'received';
                     if (currentPartsFilter === 'ps-estimate')    return ro.partsStatus === 'estimate';
                     // Parts row-level filters (individual parts statuses)
@@ -171,12 +172,11 @@
 
                     // Build chips
                     let chips = '';
-                    if (ro.partsStatus === 'sourcing') chips += '<span class="compact-chip ch-sourcing" data-action="parts-status" data-idx="' + index + '">Sourcing</span>';
-                    else if (ro.partsStatus === 'outstanding' || ro.hasOpenPartsRequest) chips += '<span class="compact-chip ch-outstanding" data-action="parts-status" data-idx="' + index + '">Outstanding</span>';
+                    if (ro.partsStatus === 'requested' || (!ro.partsStatus && ro.hasOpenPartsRequest)) chips += '<span class="compact-chip ch-requested" data-action="parts-status" data-idx="' + index + '">Requested</span>';
+                    else if (ro.partsStatus === 'sourcing') chips += '<span class="compact-chip ch-sourcing" data-action="parts-status" data-idx="' + index + '">Sourcing</span>';
+                    else if (ro.partsStatus === 'ordered' || ro.partsStatus === 'outstanding') chips += '<span class="compact-chip ch-ordered" data-action="parts-status" data-idx="' + index + '">Ordered</span>';
                     else if (ro.partsStatus === 'estimate') chips += '<span class="compact-chip ch-estimate" data-action="parts-status" data-idx="' + index + '">Estimate</span>';
                     else if (ro.partsStatus === 'received') chips += '<span class="compact-chip ch-received" data-action="parts-status" data-idx="' + index + '">Received</span>';
-
-                    if (ro.hasOpenPartsRequest && ro.partsStatus !== 'outstanding') chips += '<span class="compact-chip ch-request">Requested</span>';
 
                     try {
                         const ins = ro.insuranceData ? JSON.parse(ro.insuranceData) : null;
@@ -333,12 +333,12 @@
                         ${ro.isTraining ? '<div class="training-badge">🎓 Training</div>' : ''}
                         ${ro.partsJson ? (() => { try { const parts = JSON.parse(ro.partsJson); if (!parts.length) return ''; const hasBackordered = parts.some(p => p.status === 'Backordered' || p.status === 'Lost'); const hasSourcing = parts.some(p => p.status === 'Sourcing'); const hasOutstanding = parts.some(p => p.status === 'Ordered' || p.status === 'In Transit'); const allDone = parts.every(p => p.status === 'Received' || p.status === 'Installed' || p.status === 'Returned'); const color = hasBackordered ? 'red' : hasOutstanding ? 'yellow' : hasSourcing ? 'yellow' : 'green'; const worstLabel = hasBackordered ? (parts.filter(p => p.status==='Backordered'||p.status==='Lost').length + ' ' + t('Backordered')) : hasOutstanding ? (parts.filter(p => p.status==='Ordered'||p.status==='In Transit').length + ' ' + t('Outstanding')) : hasSourcing ? (parts.filter(p => p.status==='Sourcing').length + ' ' + t('Requested')) : t('All Received'); return '<div class="parts-badge ' + color + '" data-action="parts-badge" data-idx="' + index + '">🔩 ' + parts.length + ' Parts • ' + worstLabel + '</div>'; } catch(e) { return ''; } })() : ''}
                         ${ro.partsStatus ? `
-                        <div class="parts-status-chip ${escapeHtml(ro.partsStatus)}" data-action="parts-status" data-idx="${index}" title="Parts status — click to update">
-                            ${ ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : ro.partsStatus === 'outstanding' ? `⚠️ ${t('PARTS OUTSTANDING')}` : ro.partsStatus === 'estimate' ? `📋 ${t('PARTS ESTIMATE')}` : `✅ ${t('PARTS RECEIVED')}` }
+                        <div class="parts-status-chip ${escapeHtml(ro.partsStatus === 'outstanding' ? 'ordered' : ro.partsStatus)}" data-action="parts-status" data-idx="${index}" title="Parts status — click to update">
+                            ${ ro.partsStatus === 'requested' ? `🙋 ${t('PARTS REQUESTED')}` : ro.partsStatus === 'sourcing' ? `🔍 ${t('PART SOURCING')}` : (ro.partsStatus === 'ordered' || ro.partsStatus === 'outstanding') ? `📦 ${t('PARTS ORDERED')}` : ro.partsStatus === 'estimate' ? `📋 ${t('PARTS ESTIMATE')}` : `✅ ${t('PARTS RECEIVED')}` }
                         </div>
                         ` : ro.hasOpenPartsRequest ? `
-                        <div class="parts-status-chip outstanding" data-action="parts-status" data-idx="${index}" title="Parts outstanding — click to update status">
-                            ⚠️ ${t('PARTS OUTSTANDING')}
+                        <div class="parts-status-chip requested" data-action="parts-status" data-idx="${index}" title="Parts requested — click to update status">
+                            🙋 ${t('PARTS REQUESTED')}
                         </div>
                         ` : ''}
                         ` : ''}

@@ -140,23 +140,34 @@ Deno.serve(async (req: Request) => {
 
     const tableWrap = (rows: string, cols: string[]) => `<table style="width:100%;border-collapse:collapse;margin-bottom:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;overflow:hidden"><thead><tr>${cols.map(c => `<th style="${thStyle}">${c}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
 
-    // ── Section 1 rows: Open Parts Requests ─────────────────────────────
-    const openROsRows = openROs?.length
-      ? openROs.map((ro: any) => {
-          const roParts = openROPartsMap[ro.id] || [];
-          const partsHtml = roParts.length
-            ? roParts.map(p => `<div style="font-size:12px;color:#374151;line-height:1.7">• ${p}</div>`).join("")
-            : `<span style="color:#aaa;font-style:italic;font-size:12px">No parts logged yet</span>`;
-          return `<tr><td style="${tdStyle};font-family:monospace">${ro.ro_id || "—"}</td><td style="${tdStyle};font-weight:600">${ro.customer_name || "—"}</td><td style="${tdStyle}">${ro.rv || "—"}</td><td style="${tdStyle}">${partsHtml}</td><td style="${tdStyle}"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${ro.parts_status || "outstanding"}</span></td><td style="${tdStyle};color:#666;font-size:12px">${ro.requested_by_email || "—"}</td></tr>`;
-        }).join("")
-      : emptyRow("No open parts requests — nothing to source right now.");
+    // ── Section 1: RO-level open requests, SPLIT (v1.446) — Needs Ordering vs On Order ──
+    // Needs Ordering = requested / sourcing / legacy-null. On Order = ordered (legacy: outstanding).
+    const isOnOrder = (ps: string) => ps === "ordered" || ps === "outstanding";
+    const needsOrderingROs = (openROs || []).filter((ro: any) => !isOnOrder(ro.parts_status));
+    const onOrderROs        = (openROs || []).filter((ro: any) =>  isOnOrder(ro.parts_status));
 
-    // Action prompt text for section 1
-    const s1Action = openROs?.length
-      ? `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#92400e">For each open request below:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#92400e;line-height:1.8"><li>Find the part and place the order with the supplier</li><li>Update the status to <strong>Ordered</strong> in the dashboard</li><li>Fill in <strong>Supplier, PO Number, Date Ordered, and ETA</strong></li><li>Click <strong>"Notify Requester"</strong> to email whoever submitted the request</li></ol>`
-      : `Nothing to do here — no open requests.`;
-    const s1ActionColor  = openROs?.length ? "#fffbeb" : "#f0fdf4";
-    const s1ActionTColor = openROs?.length ? "#92400e" : "#15803d";
+    const openRoRow = (ro: any) => {
+      const roParts = openROPartsMap[ro.id] || [];
+      const partsHtml = roParts.length
+        ? roParts.map(p => `<div style="font-size:12px;color:#374151;line-height:1.7">• ${p}</div>`).join("")
+        : `<span style="color:#aaa;font-style:italic;font-size:12px">No parts logged yet</span>`;
+      return `<tr><td style="${tdStyle};font-family:monospace">${ro.ro_id || "—"}</td><td style="${tdStyle};font-weight:600">${ro.customer_name || "—"}</td><td style="${tdStyle}">${ro.rv || "—"}</td><td style="${tdStyle}">${partsHtml}</td><td style="${tdStyle}"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${ro.parts_status || "requested"}</span></td><td style="${tdStyle};color:#666;font-size:12px">${ro.requested_by_email || "—"}</td></tr>`;
+    };
+    const needsOrderingRows = needsOrderingROs.length ? needsOrderingROs.map(openRoRow).join("") : emptyRow("No requests waiting to be ordered — all caught up.");
+    const onOrderRows        = onOrderROs.length ? onOrderROs.map(openRoRow).join("") : emptyRow("Nothing on order at the RO level right now.");
+
+    // Action prompt text — Needs Ordering (s1) and On Order (s1b)
+    const s1Action = needsOrderingROs.length
+      ? `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#92400e">For each request waiting to be ordered:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#92400e;line-height:1.8"><li>Find the part and place the order with the supplier</li><li>Update the status to <strong>Ordered</strong> in the dashboard</li><li>Fill in <strong>Supplier, PO Number, Date Ordered, and ETA</strong></li><li>Click <strong>"Notify Requester"</strong> to email whoever submitted the request</li></ol>`
+      : `Nothing to do here — no requests waiting to be ordered.`;
+    const s1ActionColor  = needsOrderingROs.length ? "#fffbeb" : "#f0fdf4";
+    const s1ActionTColor = needsOrderingROs.length ? "#92400e" : "#15803d";
+
+    const s1bAction = onOrderROs.length
+      ? `<p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#92400e">These orders are placed — keep them moving:</p><ol style="margin:4px 0 0;padding-left:20px;font-size:15px;color:#92400e;line-height:1.8"><li>Confirm an <strong>ETA</strong> is set on every part (see the next section)</li><li>When parts arrive, mark them <strong>Received</strong> and notify the requester</li></ol>`
+      : `Nothing on order at the RO level right now.`;
+    const s1bActionColor  = onOrderROs.length ? "#fffbeb" : "#f0fdf4";
+    const s1bActionTColor = onOrderROs.length ? "#92400e" : "#15803d";
 
     // ── Section 2 rows: Ordered / In Transit / Backordered ───────────────
     const orderedRows = orderedParts?.length
@@ -213,7 +224,7 @@ Deno.serve(async (req: Request) => {
     const s4ActionTColor = receivedParts?.length ? "#15803d" : "#6b7280";
 
     // ── Morning banner (8 AM only) ───────────────────────────────────────
-    const morningBanner = isMorning ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #c8102e;border-radius:6px;padding:12px 16px;margin-bottom:20px"><p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1e293b">Good morning, Bobby. Work through this report in order:</p><ol style="margin:0;padding-left:20px;font-size:15px;color:#374151;line-height:2"><li><strong>Overdue (Section 3)</strong> — call suppliers, get new ETAs, mark Backordered if needed</li><li><strong>Open Requests (Section 1)</strong> — order everything you can today</li><li><strong>Ordered/In Transit (Section 2)</strong> — check ETAs, chase anything due today</li><li><strong>Received (Section 4)</strong> — confirm each is logged and notify the tech</li></ol></div>` : "";
+    const morningBanner = isMorning ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #c8102e;border-radius:6px;padding:12px 16px;margin-bottom:20px"><p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#1e293b">Good morning, Bobby. Work through this report in order:</p><ol style="margin:0;padding-left:20px;font-size:15px;color:#374151;line-height:2"><li><strong>Overdue (Section 3)</strong> — call suppliers, get new ETAs, mark Backordered if needed</li><li><strong>Needs Ordering (Section 1)</strong> — order everything you can today</li><li><strong>Ordered/In Transit (Section 2)</strong> — check ETAs, chase anything due today</li><li><strong>Received (Section 4)</strong> — confirm each is logged and notify the tech</li></ol></div>` : "";
 
     // ── End-of-day checklist (3 PM only) ────────────────────────────────
     const cbTd = `width:22px;vertical-align:top;padding:3px 6px 3px 0;font-size:18px`;
@@ -235,7 +246,7 @@ Deno.serve(async (req: Request) => {
     const secTitle = `font-size:15px;font-weight:700;color:#111`;
     const actSpan = (color: string, text: string) => `<span style="font-size:15px;font-weight:600;color:${color}">→ ${text}</span>`;
 
-    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:14px;margin-bottom:20px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV Services</h1><p style="margin:4px 0 0;color:#555;font-size:13px">Parts Status Report &nbsp;&middot;&nbsp; <strong>${timeLabel}</strong> &nbsp;&middot;&nbsp; ${dateStr}</p></div>${!hasSomething ? `<p style="color:#16a34a;font-weight:600;font-size:15px">All clear — no open parts issues to report.</p>` : ""}${overdueAlert}${morningBanner}<div style="${secHdr("#fff3f8")}"><span style="${secTitle}">🔩 Open Parts Requests</span><span style="${badge}">${openROs?.length || 0}</span></div><div style="${secAct(s1ActionColor)}">${openROs?.length ? s1Action : actSpan(s1ActionTColor, s1Action)}</div>${tableWrap(openROsRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}<div style="${secHdr("#eff6ff")}"><span style="${secTitle}">📦 Ordered — Not Yet Received</span><span style="${badge}">${orderedParts?.length || 0}</span></div><div style="${secAct(s2ActionColor)}">${orderedParts?.length ? s2Action : actSpan(s2ActionTColor, s2Action)}</div>${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}<div style="${secHdr("#fef2f2")}"><span style="${secTitle}">⚠️ Overdue Parts — ETA Has Passed</span><span style="${badge}">${overdueParts?.length || 0}</span></div><div style="${secAct(s3ActionColor)}">${overdueParts?.length ? s3Action : actSpan(s3ActionTColor, s3Action)}</div>${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}<div style="${secHdr("#f0fdf4")}"><span style="${secTitle}">✅ Received in Last 24 Hours</span><span style="${badge}">${receivedParts?.length || 0}</span></div><div style="${secAct(s4ActionColor)}">${receivedParts?.length ? s4Action : actSpan(s4ActionTColor, s4Action)}</div>${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"])}${eodChecklist}<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Patriots RV Services &nbsp;&middot;&nbsp; Denton, TX &nbsp;&middot;&nbsp; <a href="tel:9404885047" style="color:#c8102e">(940) 488-5047</a><br>Automated ${timeLabel.toLowerCase()} report from the PRVS Dashboard &nbsp;&middot;&nbsp; Mon–Fri at 8 AM and 3 PM CDT</p></div></body></html>`;
+    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:14px;margin-bottom:20px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV Services</h1><p style="margin:4px 0 0;color:#555;font-size:13px">Parts Status Report &nbsp;&middot;&nbsp; <strong>${timeLabel}</strong> &nbsp;&middot;&nbsp; ${dateStr}</p></div>${!hasSomething ? `<p style="color:#16a34a;font-weight:600;font-size:15px">All clear — no open parts issues to report.</p>` : ""}${overdueAlert}${morningBanner}<div style="${secHdr("#fff3f8")}"><span style="${secTitle}">🙋 Needs Ordering</span><span style="${badge}">${needsOrderingROs.length}</span></div><div style="${secAct(s1ActionColor)}">${needsOrderingROs.length ? s1Action : actSpan(s1ActionTColor, s1Action)}</div>${tableWrap(needsOrderingRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}<div style="${secHdr("#fffbeb")}"><span style="${secTitle}">🧾 On Order — RO Level</span><span style="${badge}">${onOrderROs.length}</span></div><div style="${secAct(s1bActionColor)}">${onOrderROs.length ? s1bAction : actSpan(s1bActionTColor, s1bAction)}</div>${tableWrap(onOrderRows, ["RO #", "Customer", "Vehicle", "Parts Needed", "Status", "Requester"])}<div style="${secHdr("#eff6ff")}"><span style="${secTitle}">📦 Ordered — Not Yet Received</span><span style="${badge}">${orderedParts?.length || 0}</span></div><div style="${secAct(s2ActionColor)}">${orderedParts?.length ? s2Action : actSpan(s2ActionTColor, s2Action)}</div>${tableWrap(orderedRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}<div style="${secHdr("#fef2f2")}"><span style="${secTitle}">⚠️ Overdue Parts — ETA Has Passed</span><span style="${badge}">${overdueParts?.length || 0}</span></div><div style="${secAct(s3ActionColor)}">${overdueParts?.length ? s3Action : actSpan(s3ActionTColor, s3Action)}</div>${tableWrap(overdueRows, ["RO #", "Customer", "Part Name", "Status", "ETA"])}<div style="${secHdr("#f0fdf4")}"><span style="${secTitle}">✅ Received in Last 24 Hours</span><span style="${badge}">${receivedParts?.length || 0}</span></div><div style="${secAct(s4ActionColor)}">${receivedParts?.length ? s4Action : actSpan(s4ActionTColor, s4Action)}</div>${tableWrap(receivedRows, ["RO #", "Customer", "Part Name", "Status", "Received At"])}${eodChecklist}<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Patriots RV Services &nbsp;&middot;&nbsp; Denton, TX &nbsp;&middot;&nbsp; <a href="tel:9404885047" style="color:#c8102e">(940) 488-5047</a><br>Automated ${timeLabel.toLowerCase()} report from the PRVS Dashboard &nbsp;&middot;&nbsp; Mon–Fri at 8 AM and 3 PM CDT</p></div></body></html>`;
 
     // ── Send email ──────────────────────────────────────────────────────
     const transporter = nodemailer.createTransport({
@@ -251,7 +262,8 @@ Deno.serve(async (req: Request) => {
     const plainText = [
       `PRVS Parts Report — ${timeLabel} — ${dateStr}`,
       ``,
-      `Open Requests (not ordered): ${openROs?.length || 0}`,
+      `Needs ordering:              ${needsOrderingROs.length}`,
+      `On order (RO level):         ${onOrderROs.length}`,
       `Ordered / In Transit:        ${orderedParts?.length || 0}`,
       `Overdue:                     ${overdueParts?.length || 0}`,
       `Received (last 24h):         ${receivedParts?.length || 0}`,
