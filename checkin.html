@@ -1,7 +1,10 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.33
-    Released: 2026-05-22
+    PRVS Tech Check-In v1.34
+    Released: 2026-06-07
+    v1.34: [ER BUGFIX S94] n22 (Tipton Scott) — added a "Return to Dashboard" button on the
+           clock-out success screen so techs can get back to the dashboard to start another
+           job without opening a new tab. + Spanish translation. No logic change.
     v1.33: GH#29c/GH#29d — FIX the ghost-write to repair_orders.status
            AND the long-standing casing bug ('In Progress' vs 'In progress').
            Tech clock-in has, since the very first upload of this file on
@@ -395,6 +398,7 @@ const TRANSLATIONS_ES = {
     'Enter minutes ago...': 'Ingresa los minutos...',
     'Cancel': 'Cancelar',
     '✅ Clock Out & Switch RO': '✅ Salir y Cambiar OR',
+    '🏠 Return to Dashboard': '🏠 Volver al Panel',
     // Errors / loading
     'Loading...': 'Cargando...',
     'Loading RO...': 'Cargando OR...',
@@ -1425,6 +1429,9 @@ function showClockOutSummary(durationSec, notes, services, isShop) {
 
             <button class="btn btn-start" style="width:100%;" onclick="loadAndRender()">
                 ${t('🔄 Clock Back In')}
+            </button>
+            <button class="btn btn-secondary" style="width:100%;margin-top:10px;" onclick="window.location.href='index.html'">
+                ${t('🏠 Return to Dashboard')}
             </button>
         </div>`;
 }

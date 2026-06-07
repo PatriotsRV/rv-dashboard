@@ -276,9 +276,10 @@
                 const parts = partsData[ctx.roId] || [];
                 const part = parts[editIndex];
                 if (part) {
+                    const MONEY_FIELDS = ['wholesalePrice','retailPrice','coreCharge']; // [ER BUGFIX v1.447 S94] n33
                     ALL_PART_FIELDS.forEach(f => {
                         const el = document.getElementById('pf_' + f);
-                        if (el && part[f]) el.value = part[f];
+                        if (el && part[f]) el.value = (MONEY_FIELDS.includes(f) && !isNaN(parseFloat(part[f]))) ? parseFloat(part[f]).toFixed(2) : part[f];
                     });
                 }
             }

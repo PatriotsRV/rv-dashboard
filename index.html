@@ -1,8 +1,13 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.446
-    Released: 2026-06-06
+    PRVS Dashboard v1.447
+    Released: 2026-06-07
+    v1.447: [ER BUGFIX S94] Two ER-triage bug fixes. (n33, Bobby Thatcher) Currency inputs
+    now show 2 decimals - editDollarValue/new_dollarValue + part wholesale/retail/freight
+    reformat on blur (focusout listener in init) and on edit-populate (ro-crud.js + parts.js).
+    Cosmetic only - parseFloat already preserved the value; no data change. (n22, Tipton Scott,
+    in checkin.html v1.34) "Return to Dashboard" button added to the clock-out success screen.
     v1.446: Parts "Requested -> Ordered" state machine (Session 93). New RO-level
     parts_status flow Requested -> (Sourcing) -> Ordered -> Received. A tech's parts
     request now sets parts_status='requested' (was 'outstanding', which was labeled
@@ -517,7 +522,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.446</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.447</span>
             </div>
         </header>
 
@@ -3186,7 +3191,17 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.446 - Released 2026-06-06 - Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.447 - Released 2026-06-07 - [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+
+            // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
+            // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
+            // focusout bubbles (blur does not), so one delegated listener covers static + dynamically-built inputs.
+            document.addEventListener('focusout', (e) => {
+                const MONEY_IDS = ['new_dollarValue','editDollarValue','pf_wholesalePrice','pf_retailPrice','pf_coreCharge'];
+                if (e.target && MONEY_IDS.includes(e.target.id) && e.target.value !== '' && !isNaN(parseFloat(e.target.value))) {
+                    e.target.value = parseFloat(e.target.value).toFixed(2);
+                }
+            });
 
             // S4: Clean up client-side Anthropic key — now proxied via Edge Function
             localStorage.removeItem('prvs_anthropic_key');

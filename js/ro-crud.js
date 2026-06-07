@@ -838,7 +838,7 @@
                 document.getElementById('editCustomerAddress').value = ro.customerAddress || '';
                 document.getElementById('editRv').value = ro.rv || '';
                 document.getElementById('editTechnicianAssigned').value = ro.technicianAssigned || '';
-                document.getElementById('editDollarValue').value = ro.dollarValue || '';
+                document.getElementById('editDollarValue').value = (ro.dollarValue != null && ro.dollarValue !== '' && !isNaN(parseFloat(ro.dollarValue))) ? parseFloat(ro.dollarValue).toFixed(2) : ''; // [ER BUGFIX v1.447 S94] n33: show 2 decimals
                 document.getElementById('editPromisedDate').value = ro.promisedDate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
                 document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
