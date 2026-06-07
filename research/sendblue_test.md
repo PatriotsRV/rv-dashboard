@@ -130,9 +130,11 @@ Note on bubble color: Google Messages renders the user's OWN sent bubbles in blu
 **Caveats / open questions (resolve BEFORE paying for the dedicated line):**
 
 1. **Number hosting/port — BLOCKER QUESTION:** Roland wants Sendblue tied to the office number +1 940 488 5047 long-term. Ask Sendblue support/sales whether a dedicated line can host or text-enable an EXISTING number vs only assigning a new one. (Coordinate with GH#1 — this is the same number the Twilio port plan targeted; don't port it twice.)
+   - **Preliminary answer (Sendblue help-center "Ask AI", 2026-06-07): YES** — "Sendblue supports SMS-enabling and hosting your number, allowing texting via Sendblue while voice calls remain with your VOIP provider." Porting from Twilio also supported. AND a hosted number "can send both iMessage and SMS" — full iMessage features (read receipts, etc.) apply whenever the recipient is on iMessage, SMS otherwise. Related doc: "Read Receipts in Sendblue: iMessage vs SMS" — read receipts ONLY apply to iMessage, never SMS.
+   - These are AI-generated help-center answers — **get written confirmation from a human at Sendblue before paying**, specifically for: SMS-enable (voice stays with VOIP provider) + iMessage registration on the hosted number + any carrier paperwork (LOA) required.
 2. **Dedicated-line inbound:** confirm a dedicated line accepts inbound from ANY number without pre-registration (required for customer replies in production — the shared line drops unregistered senders).
 3. **Contact cap:** confirm the 10-contact cap is free-tier-only and lifts on dedicated.
-4. **Key rotation** (see §1) before Phase 2 ships.
+4. ~~**Key rotation** (see §1) before Phase 2 ships.~~ **DONE 2026-06-07** — keys rolled via Settings → API Settings → Roll key (secret rotates with API key); new values in password manager. Exposed keys are dead.
 5. Pricing reference from GH#39 research: ~$29/mo per dedicated line + ~$0.01/message, no A2P fees.
 6. Re-run question (a) + the webhook payload capture on the dedicated line before production cutover.
 
