@@ -1,0 +1,144 @@
+name: ER Triage Nightly (Phase 2a)
+
+# Nightly AI triage of enhancement_requests against the live codebase.
+# Spec: docs/specs/ER_TRIAGE_AUTOMATION_SPEC.md
+# Phase 2a scope: classify + write verdicts back + regenerate report/dashboard.
+# READ-ONLY on the codebase - the only repo changes are the two docs files,
+# delivered as a human-gated PR to pre-prod. NO code changes, NO status changes.
+#
+# Cron is UTC. 07:00 UTC = 02:00 CDT (= 01:00 CST in winter - acceptable).
+#
+# Required Actions secrets:
+#   SUPABASE_URL               https://axfejhudchdejoiwaetq.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  service role key (reads ERs, writes triage cols)
+#   ANTHROPIC_API_KEY          for the headless triage runner
+#
+# Security model: the LLM step gets ONLY ANTHROPIC_API_KEY and writes
+# er_verdicts.json + the two docs. Supabase keys live only in the
+# deterministic fetch/writeback steps. The write-back script whitelists
+# IDs and columns, so the LLM cannot touch arbitrary rows or fields.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      full_pass:
+        description: 'Re-triage every ER (not just new/changed)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: er-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout pre-prod
+        uses: actions/checkout@v4
+        with:
+          ref: pre-prod
+          fetch-depth: 0
+
+      - name: Fetch ERs
+        id: fetch
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FULL_PASS: ${{ inputs.full_pass && '1' || '' }}
+        run: python3 scripts/er_triage_fetch.py
+
+      - name: Nothing to triage
+        if: steps.fetch.outputs.needs_count == '0'
+        run: |
+          echo "## ER Triage - nothing to do" >> "$GITHUB_STEP_SUMMARY"
+          echo "All ${{ steps.fetch.outputs.total_count }} ERs already triaged and unchanged." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Claude Code
+        if: steps.fetch.outputs.needs_count != '0'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run headless triage
+        if: steps.fetch.outputs.needs_count != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude -p "$(cat scripts/er_triage_runner_prompt.md)" \
+            --allowedTools "Read,Grep,Glob,Write" \
+            --permission-mode acceptEdits \
+            --max-turns 80
+          test -f er_verdicts.json || { echo "Runner produced no er_verdicts.json"; exit 1; }
+
+      - name: Validate verdicts (gate)
+        if: steps.fetch.outputs.needs_count != '0'
+        run: python3 scripts/er_triage_writeback.py --validate-only
+
+      - name: Write verdicts back to Supabase
+        if: steps.fetch.outputs.needs_count != '0'
+        id: writeback
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 scripts/er_triage_writeback.py
+
+      - name: Open docs PR to pre-prod
+        if: steps.fetch.outputs.needs_count != '0'
+        id: docpr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="chore/er-triage-$DATE"
+          git config user.name "er-triage-bot"
+          git config user.email "er-triage-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add docs/ER_TRIAGE_*.md docs/er-triage-dashboard.html
+          if git diff --cached --quiet; then
+            echo "No doc changes to commit"
+            echo "pr_url=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "ER triage $DATE: regenerate report and dashboard (docs only, Phase 2a nightly run)"
+          git push origin "$BRANCH"
+          PR_URL=$(gh pr create --base pre-prod --head "$BRANCH" \
+            --title "ER triage $DATE (docs only)" \
+            --body "Nightly Phase 2a triage run. Docs only - no code. Verdicts: ${{ steps.writeback.outputs.bucket_summary }}. Written back: ${{ steps.writeback.outputs.written_count }} rows. Review and merge to pre-prod.")
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Send ER report email
+        if: steps.fetch.outputs.needs_count != '0'
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/send-er-report")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          echo "send-er-report HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "WARNING: email send failed (non-blocking)"
+          fi
+
+      - name: Job summary
+        if: steps.fetch.outputs.needs_count != '0'
+        run: |
+          {
+            echo "## ER Triage Nightly - $(date -u +%Y-%m-%d)"
+            echo ""
+            echo "- ERs fetched: ${{ steps.fetch.outputs.total_count }}"
+            echo "- Needed triage: ${{ steps.fetch.outputs.needs_count }}"
+            echo "- Written back: ${{ steps.writeback.outputs.written_count }}"
+            echo "- Buckets: ${{ steps.writeback.outputs.bucket_summary }}"
+            echo "- Docs PR: ${{ steps.docpr.outputs.pr_url }}"
+            echo ""
+            echo "Status flips remain manual (Roland) - Phase 2a never edits status."
+          } >> "$GITHUB_STEP_SUMMARY"
