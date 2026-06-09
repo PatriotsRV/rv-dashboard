@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.10
+    PRVS Customer Check-In v1.11
     Released: 2026-06-09
+    v1.11: [CHECKIN NOTIFY FIX v1.11 S97] Corrected getSignatureDataURL() -> getSignatureData()
+          in the RAF send. The former was undefined and threw a ReferenceError that aborted every
+          signed-RAF email before it could send - the real root cause of the missing authorization
+          forms (pre-existing bug; surfaced once v1.10 made the RAF fire on every drop-off). Pairs
+          with the send-quote-email node:buffer import fix (raf_copy signature attachment).
     v1.10: [CHECKIN NOTIFY FIX v1.10 S97] Staff check-in notifications fixed (ER: Sofia).
           (1) The staff notification to repair@ now fires on EVERY check-in — all
           RV Customer Drop Offs (standard New Work, Warranty, Hybrid; same-day and
@@ -962,7 +967,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.10</div>
+<div class="version-badge">PRVS Customer Check-In v1.11</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2186,7 +2191,7 @@
                             serviceDesc:       serviceDesc || null,
                             warrantyDesc:      warrantyDesc || null,
                             promisedDate:      promisedDate || null,
-                            signatureDataUrl:  getSignatureDataURL() || null,
+                            signatureDataUrl:  getSignatureData() || null,  // [CHECKIN NOTIFY FIX v1.11 S97] was getSignatureDataURL (undefined) -> ReferenceError aborted every RAF
                         });
                     } catch (e) {
                         console.error('RAF email failed:', e);
