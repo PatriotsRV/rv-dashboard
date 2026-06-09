@@ -1,6 +1,6 @@
 # Enhancement-Request Triage Automation — Spec
 
-**Status:** Draft v0.1 (2026-06-07, Session 94)
+**Status:** Draft v0.2 (2026-06-09, Session 97 — Phase 2b built, dry-run posture)
 **Owner:** Roland Shepard / PRVS
 **Goal:** Automate the triage of Enhancement Requests (ERs) so that AI continuously (a) classifies every new ER against the live codebase, (b) for the low-risk *bug* class, writes a fix + regression-tests it + opens a **gated** PR for Roland to deploy, and (c) keeps a living triage report + dashboard current. This is the concrete build of the project's "autonomy north star": **nightly ER triage → code → pre-prod test → human-gated push.**
 
@@ -131,6 +131,41 @@ Build order is strict: prove each phase boringly reliable before the next.
 - 1 data fix (staff name spelling) via emitted SQL.
 
 Artifacts: `docs/ER_TRIAGE_2026-06-07.md`, `docs/er-triage-dashboard.html`, skill `prvs-er-triage`.
+
+---
+
+## 10. Phase 2b implementation (Session 97, 2026-06-09)
+
+Built dispatch-only and **DRY_RUN by default** (Roland's call): the pipeline
+builds the fix + runs the full gate, then uploads the candidate patch + evidence
+as an artifact instead of opening a PR. Flip `dry_run=false` on dispatch to open
+a real PR to `pre-prod`. Not wired into the nightly schedule until proven.
+
+Auto-fix scope chosen: **cosmetic + data-display + small functional** bugs
+(still <= 3 files / ~40 changed lines; never auth/RLS, money, delete, DB, or
+notifications). Regression gate: the **realistic** form of section 6 — full
+live-auth browser rendering is infeasible in CI (needs Google OAuth), so the
+browser gate loads the page on the unauthenticated sampleData path and asserts
+version + zero fatal (non-allow-listed) console errors + board render.
+
+Files:
+- `.github/workflows/er-autofix.yml` — `workflow_dispatch` (inputs: `dry_run`
+  default true, `er_id` optional, `force`). LLM step sees only `ANTHROPIC_API_KEY`.
+- `scripts/er_autofix_select.py` — picks one eligible bug-bucket ER (verdict-hint
+  pre-filter; final call is the fixer + gate).
+- `scripts/er_autofix_runner_prompt.md` — headless fixer prompt (Edit/Write only,
+  no git/network; refuses out-of-rails work; emits `fix_result.json`).
+- `scripts/er_autofix_gate.py` — deterministic rails: diff caps, path allow-list,
+  content deny-list, marker + version-bump, `node --check`. Verdict pass/refused;
+  rail violation fails the job. (Unit-tested against pass/refuse/forbidden-token/
+  oversize/bad-path cases, Session 97.)
+- `scripts/er_autofix_browser_check.mjs` — Playwright/Chromium load gate.
+  `REQUIRE_BOARD=soft` until the first dry-run confirms headless board render,
+  then flip to `hard`.
+
+Open follow-ups: confirm headless board render on the first dry-run (then
+`REQUIRE_BOARD=hard`); after a clean track record, batch >1 fix per run and
+consider folding into the nightly (Phase 2c/2d).
 
 ---
 

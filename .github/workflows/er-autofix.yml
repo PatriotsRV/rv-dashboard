@@ -1,0 +1,219 @@
+name: ER Auto-Fix (Phase 2b)
+
+# Gated, automated fix of ONE already-triaged bug-bucket ER.
+# Spec: docs/specs/ER_TRIAGE_AUTOMATION_SPEC.md (sections 5 and 6).
+#
+# Posture: dispatch-only (NOT on the nightly schedule yet) and DRY_RUN by
+# default - it builds the fix + runs the full gate, then uploads the candidate
+# patch + evidence as an artifact instead of opening a PR. Flip dry_run=false
+# to actually open a PR to pre-prod (never main, never auto-merge).
+#
+# Security model (mirrors Phase 2a): the LLM fixer step sees ONLY
+# ANTHROPIC_API_KEY and may edit files; the Supabase service key lives only in
+# the deterministic select / write-back steps. The deterministic gate enforces
+# the spec-5 hard rails (caps, path allow-list, content deny-list, marker +
+# version-bump, node --check) and the headless browser gate enforces section 6.
+#
+# Required Actions secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+# ANTHROPIC_API_KEY (same three Phase 2a uses).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (build + gate + upload patch, do NOT open a PR)'
+        type: boolean
+        default: true
+      er_id:
+        description: 'Target a single ER id (optional; else first eligible bug)'
+        type: string
+        default: ''
+      force:
+        description: 'With er_id: bypass the verdict-hint pre-filter'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: er-autofix
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout pre-prod
+        uses: actions/checkout@v4
+        with:
+          ref: pre-prod
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Record rollback hash
+        id: head
+        run: echo "rollback=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Select eligible bug
+        id: select
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ER_ID: ${{ inputs.er_id }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+          MAX_FIXES: '1'
+        run: python3 scripts/er_autofix_select.py
+
+      - name: Nothing eligible
+        if: steps.select.outputs.candidate_count == '0'
+        run: |
+          {
+            echo "## ER Auto-Fix - nothing eligible"
+            echo ""
+            echo "No bug-bucket ER passed the selector "
+            echo "(skipped: ${{ steps.select.outputs.skipped_count }})."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Claude Code
+        if: steps.select.outputs.candidate_count != '0'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install Playwright (chromium)
+        if: steps.select.outputs.candidate_count != '0'
+        run: |
+          npm install playwright
+          npx playwright install --with-deps chromium
+
+      - name: Run headless fixer
+        if: steps.select.outputs.candidate_count != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude -p "$(cat scripts/er_autofix_runner_prompt.md)" \
+            --allowedTools "Read,Grep,Glob,Edit,Write" \
+            --permission-mode acceptEdits \
+            --max-turns 60
+          test -f fix_result.json || { echo "fixer produced no fix_result.json"; exit 1; }
+          echo "----- fix_result.json -----"
+          cat fix_result.json
+
+      - name: Gate (hard rails)
+        id: gate
+        if: steps.select.outputs.candidate_count != '0'
+        run: python3 scripts/er_autofix_gate.py
+
+      - name: Headless browser gate
+        id: browser
+        if: steps.select.outputs.candidate_count != '0' && steps.gate.outputs.verdict == 'pass'
+        env:
+          PORT: '8765'
+          REQUIRE_BOARD: 'soft'
+        run: |
+          python3 -m http.server 8765 >/tmp/httpd.log 2>&1 &
+          SERVER_PID=$!
+          for i in $(seq 1 20); do
+            curl -sf "http://127.0.0.1:8765/index.html" >/dev/null && break
+            sleep 0.5
+          done
+          set +e
+          node scripts/er_autofix_browser_check.mjs
+          RC=$?
+          set -e
+          kill $SERVER_PID 2>/dev/null || true
+          exit $RC
+
+      - name: Build evidence
+        id: evidence
+        if: steps.select.outputs.candidate_count != '0' && steps.gate.outputs.verdict == 'pass'
+        run: |
+          git diff HEAD > er-autofix.patch
+          {
+            echo "Auto-fix candidate for ER ${{ steps.select.outputs.candidate_id }}"
+            echo ""
+            echo "Gate: ${{ steps.gate.outputs.diff_stat }}"
+            echo "Version: ${{ steps.gate.outputs.fix_version }}"
+            echo "Files: ${{ steps.gate.outputs.changed_files }}"
+            echo "Rollback hash (pre-fix pre-prod): ${{ steps.head.outputs.rollback }}"
+            echo "Browser gate: passed (headless sampleData load, zero fatal console errors)"
+          } > er-autofix-evidence.txt
+          cat er-autofix-evidence.txt
+
+      - name: Upload patch + evidence (dry run)
+        if: steps.select.outputs.candidate_count != '0' && steps.gate.outputs.verdict == 'pass' && inputs.dry_run
+        uses: actions/upload-artifact@v4
+        with:
+          name: er-autofix-${{ steps.select.outputs.candidate_id }}
+          path: |
+            er-autofix.patch
+            er-autofix-evidence.txt
+            fix_result.json
+            autofix_candidates.json
+          retention-days: 14
+
+      - name: Open auto-fix PR to pre-prod (live)
+        id: pr
+        if: steps.select.outputs.candidate_count != '0' && steps.gate.outputs.verdict == 'pass' && (! inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHORT=$(echo "${{ steps.select.outputs.candidate_id }}" | cut -c1-8)
+          BRANCH="fix/er-auto-$SHORT"
+          git config user.name "er-autofix-bot"
+          git config user.email "er-autofix-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          for f in $(echo "${{ steps.gate.outputs.changed_files }}" | tr ',' ' '); do
+            git add "$f"
+          done
+          git commit -m "ER autofix ${{ steps.gate.outputs.fix_version }}: fix ER ${{ steps.select.outputs.candidate_id }} (gated, Phase 2b)"
+          git push origin "$BRANCH"
+          PR_URL=$(gh pr create --base pre-prod --head "$BRANCH" \
+            --title "ER autofix ${{ steps.gate.outputs.fix_version }} (ER ${{ steps.select.outputs.candidate_id }})" \
+            --body "$(cat er-autofix-evidence.txt)
+
+          Automated Phase 2b fix. Human-gated: review, then merge to pre-prod and run the normal FF pre-prod->main promotion. Rollback hash in evidence above.")
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "Opened $PR_URL"
+
+      - name: Write triage_pr_url back (live)
+        if: steps.select.outputs.candidate_count != '0' && steps.gate.outputs.verdict == 'pass' && (! inputs.dry_run) && steps.pr.outputs.pr_url != ''
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -s -X PATCH \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{\"triage_pr_url\":\"${{ steps.pr.outputs.pr_url }}\"}" \
+            "$SUPABASE_URL/rest/v1/enhancement_requests?id=eq.${{ steps.select.outputs.candidate_id }}"
+
+      - name: Job summary
+        if: steps.select.outputs.candidate_count != '0'
+        run: |
+          {
+            echo "## ER Auto-Fix - $(date -u +%Y-%m-%d)"
+            echo ""
+            echo "- Candidate ER: ${{ steps.select.outputs.candidate_id }}"
+            echo "- Gate verdict: ${{ steps.gate.outputs.verdict }}"
+            if [ "${{ steps.gate.outputs.verdict }}" = "refused" ]; then
+              echo "- Fixer refused: ${{ steps.gate.outputs.refuse_reason }}"
+            fi
+            if [ "${{ steps.gate.outputs.verdict }}" = "pass" ]; then
+              echo "- ${{ steps.gate.outputs.diff_stat }}"
+              echo "- Version: ${{ steps.gate.outputs.fix_version }}"
+              if [ "${{ inputs.dry_run }}" = "true" ]; then
+                echo "- DRY RUN: patch uploaded as artifact, NO PR opened."
+              else
+                echo "- PR: ${{ steps.pr.outputs.pr_url }}"
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
