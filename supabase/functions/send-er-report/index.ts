@@ -1,8 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
-// GH#19: Daily Enhancement Request report — called by Supabase pg_cron at 3:30 PM CDT
-// Sends a summary of all unreviewed + recent requests to Roland
+// GH#19: Daily Enhancement Request report — called by Supabase pg_cron at 7:00 AM CDT (weekdays)
+// Sends a summary of all unreviewed + recent requests to Roland.
+// S97 (2026-06-09): now surfaces the nightly AI triage verdicts (bucket + effort + one-line verdict).
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
 function getCorsHeaders(req: Request) {
@@ -87,31 +88,82 @@ Deno.serve(async (req: Request) => {
       return `<span style="background:${c}22;color:${c};padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">${status}</span>`;
     };
 
+    // ── AI triage display helpers (S97) ─────────────────────────────
+    const esc = (s: any) => String(s ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    // What it is — done | bug | needed | data | duplicate
+    const bucketChip = (bucket: string | null) => {
+      if (!bucket) return `<span style="color:#bbb;font-size:12px;">—</span>`;
+      const map: Record<string, string> = {
+        bug: "#ef4444", needed: "#3b82f6", done: "#22c55e", data: "#8b5cf6", duplicate: "#6b7280",
+      };
+      const c = map[bucket] || "#6b7280";
+      return `<span style="background:${c}22;color:${c};padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;text-transform:capitalize;">${esc(bucket)}</span>`;
+    };
+
+    // Effort to fix — S | M | L | XL
+    const loeBadge = (loe: string | null) => {
+      if (!loe) return "";
+      const map: Record<string, string> = { S: "#22c55e", M: "#3b82f6", L: "#f59e0b", XL: "#ef4444" };
+      const c = map[loe] || "#6b7280";
+      return `<span style="border:1px solid ${c};color:${c};padding:1px 6px;border-radius:6px;font-size:11px;font-weight:700;margin-left:4px;">${esc(loe)}</span>`;
+    };
+
     const erRow = (er: any) => {
       const date = new Date(er.created_at).toLocaleDateString("en-US", {
         month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
         timeZone: "America/Chicago",
       });
+      const rawDesc  = er.description || "";
+      const descShort = rawDesc.length > 100 ? rawDesc.substring(0, 100) + "..." : rawDesc;
+      const verdictLine = er.triage_verdict
+        ? `<div style="margin-top:5px;color:#6b7280;font-size:11px;line-height:1.4;">🤖 ${esc(er.triage_verdict)}</div>`
+        : "";
       return `<tr>
         <td style="${tdStyle}">${date}</td>
-        <td style="${tdStyle} font-weight:600;">${er.submitted_by_name || er.submitted_by}</td>
-        <td style="${tdStyle}"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">${er.category}</span></td>
-        <td style="${tdStyle}">${er.description.length > 100 ? er.description.substring(0, 100) + "..." : er.description}</td>
+        <td style="${tdStyle} font-weight:600;">${esc(er.submitted_by_name || er.submitted_by || "")}</td>
+        <td style="${tdStyle}"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;">${esc(er.category || "")}</span></td>
+        <td style="${tdStyle}">${esc(descShort)}${verdictLine}</td>
+        <td style="${tdStyle} white-space:nowrap;">${bucketChip(er.triage_bucket)}${loeBadge(er.triage_loe)}</td>
         <td style="${tdStyle}">${statusBadge(er.status)}</td>
-        <td style="${tdStyle} color:#888; font-size:12px;">${er.source_page}</td>
+        <td style="${tdStyle} color:#888; font-size:12px;">${esc(er.source_page || "")}</td>
       </tr>`;
     };
 
     const unreviewedRows = unreviewed?.length
       ? unreviewed.map(erRow).join("")
-      : `<tr><td colspan="6" style="padding:10px 16px;color:#888;font-style:italic;font-size:13px;">No unreviewed requests</td></tr>`;
+      : `<tr><td colspan="7" style="padding:10px 16px;color:#888;font-style:italic;font-size:13px;">No unreviewed requests</td></tr>`;
 
     const todayRows = todayRequests?.length
       ? todayRequests.map(erRow).join("")
       : "";
 
-    const tableHeaders = ["Date", "Requester", "Category", "Description", "Status", "Page"]
+    const tableHeaders = ["Date", "Requester", "Category", "Description", "🤖 AI Triage", "Status", "Page"]
       .map(c => `<th style="${thStyle}">${c}</th>`).join("");
+
+    // ── Triage roll-up (S97) — "what it is + effort to fix" at a glance ──
+    const triaged = (unreviewed || []).filter((r: any) => r.triage_bucket);
+    const bucketCounts: Record<string, number> = {};
+    const loeCounts: Record<string, number> = {};
+    for (const r of triaged) {
+      bucketCounts[r.triage_bucket] = (bucketCounts[r.triage_bucket] || 0) + 1;
+      if (r.triage_loe) loeCounts[r.triage_loe] = (loeCounts[r.triage_loe] || 0) + 1;
+    }
+    const latestRun = triaged.map((r: any) => r.triage_run_at).filter(Boolean).sort().pop();
+    const latestRunStr = latestRun
+      ? new Date(latestRun).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "America/Chicago" })
+      : "";
+    const bucketOrder = ["bug", "needed", "data", "duplicate", "done"];
+    const loeOrder = ["S", "M", "L", "XL"];
+    const triageSummaryHtml = triaged.length ? `
+  <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:20px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">🤖 AI Triage of unreviewed${latestRunStr ? ` <span style="font-weight:400;color:#9ca3af;">· updated ${latestRunStr}</span>` : ""}</div>
+    <div style="font-size:13px;color:#4b5563;line-height:1.9;">
+      ${bucketOrder.filter(b => bucketCounts[b]).map(b => `${bucketChip(b)}&nbsp;<b>${bucketCounts[b]}</b>`).join("&nbsp;&nbsp;&nbsp;")}
+      ${Object.keys(loeCounts).length ? `&nbsp;&nbsp;<span style="color:#d1d5db;">|</span>&nbsp;&nbsp;<span style="color:#6b7280;font-size:12px;">Effort to fix:</span>&nbsp;${loeOrder.filter(l => loeCounts[l]).map(l => `${loeBadge(l)}&nbsp;<b>${loeCounts[l]}</b>`).join("&nbsp;&nbsp;")}` : ""}
+    </div>
+  </div>` : "";
 
     const htmlBody = `
 <!DOCTYPE html>
@@ -140,6 +192,8 @@ Deno.serve(async (req: Request) => {
       <div style="font-size:12px;color:#3730a3;font-weight:600;">Total Open</div>
     </div>
   </div>
+
+  ${triageSummaryHtml}
 
   ${!hasContent ? `<p style="color:#16a34a;font-weight:600;font-size:15px;">✅ All clear — no new enhancement requests to review.</p>` : ""}
 
