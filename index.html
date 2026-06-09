@@ -1,8 +1,15 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.447
-    Released: 2026-06-07
+    PRVS Dashboard v1.448
+    Released: 2026-06-09
+    v1.448: [SENDBLUE PHASE 2 POC S98] Outbound-only Sendblue messaging proof-of-concept.
+    New js/messaging.js module (openMessagesModal / sendSendblueMessage / loadMessages via
+    the window bridge) + a "Message Customer" button on the RO edit modal that texts the
+    customer through the new sendblue-send edge function and logs to the new messages table.
+    Replaces the messaging gap left by the Kenect removal (v1.445). Inbound replies +
+    delivery/read status + MMS are deferred until Sendblue answers webhook auth/status/media.
+    Additive: sendblue-send returns 503 until the SENDBLUE_* secrets are set.
     v1.447: [ER BUGFIX S94] Two ER-triage bug fixes. (n33, Bobby Thatcher) Currency inputs
     now show 2 decimals - editDollarValue/new_dollarValue + part wholesale/retail/freight
     reformat on blur (focusout listener in init) and on edit-populate (ro-crud.js + parts.js).
@@ -522,7 +529,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.447</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.448</span>
             </div>
         </header>
 
@@ -3191,7 +3198,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.447 - Released 2026-06-07 - [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.448 - Released 2026-06-09 - [SENDBLUE PHASE 2 POC S98] outbound-only Sendblue messaging: js/messaging.js (openMessagesModal/sendSendblueMessage/loadMessages) + Message Customer button on the RO edit modal + sendblue-send edge fn + messages table; replaces the Kenect messaging gap; inbound/status/MMS deferred - prior: v1.447 - Released 2026-06-07 - [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -6643,6 +6650,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" id="editCustomerPhone">
                         <div id="sug_edit_customerPhone"></div>
+                        <button type="button" onclick="(typeof editingROIndex==='number' &amp;&amp; currentData[editingROIndex]) ? openMessagesModal(currentData[editingROIndex]) : showToast('Open the repair order first.','warning')" style="margin-top:8px; width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid rgba(59,130,246,0.45); background:rgba(59,130,246,0.10); color:#3b82f6; cursor:pointer; font-size:0.82rem; font-weight:700;">&#128172; Message Customer (Sendblue)</button>
                     </div>
                     <div class="form-field shop-hide">
                         <label class="form-label">Customer Email</label>
