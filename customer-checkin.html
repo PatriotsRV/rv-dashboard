@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.9
-    Released: 2026-05-26
+    PRVS Customer Check-In v1.10
+    Released: 2026-06-09
+    v1.10: [CHECKIN NOTIFY FIX v1.10 S97] Staff check-in notifications fixed (ER: Sofia).
+          (1) The staff notification to repair@ now fires on EVERY check-in — all
+          RV Customer Drop Offs (standard New Work, Warranty, Hybrid; same-day and
+          scheduled) plus New Customer Entries. Previously standard drop-offs sent
+          nothing, so routine check-ins went unannounced. (2) The signed RAF copy
+          now always sends: to the customer + cc info@ when an email is provided,
+          or to info@ alone when it is not — so staff always receive the
+          authorization form even when the customer leaves no email.
     v1.9: Kiosk-mode Step 1 — when logged in as the shared front-desk account
           (KIOSK_EMAIL = customerservice@patriotsrvservices.com), Step 1 hides
           the "New Customer Entry" mode button so walk-in customers only see
@@ -954,7 +962,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.9</div>
+<div class="version-badge">PRVS Customer Check-In v1.10</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2161,12 +2169,18 @@
                     } catch (e) { warn('Photo upload failed:', e); }
                 }
 
-                // Send RAF copy via email — always sent, no toggle
-                if (email) {
+                // [CHECKIN NOTIFY FIX v1.10 S97] Send the signed RAF on EVERY
+                // drop-off (a signature is always captured - submit is gated on
+                // hasSig). When the customer gives an email it goes to them and
+                // the edge fn CCs info@; when they do not, it goes to info@ so
+                // staff still receive a copy of the authorization form (ER: Sofia).
+                {
+                    const STAFF_RAF_TO = 'info@patriotsrvservices.com';
+                    const rafRecipient = email || STAFF_RAF_TO;
                     try {
                         const siloLabels = formState.selectedSilos.map(k => SERVICE_SILOS.find(s => s.key === k)).filter(Boolean).map(s => `${s.emoji} ${s.label}`).join(', ');
                         const workTypeLabel = roType === 'hybrid' ? 'Hybrid (New Work + Warranty)' : roType === 'warranty' ? 'Warranty' : 'New Work';
-                        await sendRAFEmail(insertedRO, customerName, email, rv, siloLabels, workTypeLabel, {
+                        await sendRAFEmail(insertedRO, customerName, rafRecipient, rv, siloLabels, workTypeLabel, {
                             phone:             phone || null,
                             customerType:      formState.customerType === 'returning' ? 'Returning' : 'New',
                             serviceDesc:       serviceDesc || null,
@@ -2182,11 +2196,14 @@
             }
 
             // ── STAFF NOTIFICATION EMAIL ─────────────────────────────
-            // Fires for: New Customer Entry (any work type) + RV Customer Drop Off when Warranty or Hybrid.
+            // [CHECKIN NOTIFY FIX v1.10 S97] Fires for EVERY check-in: all RV
+            // Customer Drop Offs (standard New Work, Warranty, Hybrid; same-day
+            // AND scheduled) plus New Customer Entries. Previously standard
+            // drop-offs were excluded, so routine customer check-ins sent no
+            // staff notice at all (ER: Sofia).
             // Non-blocking — email failure does not fail the RO creation.
             const shouldNotifyStaff =
-                formState.mode === 'lead' ||
-                (formState.mode === 'dropoff' && (roType === 'warranty' || roType === 'hybrid'));
+                formState.mode === 'lead' || formState.mode === 'dropoff';
             let staffNotified = false;
             if (shouldNotifyStaff) {
                 try {
