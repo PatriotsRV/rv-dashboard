@@ -604,8 +604,14 @@ Deno.serve(async (req: Request) => {
       const createdBy = createdByName || createdByEmail || "Unknown";
       const createdByLine = createdByRole ? `${createdBy} · ${createdByRole}` : createdBy;
 
+      // [CHECKIN NOTIFY FIX v1.10 S97] Header now reflects the ACTUAL work type.
+      // Previously every drop-off was hard-labeled "Warranty Drop Off"; that was
+      // tolerable when the notice only fired for warranty/hybrid, but it now
+      // fires for standard New Work drop-offs too, so the label must match.
       const headerLabel = mode === "dropoff"
-        ? (workType === "hybrid" ? "Hybrid Warranty Drop Off" : "Warranty Drop Off")
+        ? (workType === "hybrid"   ? "Hybrid Drop Off (New Work + Warranty)" :
+           workType === "warranty" ? "Warranty Drop Off" :
+                                     "Drop Off (New Work)")
         : "New Customer Entry";
       const headerSub = mode === "dropoff"
         ? "Customer is on the lot — manager prep required"
