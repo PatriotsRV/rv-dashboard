@@ -40,7 +40,7 @@
 </head>
 <body>
   <h1>Enhancement Request Triage</h1>
-  <div class="sub">Patriots RV Services · snapshot 2026-06-07 (Phase 2a nightly runner) · dashboard v1.447 · <span id="count"></span> requests</div>
+  <div class="sub">Patriots RV Services · snapshot 2026-06-09 (Phase 2a nightly runner) · dashboard v1.447 · <span id="count"></span> requests</div>
 
   <div class="cards" id="stats"></div>
 
@@ -62,6 +62,8 @@
 
 <script>
 const DATA = [
+ {n:40,by:"Sofia",d:"2026-06-08",cat:"General UI/UX",st:"unreviewed",bucket:"bug",loe:"",theme:"Check-In",desc:"Check-in no longer emails staff that a customer checked in, nor sends staff a copy of the authorization form",verdict:"BUG/regression (functional, small). customer-checkin.html v1.9 L2187 shouldNotifyStaff fires only for mode=lead or warranty/hybrid drop-off, so standard New Work drop-offs send NO repair@ staff notice; the RAF copy + its info@ staff CC (L2165) only fire if a customer email was entered. Fix: notify staff on all drop-offs + decouple the RAF staff CC from the customer-email gate. Confirm intended scope with Roland."},
+
  {n:0,by:"Roland",d:"2026-04-09",cat:"General UI/UX",st:"declined",bucket:"done",loe:"",theme:"Test / housekeeping",desc:"Testing the Make-A-Wish function",verdict:"Test entry -- already declined."},
  {n:14,by:"Roland",d:"2026-04-11",cat:"Check-In",st:"done",bucket:"done",loe:"",theme:"Test / housekeeping",desc:"Testing ER form + dictation",verdict:"Test entry -- already done."},
  {n:15,by:"Roland",d:"2026-04-13",cat:"General UI/UX",st:"done",bucket:"done",loe:"",theme:"Test / housekeeping",desc:"Testing dictation 123",verdict:"Test entry -- already done (carried over, not re-triaged)."},
@@ -70,7 +72,7 @@ const DATA = [
  {n:5,by:"Lynn",d:"2026-04-09",cat:"Bug Report",st:"done",bucket:"done",loe:"",theme:"Work List",desc:"Work list opened but couldn't view/do anything once people added",verdict:"FIXED Phase 14 (work-list.js renderWorkList + removeFromWorkList + _workListActiveSilo). Close as done."},
  {n:12,by:"Brandon",d:"2026-04-09",cat:"RO Management",st:"done",bucket:"done",loe:"",theme:"Work List",desc:"Different work lists for jobs under different categories",verdict:"Delivered via per-silo Work List tabs (_renderWorkListSiloTabs). Close as done."},
  {n:17,by:"Lynn",d:"2026-04-14",cat:"Work Orders",st:"done",bucket:"done",loe:"",theme:"RO types & status",desc:"Add new RO status 'Ready to Work'",verdict:"Shipped v1.410 (STATUS_PROGRESS_MAP slot 50). Close as done."},
- {n:21,by:"Roland",d:"2026-04-27",cat:"RO Management",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"Fix customer check-in; ensure submitted data emails out; remove photo; streamline",verdict:"customer-checkin.html v1.6 made photo optional + forces RAF/lead-staff email every submission (S50/71/80). Matches request. Close."},
+ {n:21,by:"Roland",d:"2026-04-27",cat:"RO Management",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"Fix customer check-in; ensure submitted data emails out; remove photo; streamline",verdict:"customer-checkin.html (now v1.9) made photo optional + streamlined, and auto-emails the RAF copy (CC info@) plus lead/warranty staff notices. Core asks delivered -- close. NOTE: staff-notify gap on standard drop-offs is now tracked separately as bug n40."},
  {n:22,by:"Tipton",d:"2026-04-30",cat:"Check-In",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"iPhone: no way back to dashboard after clocking out of a job",verdict:"FIXED v1.447 (checkin.html v1.34 Return-to-Dashboard button after clock-out). Was a bug; now done."},
  {n:33,by:"Bobby",d:"2026-05-28",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Bugs / data",desc:"Amounts drop the period & zeros -- 425.00 shows as 425 on recheck",verdict:"FIXED v1.447 (2-decimal formatting on currency inputs: ro-crud.js editDollarValue .toFixed(2) + parts.js MONEY_FIELDS). Cosmetic, no data loss. Now done."},
 
