@@ -1,6 +1,27 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.14
+    PRVS Active Work List Report v1.15
+    v1.15: WEEKLY P&L SECTION (Session 99, 2026-06-10) — spec docs/specs/WEEKLY_PNL_SPEC.md v0.2.
+           New collapsible section between the stats bar and the report body:
+           (1) Week scorecard — Target / Revenue completed (+cashier-week fallback,
+               labeled) / WIP / Labor / Parts (matched) / Gross Profit / GP%.
+           (2) Silo x week matrix — ROs, hours, labor $, parts cum $, completed,
+               WIP, target, variance per silo + Overhead + Unattributed + TOTAL.
+               Amber dot = labor logged with zero revenue attached (missing WO signal).
+           (3) Per-RO drill-down modal (weekly_pnl_detail RPC) — hours, labor,
+               cumulative parts, parts promptness medians (request->order,
+               order->receive), WO value/status, Tech-done + Completed chips,
+               '⚠ no WO' badge, deep link to the RO on the dashboard.
+           (4) 13-week trend table — click a row to jump the scorecard/matrix
+               to that week. ◀ ▶ week navigation, unlimited history (refetches
+               in 13-week windows).
+           Data: weekly_pnl + weekly_pnl_detail SECURITY DEFINER RPCs (see
+           supabase/migrations/weekly_pnl_rpcs.sql) — server-side aggregation
+           unioning live tables + cashiered mirrors. Tech attribution:
+           staff.pnl_home_silo pin wins over clock-in service_type; 'Shop' ->
+           overhead. Costs: labor = hours x staff.hourly_rate; parts =
+           (wholesale + core) x qty per Roland 2026-06-10. Page is admin-only,
+           satisfying the v1 visibility rule (spec section 8).
     v1.14: Hardened loadUserRoles() — mirrors index.html v1.416 fix. user_roles
            and staff-table merge are now independent so a missing/duplicate
            `users` row no longer silently demotes a real staffer (Lynn loss bug).
@@ -997,6 +1018,69 @@
             .kpi-chips { gap: 4px; }
             .manager-section { margin: 8px; }
         }
+
+        /* ── v1.15 Weekly P&L ───────────────────────── */
+        .pnl-section { background:#fff; border:1px solid #e2e8f0; border-radius:14px;
+            margin:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.06); overflow:hidden; }
+        .pnl-header { display:flex; align-items:center; justify-content:space-between;
+            padding:14px 18px; cursor:pointer; user-select:none; background:linear-gradient(135deg,#1e3a5f,#16304e); }
+        .pnl-header h2 { margin:0; font-size:1.05rem; color:#fff; font-weight:800;
+            display:flex; align-items:center; gap:8px; }
+        .pnl-header .pnl-chev { color:#94a3b8; font-size:0.8rem; transition:transform 0.2s; }
+        .pnl-header .pnl-chev.open { transform:rotate(180deg); }
+        .pnl-body { padding:14px 18px; }
+        .pnl-body.collapsed { display:none; }
+        .pnl-weeknav { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+        .pnl-weeknav button { background:#1e3a5f; color:#fff; border:none; border-radius:8px;
+            padding:6px 12px; font-weight:700; cursor:pointer; font-size:0.9rem; }
+        .pnl-weeknav button:disabled { opacity:0.35; cursor:default; }
+        .pnl-weeknav .pnl-weeklabel { font-weight:800; font-size:1.05rem; color:#1e293b; min-width:170px; text-align:center; }
+        .pnl-cards { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+        .pnl-card { flex:1 1 120px; min-width:120px; background:#f8fafc; border:1px solid #e2e8f0;
+            border-radius:10px; padding:10px 12px; }
+        .pnl-card .pnl-card-label { font-size:0.68rem; font-weight:700; text-transform:uppercase;
+            letter-spacing:0.06em; color:#64748b; margin-bottom:4px; }
+        .pnl-card .pnl-card-value { font-size:1.25rem; font-weight:800; color:#1e293b; }
+        .pnl-card .pnl-card-sub { font-size:0.7rem; color:#94a3b8; margin-top:2px; }
+        .pnl-card.gp-pos .pnl-card-value { color:#16a34a; }
+        .pnl-card.gp-neg .pnl-card-value { color:#dc2626; }
+        .pnl-table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+        .pnl-table th { text-align:right; padding:8px 10px; color:#475569; font-size:0.7rem;
+            text-transform:uppercase; letter-spacing:0.05em; border-bottom:2px solid #e2e8f0; }
+        .pnl-table th:first-child { text-align:left; }
+        .pnl-table td { text-align:right; padding:8px 10px; border-bottom:1px solid #f1f5f9; color:#1e293b; }
+        .pnl-table td:first-child { text-align:left; font-weight:700; }
+        .pnl-table tr.pnl-clickable { cursor:pointer; }
+        .pnl-table tr.pnl-clickable:hover { background:#f0f7ff; }
+        .pnl-table tr.pnl-total td { border-top:2px solid #cbd5e1; font-weight:800; background:#f8fafc; }
+        .pnl-var-pos { color:#16a34a; font-weight:800; }
+        .pnl-var-mid { color:#d97706; font-weight:800; }
+        .pnl-var-neg { color:#dc2626; font-weight:800; }
+        .pnl-nowo-dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+            background:#f59e0b; margin-left:6px; vertical-align:middle; }
+        .pnl-subhead { font-size:0.8rem; font-weight:800; text-transform:uppercase;
+            letter-spacing:0.06em; color:#475569; margin:18px 0 8px; }
+        .pnl-trend-hit { color:#16a34a; font-weight:700; }
+        .pnl-trend-miss { color:#dc2626; font-weight:700; }
+        .pnl-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55);
+            z-index:10060; }
+        .pnl-modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+            background:#fff; border-radius:14px; padding:20px 22px; z-index:10061;
+            max-width:min(1080px,94vw); max-height:84vh; overflow:auto;
+            box-shadow:0 12px 48px rgba(0,0,0,0.35); }
+        .pnl-modal h3 { margin:0 0 12px; font-size:1.05rem; color:#1e293b; }
+        .pnl-chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.68rem;
+            font-weight:700; white-space:nowrap; }
+        .pnl-chip-done { background:#dcfce7; color:#166534; }
+        .pnl-chip-techdone { background:#dbeafe; color:#1e40af; }
+        .pnl-chip-nowo { background:#fef3c7; color:#92400e; }
+        .pnl-chip-status { background:#f1f5f9; color:#475569; }
+        .pnl-chip-src { background:#ede9fe; color:#5b21b6; }
+        @media (max-width: 768px) {
+            .pnl-section { margin:8px; }
+            .pnl-table { font-size:0.75rem; }
+            .pnl-table th, .pnl-table td { padding:6px 6px; }
+        }
     </style>
 </head>
 <body>
@@ -1031,6 +1115,9 @@
     </div>
 
     <div class="stats-bar" id="statsBar"></div>
+
+    <!-- v1.15: Weekly P&L (rendered by renderPnl) -->
+    <div id="pnlSection" style="display:none;"></div>
 
     <div id="reportBody">
         <div class="loading-state" id="loadingState">
@@ -1324,6 +1411,7 @@ function showApp() {
     document.getElementById('app').style.display = '';
     document.getElementById('userBadge').textContent = currentUser?.name || 'Admin';
     loadAllData();
+    loadPnl();          // v1.15 — Weekly P&L (one fetch; week nav refetches as needed)
     startAutoRefresh();
 }
 
@@ -3025,6 +3113,264 @@ function escHtml(str) {
 }
 
 // ── Init ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// v1.15 — WEEKLY P&L (spec: docs/specs/WEEKLY_PNL_SPEC.md)
+// Data: weekly_pnl(p_start,p_end) + weekly_pnl_detail(p_week,p_silo) RPCs.
+// ══════════════════════════════════════════════════════════
+let _pnlRows = [];                 // raw rpc rows across the fetched range
+let _pnlRangeStartISO = null;      // earliest week fetched
+let _pnlSelectedISO = null;        // selected week (Monday, YYYY-MM-DD)
+let _pnlOpen = localStorage.getItem('prvs_pnl_open') !== '0';
+let _pnlLoading = false;
+
+const PNL_EXTRA_SILOS = {
+    overhead:     { label: 'Overhead',     emoji: '&#128736;&#65039;' },
+    unattributed: { label: 'Unattributed', emoji: '&#10067;' },
+};
+
+function pnlMondayOf(d) {
+    const dt = new Date(d);
+    dt.setHours(0, 0, 0, 0);
+    dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+    return dt;
+}
+function pnlISO(dt) {
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function pnlWeekLabel(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const lbl = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const thisYear = (new Date()).getFullYear();
+    return 'Week of ' + lbl + (y !== thisYear ? ' ' + y : '');
+}
+function pnlShiftISO(iso, days) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    return pnlISO(dt);
+}
+function pnlFmt2(n) {
+    return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+async function loadPnl(weeksBack = 12) {
+    if (_pnlLoading) return;
+    _pnlLoading = true;
+    try {
+        const curMon = pnlMondayOf(new Date());
+        const startISO = pnlShiftISO(pnlISO(curMon), -7 * weeksBack);
+        const { data, error } = await getSB().rpc('weekly_pnl', {
+            p_start: startISO, p_end: pnlISO(curMon)
+        });
+        if (error) throw error;
+        _pnlRows = data || [];
+        _pnlRangeStartISO = startISO;
+        if (!_pnlSelectedISO) _pnlSelectedISO = pnlISO(curMon);
+        renderPnl();
+    } catch (err) {
+        console.error('weekly_pnl load error:', err);
+        const el = document.getElementById('pnlSection');
+        if (el) { el.style.display = ''; el.innerHTML = '<div class="pnl-section"><div class="pnl-body" style="color:#dc2626;font-weight:700;">Weekly P&amp;L failed to load: ' + escHtml(err.message || String(err)) + '</div></div>'; }
+    } finally {
+        _pnlLoading = false;
+    }
+}
+
+function pnlToggle() {
+    _pnlOpen = !_pnlOpen;
+    localStorage.setItem('prvs_pnl_open', _pnlOpen ? '1' : '0');
+    renderPnl();
+}
+
+async function pnlNavWeek(dir) {
+    const next = pnlShiftISO(_pnlSelectedISO, dir * 7);
+    const curISO = pnlISO(pnlMondayOf(new Date()));
+    if (next > curISO) return;
+    _pnlSelectedISO = next;
+    if (next < _pnlRangeStartISO) {
+        const weeksBack = Math.ceil((new Date(curISO) - new Date(next)) / (7 * 86400000)) + 13;
+        await loadPnl(weeksBack);
+        return;
+    }
+    renderPnl();
+}
+function pnlJumpWeek(iso) { _pnlSelectedISO = iso; renderPnl(); }
+
+function pnlWeekRows(iso) { return _pnlRows.filter(r => r.week_start === iso); }
+
+function pnlVarClass(rev, target) {
+    if (target == null) return '';
+    if (rev >= target) return 'pnl-var-pos';
+    if (rev >= target * 0.8) return 'pnl-var-mid';
+    return 'pnl-var-neg';
+}
+
+function renderPnl() {
+    const el = document.getElementById('pnlSection');
+    if (!el) return;
+    el.style.display = '';
+
+    const rows = pnlWeekRows(_pnlSelectedISO);
+    const num = (v) => Number(v) || 0;
+    const sum = (f) => rows.reduce((s, r) => s + num(r[f]), 0);
+    const revDone = sum('revenue_completed');
+    const revFall = sum('revenue_fallback');
+    const revAll  = revDone + revFall;
+    const labor   = sum('labor_cost');
+    const partsM  = sum('parts_cost_matched');
+    const wipTot  = sum('revenue_wip');
+    const target  = rows.reduce((s, r) => s + (r.target != null ? Number(r.target) : 0), 0);
+    const hasTarget = rows.some(r => r.target != null);
+    const gp = revAll - labor - partsM;
+    const gpPct = revAll > 0 ? Math.round(gp / revAll * 100) : null;
+    const curISO = pnlISO(pnlMondayOf(new Date()));
+
+    // ── scorecard ──
+    const cards = [
+        hasTarget ? { l: 'Target', v: pnlFmt2(target) } : null,
+        { l: 'Revenue completed', v: pnlFmt2(revAll), sub: revFall > 0 ? pnlFmt2(revFall) + ' via cashier-week fallback' : null },
+        { l: 'Revenue WIP', v: pnlFmt2(wipTot) },
+        { l: 'Labor cost', v: pnlFmt2(labor) },
+        { l: 'Parts (matched)', v: pnlFmt2(partsM) },
+        { l: 'Gross profit', v: pnlFmt2(gp), cls: gp >= 0 ? 'gp-pos' : 'gp-neg', sub: gpPct != null ? gpPct + '% of revenue' : null },
+    ].filter(Boolean);
+    const cardsHtml = cards.map(c =>
+        '<div class="pnl-card ' + (c.cls || '') + '"><div class="pnl-card-label">' + c.l + '</div>' +
+        '<div class="pnl-card-value">' + c.v + '</div>' +
+        (c.sub ? '<div class="pnl-card-sub">' + c.sub + '</div>' : '') + '</div>'
+    ).join('');
+
+    // ── silo matrix ──
+    const order = SERVICE_SILOS.map(s => s.key).concat(['unattributed', 'overhead']);
+    const present = order.filter(k => rows.some(r => r.service_silo === k));
+    const matrixRows = present.map(k => {
+        const r = rows.find(x => x.service_silo === k) || {};
+        const meta = SILO_MAP[k] || PNL_EXTRA_SILOS[k] || { label: k, emoji: '' };
+        const rRev = num(r.revenue_completed) + num(r.revenue_fallback);
+        const noRevDot = (num(r.hours) > 0 && rRev === 0 && num(r.revenue_wip) === 0)
+            ? '<span class="pnl-nowo-dot" title="Labor logged with zero revenue attached this week - check that work orders exist and are priced"></span>' : '';
+        const varCell = r.target != null
+            ? '<span class="' + pnlVarClass(rRev, Number(r.target)) + '">' + pnlFmt2(rRev - Number(r.target)) + '</span>'
+            : '<span style="color:#cbd5e1;">&mdash;</span>';
+        const clickable = (k !== 'overhead') || num(r.hours) > 0;
+        return '<tr class="' + (clickable ? 'pnl-clickable' : '') + '"' +
+               (clickable ? ' onclick="openPnlDetail(\'' + _pnlSelectedISO + '\',\'' + k + '\')"' : '') + '>' +
+            '<td>' + meta.emoji + ' ' + escHtml(meta.label) + noRevDot + '</td>' +
+            '<td>' + num(r.ro_count) + '</td>' +
+            '<td>' + num(r.hours).toFixed(1) + '</td>' +
+            '<td>' + pnlFmt2(r.labor_cost) + '</td>' +
+            '<td>' + pnlFmt2(r.parts_cost_cum) + '</td>' +
+            '<td>' + pnlFmt2(rRev) + '</td>' +
+            '<td>' + pnlFmt2(r.revenue_wip) + '</td>' +
+            '<td>' + (r.target != null ? pnlFmt2(r.target) : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
+            '<td>' + varCell + '</td></tr>';
+    }).join('');
+    const totalRow = '<tr class="pnl-total"><td>TOTAL</td>' +
+        '<td>' + rows.reduce((s, r) => s + num(r.ro_count), 0) + '</td>' +
+        '<td>' + sum('hours').toFixed(1) + '</td>' +
+        '<td>' + pnlFmt2(labor) + '</td>' +
+        '<td>' + pnlFmt2(sum('parts_cost_cum')) + '</td>' +
+        '<td>' + pnlFmt2(revAll) + '</td>' +
+        '<td>' + pnlFmt2(wipTot) + '</td>' +
+        '<td>' + (hasTarget ? pnlFmt2(target) : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
+        '<td>' + (hasTarget ? '<span class="' + pnlVarClass(revAll, target) + '">' + pnlFmt2(revAll - target) + '</span>' : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td></tr>';
+
+    // ── 13-week trend ──
+    const weekISOs = [...new Set(_pnlRows.map(r => r.week_start))].sort().reverse().slice(0, 13);
+    const trendRows = weekISOs.map(iso => {
+        const wr = pnlWeekRows(iso);
+        const rv = wr.reduce((s, r) => s + num(r.revenue_completed) + num(r.revenue_fallback), 0);
+        const tg = wr.reduce((s, r) => s + (r.target != null ? Number(r.target) : 0), 0);
+        const hasTg = wr.some(r => r.target != null);
+        const lb = wr.reduce((s, r) => s + num(r.labor_cost), 0);
+        const pm = wr.reduce((s, r) => s + num(r.parts_cost_matched), 0);
+        const g  = rv - lb - pm;
+        const sel = iso === _pnlSelectedISO ? ' style="background:#f0f7ff;"' : '';
+        return '<tr class="pnl-clickable"' + sel + ' onclick="pnlJumpWeek(\'' + iso + '\')">' +
+            '<td>' + pnlWeekLabel(iso) + (iso === curISO ? ' <span style="color:#16a34a;font-size:0.7rem;font-weight:800;">CURRENT</span>' : '') + '</td>' +
+            '<td>' + pnlFmt2(rv) + '</td>' +
+            '<td>' + (hasTg ? pnlFmt2(tg) : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
+            '<td>' + (hasTg ? '<span class="' + (rv >= tg ? 'pnl-trend-hit' : 'pnl-trend-miss') + '">' + (rv >= tg ? 'HIT' : 'MISS') + '</span>' : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
+            '<td>' + pnlFmt2(lb) + '</td>' +
+            '<td>' + pnlFmt2(pm) + '</td>' +
+            '<td style="font-weight:800;color:' + (g >= 0 ? '#16a34a' : '#dc2626') + ';">' + pnlFmt2(g) + '</td></tr>';
+    }).join('');
+
+    el.innerHTML =
+        '<div class="pnl-section">' +
+          '<div class="pnl-header" onclick="pnlToggle()">' +
+            '<h2>&#128202; Weekly P&amp;L <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;">admin</span></h2>' +
+            '<span class="pnl-chev ' + (_pnlOpen ? 'open' : '') + '">&#9660;</span>' +
+          '</div>' +
+          '<div class="pnl-body ' + (_pnlOpen ? '' : 'collapsed') + '">' +
+            '<div class="pnl-weeknav">' +
+              '<button onclick="pnlNavWeek(-1)">&#9664;</button>' +
+              '<span class="pnl-weeklabel">' + pnlWeekLabel(_pnlSelectedISO) + '</span>' +
+              '<button onclick="pnlNavWeek(1)" ' + (_pnlSelectedISO >= curISO ? 'disabled' : '') + '>&#9654;</button>' +
+            '</div>' +
+            '<div class="pnl-cards">' + cardsHtml + '</div>' +
+            (rows.length === 0 ? '<div style="color:#94a3b8;padding:8px 0;">No activity recorded for this week.</div>' :
+            '<table class="pnl-table"><thead><tr>' +
+              '<th>Silo</th><th>ROs</th><th>Hours</th><th>Labor</th><th>Parts (cum)</th>' +
+              '<th>Completed</th><th>WIP</th><th>Target</th><th>Var</th>' +
+            '</tr></thead><tbody>' + matrixRows + totalRow + '</tbody></table>') +
+            '<div class="pnl-subhead">Trend &mdash; last 13 weeks</div>' +
+            '<table class="pnl-table"><thead><tr>' +
+              '<th>Week</th><th>Revenue</th><th>Target</th><th></th><th>Labor</th><th>Parts</th><th>GP</th>' +
+            '</tr></thead><tbody>' + trendRows + '</tbody></table>' +
+          '</div>' +
+        '</div>';
+}
+
+async function openPnlDetail(weekISO, silo) {
+    const meta = SILO_MAP[silo] || PNL_EXTRA_SILOS[silo] || { label: silo, emoji: '' };
+    const overlay = document.getElementById('pnlOverlay');
+    const modal = document.getElementById('pnlModal');
+    overlay.style.display = 'block';
+    modal.style.display = 'block';
+    modal.innerHTML = '<h3>' + meta.emoji + ' ' + escHtml(meta.label) + ' &mdash; ' + pnlWeekLabel(weekISO) + '</h3><div style="color:#94a3b8;">Loading...</div>';
+    try {
+        const { data, error } = await getSB().rpc('weekly_pnl_detail', { p_week: weekISO, p_silo: silo });
+        if (error) throw error;
+        const rows = (data || []).map(r => {
+            const woChips = [];
+            if (r.wo_value == null && silo !== 'overhead' && silo !== 'unattributed') {
+                woChips.push('<span class="pnl-chip pnl-chip-nowo">&#9888; no WO</span>');
+            } else if (r.wo_value != null) {
+                woChips.push('<span class="pnl-chip pnl-chip-status">' + escHtml(r.wo_status || '?') + '</span>');
+            }
+            if (r.completed_at) woChips.push('<span class="pnl-chip pnl-chip-done">&#10003; Completed ' + escHtml(String(r.completed_at).slice(0, 10)) + '</span>');
+            else if (r.tech_done_at) woChips.push('<span class="pnl-chip pnl-chip-techdone">Tech done ' + escHtml(String(r.tech_done_at).slice(0, 10)) + '</span>');
+            if (r.src === 'cashiered') woChips.push('<span class="pnl-chip pnl-chip-src">cashiered</span>');
+            const lag = (r.med_req_to_order_d != null ? Number(r.med_req_to_order_d) + 'd' : '&mdash;') + ' / ' +
+                        (r.med_order_to_recv_d != null ? Number(r.med_order_to_recv_d) + 'd' : '&mdash;');
+            return '<tr>' +
+                '<td><a href="index.html?ro=' + encodeURIComponent(r.ro_code || '') + '" target="_blank" style="color:#1e3a5f;font-weight:700;">' + escHtml(r.ro_code || '?') + '</a><br>' +
+                '<span style="color:#475569;">' + escHtml(r.customer_name || '') + '</span><br>' +
+                '<span style="color:#94a3b8;font-size:0.72rem;">' + escHtml(r.rv || '') + '</span></td>' +
+                '<td>' + Number(r.hours || 0).toFixed(1) + '</td>' +
+                '<td>' + pnlFmt2(r.labor_cost) + '</td>' +
+                '<td>' + pnlFmt2(r.parts_cost_cum) + '</td>' +
+                '<td style="font-size:0.75rem;color:#475569;" title="Median days: request to order / order to receive">' + lag + '</td>' +
+                '<td>' + (r.wo_value != null ? pnlFmt2(r.wo_value) : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
+                '<td style="text-align:left;">' + woChips.join(' ') + '</td></tr>';
+        }).join('');
+        modal.innerHTML = '<h3>' + meta.emoji + ' ' + escHtml(meta.label) + ' &mdash; ' + pnlWeekLabel(weekISO) +
+            ' <span style="float:right;cursor:pointer;color:#94a3b8;font-size:1.2rem;" onclick="closePnlDetail()">&#10005;</span></h3>' +
+            (rows ? '<table class="pnl-table"><thead><tr>' +
+                '<th>RO</th><th>Hours</th><th>Labor</th><th>Parts (cum)</th><th>Parts lag</th><th>WO value</th><th style="text-align:left;">Status</th>' +
+                '</tr></thead><tbody>' + rows + '</tbody></table>'
+                : '<div style="color:#94a3b8;">No ROs for this silo-week.</div>');
+    } catch (err) {
+        modal.innerHTML += '<div style="color:#dc2626;font-weight:700;">Failed: ' + escHtml(err.message || String(err)) + '</div>';
+    }
+}
+function closePnlDetail() {
+    document.getElementById('pnlOverlay').style.display = 'none';
+    document.getElementById('pnlModal').style.display = 'none';
+}
+
 window.addEventListener('load', () => {
     // Wait for Google Identity Services to load
     const checkGis = setInterval(() => {
@@ -3040,6 +3386,10 @@ window.addEventListener('load', () => {
     }, 5000);
 });
 </script>
+
+<!-- v1.15: Weekly P&L drill-down modal -->
+<div id="pnlOverlay" class="pnl-overlay" onclick="closePnlDetail()"></div>
+<div id="pnlModal" class="pnl-modal"></div>
 
 <!-- v1.10: Per-tech daily drill-down modal (opened from Staff Status tile mini-bars) -->
 <div id="techDayOverlay" class="techday-overlay" onclick="closeTechDayModal()"></div>
