@@ -40,7 +40,7 @@
 </head>
 <body>
   <h1>Enhancement Request Triage</h1>
-  <div class="sub">Patriots RV Services · snapshot 2026-06-07 (Phase 2a nightly runner) · dashboard v1.447 · <span id="count"></span> requests</div>
+  <div class="sub">Patriots RV Services · snapshot 2026-06-10 (Phase 2a nightly runner) · dashboard v1.447 · <span id="count"></span> requests</div>
 
   <div class="cards" id="stats"></div>
 
@@ -70,17 +70,21 @@ const DATA = [
  {n:5,by:"Lynn",d:"2026-04-09",cat:"Bug Report",st:"done",bucket:"done",loe:"",theme:"Work List",desc:"Work list opened but couldn't view/do anything once people added",verdict:"FIXED Phase 14 (work-list.js renderWorkList + removeFromWorkList + _workListActiveSilo). Close as done."},
  {n:12,by:"Brandon",d:"2026-04-09",cat:"RO Management",st:"done",bucket:"done",loe:"",theme:"Work List",desc:"Different work lists for jobs under different categories",verdict:"Delivered via per-silo Work List tabs (_renderWorkListSiloTabs). Close as done."},
  {n:17,by:"Lynn",d:"2026-04-14",cat:"Work Orders",st:"done",bucket:"done",loe:"",theme:"RO types & status",desc:"Add new RO status 'Ready to Work'",verdict:"Shipped v1.410 (STATUS_PROGRESS_MAP slot 50). Close as done."},
- {n:21,by:"Roland",d:"2026-04-27",cat:"RO Management",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"Fix customer check-in; ensure submitted data emails out; remove photo; streamline",verdict:"customer-checkin.html v1.6 made photo optional + forces RAF/lead-staff email every submission (S50/71/80). Matches request. Close."},
+ {n:21,by:"Roland",d:"2026-04-27",cat:"RO Management",st:"done",bucket:"done",loe:"",theme:"Check-In",desc:"Fix customer check-in; ensure submitted data emails out; remove photo; streamline",verdict:"customer-checkin.html v1.11 made photo optional + auto-emails the signed RAF on every drop-off (customer + cc info@, or info@ alone). Matches request. Close."},
  {n:22,by:"Tipton",d:"2026-04-30",cat:"Check-In",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"iPhone: no way back to dashboard after clocking out of a job",verdict:"FIXED v1.447 (checkin.html v1.34 Return-to-Dashboard button after clock-out). Was a bug; now done."},
  {n:33,by:"Bobby",d:"2026-05-28",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Bugs / data",desc:"Amounts drop the period & zeros -- 425.00 shows as 425 on recheck",verdict:"FIXED v1.447 (2-decimal formatting on currency inputs: ro-crud.js editDollarValue .toFixed(2) + parts.js MONEY_FIELDS). Cosmetic, no data loss. Now done."},
+ {n:40,by:"Sofia",d:"2026-06-08",cat:"General UI/UX",st:"done",bucket:"done",loe:"",theme:"Check-In",desc:"Customer check-in no longer emails staff nor sends a copy of the authorization form",verdict:"FIXED v1.10/v1.11 (S97): shouldNotifyStaff fires on every drop-off (repair@ notice) + signed RAF always sends (customer+cc info@, or info@ alone); v1.11 fixed getSignatureData typo that aborted RAF emails. Was a bug; now done."},
+ {n:42,by:"Sofia",d:"2026-06-09",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"Returning customer (Sheldon Gilbert) checked in -- no email as before",verdict:"Same defect as n40; resolved by v1.10/v1.11 (fix covers returning-customer drop-offs). Duplicate of n40 -- now done."},
 
  {n:25,by:"Ryan",d:"2026-05-06",cat:"General UI/UX",st:"unreviewed",bucket:"data",loe:"",theme:"Bugs / data",desc:"Zak, Rod, Travis last name should be Wombles not Wimbles in tech assignment",verdict:"DATA not code. staff.name = 'X Wimbles'; not hardcoded. Fix = 1 SQL UPDATE (Roland runs): UPDATE staff SET name=REPLACE(name,'Wimbles','Wombles') WHERE name ILIKE '%Wimbles%';"},
 
  {n:11,by:"Riley",d:"2026-04-09",cat:"Work List",st:"declined",bucket:"done",loe:"",theme:"Work List",desc:"[exact duplicate of n10]",verdict:"Exact duplicate of n10 (same text + timestamp); already declined. Folded into n10."},
+ {n:41,by:"Brandon",d:"2026-06-09",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Scheduling & key dates",desc:"[duplicate of n24] Selection for customer completion or P-U date to record when units leave the lot",verdict:"Duplicate of n24 (same submitter, same ask). No completion/pickup date field in code; tracked under n24 in the Key Dates pass. Fold into n24."},
+ {n:44,by:"Roland",d:"2026-06-09",cat:"Work List",st:"unreviewed",bucket:"done",loe:"",theme:"Work List",desc:"[exact duplicate of n43]",verdict:"Exact duplicate of n43 (identical text, +1s). Folded into n43."},
 
  {n:4,by:"Lynn",d:"2026-04-09",cat:"New Feature",st:"in-progress",bucket:"needed",loe:"M",theme:"Scheduling & key dates",desc:"Scheduled future drop-off date + email reminder to manager 1 day before",verdict:"Open. No drop-date field/reminder in scheduling.js. Bundle as a Key Dates pass (n24/n29/n36/n37)."},
  {n:36,by:"Lynn",d:"2026-06-02",cat:"General UI/UX",st:"unreviewed",bucket:"needed",loe:"S",theme:"Scheduling & key dates",desc:"Scheduled drop date field in entry dashboard",verdict:"Open. Duplicate intent of n4; same Key Dates pass."},
- {n:24,by:"Brandon",d:"2026-05-06",cat:"New Feature",st:"unreviewed",bucket:"needed",loe:"M",theme:"Scheduling & key dates",desc:"Completion / pickup date on the customer's order for reference",verdict:"Open. No completion/pickup date field. Part of Key Dates pass."},
+ {n:24,by:"Brandon",d:"2026-05-06",cat:"New Feature",st:"unreviewed",bucket:"needed",loe:"M",theme:"Scheduling & key dates",desc:"Completion / pickup date on the customer's order for reference",verdict:"Open. No completion_date/pickup_date field in code (confirmed by grep). Part of Key Dates pass; also covers n41."},
  {n:29,by:"Lynn",d:"2026-05-21",cat:"General UI/UX",st:"unreviewed",bucket:"needed",loe:"M",theme:"Scheduling & key dates",desc:"Promised date large/highlighted on tile; sort by promise date then days-on-lot",verdict:"Open. Tile emphasis + sort not implemented. Part of Key Dates pass."},
  {n:37,by:"Roland",d:"2026-06-07",cat:"Calendar",st:"unreviewed",bucket:"needed",loe:"L",theme:"Scheduling & key dates",desc:"RO date/time as a prominent colored RO button + integrate into business calendar(s) with advance notifications",verdict:"Open (new). Umbrella ask tying drop-off/promised/completion dates (n4/n24/n29) to a calendar surface + notifications. Multi-session."},
 
@@ -97,8 +101,9 @@ const DATA = [
  {n:27,by:"Lynn",d:"2026-05-13",cat:"RO Management",st:"unreviewed",bucket:"needed",loe:"S",theme:"Parts",desc:"Parts missing / ordered-and-returned (Gordon)",verdict:"Open. Specific case of return-to-supplier; fold into n7."},
  {n:6,by:"Lynn",d:"2026-04-09",cat:"Parts",st:"unreviewed",bucket:"needed",loe:"XL",theme:"Parts",desc:"In-house parts inventory/stock (order 25, 20 to stock, searchable)",verdict:"Open. No inventory subsystem -- largest parts ask, new subsystem."},
 
- {n:10,by:"Riley",d:"2026-04-09",cat:"Work List",st:"unreviewed",bucket:"needed",loe:"M",theme:"Work List",desc:"Mobile: too small to adjust on phone; drag-and-drop reorder (couldn't delete)",verdict:"Delete now works (x button). Remaining: mobile sizing + drag-drop reorder in work-list.js."},
+ {n:10,by:"Riley",d:"2026-04-09",cat:"Work List",st:"unreviewed",bucket:"needed",loe:"S",theme:"Work List",desc:"Mobile: too small to adjust on phone; touch-drag reorder",verdict:"Delete + desktop drag-drop reorder NOW shipped (work-list.js row.draggable + dragstart/dragover/drop + _saveWorkListOrder, L304-392). Remaining: phone sizing + touch-drag (no touchmove handler). Small mobile polish."},
  {n:31,by:"Lynn",d:"2026-05-21",cat:"General UI/UX",st:"unreviewed",bucket:"needed",loe:"L",theme:"Work List",desc:"Returning check-in auto-adds customer to each involved team lead's work list",verdict:"Open. Check-in -> work-list integration not present. Multi-session."},
+ {n:43,by:"Roland",d:"2026-06-09",cat:"Work List",st:"unreviewed",bucket:"needed",loe:"M",theme:"Work List",desc:"Auto-remove an RO from a manager's work list the day after it is Cashiered Out / Delivered",verdict:"Open (new). work-list.js has manual removeFromWorkList only; no cashier/delivered-triggered auto-removal (grep). Needs a daily job or status hook. Medium."},
 
  {n:18,by:"Lynn",d:"2026-04-14",cat:"RO Management",st:"unreviewed",bucket:"needed",loe:"M",theme:"RO fields & status nuance",desc:"Fields: 'keep plugged in' flag; keys / no keys / keypad code",verdict:"Open. Not in ro-crud.js schema. Overlaps n34."},
  {n:34,by:"Brandon",d:"2026-05-29",cat:"New Feature",st:"unreviewed",bucket:"needed",loe:"S",theme:"RO fields & status nuance",desc:"Confirm if customer leaves keys with the unit (RO / sign-in / auth form)",verdict:"Open. Overlaps n18 keys field -- bundle."},
