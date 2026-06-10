@@ -69,6 +69,7 @@
                         retailPrice:     row.retail_price || '',
                         coreCharge:      row.core_charge || '',
                         laborHours:      row.labor_hours || '',
+                        serviceSilo:     row.service_silo || '',
                         supplier:        row.supplier || '',
                         salesAssocName:  row.sales_assoc_name || '',
                         salesAssocPhone: row.sales_assoc_phone || '',
@@ -180,10 +181,15 @@
                                     </select></div>
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Qty</label><input type="number" id="pf_qty" value="1" min="1" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
-                            <div style="display:grid;grid-template-columns:1fr 3fr;gap:10px;margin-bottom:16px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;margin-bottom:16px;">
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Work Order Master Status</label>
                                     <select id="pf_status" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
                                         ${PART_STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
+                                    </select></div>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Service Silo</label>
+                                    <select id="pf_serviceSilo" data-default="${(() => { const ks = (ro.repairType || '').split(',').map(t => REPAIR_TYPE_TO_SILO[t.trim().toLowerCase()]).filter(Boolean); return ks.length === 1 ? ks[0] : ''; })()}" title="Which team's work this part belongs to — feeds the Weekly P&L parts costs" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
+                                        <option value="">Select silo…</option>
+                                        ${(() => { const ks = (ro.repairType || '').split(',').map(t => REPAIR_TYPE_TO_SILO[t.trim().toLowerCase()]).filter(Boolean); return SERVICE_SILOS.map(s => `<option value="${s.key}">${s.emoji} ${s.label}${ks.includes(s.key) ? ' — on this RO' : ''}</option>`).join(''); })()}
                                     </select></div>
                                 <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Overall WO Notes</label><input type="text" id="pf_notes" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;"></div>
                             </div>
@@ -267,6 +273,9 @@
             document.getElementById('pf_qty').value = '1';
             document.getElementById('pf_status').value = 'Ordered';
             document.getElementById('pf_dateOrdered').value = new Date().toISOString().slice(0,10);
+            // Weekly P&L (S99): default the silo for single-silo ROs on fresh adds
+            const _siloSel = document.getElementById('pf_serviceSilo');
+            if (_siloSel && editIndex === undefined) _siloSel.value = _siloSel.dataset.default || '';
             document.getElementById('pf_editIndex').value = editIndex !== undefined ? editIndex : '';
             document.getElementById('addPartFormTitle').textContent = editIndex !== undefined ? '✏️ Edit Part' : '+ Add New Part';
 
@@ -317,6 +326,7 @@
                 retailPrice:     gv('pf_retailPrice'),
                 coreCharge:      gv('pf_coreCharge'),
                 laborHours:      gv('pf_laborHours'),
+                serviceSilo:     gv('pf_serviceSilo'),
                 supplier:        gv('pf_supplier'),
                 salesAssocName:  gv('pf_salesAssocName'),
                 salesAssocPhone: gv('pf_salesAssocPhone'),
@@ -468,6 +478,7 @@
                 retail_price:     part.retailPrice ? parseFloat(part.retailPrice) : null,
                 core_charge:      part.coreCharge ? parseFloat(part.coreCharge) : null,
                 labor_hours:      part.laborHours ? parseFloat(part.laborHours) : null,
+                service_silo:     part.serviceSilo || null,
                 supplier:         part.supplier || null,
                 sales_assoc_name: part.salesAssocName || null,
                 sales_assoc_phone:part.salesAssocPhone || null,
@@ -501,6 +512,7 @@
                 retail_price:     part.retailPrice ? parseFloat(part.retailPrice) : null,
                 core_charge:      part.coreCharge ? parseFloat(part.coreCharge) : null,
                 labor_hours:      part.laborHours ? parseFloat(part.laborHours) : null,
+                service_silo:     part.serviceSilo || null,
                 supplier:         part.supplier || null,
                 sales_assoc_name: part.salesAssocName || null,
                 sales_assoc_phone:part.salesAssocPhone || null,

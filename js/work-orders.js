@@ -152,6 +152,13 @@
                                 ? `<span style="background:${statusColor};color:white;border-radius:12px;padding:3px 10px;font-size:0.75rem;font-weight:600;">${WO_STATUS_LABELS[wo.status] || wo.status}</span>
                                    <span style="font-weight:700;color:#1e3a5f;">$${parseFloat(wo.dollar_value||0).toLocaleString('en-US',{minimumFractionDigits:2})}</span>${totalEstHours > 0 ? `<span style="font-size:0.75rem;color:#475569;font-weight:600;">⏱️ ~${totalEstHours}h</span>` : ""}`
                                 : `<span style="color:#94a3b8;font-size:0.8rem;font-style:italic;">No work order yet</span>`}
+                            ${wo && wo.completed_at ? `<span title="QA/QC + customer informed — revenue recognized this week (Weekly P&L)" style="background:#dcfce7;color:#166534;border-radius:12px;padding:3px 10px;font-size:0.72rem;font-weight:700;">✓ Completed ${String(wo.completed_at).slice(0,10)}</span>` : ''}
+                            ${wo && !wo.completed_at && wo.tech_done_at ? `<span title="Tech lead says their work is done — awaiting manager Done-Done" style="background:#dbeafe;color:#1e40af;border-radius:12px;padding:3px 10px;font-size:0.72rem;font-weight:700;">🔵 Tech done ${String(wo.tech_done_at).slice(0,10)}</span>` : ''}
+                            ${wo && canManage && !(typeof isInsuranceWoWriterOnly === 'function' && isInsuranceWoWriterOnly(silo.key))
+                                ? (wo.completed_at
+                                    ? `<button onclick="event.stopPropagation();reopenWOCompleted(${roIndex},'${wo.id}','${silo.key}')" class="wo-action-btn" style="background:#f1f5f9;color:#475569;" title="Reopen — clears the completion; revenue moves out of the completed week">↩ Reopen</button>`
+                                    : `<button onclick="event.stopPropagation();markWOCompleted(${roIndex},'${wo.id}','${silo.key}',this)" class="wo-action-btn" style="background:#16a34a;color:#fff;" title="Done-Done: QA/QC passed + customer informed. Recognizes this WO's revenue in this week's P&L.">✓ Mark Completed</button>`)
+                                : ''}
                             ${canManage ? `<button onclick="event.stopPropagation();openBuildWOForm(${roIndex},'${silo.key}')" class="wo-action-btn">${wo ? '✏️ Edit' : '+ Build'}</button>` : ''}
                             ${siloTasks.length > 0 ? `<button id="wo-chev-${silo.key}-${roIndex}" onclick="event.stopPropagation();toggleWOTasks('wo-tasks-${silo.key}-${roIndex}','wo-chev-${silo.key}-${roIndex}')" class="wo-chev-btn" title="Show/hide tasks">►</button>` : ''}
                         </div>
@@ -628,6 +635,83 @@
             }
         }
 
+        // ════════════════════════════════════════════════════════════
+        // WEEKLY P&L (Session 99) — two-stage WO completion, manager half.
+        // markWOCompleted = "Done-Done": QA/QC passed, all known/requested
+        // work finished, customer informed. Sets status='completed' +
+        // completed_at/by — THE revenue-recognition event for weekly_pnl().
+        // Two-step inline confirm (no confirm() dialog per toast-system rule).
+        // RLS: swo_update allows silo manager / sr+admin; the Insurance WO
+        // Writer trigger independently blocks that role from 'completed'.
+        // ════════════════════════════════════════════════════════════
+        export async function markWOCompleted(roIndex, woId, siloKey, btn) {
+            if (btn && btn.dataset.armed !== '1') {
+                btn.dataset.armed = '1';
+                btn.textContent = 'Confirm: complete?';
+                btn.style.background = '#d97706';
+                setTimeout(() => {
+                    if (btn && btn.dataset.armed === '1') {
+                        btn.dataset.armed = '';
+                        btn.textContent = '✓ Mark Completed';
+                        btn.style.background = '#16a34a';
+                    }
+                }, 5000);
+                return;
+            }
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const sb = getSB();
+            if (!sb || !supabaseSession) { showToast('Session expired — please refresh the page.', 'warning'); return; }
+            const userEmail = (supabaseSession?.user?.email || '').toLowerCase();
+            try {
+                const { data: prevRows } = await sb.from('service_work_orders').select('status').eq('id', woId);
+                const prevStatus = prevRows?.[0]?.status || null;
+                const { data, error } = await sb.from('service_work_orders').update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString(),
+                    completed_by: userEmail,
+                    updated_at: new Date().toISOString()
+                }).eq('id', woId).select();
+                if (error) throw error;
+                if (!data || data.length === 0) throw new Error('No row updated (permission?)');
+                try {
+                    await writeAuditLog(ro._supabaseId, [{ field: 'wo_' + siloKey + '_status', oldValue: prevStatus, newValue: 'completed (Done-Done)' }]);
+                } catch (e) { console.error('audit log failed:', e); }
+                showToast('✓ ' + siloKey + ' work order completed — revenue recognized this week.', 'success');
+                const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
+                renderWorkOrderView(roIndex, currentData[roIndex], orders, tasks);
+            } catch (err) {
+                console.error('❌ markWOCompleted:', err);
+                showToast('Failed to mark completed: ' + (err.message || err), 'error');
+            }
+        }
+
+        export async function reopenWOCompleted(roIndex, woId, siloKey) {
+            const ro = currentData[roIndex];
+            if (!ro) return;
+            const sb = getSB();
+            if (!sb || !supabaseSession) { showToast('Session expired — please refresh the page.', 'warning'); return; }
+            try {
+                const { data, error } = await sb.from('service_work_orders').update({
+                    status: 'in_progress',
+                    completed_at: null,
+                    completed_by: null,
+                    updated_at: new Date().toISOString()
+                }).eq('id', woId).select();
+                if (error) throw error;
+                if (!data || data.length === 0) throw new Error('No row updated (permission?)');
+                try {
+                    await writeAuditLog(ro._supabaseId, [{ field: 'wo_' + siloKey + '_status', oldValue: 'completed', newValue: 'in_progress (reopened)' }]);
+                } catch (e) { console.error('audit log failed:', e); }
+                showToast('↩ ' + siloKey + ' work order reopened — revenue recognition cleared.', 'info');
+                const { orders, tasks } = await loadWorkOrdersForRO(ro._supabaseId);
+                renderWorkOrderView(roIndex, currentData[roIndex], orders, tasks);
+            } catch (err) {
+                console.error('❌ reopenWOCompleted:', err);
+                showToast('Failed to reopen: ' + (err.message || err), 'error');
+            }
+        }
+
 // ---- Window bridge (Phase 9 additive) ----
 Object.assign(window, {
   loadStaff,
@@ -644,4 +728,6 @@ Object.assign(window, {
   submitWOForm,
   updateTaskStatusWO,
   computeAndSaveWORollup,
+  markWOCompleted,
+  reopenWOCompleted,
 });

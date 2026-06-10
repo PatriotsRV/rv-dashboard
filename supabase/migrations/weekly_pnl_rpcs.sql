@@ -12,8 +12,9 @@
 -- (auth.uid() IS NULL) pass for ops + validation. EXECUTE is
 -- revoked from anon/public.
 --
--- Cost basis (Roland 2026-06-10): wholesale + core are PER UNIT
--- -> part cost = (wholesale_price + core_charge) * qty.
+-- Cost basis (Roland 2026-06-10): wholesale is PER UNIT; the
+-- core_charge column stores FREIGHT (per the form label) entered
+-- per WHOLE LINE -> part cost = wholesale * qty + core_charge.
 -- Week = Monday 00:00 .. Sunday 23:59 America/Chicago.
 -- Tech attribution (Roland 2026-06-10): staff.pnl_home_silo pin
 -- ALWAYS wins over clock-in service_type (Rod/Zak/Travis=roof,
@@ -131,8 +132,8 @@ BEGIN
     -- ---- parts: live + cashiered, per-unit cost basis ----------
     all_parts AS (
         SELECT p.ro_id AS ro_uuid, p.service_silo AS silo,
-               (COALESCE(p.wholesale_price, 0) + COALESCE(p.core_charge, 0))
-                   * GREATEST(COALESCE(p.qty, 1), 1) AS cost,
+               COALESCE(p.wholesale_price, 0) * GREATEST(COALESCE(p.qty, 1), 1)
+                   + COALESCE(p.core_charge, 0) AS cost,
                COALESCE(p.date_ordered, p.created_at::date) AS order_date
         FROM parts p
         JOIN repair_orders ro ON ro.id = p.ro_id
@@ -140,9 +141,9 @@ BEGIN
         UNION ALL
         SELECT cp.original_ro_id,
                cp.source_data->>'service_silo',
-               (COALESCE((cp.source_data->>'wholesale_price')::numeric, 0)
-                + COALESCE((cp.source_data->>'core_charge')::numeric, 0))
-                   * GREATEST(COALESCE((cp.source_data->>'qty')::int, 1), 1),
+               COALESCE((cp.source_data->>'wholesale_price')::numeric, 0)
+                   * GREATEST(COALESCE((cp.source_data->>'qty')::int, 1), 1)
+                + COALESCE((cp.source_data->>'core_charge')::numeric, 0),
                COALESCE((cp.source_data->>'date_ordered')::date,
                         (cp.source_data->>'created_at')::timestamptz::date)
         FROM cashiered_parts cp
@@ -359,8 +360,8 @@ BEGIN
     ),
     all_parts AS (
         SELECT p.ro_id AS ro_uuid, p.service_silo AS silo,
-               (COALESCE(p.wholesale_price, 0) + COALESCE(p.core_charge, 0))
-                   * GREATEST(COALESCE(p.qty, 1), 1) AS cost,
+               COALESCE(p.wholesale_price, 0) * GREATEST(COALESCE(p.qty, 1), 1)
+                   + COALESCE(p.core_charge, 0) AS cost,
                COALESCE(p.date_ordered, p.created_at::date) AS order_date,
                p.created_at::date AS req_date,
                p.date_ordered, p.date_received
@@ -368,9 +369,9 @@ BEGIN
         UNION ALL
         SELECT cp.original_ro_id,
                cp.source_data->>'service_silo',
-               (COALESCE((cp.source_data->>'wholesale_price')::numeric, 0)
-                + COALESCE((cp.source_data->>'core_charge')::numeric, 0))
-                   * GREATEST(COALESCE((cp.source_data->>'qty')::int, 1), 1),
+               COALESCE((cp.source_data->>'wholesale_price')::numeric, 0)
+                   * GREATEST(COALESCE((cp.source_data->>'qty')::int, 1), 1)
+                + COALESCE((cp.source_data->>'core_charge')::numeric, 0),
                COALESCE((cp.source_data->>'date_ordered')::date,
                         (cp.source_data->>'created_at')::timestamptz::date),
                (cp.source_data->>'created_at')::timestamptz::date,

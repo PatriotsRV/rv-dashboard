@@ -42,7 +42,7 @@ Targets compare against **completed revenue**. WIP shows what's coming.
 
 Parts cost **sticks with the RO across its life**, not the spend week:
 
-- **Every week an RO/silo appears in the report, its parts cost shows cumulative-to-date** (all parts on that RO/silo ordered up to the end of that week, `wholesale_price` + `core_charge`).
+- **Every week an RO/silo appears in the report, its parts cost shows cumulative-to-date** (all parts on that RO/silo ordered up to the end of that week). Cost basis (Roland 2026-06-10): `wholesale_price` is per unit; the `core_charge` column stores FREIGHT (per the part-form label) entered per whole line -> **part cost = wholesale x qty + freight**.
 - **For gross profit, parts cost is matched to revenue**: the silo-week that recognizes the WO's revenue (Done-Done week, or cashier-fallback week) absorbs that WO's full parts cost. Matching principle — costs land with the revenue they produced; no double-counting across weeks.
 - **Promptness metrics (parts manager measurement)** — per part, from existing fields: request date (`created_at`), `date_ordered`, `date_received`. Drill-down shows per-part `requested → ordered` lag and `ordered → received` lag; silo-week and week-level medians surface in the matrix tooltip / drill-down header. This measures the parts team without distorting the P&L.
 
@@ -187,7 +187,7 @@ Branch: `feature/weekly-pnl` off pre-prod. worklist-report.html version bump per
 
 ## 11. Known limitations (v1 — refine as this evolves)
 
-- Parts cost understated by freight until ER n28 ships.
+- ~~Parts cost understated by freight~~ CORRECTED during P3 build: freight IS captured — the `core_charge` column is labeled "Freight Charge ($)" on the part form and is included in the cost basis (whole-line). ER n28 (parts+freight total display) remains a separate UI wish.
 - Historical revenue weeks before the buttons existed are cashier-week approximations (labeled).
 - Labor = `staff.hourly_rate` wage, not burdened cost — burden factor later.
 - `completed_at` backfill from `updated_at` approximate for pre-existing completed WOs.

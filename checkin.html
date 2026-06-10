@@ -1,7 +1,17 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.34
-    Released: 2026-06-07
+    PRVS Tech Check-In v1.35
+    Released: 2026-06-10
+    v1.35: WEEKLY P&L (Session 99) — tech-lead "Our work is done" button on the clock-out
+           summary screen (spec docs/specs/WEEKLY_PNL_SPEC.md section 5, Stage 1).
+           After clocking out of a non-shop RO, the tech sees one row per service they
+           logged: a green "✅ Our work is done" button (calls the mark_wo_tech_done
+           SECURITY DEFINER RPC — sets ONLY tech_done_at/by on the silo's work order;
+           techs cannot write service_work_orders directly under RLS), a blue chip if
+           already tech-done, a green chip if the manager already completed it, or an
+           amber "no work order exists — tell your manager" note (missing-WO surfacing
+           at the point of work). Manager "Done-Done" in the dashboard WO modal is the
+           revenue-recognition event; this is the leading indicator. Spanish strings added.
     v1.34: [ER BUGFIX S94] n22 (Tipton Scott) — added a "Return to Dashboard" button on the
            clock-out success screen so techs can get back to the dashboard to start another
            job without opening a new tab. + Spanish translation. No logic change.
@@ -351,6 +361,14 @@ const SHOP_ACTIVITIES = ['Shop Cleanup', 'Moving RVs', 'Work Break', 'Running Er
 
 // ── Spanish Language Toggle ────────────────────────────────────
 const TRANSLATIONS_ES = {
+    // v1.35 — tech-lead Done button (Weekly P&L)
+    "Is your team's work on this RV done?": '¿El trabajo de tu equipo en este RV está terminado?',
+    'Our work is done': 'Nuestro trabajo está terminado',
+    'Marked done': 'Marcado como terminado',
+    'your manager will finalize it': 'tu gerente lo finalizará',
+    'Already completed by manager': 'Ya completado por el gerente',
+    'No work order exists for this service yet — let your manager know.': 'Aún no existe una orden de trabajo para este servicio — avísale a tu gerente.',
+    'Could not update — try again or tell your manager.': 'No se pudo actualizar — intenta de nuevo o avísale a tu gerente.',
     // Logo / header
     '🚐 PRVS Tech Check-In': '🚐 PRVS Check-In Técnico',
     // Sync banner
@@ -650,7 +668,7 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    log('📦 PRVS Tech Check-In v1.33 - Released 2026-05-22');
+    log('📦 PRVS Tech Check-In v1.35 - Released 2026-06-10');
     translateStaticUI();
 
     if (!roIdParam) {
@@ -1427,6 +1445,8 @@ function showClockOutSummary(durationSec, notes, services, isShop) {
                 </div>` : ''}
             </div>
 
+            <div id="techDoneSlot"></div>
+
             <button class="btn btn-start" style="width:100%;" onclick="loadAndRender()">
                 ${t('🔄 Clock Back In')}
             </button>
@@ -1434,6 +1454,62 @@ function showClockOutSummary(durationSec, notes, services, isShop) {
                 ${t('🏠 Return to Dashboard')}
             </button>
         </div>`;
+
+    // v1.35: Weekly P&L tech-lead Done button (non-shop, online only)
+    if (!isShop && isOnline) renderTechDoneSlot(services);
+}
+
+// ── v1.35: Tech-lead "Our work is done" (Weekly P&L, spec section 5 Stage 1) ──
+const CHECKIN_SERVICE_TO_SILO = {
+    'Roof': 'roof', 'Solar': 'solar', 'Vroom': 'vroom', 'Paint and Body': 'paint_body',
+    'Repairs': 'repair', 'TrueTopper': 'truetopper', 'Detailing': 'detailing', 'Chassis': 'chassis',
+};
+
+async function renderTechDoneSlot(services) {
+    const slot = document.getElementById('techDoneSlot');
+    if (!slot || !roData?.id) return;
+    const svcList = String(services || '').split(',').map(s => s.trim())
+        .filter(s => CHECKIN_SERVICE_TO_SILO[s]);
+    if (svcList.length === 0) return;
+    let html = '';
+    for (const svc of svcList) {
+        const silo = CHECKIN_SERVICE_TO_SILO[svc];
+        try {
+            const { data: wos, error } = await getSB().from('service_work_orders')
+                .select('id, tech_done_at, tech_done_by, completed_at')
+                .eq('ro_id', roData.id).eq('service_silo', silo);
+            if (error) throw error;
+            const wo = (wos || [])[0];
+            if (!wo) {
+                html += `<div style="background:#fef3c7;color:#92400e;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;font-weight:600;text-align:left;">⚠ ${escapeHtml(svc)} — ${t('No work order exists for this service yet — let your manager know.')}</div>`;
+            } else if (wo.completed_at) {
+                html += `<div style="background:#dcfce7;color:#166534;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;font-weight:600;text-align:left;">✓ ${escapeHtml(svc)} — ${t('Already completed by manager')}</div>`;
+            } else if (wo.tech_done_at) {
+                html += `<div style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;font-weight:600;text-align:left;">🔵 ${escapeHtml(svc)} — ${t('Marked done')} ${String(wo.tech_done_at).slice(0, 10)}</div>`;
+            } else {
+                html += `<button class="btn" style="width:100%;margin-bottom:8px;background:#fff;border:2px solid #16a34a;color:#166534;font-weight:700;" onclick="markTechDone('${wo.id}', this)">✅ ${t('Our work is done')} — ${escapeHtml(svc)}</button>`;
+            }
+        } catch (e) { warn('techDoneSlot:', e); }
+    }
+    if (html) {
+        slot.innerHTML = `<div style="margin:0 0 16px;">
+            <div style="font-weight:700;font-size:14px;color:#1e293b;margin-bottom:8px;text-align:left;">${t("Is your team's work on this RV done?")}</div>${html}</div>`;
+    }
+}
+
+async function markTechDone(woId, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    try {
+        const { error } = await getSB().rpc('mark_wo_tech_done', { p_wo_id: woId, p_done: true });
+        if (error) throw error;
+        if (btn) {
+            btn.outerHTML = `<div style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px;font-weight:600;text-align:left;">🔵 ${t('Marked done')} — ${t('your manager will finalize it')}</div>`;
+        }
+    } catch (e) {
+        console.error('markTechDone:', e);
+        if (btn) { btn.disabled = false; btn.textContent = '✅ ' + t('Our work is done'); }
+        alert(t('Could not update — try again or tell your manager.'));
+    }
 }
 
 // ── Timer ─────────────────────────────────────────────────────

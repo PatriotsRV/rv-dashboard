@@ -186,7 +186,7 @@ export const PART_STATUS_COLORS = {
 export const ALL_PART_FIELDS = [
     'partName','partNumber','condition','qty','status','notes',
     'partsSource','poNumber','orderedBy','dateOrdered','eta','trackingNumber','partUrl','returnDeadline',
-    'wholesalePrice','retailPrice','coreCharge','laborHours',
+    'wholesalePrice','retailPrice','coreCharge','laborHours','serviceSilo',
     'supplier','salesAssocName','salesAssocPhone','salesAssocEmail',
     'dateReceived','receivedBy','warrantyPeriod'
 ];

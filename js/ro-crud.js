@@ -58,7 +58,7 @@
                 try {
                     const { data: wos, error: wosErr } = await getSB()
                         .from('service_work_orders')
-                        .select('id, ro_id, service_silo')
+                        .select('id, ro_id, service_silo, tech_done_at, completed_at')
                         .in('ro_id', roIds);
                     if (wosErr) throw wosErr;
                     const woIds = (wos || []).map(w => w.id);
@@ -90,7 +90,9 @@
                             wo_id: wo.id,
                             task_count: woTasks.length,
                             completed: completed,
-                            est_hours: estHours
+                            est_hours: estHours,
+                            wo_completed: !!wo.completed_at,   // S99 Weekly P&L: manager Done-Done
+                            tech_done: !!wo.tech_done_at       // S99 Weekly P&L: tech-lead flag
                         });
                     });
                 } catch (woErr) {
