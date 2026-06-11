@@ -161,13 +161,14 @@ Deno.serve(async (req: Request) => {
       if (s.email) staffName[String(s.email).toLowerCase()] = s.name || s.email;
     }
     // Active RO facts for work-list entries (status + RO-level dollar_value).
-    const wlCodes = [...new Set((wlRows || []).map((w: any) => w.ro_id).filter(Boolean))];
-    const roFacts: Record<string, any> = {};
-    if (wlCodes.length) {
+    // NOTE: manager_work_lists.ro_id holds the repair_orders UUID (id), not the RO code.
+    const wlUuids = [...new Set((wlRows || []).map((w: any) => w.ro_id).filter(Boolean))];
+    const roFacts: Record<string, any> = {}; // keyed by UUID
+    if (wlUuids.length) {
       const { data: ros } = await sb.from("repair_orders")
-        .select("ro_id, customer_name, status, dollar_value, deleted_at")
-        .in("ro_id", wlCodes);
-      for (const r of ros || []) if (!r.deleted_at) roFacts[r.ro_id] = r;
+        .select("id, ro_id, customer_name, status, dollar_value, deleted_at")
+        .in("id", wlUuids);
+      for (const r of ros || []) if (!r.deleted_at) roFacts[r.id] = r;
     }
     const byManager: Record<string, any[]> = {};
     for (const w of wlRows || []) {
@@ -273,8 +274,8 @@ Deno.serve(async (req: Request) => {
       const items = byManager[em];
       let pipeline = 0;
       const rows = items.map((w: any) => {
-        const fact = roFacts[w.ro_id] || {};
-        const agg = roMap[w.ro_id];
+        const fact = roFacts[w.ro_id] || {};            // w.ro_id = UUID
+        const agg = roMap[fact.ro_id];                  // roMap keyed by RO code
         const woVal = agg?.wo_value ?? (fact.dollar_value != null ? Number(fact.dollar_value) : null);
         const cost = (agg?.labor || 0) + (agg?.parts || 0);
         if (woVal != null && !agg?.completed_at) pipeline += woVal;
@@ -284,7 +285,7 @@ Deno.serve(async (req: Request) => {
         if (woVal == null) miss.push("no priced WO");
         if (agg && agg.hours === 0) miss.push("no hours this wk");
         const missTxt = miss.length ? `<div style="font-size:10px;color:#b45309;font-weight:700;">⚠ ${miss.join(" · ")}</div>` : "";
-        return `<tr><td style="${tdL}"><b>${esc(w.ro_id)}</b><br><span style="color:#64748b;">${esc(fact.customer_name || w.ro_name || "")}</span>${missTxt}</td>
+        return `<tr><td style="${tdL}"><b>${esc(fact.ro_id || w.ro_id)}</b><br><span style="color:#64748b;">${esc(fact.customer_name || w.ro_name || "")}</span>${missTxt}</td>
           <td style="${tdL}">${esc(siloName(w.service_silo || ""))}</td>
           <td style="${tdS}">${agg ? agg.hours.toFixed(1) : "0.0"}</td>
           <td style="${tdS}">${usd(agg?.labor)}</td><td style="${tdS}">${usd(agg?.parts)}</td>
