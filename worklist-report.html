@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.15
+    PRVS Active Work List Report v1.16
+    v1.16: WEEKLY P&L P4 VISUAL DRILL-DOWN (Session 101, 2026-06-11).
+           Silo rows now expand IN PLACE via a chevron (modal removed): per-RO
+           stacked horizontal bars (labor + cumulative parts segments) on a dark
+           panel matching the Labor Load chart, with a dashed WO-value reference
+           tick + cost/WO ratio, plus the v1.15 textual detail (hours, parts lag,
+           status chips) inline under each bar. NEW missing-data training info
+           buttons (amber "i") on silo rows and RO rows wherever labor, parts,
+           hours, or revenue are absent — each explains exactly where that value
+           gets entered in the RO/WO workflow so managers can coach data entry.
     v1.15: WEEKLY P&L SECTION (Session 99, 2026-06-10) — spec docs/specs/WEEKLY_PNL_SPEC.md v0.2.
            New collapsible section between the stats bar and the report body:
            (1) Week scorecard — Target / Revenue completed (+cashier-week fallback,
@@ -1056,19 +1065,63 @@
         .pnl-var-pos { color:#16a34a; font-weight:800; }
         .pnl-var-mid { color:#d97706; font-weight:800; }
         .pnl-var-neg { color:#dc2626; font-weight:800; }
-        .pnl-nowo-dot { display:inline-block; width:8px; height:8px; border-radius:50%;
-            background:#f59e0b; margin-left:6px; vertical-align:middle; }
         .pnl-subhead { font-size:0.8rem; font-weight:800; text-transform:uppercase;
             letter-spacing:0.06em; color:#475569; margin:18px 0 8px; }
         .pnl-trend-hit { color:#16a34a; font-weight:700; }
         .pnl-trend-miss { color:#dc2626; font-weight:700; }
-        .pnl-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55);
-            z-index:10060; }
-        .pnl-modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-            background:#fff; border-radius:14px; padding:20px 22px; z-index:10061;
-            max-width:min(1080px,94vw); max-height:84vh; overflow:auto;
-            box-shadow:0 12px 48px rgba(0,0,0,0.35); }
-        .pnl-modal h3 { margin:0 0 12px; font-size:1.05rem; color:#1e293b; }
+        /* v1.16 — inline chevron drill-down (replaces the v1.15 modal) */
+        .pnl-row-chev { display:inline-block; margin-right:6px; color:#94a3b8; font-size:0.7rem;
+            transition:transform 0.15s; }
+        .pnl-row-chev.open { transform:rotate(90deg); color:#1e3a5f; }
+        .pnl-detail-cell { padding:0 !important; border-bottom:1px solid #e2e8f0 !important; }
+        .pnl-detail-panel { background:#0f172a; padding:14px 16px; border-radius:0 0 10px 10px; }
+        .pnl-detail-head { display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:10px; color:#94a3b8; font-size:0.72rem; font-weight:700;
+            text-transform:uppercase; letter-spacing:0.05em; }
+        .pnl-detail-legend span { display:inline-flex; align-items:center; gap:5px; margin-left:14px;
+            text-transform:none; letter-spacing:0; font-weight:600; }
+        .pnl-legend-swatch { display:inline-block; width:10px; height:10px; border-radius:2px; }
+        .pnl-ro-row { display:grid; grid-template-columns:190px 1fr; gap:12px; align-items:center;
+            padding:8px 0; border-bottom:1px solid #1e293b; }
+        .pnl-ro-row:last-child { border-bottom:none; }
+        .pnl-ro-info { line-height:1.3; }
+        .pnl-ro-info a { color:#93c5fd; font-weight:800; text-decoration:none; font-size:0.85rem; }
+        .pnl-ro-info a:hover { text-decoration:underline; }
+        .pnl-ro-cust { color:#cbd5e1; font-size:0.76rem; }
+        .pnl-ro-rv { color:#64748b; font-size:0.68rem; }
+        .pnl-ro-barzone { min-width:0; }
+        .pnl-hbar-track { position:relative; height:24px; background:#1e293b; border-radius:5px;
+            overflow:visible; display:flex; align-items:stretch; }
+        .pnl-hbar-seg { height:100%; min-width:0; }
+        .pnl-hbar-seg.seg-labor { background:#8b5cf6; border-radius:5px 0 0 5px; }
+        .pnl-hbar-seg.seg-parts { background:#d946ef; }
+        .pnl-hbar-seg:last-child { border-radius:0 5px 5px 0; }
+        .pnl-hbar-seg:only-child { border-radius:5px; }
+        .pnl-hbar-ref { position:absolute; top:-4px; bottom:-4px; width:0;
+            border-left:2px dashed #fbbf24; }
+        .pnl-hbar-ref .pnl-hbar-ref-tag { position:absolute; top:-14px; left:-2px; transform:translateX(-50%);
+            color:#fbbf24; font-size:0.62rem; font-weight:800; white-space:nowrap; }
+        .pnl-ro-stats { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:5px; align-items:center;
+            font-size:0.72rem; color:#94a3b8; }
+        .pnl-ro-stats b { color:#e2e8f0; font-weight:800; }
+        .pnl-ro-stats .stat-labor b { color:#a78bfa; }
+        .pnl-ro-stats .stat-parts b { color:#e879f9; }
+        .pnl-ro-stats .stat-wo b { color:#fbbf24; }
+        /* v1.16 — missing-data info button + training popover */
+        .pnl-info-btn { display:inline-flex; align-items:center; justify-content:center;
+            width:16px; height:16px; border-radius:50%; background:#f59e0b; color:#1a1a2e;
+            font-size:0.62rem; font-weight:900; cursor:pointer; border:none; padding:0;
+            margin-left:5px; vertical-align:middle; line-height:1; }
+        .pnl-info-btn:hover { background:#fbbf24; }
+        .pnl-info-pop { display:none; position:fixed; z-index:10070; max-width:340px;
+            background:#1e293b; color:#e2e8f0; border:1px solid #f59e0b; border-radius:10px;
+            padding:12px 14px; font-size:0.78rem; line-height:1.45;
+            box-shadow:0 8px 32px rgba(0,0,0,0.5); }
+        .pnl-info-pop h4 { margin:0 0 6px; font-size:0.78rem; color:#fbbf24;
+            text-transform:uppercase; letter-spacing:0.04em; }
+        .pnl-info-pop ul { margin:4px 0 0; padding-left:16px; }
+        .pnl-info-pop li { margin-bottom:5px; }
+        .pnl-info-pop li:last-child { margin-bottom:0; }
         .pnl-chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.68rem;
             font-weight:700; white-space:nowrap; }
         .pnl-chip-done { background:#dcfce7; color:#166534; }
@@ -1080,6 +1133,7 @@
             .pnl-section { margin:8px; }
             .pnl-table { font-size:0.75rem; }
             .pnl-table th, .pnl-table td { padding:6px 6px; }
+            .pnl-ro-row { grid-template-columns:1fr; gap:6px; }
         }
     </style>
 </head>
@@ -3122,6 +3176,8 @@ let _pnlRangeStartISO = null;      // earliest week fetched
 let _pnlSelectedISO = null;        // selected week (Monday, YYYY-MM-DD)
 let _pnlOpen = localStorage.getItem('prvs_pnl_open') !== '0';
 let _pnlLoading = false;
+let _pnlOpenSiloKey = null;        // v1.16 — silo expanded via chevron (one at a time)
+let _pnlDetailCache = {};          // v1.16 — weekly_pnl_detail rows keyed 'weekISO|silo'
 
 const PNL_EXTRA_SILOS = {
     overhead:     { label: 'Overhead',     emoji: '&#128736;&#65039;' },
@@ -3191,11 +3247,13 @@ async function pnlNavWeek(dir) {
     if (next < _pnlRangeStartISO) {
         const weeksBack = Math.ceil((new Date(curISO) - new Date(next)) / (7 * 86400000)) + 13;
         await loadPnl(weeksBack);
+        pnlEnsureDetail();
         return;
     }
     renderPnl();
+    pnlEnsureDetail();
 }
-function pnlJumpWeek(iso) { _pnlSelectedISO = iso; renderPnl(); }
+function pnlJumpWeek(iso) { _pnlSelectedISO = iso; renderPnl(); pnlEnsureDetail(); }
 
 function pnlWeekRows(iso) { return _pnlRows.filter(r => r.week_start === iso); }
 
@@ -3248,15 +3306,19 @@ function renderPnl() {
         const r = rows.find(x => x.service_silo === k) || {};
         const meta = SILO_MAP[k] || PNL_EXTRA_SILOS[k] || { label: k, emoji: '' };
         const rRev = num(r.revenue_completed) + num(r.revenue_fallback);
-        const noRevDot = (num(r.hours) > 0 && rRev === 0 && num(r.revenue_wip) === 0)
-            ? '<span class="pnl-nowo-dot" title="Labor logged with zero revenue attached this week - check that work orders exist and are priced"></span>' : '';
+        // v1.16 — missing-data training info button (replaces the v1.15 amber dot)
+        const issues = pnlSiloIssues(k, r);
+        const infoBtn = issues.length
+            ? '<button class="pnl-info-btn" data-hints="' + issues.join(',') + '" onclick="pnlShowInfo(event)" title="Why are numbers missing here?">i</button>' : '';
         const varCell = r.target != null
             ? '<span class="' + pnlVarClass(rRev, Number(r.target)) + '">' + pnlFmt2(rRev - Number(r.target)) + '</span>'
             : '<span style="color:#cbd5e1;">&mdash;</span>';
         const clickable = (k !== 'overhead') || num(r.hours) > 0;
-        return '<tr class="' + (clickable ? 'pnl-clickable' : '') + '"' +
-               (clickable ? ' onclick="openPnlDetail(\'' + _pnlSelectedISO + '\',\'' + k + '\')"' : '') + '>' +
-            '<td>' + meta.emoji + ' ' + escHtml(meta.label) + noRevDot + '</td>' +
+        const isOpen = clickable && _pnlOpenSiloKey === k;
+        const chev = clickable ? '<span class="pnl-row-chev' + (isOpen ? ' open' : '') + '">&#9654;</span>' : '<span class="pnl-row-chev" style="visibility:hidden;">&#9654;</span>';
+        const tr = '<tr class="' + (clickable ? 'pnl-clickable' : '') + '"' +
+               (clickable ? ' onclick="pnlToggleSilo(\'' + _pnlSelectedISO + '\',\'' + k + '\')"' : '') + '>' +
+            '<td>' + chev + meta.emoji + ' ' + escHtml(meta.label) + infoBtn + '</td>' +
             '<td>' + num(r.ro_count) + '</td>' +
             '<td>' + num(r.hours).toFixed(1) + '</td>' +
             '<td>' + pnlFmt2(r.labor_cost) + '</td>' +
@@ -3265,6 +3327,9 @@ function renderPnl() {
             '<td>' + pnlFmt2(r.revenue_wip) + '</td>' +
             '<td>' + (r.target != null ? pnlFmt2(r.target) : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
             '<td>' + varCell + '</td></tr>';
+        const detailTr = isOpen
+            ? '<tr><td colspan="9" class="pnl-detail-cell">' + pnlDetailPanelHtml(_pnlSelectedISO, k) + '</td></tr>' : '';
+        return tr + detailTr;
     }).join('');
     const totalRow = '<tr class="pnl-total"><td>TOTAL</td>' +
         '<td>' + rows.reduce((s, r) => s + num(r.ro_count), 0) + '</td>' +
@@ -3323,53 +3388,158 @@ function renderPnl() {
         '</div>';
 }
 
-async function openPnlDetail(weekISO, silo) {
-    const meta = SILO_MAP[silo] || PNL_EXTRA_SILOS[silo] || { label: silo, emoji: '' };
-    const overlay = document.getElementById('pnlOverlay');
-    const modal = document.getElementById('pnlModal');
-    overlay.style.display = 'block';
-    modal.style.display = 'block';
-    modal.innerHTML = '<h3>' + meta.emoji + ' ' + escHtml(meta.label) + ' &mdash; ' + pnlWeekLabel(weekISO) + '</h3><div style="color:#94a3b8;">Loading...</div>';
+// ── v1.16 — inline chevron drill-down (replaces the v1.15 modal) ──────────
+
+function pnlToggleSilo(weekISO, silo) {
+    _pnlOpenSiloKey = (_pnlOpenSiloKey === silo) ? null : silo;
+    renderPnl();
+    pnlEnsureDetail();
+}
+
+// Fetch weekly_pnl_detail for the open silo+selected week if not cached, then re-render.
+async function pnlEnsureDetail() {
+    if (!_pnlOpenSiloKey) return;
+    const key = _pnlSelectedISO + '|' + _pnlOpenSiloKey;
+    if (_pnlDetailCache[key]) return;
     try {
-        const { data, error } = await getSB().rpc('weekly_pnl_detail', { p_week: weekISO, p_silo: silo });
+        const { data, error } = await getSB().rpc('weekly_pnl_detail', { p_week: _pnlSelectedISO, p_silo: _pnlOpenSiloKey });
         if (error) throw error;
-        const rows = (data || []).map(r => {
-            const woChips = [];
-            if (r.wo_value == null && silo !== 'overhead' && silo !== 'unattributed') {
-                woChips.push('<span class="pnl-chip pnl-chip-nowo">&#9888; no WO</span>');
-            } else if (r.wo_value != null) {
-                woChips.push('<span class="pnl-chip pnl-chip-status">' + escHtml(r.wo_status || '?') + '</span>');
-            }
-            if (r.completed_at) woChips.push('<span class="pnl-chip pnl-chip-done">&#10003; Completed ' + escHtml(String(r.completed_at).slice(0, 10)) + '</span>');
-            else if (r.tech_done_at) woChips.push('<span class="pnl-chip pnl-chip-techdone">Tech done ' + escHtml(String(r.tech_done_at).slice(0, 10)) + '</span>');
-            if (r.src === 'cashiered') woChips.push('<span class="pnl-chip pnl-chip-src">cashiered</span>');
-            const lag = (r.med_req_to_order_d != null ? Number(r.med_req_to_order_d) + 'd' : '&mdash;') + ' / ' +
-                        (r.med_order_to_recv_d != null ? Number(r.med_order_to_recv_d) + 'd' : '&mdash;');
-            return '<tr>' +
-                '<td><a href="index.html?ro=' + encodeURIComponent(r.ro_code || '') + '" target="_blank" style="color:#1e3a5f;font-weight:700;">' + escHtml(r.ro_code || '?') + '</a><br>' +
-                '<span style="color:#475569;">' + escHtml(r.customer_name || '') + '</span><br>' +
-                '<span style="color:#94a3b8;font-size:0.72rem;">' + escHtml(r.rv || '') + '</span></td>' +
-                '<td>' + Number(r.hours || 0).toFixed(1) + '</td>' +
-                '<td>' + pnlFmt2(r.labor_cost) + '</td>' +
-                '<td>' + pnlFmt2(r.parts_cost_cum) + '</td>' +
-                '<td style="font-size:0.75rem;color:#475569;" title="Median days: request to order / order to receive">' + lag + '</td>' +
-                '<td>' + (r.wo_value != null ? pnlFmt2(r.wo_value) : '<span style="color:#cbd5e1;">&mdash;</span>') + '</td>' +
-                '<td style="text-align:left;">' + woChips.join(' ') + '</td></tr>';
-        }).join('');
-        modal.innerHTML = '<h3>' + meta.emoji + ' ' + escHtml(meta.label) + ' &mdash; ' + pnlWeekLabel(weekISO) +
-            ' <span style="float:right;cursor:pointer;color:#94a3b8;font-size:1.2rem;" onclick="closePnlDetail()">&#10005;</span></h3>' +
-            (rows ? '<table class="pnl-table"><thead><tr>' +
-                '<th>RO</th><th>Hours</th><th>Labor</th><th>Parts (cum)</th><th>Parts lag</th><th>WO value</th><th style="text-align:left;">Status</th>' +
-                '</tr></thead><tbody>' + rows + '</tbody></table>'
-                : '<div style="color:#94a3b8;">No ROs for this silo-week.</div>');
+        _pnlDetailCache[key] = { rows: data || [] };
     } catch (err) {
-        modal.innerHTML += '<div style="color:#dc2626;font-weight:700;">Failed: ' + escHtml(err.message || String(err)) + '</div>';
+        console.error('weekly_pnl_detail load error:', err);
+        _pnlDetailCache[key] = { error: err.message || String(err) };
     }
+    renderPnl();
 }
-function closePnlDetail() {
-    document.getElementById('pnlOverlay').style.display = 'none';
-    document.getElementById('pnlModal').style.display = 'none';
+
+function pnlDetailPanelHtml(weekISO, silo) {
+    const meta = SILO_MAP[silo] || PNL_EXTRA_SILOS[silo] || { label: silo, emoji: '' };
+    const cache = _pnlDetailCache[weekISO + '|' + silo];
+    const num = v => Number(v) || 0;
+    let body;
+    if (!cache) {
+        body = '<div style="color:#94a3b8;">Loading&hellip;</div>';
+    } else if (cache.error) {
+        body = '<div style="color:#f87171;font-weight:700;">Failed: ' + escHtml(cache.error) + '</div>';
+    } else if (!cache.rows.length) {
+        body = '<div style="color:#94a3b8;">No ROs for this silo-week.</div>';
+    } else {
+        // Scale: peak across ROs of max(total cost, WO value) so the ref tick always fits.
+        let peak = 1;
+        cache.rows.forEach(r => {
+            peak = Math.max(peak, num(r.labor_cost) + num(r.parts_cost_cum), num(r.wo_value));
+        });
+        const skipHints = (silo === 'overhead' || silo === 'unattributed');
+        body = [...cache.rows]
+            .sort((a, b) => (num(b.labor_cost) + num(b.parts_cost_cum)) - (num(a.labor_cost) + num(a.parts_cost_cum)))
+            .map(r => {
+                const lab = num(r.labor_cost), parts = num(r.parts_cost_cum), cost = lab + parts;
+                const wo = r.wo_value != null ? Number(r.wo_value) : null;
+                const hrs = num(r.hours);
+                const segs =
+                    (lab > 0 ? '<div class="pnl-hbar-seg seg-labor" style="width:' + (lab / peak * 100).toFixed(2) + '%" title="Labor ' + pnlFmt2(lab) + '"></div>' : '') +
+                    (parts > 0 ? '<div class="pnl-hbar-seg seg-parts" style="width:' + (parts / peak * 100).toFixed(2) + '%" title="Parts (cum) ' + pnlFmt2(parts) + '"></div>' : '');
+                const ref = (wo != null && wo > 0)
+                    ? '<div class="pnl-hbar-ref" style="left:' + (wo / peak * 100).toFixed(2) + '%" title="WO value ' + pnlFmt2(wo) + '"><span class="pnl-hbar-ref-tag">' + pnlFmt2(wo) + '</span></div>' : '';
+                const ratio = (wo != null && wo > 0 && cost > 0) ? (cost / wo * 100) : null;
+                const chips = [];
+                if (wo == null && !skipHints) chips.push('<span class="pnl-chip pnl-chip-nowo">&#9888; no WO</span>');
+                else if (wo != null) chips.push('<span class="pnl-chip pnl-chip-status">' + escHtml(r.wo_status || '?') + '</span>');
+                if (r.completed_at) chips.push('<span class="pnl-chip pnl-chip-done">&#10003; Completed ' + escHtml(String(r.completed_at).slice(0, 10)) + '</span>');
+                else if (r.tech_done_at) chips.push('<span class="pnl-chip pnl-chip-techdone">Tech done ' + escHtml(String(r.tech_done_at).slice(0, 10)) + '</span>');
+                if (r.src === 'cashiered') chips.push('<span class="pnl-chip pnl-chip-src">cashiered</span>');
+                const lag = (r.med_req_to_order_d != null ? Number(r.med_req_to_order_d) + 'd' : '&mdash;') + ' / ' +
+                            (r.med_order_to_recv_d != null ? Number(r.med_order_to_recv_d) + 'd' : '&mdash;');
+                const stats =
+                    '<span><b>' + hrs.toFixed(1) + 'h</b>' + (!skipHints && hrs === 0 ? pnlInfoBtn('no_hours') : '') + '</span>' +
+                    '<span class="stat-labor">Labor <b>' + pnlFmt2(lab) + '</b>' + (!skipHints && lab === 0 && hrs > 0 ? pnlInfoBtn('labor_rate') : '') + '</span>' +
+                    '<span class="stat-parts">Parts <b>' + pnlFmt2(parts) + '</b>' + (!skipHints && parts === 0 ? pnlInfoBtn('parts') : '') + '</span>' +
+                    '<span class="stat-wo">WO <b>' + (wo != null ? pnlFmt2(wo) : '&mdash;') + '</b>' + (!skipHints && wo == null ? pnlInfoBtn('no_wo') : '') + '</span>' +
+                    (ratio != null ? '<span>Cost&divide;WO <b style="color:' + (ratio > 100 ? '#f87171' : '#4ade80') + ';">' + ratio.toFixed(0) + '%</b></span>' : '') +
+                    '<span title="Median days: request to order / order to receive">Lag ' + lag + '</span>' +
+                    (chips.length ? '<span>' + chips.join(' ') + '</span>' : '');
+                return '<div class="pnl-ro-row">' +
+                    '<div class="pnl-ro-info">' +
+                        '<a href="index.html?ro=' + encodeURIComponent(r.ro_code || '') + '" target="_blank" onclick="event.stopPropagation()">' + escHtml(r.ro_code || '?') + '</a><br>' +
+                        '<span class="pnl-ro-cust">' + escHtml(r.customer_name || '') + '</span><br>' +
+                        '<span class="pnl-ro-rv">' + escHtml(r.rv || '') + '</span>' +
+                    '</div>' +
+                    '<div class="pnl-ro-barzone">' +
+                        '<div class="pnl-hbar-track">' + segs + ref + '</div>' +
+                        '<div class="pnl-ro-stats">' + stats + '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+    }
+    const head =
+        '<div class="pnl-detail-head"><span>' + meta.emoji + ' ' + escHtml(meta.label) + ' &mdash; ' + escHtml(pnlWeekLabel(weekISO)) + '</span>' +
+        '<span class="pnl-detail-legend">' +
+            '<span><span class="pnl-legend-swatch" style="background:#8b5cf6;"></span>Labor</span>' +
+            '<span><span class="pnl-legend-swatch" style="background:#d946ef;"></span>Parts (cum)</span>' +
+            '<span style="color:#fbbf24;">&#9116; WO value</span>' +
+        '</span></div>';
+    return '<div class="pnl-detail-panel" onclick="event.stopPropagation()">' + head + body + '</div>';
 }
+
+// ── v1.16 — missing-data training hints ───────────────────────────────────
+
+const PNL_INFO_HINTS = {
+    no_wo: { t: 'Missing revenue &mdash; no priced Work Order', h: 'Revenue is read from Work Orders &mdash; it is never typed into the P&amp;L.<ul><li>Open the RO &rarr; <b>Work Orders</b> &rarr; create a WO and set its <b>Dollar Value</b>.</li><li>Set the WO\'s <b>service silo</b> so revenue lands on the right team.</li><li>The value shows as <b>WIP</b> until a manager marks the WO <b>Done-Done</b> &mdash; that is the moment it counts as Completed revenue.</li></ul>' },
+    no_hours: { t: 'Missing labor hours', h: 'No tech clocked time against this work this week.<ul><li>Techs must clock in/out on the <b>Check-In page</b>, selecting the RO they are working on.</li><li>Labor cost = logged hours &times; the tech\'s hourly rate from the <b>Staff</b> table.</li></ul>' },
+    labor_rate: { t: 'Hours logged but labor is $0', h: 'The tech\'s <b>hourly rate</b> is missing or $0 in the <b>Staff</b> table &mdash; set it and labor cost will calculate automatically.<br><br>Note: Roland, Kevin, and Sofia are intentionally $0 (test users), so their hours never add labor cost.' },
+    parts: { t: 'No parts cost recorded', h: 'If parts were used on this work, they were not entered (or not priced).<ul><li>Enter every part on the RO &rarr; <b>Parts</b> form at request/order time.</li><li>Cost = <b>wholesale &times; qty + freight</b> (freight is entered in the Core Charge field).</li><li>Unpriced parts show $0 here and understate this team\'s true cost.</li></ul>' },
+    unattributed: { t: 'Costs not tied to any silo', h: 'These dollars could not be attributed to a team.<ul><li><b>Parts:</b> the RO has no Work Order with a service silo &mdash; create/assign one on the RO.</li><li><b>Labor:</b> the tech has no <b>P&amp;L Home Silo</b> pin in the Staff table &mdash; set it for every tech.</li></ul>Fixing these moves the dollars onto the right team\'s row.' },
+};
+
+function pnlInfoBtn(kind) {
+    return '<button class="pnl-info-btn" data-hints="' + kind + '" onclick="pnlShowInfo(event)" title="Where should this number come from?">i</button>';
+}
+
+// Which training hints apply to a silo summary row.
+function pnlSiloIssues(k, r) {
+    const num = v => Number(v) || 0;
+    if (k === 'unattributed') {
+        return (num(r.parts_cost_cum) > 0 || num(r.labor_cost) > 0 || num(r.hours) > 0) ? ['unattributed'] : [];
+    }
+    if (k === 'overhead') return [];
+    const rRev = num(r.revenue_completed) + num(r.revenue_fallback);
+    const issues = [];
+    if (num(r.hours) > 0 && rRev === 0 && num(r.revenue_wip) === 0) issues.push('no_wo');
+    if (num(r.hours) > 0 && num(r.labor_cost) === 0) issues.push('labor_rate');
+    if (num(r.ro_count) > 0 && num(r.hours) === 0) issues.push('no_hours');
+    if (num(r.ro_count) > 0 && num(r.parts_cost_cum) === 0) issues.push('parts');
+    return issues;
+}
+
+function pnlShowInfo(ev) {
+    ev.stopPropagation();
+    const btn = ev.currentTarget;
+    const kinds = (btn.dataset.hints || '').split(',').filter(Boolean);
+    const pop = document.getElementById('pnlInfoPop');
+    if (!pop || !kinds.length) return;
+    pop.innerHTML = kinds.map(k => {
+        const h = PNL_INFO_HINTS[k];
+        return h ? '<h4>' + h.t + '</h4><div>' + h.h + '</div>' : '';
+    }).filter(Boolean).join('<hr style="border:none;border-top:1px solid #334155;margin:10px 0;">');
+    pop.style.display = 'block';
+    const rect = btn.getBoundingClientRect();
+    const pw = Math.min(340, window.innerWidth - 24);
+    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 12)) + 'px';
+    pop.style.top = (rect.bottom + 8) + 'px';
+    requestAnimationFrame(() => {
+        const ph = pop.offsetHeight;
+        if (rect.bottom + 8 + ph > window.innerHeight - 8) {
+            pop.style.top = Math.max(8, rect.top - ph - 8) + 'px';
+        }
+    });
+}
+function pnlHideInfo() {
+    const pop = document.getElementById('pnlInfoPop');
+    if (pop) pop.style.display = 'none';
+}
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.pnl-info-btn') && !e.target.closest('.pnl-info-pop')) pnlHideInfo();
+});
 
 window.addEventListener('load', () => {
     // Wait for Google Identity Services to load
@@ -3387,9 +3557,8 @@ window.addEventListener('load', () => {
 });
 </script>
 
-<!-- v1.15: Weekly P&L drill-down modal -->
-<div id="pnlOverlay" class="pnl-overlay" onclick="closePnlDetail()"></div>
-<div id="pnlModal" class="pnl-modal"></div>
+<!-- v1.16: Weekly P&L missing-data training popover (modal removed; drill-down is inline) -->
+<div id="pnlInfoPop" class="pnl-info-pop"></div>
 
 <!-- v1.10: Per-tech daily drill-down modal (opened from Staff Status tile mini-bars) -->
 <div id="techDayOverlay" class="techday-overlay" onclick="closeTechDayModal()"></div>
