@@ -1,6 +1,23 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.16
+    PRVS Active Work List Report v1.17
+    v1.17: SILO WORK CALENDAR MODAL (Session 102, 2026-06-11).
+           New optional "📅 Calendar" button in the Weekly P&L week-nav row opens
+           a modal showing WHERE each RO was worked on over time, per service
+           silo. Data = time_logs only (the same ground truth as the Weekly P&L);
+           silo attribution mirrors the weekly_pnl RPC: staff.pnl_home_silo pin
+           beats clock-in service_type, unmapped (Shop/NULL) labor falls to
+           Overhead. Tester ($0 staff) + training-RO exclusions applied (same
+           rules as the rest of the report). Two layouts, toggleable (persisted
+           in localStorage 'prvs_pcal_layout'): TIMELINE (rows = ROs grouped by
+           silo, columns = days, cells shaded by hours that day — reads like a
+           Gantt; tooltip shows per-tech hours) and CALENDAR (Mon-start day grid
+           with per-RO chips colored by silo). Range toggle: Selected Week
+           (synced to the P&L's selected week on open) / Multi-Week (2/4/8 weeks
+           ENDING with the anchor week — look-back for jobs whose labor spans
+           weeks) / Month, each with prev/next nav clamped at the present.
+           Read-only — zero DB changes; one range-scoped time_logs fetch, cached
+           per range. Not part of any emailed report (web page only for now).
     v1.16: WEEKLY P&L P4 VISUAL DRILL-DOWN (Session 101, 2026-06-11).
            Silo rows now expand IN PLACE via a chevron (modal removed): per-RO
            stacked horizontal bars (labor + cumulative parts segments) on a dark
@@ -1134,6 +1151,79 @@
             .pnl-table { font-size:0.75rem; }
             .pnl-table th, .pnl-table td { padding:6px 6px; }
             .pnl-ro-row { grid-template-columns:1fr; gap:6px; }
+        }
+
+        /* v1.17 — Silo Work Calendar modal (P&L add-on) */
+        .pcal-open-btn { margin-left:auto; background:#0e7490 !important; }
+        .pcal-open-btn:hover { background:#0891b2 !important; }
+        .pcal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85);
+            backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+            z-index:10110; display:none; align-items:center; justify-content:center; padding:18px; }
+        .pcal-overlay.open { display:flex; }
+        .pcal-modal { background:#0f172a; border:1px solid #1e3a5f; border-radius:12px;
+            width:100%; max-width:1150px; max-height:90vh; display:flex; flex-direction:column;
+            box-shadow:0 20px 60px rgba(0,0,0,0.6); animation:techday-slide 0.2s ease-out; }
+        .pcal-header { display:flex; align-items:center; justify-content:space-between; gap:10px;
+            padding:14px 18px; background:linear-gradient(135deg,#1a1a2e,#2d2347);
+            border-bottom:1px solid #1e293b; border-radius:12px 12px 0 0; }
+        .pcal-header h3 { margin:0; color:#f1f5f9; font-size:1rem; }
+        .pcal-close { background:none; border:none; color:#94a3b8; font-size:1.5rem;
+            cursor:pointer; line-height:1; padding:0 4px; }
+        .pcal-close:hover { color:#f1f5f9; }
+        .pcal-controls { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center;
+            padding:10px 18px; border-bottom:1px solid #1e293b; }
+        .pcal-seg { display:inline-flex; border:1px solid #334155; border-radius:8px; overflow:hidden; }
+        .pcal-seg button { background:#0f172a; color:#94a3b8; border:none; padding:5px 11px;
+            font-size:0.74rem; font-weight:700; cursor:pointer; }
+        .pcal-seg button.on { background:#2563eb; color:#fff; }
+        .pcal-nav { display:flex; align-items:center; gap:8px; }
+        .pcal-nav button { background:#1e293b; color:#e2e8f0; border:1px solid #334155;
+            border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.8rem; }
+        .pcal-nav button:disabled { opacity:0.35; cursor:default; }
+        .pcal-rangelabel { color:#f1f5f9; font-weight:800; font-size:0.85rem;
+            min-width:160px; text-align:center; }
+        .pcal-tabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px 18px 4px; }
+        .pcal-tab { background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:999px;
+            padding:4px 12px; font-size:0.72rem; font-weight:700; cursor:pointer; }
+        .pcal-tab:hover { color:#e2e8f0; }
+        .pcal-tab.on { color:#fff; border-color:transparent; }
+        .pcal-body { overflow:auto; padding:12px 18px 18px; }
+        .pcal-loading, .pcal-empty { color:#94a3b8; padding:30px 0; text-align:center; }
+        /* timeline layout */
+        .pcal-tl { border-collapse:collapse; width:max-content; min-width:100%; }
+        .pcal-tl th, .pcal-tl td { border:1px solid #1e293b; }
+        .pcal-tl th { color:#94a3b8; font-size:0.6rem; font-weight:700; padding:3px 2px;
+            text-align:center; min-width:24px; background:#0f172a; position:sticky; top:0; z-index:3; }
+        .pcal-tl th.wkend, .pcal-tl td.wkend { background:#162032; }
+        .pcal-tl th.today { color:#fbbf24; }
+        .pcal-tl td.today { outline:1px solid rgba(251,191,36,0.4); outline-offset:-1px; }
+        .pcal-tl .pcal-ro { position:sticky; left:0; background:#0f172a; color:#e2e8f0;
+            font-size:0.72rem; padding:4px 8px; max-width:210px; min-width:210px; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap; text-align:left; z-index:2; }
+        .pcal-tl .pcal-ro .pcal-ro-hrs { color:#64748b; font-weight:700; }
+        .pcal-tl td.pcal-cell { height:22px; min-width:24px; }
+        .pcal-silo-sub { color:#64748b; font-weight:600; font-size:0.7rem; }
+        /* calendar-grid layout */
+        .pcal-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+        .pcal-dow { color:#94a3b8; font-size:0.66rem; font-weight:800; text-align:center; padding:2px 0; }
+        .pcal-day { background:#162032; border:1px solid #1e293b; border-radius:8px; min-height:84px;
+            padding:4px; display:flex; flex-direction:column; gap:3px; }
+        .pcal-day.dim { opacity:0.35; }
+        .pcal-day.today { border-color:#fbbf24; }
+        .pcal-date { color:#94a3b8; font-size:0.64rem; font-weight:800; }
+        .pcal-chips { overflow:auto; max-height:130px; display:flex; flex-direction:column; gap:3px; }
+        .pcal-chip { font-size:0.62rem; font-weight:700; color:#e2e8f0; background:#1e293b;
+            border-left:3px solid #64748b; border-radius:4px; padding:1px 5px;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+        .pcal-legend { display:flex; flex-wrap:wrap; gap:10px; padding-top:10px; }
+        .pcal-legend span { color:#94a3b8; font-size:0.66rem; font-weight:700;
+            display:inline-flex; align-items:center; gap:5px; }
+        .pcal-legend i { width:10px; height:10px; border-radius:3px; display:inline-block; }
+        @media (max-width:768px) {
+            .pcal-overlay { padding:8px; }
+            .pcal-modal { max-height:94vh; }
+            .pcal-tl .pcal-ro { min-width:130px; max-width:130px; }
+            .pcal-rangelabel { min-width:110px; font-size:0.75rem; }
         }
     </style>
 </head>
@@ -3373,6 +3463,8 @@ function renderPnl() {
               '<button onclick="pnlNavWeek(-1)">&#9664;</button>' +
               '<span class="pnl-weeklabel">' + pnlWeekLabel(_pnlSelectedISO) + '</span>' +
               '<button onclick="pnlNavWeek(1)" ' + (_pnlSelectedISO >= curISO ? 'disabled' : '') + '>&#9654;</button>' +
+              // v1.17 — optional Silo Work Calendar modal (opens on the selected week)
+              '<button class="pcal-open-btn" onclick="openPnlCalendar()" title="See where each RO was worked on over time, per silo">&#128197; Calendar</button>' +
             '</div>' +
             '<div class="pnl-cards">' + cardsHtml + '</div>' +
             (rows.length === 0 ? '<div style="color:#94a3b8;padding:8px 0;">No activity recorded for this week.</div>' :
@@ -3541,6 +3633,324 @@ document.addEventListener('click', (e) => {
     if (!e.target.closest('.pnl-info-btn') && !e.target.closest('.pnl-info-pop')) pnlHideInfo();
 });
 
+// ══════════════════════════════════════════════════════════
+// v1.17 — SILO WORK CALENDAR (P&L add-on, Session 102)
+// Optional modal showing WHERE each RO was worked on over time,
+// per service silo. Data = time_logs only (same ground truth as
+// the Weekly P&L). Silo attribution mirrors the weekly_pnl RPC:
+// staff.pnl_home_silo pin beats clock-in service_type; unmapped
+// (Shop/NULL/unknown) labor falls to 'overhead'. Tester ($0
+// staff) + training-RO exclusions match applyReportExclusions().
+// Read-only — zero writes, zero DB changes.
+// ══════════════════════════════════════════════════════════
+let _pcalLayout = localStorage.getItem('prvs_pcal_layout') || 'timeline'; // 'timeline' | 'grid'
+let _pcalRange  = 'week';        // 'week' | 'multi' | 'month'
+let _pcalWeeks  = 4;             // multi-week span (2 | 4 | 8)
+let _pcalSilo   = 'all';
+let _pcalAnchorISO = null;       // week/multi: Monday ISO of the LAST week in range; month: any date in the month
+let _pcalLogs = [];              // fetched + exclusion-filtered logs for the current range
+let _pcalFetchKey = '';          // cache key so silo/layout switches don't refetch
+let _pcalLoading = false;
+let _pcalError = null;
+
+const PCAL_SILO_COLORS = {
+    repair: '#f97316', vroom: '#ec4899', solar: '#eab308', roof: '#3b82f6',
+    paint_body: '#a855f7', chassis: '#94a3b8', detailing: '#14b8a6',
+    truetopper: '#84cc16', overhead: '#64748b',
+};
+
+function pcalHexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+
+/** Silo for one time_log — SAME rule as the weekly_pnl RPC:
+ *  pnl_home_silo pin wins over clock-in service_type; otherwise the
+ *  service_type → silo map; otherwise 'overhead' (Shop / NULL / unknown). */
+function pcalSiloForLog(log) {
+    const email = ((log.tech_email || '') + '').toLowerCase();
+    const staff = (_allStaff || []).find(s => (s.email || '').toLowerCase() === email);
+    if (staff && staff.pnl_home_silo) return staff.pnl_home_silo;
+    const silos = getSilosForLog(log);
+    return silos.length ? silos[0] : 'overhead';
+}
+
+/** Current range as { start: Date, endEx: Date (exclusive), label }. */
+function pcalRangeBounds() {
+    const [y, m, d] = _pcalAnchorISO.split('-').map(Number);
+    if (_pcalRange === 'month') {
+        const start = new Date(y, m - 1, 1);
+        const endEx = new Date(y, m, 1);
+        return { start, endEx, label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+    const weeks = _pcalRange === 'multi' ? _pcalWeeks : 1;
+    const mon = pnlMondayOf(new Date(y, m - 1, d));
+    const start = new Date(mon); start.setDate(start.getDate() - 7 * (weeks - 1));
+    const endEx = new Date(mon); endEx.setDate(endEx.getDate() + 7);
+    if (weeks === 1) return { start, endEx, label: pnlWeekLabel(pnlISO(mon)) };
+    const endIncl = new Date(endEx); endIncl.setDate(endIncl.getDate() - 1);
+    const f = (dt) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return { start, endEx, label: f(start) + ' – ' + f(endIncl) };
+}
+
+function pcalDayList() {
+    const { start, endEx } = pcalRangeBounds();
+    const days = [];
+    for (let dt = new Date(start); dt < endEx; dt.setDate(dt.getDate() + 1)) days.push(new Date(dt));
+    return days;
+}
+
+function pcalFwdDisabled() {
+    return pcalRangeBounds().endEx > new Date();
+}
+
+function openPnlCalendar() {
+    _pcalAnchorISO = _pnlSelectedISO || pnlISO(pnlMondayOf(new Date()));
+    const overlay = document.getElementById('pcalOverlay');
+    if (!overlay) return;
+    overlay.classList.add('open');
+    pcalRender();
+    pcalFetch();
+}
+function closePnlCalendar() {
+    const overlay = document.getElementById('pcalOverlay');
+    if (overlay) overlay.classList.remove('open');
+}
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePnlCalendar();
+});
+
+function pcalSetRange(r)  { if (_pcalRange === r) return; _pcalRange = r; pcalRender(); pcalFetch(); }
+function pcalSetWeeks(n)  { _pcalWeeks = n; pcalRender(); pcalFetch(); }
+function pcalSetSilo(s)   { _pcalSilo = s; pcalRender(); }
+function pcalSetLayout(l) { _pcalLayout = l; localStorage.setItem('prvs_pcal_layout', l); pcalRender(); }
+function pcalNav(dir) {
+    if (dir > 0 && pcalFwdDisabled()) return;
+    const [y, m, d] = _pcalAnchorISO.split('-').map(Number);
+    if (_pcalRange === 'month') {
+        _pcalAnchorISO = pnlISO(new Date(y, m - 1 + dir, 1));
+    } else {
+        _pcalAnchorISO = pnlShiftISO(_pcalAnchorISO, dir * 7 * (_pcalRange === 'multi' ? _pcalWeeks : 1));
+    }
+    pcalRender(); pcalFetch();
+}
+
+/** One range-scoped fetch, cached on the range key. Same join + exclusion
+ *  rules as the _allWeekTimeLogs load (testers + training ROs dropped). */
+async function pcalFetch() {
+    const { start, endEx } = pcalRangeBounds();
+    const key = start.toISOString() + '|' + endEx.toISOString();
+    if (key === _pcalFetchKey) { pcalRender(); return; }
+    _pcalLoading = true;
+    _pcalError = null;
+    pcalRender();
+    try {
+        const { data, error } = await getSB()
+            .from('time_logs')
+            .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
+            .gte('clock_in', start.toISOString())
+            .lt('clock_in', endEx.toISOString())
+            .order('clock_in', { ascending: true });
+        if (error) throw error;
+        const testers = new Set(
+            (_allStaff || [])
+                .filter(s => s && Number(s.hourly_rate || 0) === 0)
+                .map(s => (s.email || '').toLowerCase())
+                .filter(Boolean)
+        );
+        _pcalLogs = (data || []).filter(l =>
+            !testers.has(((l.tech_email || '') + '').toLowerCase()) &&
+            !(l.repair_orders && l.repair_orders.is_training === true));
+        _pcalFetchKey = key;
+    } catch (err) {
+        console.error('pcal load error:', err);
+        _pcalLogs = [];
+        _pcalFetchKey = '';
+        _pcalError = err.message || String(err);
+    } finally {
+        _pcalLoading = false;
+        pcalRender();
+    }
+}
+
+/** Bucket the fetched logs: { silo: { roUuid: { label, roId, totalHours,
+ *  days: { 'YYYY-MM-DD': { hours, techs: {name: hours} } } } } }.
+ *  Day bucketing keys on clock_in's LOCAL day (same convention as the
+ *  Staff Status mini-bars). Active sessions count up to "now". */
+function pcalBuckets() {
+    const out = {};
+    _pcalLogs.forEach(l => {
+        const silo = pcalSiloForLog(l);
+        if (_pcalSilo !== 'all' && silo !== _pcalSilo) return;
+        const inDt = new Date(l.clock_in);
+        const outDt = l.clock_out ? new Date(l.clock_out) : new Date();
+        const hrs = Math.max(0, (outDt - inDt) / 3600000);
+        const dayKey = localDayKey(inDt);
+        const ro = l.repair_orders || {};
+        const roKey = l.ro_id || ('unknown|' + (ro.ro_id || ''));
+        const sb = out[silo] = out[silo] || {};
+        const rb = sb[roKey] = sb[roKey] || {
+            label: ro.customer_name || 'Unknown RO', roId: ro.ro_id || '', totalHours: 0, days: {},
+        };
+        rb.totalHours += hrs;
+        const db = rb.days[dayKey] = rb.days[dayKey] || { hours: 0, techs: {} };
+        db.hours += hrs;
+        const email = ((l.tech_email || '') + '').toLowerCase();
+        const st = (_allStaff || []).find(s => (s.email || '').toLowerCase() === email);
+        const nm = (st && st.name) || email.split('@')[0] || 'unknown';
+        db.techs[nm] = (db.techs[nm] || 0) + hrs;
+    });
+    return out;
+}
+
+function pcalRender() {
+    const overlay = document.getElementById('pcalOverlay');
+    if (!overlay || !overlay.classList.contains('open')) return;
+    const { label } = pcalRangeBounds();
+    const days = pcalDayList();
+    const buckets = pcalBuckets();
+    const todayKey = localDayKey(new Date());
+
+    const nav =
+        '<div class="pcal-nav">' +
+          '<button onclick="pcalNav(-1)">&#9664;</button>' +
+          '<span class="pcal-rangelabel">' + escHtml(label) + '</span>' +
+          '<button onclick="pcalNav(1)"' + (pcalFwdDisabled() ? ' disabled' : '') + '>&#9654;</button>' +
+        '</div>';
+    const segRange =
+        '<div class="pcal-seg">' +
+          [['week', 'Selected Week'], ['multi', 'Multi-Week'], ['month', 'Month']].map(([k, l]) =>
+            '<button class="' + (_pcalRange === k ? 'on' : '') + '" onclick="pcalSetRange(\'' + k + '\')">' + l + '</button>').join('') +
+        '</div>' +
+        (_pcalRange === 'multi'
+            ? '<div class="pcal-seg">' + [2, 4, 8].map(n =>
+                '<button class="' + (_pcalWeeks === n ? 'on' : '') + '" onclick="pcalSetWeeks(' + n + ')">' + n + 'w</button>').join('') + '</div>'
+            : '');
+    const segLayout =
+        '<div class="pcal-seg">' +
+          [['timeline', 'Timeline'], ['grid', 'Calendar']].map(([k, l]) =>
+            '<button class="' + (_pcalLayout === k ? 'on' : '') + '" onclick="pcalSetLayout(\'' + k + '\')">' + l + '</button>').join('') +
+        '</div>';
+
+    const tabSilos = [['all', 'All', '#2563eb']].concat(
+        SERVICE_SILOS.map(s => [s.key, s.emoji + ' ' + s.label, PCAL_SILO_COLORS[s.key] || '#64748b']),
+        [['overhead', PNL_EXTRA_SILOS.overhead.emoji + ' Overhead', PCAL_SILO_COLORS.overhead]]);
+    const tabs = '<div class="pcal-tabs">' + tabSilos.map(([k, l, c]) =>
+        '<button class="pcal-tab' + (_pcalSilo === k ? ' on' : '') + '"' +
+        (_pcalSilo === k ? ' style="background:' + c + ';"' : '') +
+        ' onclick="pcalSetSilo(\'' + k + '\')">' + l + '</button>').join('') + '</div>';
+
+    let body;
+    if (_pcalLoading) body = '<div class="pcal-loading">Loading clock-ins&hellip;</div>';
+    else if (_pcalError) body = '<div class="pcal-loading" style="color:#f87171;">Calendar failed to load: ' + escHtml(_pcalError) + '</div>';
+    else if (_pcalLayout === 'timeline') body = pcalTimelineHtml(buckets, days, todayKey);
+    else body = pcalGridHtml(buckets, days, todayKey);
+
+    overlay.innerHTML =
+        '<div class="pcal-modal" onclick="event.stopPropagation()">' +
+          '<div class="pcal-header">' +
+            '<h3>&#128197; Silo Work Calendar <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;">clock-in activity by RO</span></h3>' +
+            '<button class="pcal-close" onclick="closePnlCalendar()" title="Close">&times;</button>' +
+          '</div>' +
+          '<div class="pcal-controls">' + nav + segRange + segLayout + '</div>' +
+          tabs +
+          '<div class="pcal-body">' + body + '</div>' +
+        '</div>';
+}
+
+/** TIMELINE: rows = ROs grouped by silo, columns = days, cells shaded by
+ *  hours worked that day. Tooltip = full date + hours + per-tech split. */
+function pcalTimelineHtml(buckets, days, todayKey) {
+    const order = SERVICE_SILOS.map(s => s.key).concat(['overhead']);
+    const silos = order.filter(k => buckets[k]);
+    if (!silos.length) {
+        return '<div class="pcal-empty">No clock-ins in this range' + (_pcalSilo !== 'all' ? ' for this silo' : '') + '.</div>';
+    }
+    const dayCls = (d) => ((d.getDay() === 0 || d.getDay() === 6) ? 'wkend' : '') +
+        (localDayKey(d) === todayKey ? ' today' : '');
+    const headRow = '<tr><th class="pcal-ro" style="z-index:4;">RO</th>' + days.map(d =>
+        '<th class="' + dayCls(d) + '" title="' + escAttr(d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })) + '">' +
+        'SMTWTFS'[d.getDay()] + '<br>' +
+        (d.getDate() === 1 ? (d.getMonth() + 1) + '/1' : d.getDate()) + '</th>').join('') + '</tr>';
+
+    let html = '<table class="pcal-tl"><thead>' + headRow + '</thead><tbody>';
+    silos.forEach(k => {
+        const meta = SILO_MAP[k] || PNL_EXTRA_SILOS[k] || { label: k, emoji: '' };
+        const color = PCAL_SILO_COLORS[k] || '#64748b';
+        const ros = Object.values(buckets[k]).sort((a, b) => b.totalHours - a.totalHours);
+        const siloHrs = ros.reduce((s, r) => s + r.totalHours, 0);
+        html += '<tr><td colspan="' + (days.length + 1) + '" class="pcal-ro" style="max-width:none;background:#1a1a2e;color:' + color + ';font-weight:800;">' +
+            meta.emoji + ' ' + escHtml(meta.label) +
+            ' <span class="pcal-silo-sub">' + ros.length + ' RO' + (ros.length === 1 ? '' : 's') + ' &middot; ' + siloHrs.toFixed(1) + 'h</span></td></tr>';
+        ros.forEach(r => {
+            html += '<tr><td class="pcal-ro" title="' + escAttr(r.label + (r.roId ? ' (' + r.roId + ')' : '')) + '">' +
+                escHtml(r.label) + ' <span class="pcal-ro-hrs">' + r.totalHours.toFixed(1) + 'h</span></td>';
+            days.forEach(d => {
+                const dk = localDayKey(d);
+                const cell = r.days[dk];
+                const cls = 'pcal-cell ' + dayCls(d);
+                if (!cell) { html += '<td class="' + cls + '"></td>'; return; }
+                const h = cell.hours;
+                const op = h < 1 ? 0.3 : h < 3 ? 0.55 : h < 6 ? 0.8 : 1;
+                const techStr = Object.entries(cell.techs).map(([n, th]) => n + ' ' + th.toFixed(1) + 'h').join(', ');
+                const tip = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+                    ' — ' + h.toFixed(1) + 'h — ' + techStr;
+                html += '<td class="' + cls + '" style="background:' + pcalHexA(color, op) + ';" title="' + escAttr(tip) + '"></td>';
+            });
+            html += '</tr>';
+        });
+    });
+    return html + '</tbody></table>' +
+        '<div class="pcal-legend"><span>Cell shade = hours that day:</span>' +
+        [[0.3, '&lt;1h'], [0.55, '1–3h'], [0.8, '3–6h'], [1, '6h+']].map(([op, l]) =>
+            '<span><i style="background:' + pcalHexA('#3b82f6', op) + ';"></i>' + l + '</span>').join('') +
+        '</div>';
+}
+
+/** CALENDAR: Mon-start day grid; each day cell lists per-RO chips colored
+ *  by silo. Month mode pads with dimmed lead/trail days to full weeks. */
+function pcalGridHtml(buckets, days, todayKey) {
+    const byDay = {};
+    Object.entries(buckets).forEach(([silo, ros]) => {
+        Object.values(ros).forEach(r => {
+            Object.entries(r.days).forEach(([dk, d]) => {
+                (byDay[dk] = byDay[dk] || []).push({ silo, label: r.label, roId: r.roId, hours: d.hours, techs: d.techs });
+            });
+        });
+    });
+    const cells = [];
+    const first = new Date(days[0]);
+    const lead = (first.getDay() + 6) % 7;
+    for (let i = 0; i < lead; i++) {
+        const d = new Date(first); d.setDate(d.getDate() - (lead - i));
+        cells.push({ d, dim: true });
+    }
+    days.forEach(d => cells.push({ d, dim: false }));
+    while (cells.length % 7 !== 0) {
+        const d = new Date(cells[cells.length - 1].d); d.setDate(d.getDate() + 1);
+        cells.push({ d, dim: true });
+    }
+    const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        .map(x => '<div class="pcal-dow">' + x + '</div>').join('');
+    const cellsHtml = cells.map(({ d, dim }) => {
+        const dk = localDayKey(d);
+        const list = dim ? [] : (byDay[dk] || []).slice().sort((a, b) => b.hours - a.hours);
+        const chips = list.map(e => {
+            const techStr = Object.entries(e.techs).map(([n, th]) => n + ' ' + th.toFixed(1) + 'h').join(', ');
+            const tip = e.label + (e.roId ? ' (' + e.roId + ')' : '') + ' — ' + e.hours.toFixed(1) + 'h — ' + techStr;
+            return '<div class="pcal-chip" style="border-left-color:' + (PCAL_SILO_COLORS[e.silo] || '#64748b') + ';" title="' + escAttr(tip) + '">' +
+                escHtml(e.label) + ' <span style="color:#94a3b8;">' + e.hours.toFixed(1) + 'h</span></div>';
+        }).join('');
+        return '<div class="pcal-day' + (dim ? ' dim' : '') + (dk === todayKey && !dim ? ' today' : '') + '">' +
+            '<div class="pcal-date">' + (d.getDate() === 1 ? d.toLocaleDateString('en-US', { month: 'short' }) + ' ' : '') + d.getDate() + '</div>' +
+            '<div class="pcal-chips">' + chips + '</div></div>';
+    }).join('');
+    const legend = '<div class="pcal-legend">' +
+        SERVICE_SILOS.map(s => '<span><i style="background:' + (PCAL_SILO_COLORS[s.key] || '#64748b') + ';"></i>' + s.label + '</span>').join('') +
+        '<span><i style="background:' + PCAL_SILO_COLORS.overhead + ';"></i>Overhead</span></div>';
+    return '<div class="pcal-cal">' + dows + cellsHtml + '</div>' + legend;
+}
+
 window.addEventListener('load', () => {
     // Wait for Google Identity Services to load
     const checkGis = setInterval(() => {
@@ -3562,6 +3972,9 @@ window.addEventListener('load', () => {
 
 <!-- v1.10: Per-tech daily drill-down modal (opened from Staff Status tile mini-bars) -->
 <div id="techDayOverlay" class="techday-overlay" onclick="closeTechDayModal()"></div>
+
+<!-- v1.17: Silo Work Calendar modal (opened from the Weekly P&L week-nav 📅 button) -->
+<div id="pcalOverlay" class="pcal-overlay" onclick="if(event.target===this)closePnlCalendar()"></div>
 
 <!-- GH#19: Enhancement Request — Floating Genie Lamp + Modal -->
 <div id="erFloatingBtn" onclick="openERModal()" title="Make a Wish — Submit an Enhancement Request" style="position:fixed;bottom:24px;left:24px;z-index:9998;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706,#b45309);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(217,119,6,0.5);transition:transform 0.2s,box-shadow 0.2s;border:2px solid #fbbf24;" onmouseover="this.style.transform='scale(1.1)';this.style.boxShadow='0 6px 28px rgba(217,119,6,0.7)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(217,119,6,0.5)'">
