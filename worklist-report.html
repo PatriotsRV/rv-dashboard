@@ -1,6 +1,37 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.17
+    PRVS Active Work List Report v1.18
+    v1.18: CALENDAR DATA-PARITY FIXES x2 (Session 102, 2026-06-11). Both bring
+           the calendar in line with what the weekly_pnl RPC actually counts.
+           (1) CASHIERED MIRROR UNION — pcalFetch now also reads the
+           cashiered_time_logs mirror table (JSONB snapshots; joined to
+           cashiered for RO label) and merges it with live time_logs. The
+           Saturday archiver hard-deletes cashiered ROs' time_logs from the
+           live table, so v1.17's live-only fetch silently dropped every
+           since-archived RO from past weeks (Roland caught it: May Roof
+           showed ~2 quiet weeks while the P&L drill-down listed 8-9 ROs —
+           all wearing 'cashiered' chips; 319 archived May log rows were
+           invisible). The RPC unions these mirrors; now the calendar does
+           too. No double count (archive deletes live rows; reactivation
+           CASCADE-deletes mirror rows).
+           (2) SHOP-RULE ORDER — pcalSiloForLog now matches the RPC
+           attribution ORDER exactly: 'Shop' logs -> Overhead REGARDLESS of
+           the tech's pnl_home_silo pin (the RPC checks Shop first; v1.17
+           checked the pin first, so pinned techs' Shop time wrongly landed
+           in their home silo and inflated silo hours vs the P&L matrix).
+           Caught during the v1.17 prod regression.
+           (3) EOD AUTO-CLOSE MARKERS (Roland request, after the Mauricio May 28
+           9.5h "Moving RVs" find — clock-in 7:28 AM, never clocked out, EOD
+           cron capped at 5 PM): any close_reason starting 'auto_eod' is
+           flagged in both layouts — amber inset ring on timeline cells, amber
+           ⚠ + outline on calendar chips, per-tech ⚠ in tooltips with the
+           phantom-hours amount, legend entries. Same discipline-flag
+           convention as v1.13 (EOD = flagged; switched-RO = informational).
+           PLUS: visible VERSION PILL in the header-right (Roland request) —
+           driven by the single WLR_VERSION JS constant at the top of the main
+           script block. BUMP BOTH this header comment AND WLR_VERSION on
+           every release (one constant, not a third hardcoded site — the
+           checkin.html stale-badge lesson from Session 100).
     v1.17: SILO WORK CALENDAR MODAL (Session 102, 2026-06-11).
            New optional "📅 Calendar" button in the Weekly P&L week-nav row opens
            a modal showing WHERE each RO was worked on over time, per service
@@ -245,6 +276,10 @@
         .header-title { font-size: 1.15rem; font-weight: 700; color: white; }
         .header-subtitle { font-size: 0.75rem; color: #64748b; }
         .header-right { display: flex; align-items: center; gap: 12px; }
+        /* v1.18 — visible version pill (driven by the WLR_VERSION constant) */
+        .version-pill { background:#1e3a5f; color:#93c5fd; border:1px solid #2d4a73;
+            border-radius:999px; padding:3px 10px; font-size:0.68rem; font-weight:800;
+            letter-spacing:0.03em; white-space:nowrap; }
         .refresh-bar {
             display: flex; align-items: center; gap: 8px;
             background: #1e293b; border: 1px solid #334155; border-radius: 6px;
@@ -1249,6 +1284,7 @@
             </div>
         </div>
         <div class="header-right">
+            <span class="version-pill" id="wlrVersionBadge" title="Active Work List Report version"></span>
             <div class="refresh-bar">
                 <span id="refreshCountdown">Next refresh: 3:00</span>
                 <button onclick="loadAllData()">Refresh Now</button>
@@ -1272,6 +1308,14 @@
 </div>
 
 <script>
+// ── Version ──────────────────────────────────────────────
+// v1.18 — BUMP THIS CONSTANT with the header comment (line 3) on EVERY
+// release. It drives the visible header badge — the checkin.html lesson
+// (Session 100) was a visible badge that got missed on two bumps because
+// it was a separate hardcoded site; here the badge reads this ONE constant.
+const WLR_VERSION = 'v1.18';
+document.getElementById('wlrVersionBadge').textContent = WLR_VERSION;
+
 // ── Configuration ────────────────────────────────────────
 const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
@@ -3664,10 +3708,19 @@ function pcalHexA(hex, a) {
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
 }
 
-/** Silo for one time_log — SAME rule as the weekly_pnl RPC:
- *  pnl_home_silo pin wins over clock-in service_type; otherwise the
- *  service_type → silo map; otherwise 'overhead' (Shop / NULL / unknown). */
+/** Silo for one time_log — SAME rule as the weekly_pnl RPC (weekly_pnl_rpcs.sql
+ *  lines ~96-106), in the SAME order:
+ *    1. service_type 'Shop' -> 'overhead' REGARDLESS of pin (v1.18 fix — v1.17
+ *       applied the pin first, so pinned techs' Shop time wrongly landed in
+ *       their home silo and inflated silo hours vs the P&L matrix);
+ *    2. staff.pnl_home_silo pin;
+ *    3. service_type -> silo map (floaters attribute by clock-in selection);
+ *    4. otherwise 'overhead' (NULL / unknown).
+ *  Known nuance vs the RPC: comma-separated multi-service rows are split
+ *  evenly by the RPC but take the FIRST silo here — checkin.html's service
+ *  picker is single-select, so such rows shouldn't exist in practice. */
 function pcalSiloForLog(log) {
+    if (((log.service_type || '') + '').trim().toLowerCase() === 'shop') return 'overhead';
     const email = ((log.tech_email || '') + '').toLowerCase();
     const staff = (_allStaff || []).find(s => (s.email || '').toLowerCase() === email);
     if (staff && staff.pnl_home_silo) return staff.pnl_home_silo;
@@ -3735,8 +3788,15 @@ function pcalNav(dir) {
     pcalRender(); pcalFetch();
 }
 
-/** One range-scoped fetch, cached on the range key. Same join + exclusion
- *  rules as the _allWeekTimeLogs load (testers + training ROs dropped). */
+/** One range-scoped fetch, cached on the range key. UNION of live time_logs
+ *  AND the cashiered_time_logs mirror (v1.18 fix) — the Saturday archiver
+ *  hard-deletes cashiered ROs' time_logs from the live table, so without the
+ *  mirror union, past weeks lose every since-archived RO (the May "two quiet
+ *  weeks" glitch: the weekly_pnl RPC unions the mirrors, the v1.17 calendar
+ *  did not). No double count: archiving deletes live rows, and reactivation
+ *  deletes mirror rows (FK CASCADE). Same exclusion rules as the rest of the
+ *  report (testers dropped; live training ROs dropped — cashiered has no
+ *  is_training column, so tester-email exclusion covers archived rows). */
 async function pcalFetch() {
     const { start, endEx } = pcalRangeBounds();
     const key = start.toISOString() + '|' + endEx.toISOString();
@@ -3745,20 +3805,48 @@ async function pcalFetch() {
     _pcalError = null;
     pcalRender();
     try {
-        const { data, error } = await getSB()
-            .from('time_logs')
-            .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
-            .gte('clock_in', start.toISOString())
-            .lt('clock_in', endEx.toISOString())
-            .order('clock_in', { ascending: true });
-        if (error) throw error;
+        // Mirror snapshots store timestamps as '...+00:00' (to_jsonb), so the
+        // ->> string-range filters use that suffix for clean comparisons.
+        const startJ = start.toISOString().replace('Z', '+00:00');
+        const endJ = endEx.toISOString().replace('Z', '+00:00');
+        const [live, arch] = await Promise.all([
+            getSB()
+                .from('time_logs')
+                .select('*, repair_orders(ro_id, customer_name, rv, is_training)')
+                .gte('clock_in', start.toISOString())
+                .lt('clock_in', endEx.toISOString())
+                .order('clock_in', { ascending: true }),
+            getSB()
+                .from('cashiered_time_logs')
+                .select('source_data, original_ro_id, cashiered:cashiered_id(ro_id, customer_name, rv)')
+                .gte('source_data->>clock_in', startJ)
+                .lt('source_data->>clock_in', endJ),
+        ]);
+        if (live.error) throw live.error;
+        if (arch.error) throw arch.error;
+        // Normalize mirror rows to the live time_log shape the bucketer expects.
+        const archLogs = (arch.data || []).map(r => {
+            const sd = r.source_data || {};
+            const c = r.cashiered || {};
+            return {
+                ro_id: r.original_ro_id,
+                tech_email: sd.tech_email,
+                service_type: sd.service_type,
+                clock_in: sd.clock_in,
+                // Archived sessions are closed; if clock_out is somehow missing,
+                // fall back to clock_in (0h) rather than counting to "now".
+                clock_out: sd.clock_out || sd.clock_in,
+                close_reason: sd.close_reason,
+                repair_orders: { ro_id: c.ro_id, customer_name: c.customer_name, rv: c.rv, is_training: false },
+            };
+        });
         const testers = new Set(
             (_allStaff || [])
                 .filter(s => s && Number(s.hourly_rate || 0) === 0)
                 .map(s => (s.email || '').toLowerCase())
                 .filter(Boolean)
         );
-        _pcalLogs = (data || []).filter(l =>
+        _pcalLogs = (live.data || []).concat(archLogs).filter(l =>
             !testers.has(((l.tech_email || '') + '').toLowerCase()) &&
             !(l.repair_orders && l.repair_orders.is_training === true));
         _pcalFetchKey = key;
@@ -3793,12 +3881,18 @@ function pcalBuckets() {
             label: ro.customer_name || 'Unknown RO', roId: ro.ro_id || '', totalHours: 0, days: {},
         };
         rb.totalHours += hrs;
-        const db = rb.days[dayKey] = rb.days[dayKey] || { hours: 0, techs: {} };
+        const db = rb.days[dayKey] = rb.days[dayKey] || { hours: 0, techs: {}, eodHours: 0, eodTechs: {} };
         db.hours += hrs;
         const email = ((l.tech_email || '') + '').toLowerCase();
         const st = (_allStaff || []).find(s => (s.email || '').toLowerCase() === email);
         const nm = (st && st.name) || email.split('@')[0] || 'unknown';
         db.techs[nm] = (db.techs[nm] || 0) + hrs;
+        // v1.18 — flag EOD auto-closes (forgot to clock out; phantom hours).
+        // startsWith covers auto_eod_5pm / auto_eod / auto_eod_8h_recalc.
+        if (((l.close_reason || '') + '').startsWith('auto_eod')) {
+            db.eodHours += hrs;
+            db.eodTechs[nm] = true;
+        }
     });
     return out;
 }
@@ -3892,10 +3986,14 @@ function pcalTimelineHtml(buckets, days, todayKey) {
                 if (!cell) { html += '<td class="' + cls + '"></td>'; return; }
                 const h = cell.hours;
                 const op = h < 1 ? 0.3 : h < 3 ? 0.55 : h < 6 ? 0.8 : 1;
-                const techStr = Object.entries(cell.techs).map(([n, th]) => n + ' ' + th.toFixed(1) + 'h').join(', ');
+                const hasEod = cell.eodHours > 0;
+                const techStr = Object.entries(cell.techs).map(([n, th]) =>
+                    n + ' ' + th.toFixed(1) + 'h' + (cell.eodTechs[n] ? ' ⚠' : '')).join(', ');
                 const tip = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
-                    ' — ' + h.toFixed(1) + 'h — ' + techStr;
-                html += '<td class="' + cls + '" style="background:' + pcalHexA(color, op) + ';" title="' + escAttr(tip) + '"></td>';
+                    ' — ' + h.toFixed(1) + 'h — ' + techStr +
+                    (hasEod ? ' — ⚠ ' + cell.eodHours.toFixed(1) + 'h from a 5 PM EOD auto-close (forgot to clock out; hours inflated)' : '');
+                html += '<td class="' + cls + '" style="background:' + pcalHexA(color, op) +
+                    (hasEod ? ';box-shadow:inset 0 0 0 2px #f59e0b' : '') + ';" title="' + escAttr(tip) + '"></td>';
             });
             html += '</tr>';
         });
@@ -3904,6 +4002,7 @@ function pcalTimelineHtml(buckets, days, todayKey) {
         '<div class="pcal-legend"><span>Cell shade = hours that day:</span>' +
         [[0.3, '&lt;1h'], [0.55, '1–3h'], [0.8, '3–6h'], [1, '6h+']].map(([op, l]) =>
             '<span><i style="background:' + pcalHexA('#3b82f6', op) + ';"></i>' + l + '</span>').join('') +
+        '<span style="color:#fbbf24;"><i style="background:transparent;box-shadow:inset 0 0 0 2px #f59e0b;"></i>⚠ includes a 5 PM EOD auto-close (forgot to clock out — hours inflated)</span>' +
         '</div>';
 }
 
@@ -3914,7 +4013,7 @@ function pcalGridHtml(buckets, days, todayKey) {
     Object.entries(buckets).forEach(([silo, ros]) => {
         Object.values(ros).forEach(r => {
             Object.entries(r.days).forEach(([dk, d]) => {
-                (byDay[dk] = byDay[dk] || []).push({ silo, label: r.label, roId: r.roId, hours: d.hours, techs: d.techs });
+                (byDay[dk] = byDay[dk] || []).push({ silo, label: r.label, roId: r.roId, hours: d.hours, techs: d.techs, eodHours: d.eodHours, eodTechs: d.eodTechs });
             });
         });
     });
@@ -3936,9 +4035,14 @@ function pcalGridHtml(buckets, days, todayKey) {
         const dk = localDayKey(d);
         const list = dim ? [] : (byDay[dk] || []).slice().sort((a, b) => b.hours - a.hours);
         const chips = list.map(e => {
-            const techStr = Object.entries(e.techs).map(([n, th]) => n + ' ' + th.toFixed(1) + 'h').join(', ');
-            const tip = e.label + (e.roId ? ' (' + e.roId + ')' : '') + ' — ' + e.hours.toFixed(1) + 'h — ' + techStr;
-            return '<div class="pcal-chip" style="border-left-color:' + (PCAL_SILO_COLORS[e.silo] || '#64748b') + ';" title="' + escAttr(tip) + '">' +
+            const hasEod = (e.eodHours || 0) > 0;
+            const techStr = Object.entries(e.techs).map(([n, th]) =>
+                n + ' ' + th.toFixed(1) + 'h' + (e.eodTechs && e.eodTechs[n] ? ' ⚠' : '')).join(', ');
+            const tip = e.label + (e.roId ? ' (' + e.roId + ')' : '') + ' — ' + e.hours.toFixed(1) + 'h — ' + techStr +
+                (hasEod ? ' — ⚠ ' + e.eodHours.toFixed(1) + 'h from a 5 PM EOD auto-close (forgot to clock out; hours inflated)' : '');
+            return '<div class="pcal-chip" style="border-left-color:' + (PCAL_SILO_COLORS[e.silo] || '#64748b') +
+                (hasEod ? ';outline:1px solid #f59e0b' : '') + ';" title="' + escAttr(tip) + '">' +
+                (hasEod ? '<span style="color:#fbbf24;">⚠</span> ' : '') +
                 escHtml(e.label) + ' <span style="color:#94a3b8;">' + e.hours.toFixed(1) + 'h</span></div>';
         }).join('');
         return '<div class="pcal-day' + (dim ? ' dim' : '') + (dk === todayKey && !dim ? ' today' : '') + '">' +
@@ -3947,7 +4051,8 @@ function pcalGridHtml(buckets, days, todayKey) {
     }).join('');
     const legend = '<div class="pcal-legend">' +
         SERVICE_SILOS.map(s => '<span><i style="background:' + (PCAL_SILO_COLORS[s.key] || '#64748b') + ';"></i>' + s.label + '</span>').join('') +
-        '<span><i style="background:' + PCAL_SILO_COLORS.overhead + ';"></i>Overhead</span></div>';
+        '<span><i style="background:' + PCAL_SILO_COLORS.overhead + ';"></i>Overhead</span>' +
+        '<span style="color:#fbbf24;">⚠ includes a 5 PM EOD auto-close (forgot to clock out — hours inflated)</span></div>';
     return '<div class="pcal-cal">' + dows + cellsHtml + '</div>' + legend;
 }
 
