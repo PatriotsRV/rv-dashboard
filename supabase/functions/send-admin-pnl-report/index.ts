@@ -285,8 +285,11 @@ Deno.serve(async (req: Request) => {
         if (woVal == null) miss.push("no priced WO");
         if (agg && agg.hours === 0) miss.push("no hours this wk");
         const missTxt = miss.length ? `<div style="font-size:10px;color:#b45309;font-weight:700;">⚠ ${miss.join(" · ")}</div>` : "";
+        const siloDisp = w.service_silo
+          ? siloName(w.service_silo)
+          : (agg?.silos?.length ? agg.silos.map(siloName).join(", ") : "—");
         return `<tr><td style="${tdL}"><b>${esc(fact.ro_id || w.ro_id)}</b><br><span style="color:#64748b;">${esc(fact.customer_name || w.ro_name || "")}</span>${missTxt}</td>
-          <td style="${tdL}">${esc(siloName(w.service_silo || ""))}</td>
+          <td style="${tdL}">${esc(siloDisp)}</td>
           <td style="${tdS}">${agg ? agg.hours.toFixed(1) : "0.0"}</td>
           <td style="${tdS}">${usd(agg?.labor)}</td><td style="${tdS}">${usd(agg?.parts)}</td>
           <td style="${tdS}">${woVal != null ? usd(woVal) : "—"}</td>
@@ -332,7 +335,7 @@ Deno.serve(async (req: Request) => {
   ${agingHtml}
   ${coachingHtml}
   <div style="margin-top:22px;padding-top:12px;border-top:1px solid #e5e7eb;">
-    <p style="margin:0;color:#888;font-size:11px;">ADMIN-ONLY report · thresholds v1: labor amber &gt;${LABOR_AMBER * 100}% / red &gt;${LABOR_RED * 100}% of revenue base; WIP aging &gt;${WIP_AGE_DAYS}d; data flag &lt;${COMPLETENESS_FLAG}%.<br>
+    <p style="margin:0;color:#888;font-size:11px;">ADMIN-ONLY report · thresholds v1: labor amber &gt;${(LABOR_AMBER * 100).toFixed(0)}% / red &gt;${(LABOR_RED * 100).toFixed(0)}% of revenue base; WIP aging &gt;${WIP_AGE_DAYS}d; data flag &lt;${COMPLETENESS_FLAG}%.<br>
     Full detail: Weekly P&amp;L on the Work List Report. Generated automatically by the PRVS Dashboard.</p>
   </div>
 </body></html>`;
