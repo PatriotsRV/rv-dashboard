@@ -40,7 +40,7 @@
 </head>
 <body>
   <h1>Enhancement Request Triage</h1>
-  <div class="sub">Patriots RV Services · snapshot 2026-06-07 (Phase 2a nightly runner) · dashboard v1.447 · <span id="count"></span> requests</div>
+  <div class="sub">Patriots RV Services · snapshot 2026-06-12 (Phase 2a nightly runner) · dashboard v1.449 · <span id="count"></span> requests</div>
 
   <div class="cards" id="stats"></div>
 
@@ -70,7 +70,7 @@ const DATA = [
  {n:5,by:"Lynn",d:"2026-04-09",cat:"Bug Report",st:"done",bucket:"done",loe:"",theme:"Work List",desc:"Work list opened but couldn't view/do anything once people added",verdict:"FIXED Phase 14 (work-list.js renderWorkList + removeFromWorkList + _workListActiveSilo). Close as done."},
  {n:12,by:"Brandon",d:"2026-04-09",cat:"RO Management",st:"done",bucket:"done",loe:"",theme:"Work List",desc:"Different work lists for jobs under different categories",verdict:"Delivered via per-silo Work List tabs (_renderWorkListSiloTabs). Close as done."},
  {n:17,by:"Lynn",d:"2026-04-14",cat:"Work Orders",st:"done",bucket:"done",loe:"",theme:"RO types & status",desc:"Add new RO status 'Ready to Work'",verdict:"Shipped v1.410 (STATUS_PROGRESS_MAP slot 50). Close as done."},
- {n:21,by:"Roland",d:"2026-04-27",cat:"RO Management",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"Fix customer check-in; ensure submitted data emails out; remove photo; streamline",verdict:"customer-checkin.html v1.6 made photo optional + forces RAF/lead-staff email every submission (S50/71/80). Matches request. Close."},
+ {n:21,by:"Roland",d:"2026-04-27",cat:"RO Management",st:"done",bucket:"done",loe:"",theme:"Check-In",desc:"Fix customer check-in; ensure submitted data emails out; remove photo; streamline",verdict:"customer-checkin.html v1.11 made photo optional + auto-emails signed RAF on every drop-off (S50/71/80/97). Matches request. Close."},
  {n:22,by:"Tipton",d:"2026-04-30",cat:"Check-In",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"iPhone: no way back to dashboard after clocking out of a job",verdict:"FIXED v1.447 (checkin.html v1.34 Return-to-Dashboard button after clock-out). Was a bug; now done."},
  {n:33,by:"Bobby",d:"2026-05-28",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Bugs / data",desc:"Amounts drop the period & zeros -- 425.00 shows as 425 on recheck",verdict:"FIXED v1.447 (2-decimal formatting on currency inputs: ro-crud.js editDollarValue .toFixed(2) + parts.js MONEY_FIELDS). Cosmetic, no data loss. Now done."},
 
@@ -111,7 +111,15 @@ const DATA = [
 
  {n:38,by:"Roland",d:"2026-06-07",cat:"General UI/UX",st:"unreviewed",bucket:"needed",loe:"XL",theme:"Authentication & accounts",desc:"Replace Google-email auth (~$25/mo per mailbox, ~$500/mo total) with database-specific auth",verdict:"Open (new). Touches auth.js + Supabase auth model. New subsystem, needs design input. XL."},
 
- {n:39,by:"Roland",d:"2026-06-07",cat:"Work List",st:"unreviewed",bucket:"needed",loe:"L",theme:"Reporting & analytics",desc:"Admin-level daily Manager-worklist report (parts/labor/costs, upcoming dates, missing-from-worklist ROs) -> manager scoring + profit margin",verdict:"Open (new). Extends worklist-report.html into a manager scoring system + profit-margin visibility. Multi-session."}
+ {n:39,by:"Roland",d:"2026-06-07",cat:"Work List",st:"unreviewed",bucket:"needed",loe:"L",theme:"Reporting & analytics",desc:"Admin-level daily Manager-worklist report (parts/labor/costs, upcoming dates, missing-from-worklist ROs) -> manager scoring + profit margin",verdict:"Open (new). Extends worklist-report.html into a manager scoring system + profit-margin visibility. Multi-session."},
+
+ {n:40,by:"Sofia",d:"2026-06-08",cat:"General UI/UX",st:"done",bucket:"done",loe:"",theme:"Check-In",desc:"Check-in no longer emails staff / no copy of the authorization form",verdict:"FIXED v1.10/v1.11 (S97): shouldNotifyStaff fires on every drop-off + signed RAF always sends; v1.11 fixed getSignatureData typo (L1754). Was a bug; now done."},
+ {n:41,by:"Brandon",d:"2026-06-09",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Scheduling & key dates",desc:"Completion / P-U date to record when units leave the lot",verdict:"Duplicate of n24 (same field, same submitter). Folded into n24 (Key Dates pass)."},
+ {n:42,by:"Sofia",d:"2026-06-09",cat:"General UI/UX",st:"unreviewed",bucket:"done",loe:"",theme:"Check-In",desc:"Returning customer check-in sent no email (Sheldon Gilbert)",verdict:"Duplicate of n40; same defect, fixed v1.10/v1.11. Folded into n40."},
+ {n:43,by:"Roland",d:"2026-06-09",cat:"Work List",st:"unreviewed",bucket:"needed",loe:"M",theme:"Work List",desc:"Auto-remove an RO from a manager's work list the day after Cashiered Out/Delivered",verdict:"Open. work-list.js has manual removeFromWorkList only; no status-triggered auto-removal. Needs a daily job or status hook."},
+ {n:44,by:"Roland",d:"2026-06-09",cat:"Work List",st:"unreviewed",bucket:"done",loe:"",theme:"Work List",desc:"[exact duplicate of n43]",verdict:"Exact duplicate of n43 (timestamps 1s apart). Folded into n43."},
+ {n:45,by:"Brandon",d:"2026-06-10",cat:"General UI/UX",st:"unreviewed",bucket:"needed",loe:"S",theme:"Reporting & analytics",desc:"Split 'Total RVs' vs 'RVs on Lot' for an accurate customer gauge",verdict:"Open. render.js statTotal (L611) / totalRVs (L623) show the full filtered count, conflating on-lot with 'Not On Lot' (onLotROs filter exists L594). Add a distinct on-lot count. Quick win."},
+ {n:46,by:"Sofia",d:"2026-06-11",cat:"New Feature",st:"unreviewed",bucket:"needed",loe:"L",theme:"Check-In",desc:"Send the authorization form (RAF) remotely for e-signature",verdict:"Open (new). RAF signs on-site only (signatureCanvas L884 / getSignatureData L1754); no remote-signing link or route exists (grep). Needs a public token-signing page + email link + signature capture/store + staff notice. Multi-session."}
 ];
 
 const STH = {bug:"🐞 Bugs to fix",needed:"🛠 Needed",done:"✅ Done"};
