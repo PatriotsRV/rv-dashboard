@@ -1,7 +1,20 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.35
-    Released: 2026-06-10
+    PRVS Tech Check-In v1.36
+    Released: 2026-06-13
+    v1.36: CLOCK-IN AUTO-FLIP GUARD + audit attribution fix (Session 105). The v1.33
+           clock-in auto-status flipped ANY status other than "In progress" to
+           "In progress", silently clobbering deliberate manager-set states such as
+           "Awaiting parts" and "Awaiting Approval" (the long-standing "status keeps
+           resetting" complaint, GH#29c-prev). Now the flip ONLY advances from a
+           no-blocker, not-yet-worked state via FLIPPABLE_STATUSES (blank / Not On Lot /
+           On Lot / Scheduled / Ready to Work); every other status — both Awaiting states
+           and all completed-side states — is left untouched. ALSO fixes the audit
+           attribution that silently failed: audit_log.user_id has a FK to users(id) and
+           most techs have no users row, so passing supabaseSession.user.id threw an FK
+           violation that the non-fatal catch swallowed (only 6 audit rows ever landed vs
+           25 AUTO-STATUS notes). Now writes user_id:null — attribution is preserved in
+           user_email + user_name.
     v1.35: WEEKLY P&L (Session 99) — tech-lead "Our work is done" button on the clock-out
            summary screen (spec docs/specs/WEEKLY_PNL_SPEC.md section 5, Stage 1).
            After clocking out of a non-shop RO, the tech sees one row per service they
@@ -335,7 +348,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.35</div>
+    <div class="version">v1.36</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -668,7 +681,7 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    log('📦 PRVS Tech Check-In v1.35 - Released 2026-06-10');
+    log('📦 PRVS Tech Check-In v1.36 - Released 2026-06-13');
     translateStaticUI();
 
     if (!roIdParam) {
@@ -1307,7 +1320,17 @@ async function clockIn() {
         // Spanish users. v1.33 fixes both: audit attribution + correct
         // casing in the same write.
         const IN_PROGRESS = 'In progress';  // canonical value matching index.html
-        if (isOnline && roData.status !== IN_PROGRESS) {
+        // v1.36: ONLY auto-advance from a no-blocker, not-yet-worked state. The flip must
+        // never overwrite a deliberate manager-set status — "Awaiting parts" / "Awaiting
+        // Approval" (decision/blocked states) or any completed-side status (Repairs
+        // Completed / Waiting for QA/QC / Ready for pickup / Delivered). A clock-in is
+        // still fully captured in time_logs + the AUTO-STATUS note regardless, so nothing
+        // is lost when we leave a preserved status in place. Blank = brand-new RO with no
+        // manager signal yet, safe to advance. (Roland decision, Session 105: preserve
+        // both Awaiting states; leave completed ROs put.)
+        const FLIPPABLE_STATUSES = ['', 'Not On Lot', 'On Lot', 'Scheduled', 'Ready to Work'];
+        if (isOnline && roData.status !== IN_PROGRESS
+                     && FLIPPABLE_STATUSES.includes(roData.status || '')) {
             const priorStatus = roData.status || '';
             await getSB().from('repair_orders').update({
                 status: IN_PROGRESS,
@@ -1317,10 +1340,15 @@ async function clockIn() {
             roData.status = IN_PROGRESS;
 
             // Audit log — attributes the silent flip to the tech who clocked in.
+            // v1.36: user_id is FORCED null. audit_log.user_id has a FK to users(id), and
+            // most techs have no public.users row, so passing supabaseSession.user.id
+            // raised an FK violation that the non-fatal catch swallowed — that is why no
+            // audit row ever landed for tech clock-ins (only manager flips, Roland/Jason,
+            // succeeded). Attribution is preserved via user_email + user_name.
             try {
                 await getSB().from('audit_log').insert({
                     ro_id:         roData.id,
-                    user_id:       supabaseSession?.user?.id || null,
+                    user_id:       null,
                     user_email:    currentUser?.email || 'unknown',
                     user_name:     (currentUser?.name || currentUser?.email || 'Tech') + ' (auto via clock-in)',
                     field_changed: 'status',
