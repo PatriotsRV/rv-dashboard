@@ -24,3 +24,4 @@ supabase/.temp/
 # Python bytecode cache
 __pycache__/
 *.pyc
+.context_backups/
