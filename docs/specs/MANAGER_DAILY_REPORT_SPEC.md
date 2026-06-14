@@ -235,6 +235,30 @@ manager_guidance_log
 
 ---
 
+## 10.5 P1 rule-engine validation (Session 109, live data — Ryan)
+
+Validated the deterministic engine against the live DB on Ryan's 21-RO list (paint_body + roof). All numbers computed correctly:
+
+| Signal | Value |
+|---|---|
+| List ROs | 21 |
+| Hours logged last 7d | 117.9h (list is active) |
+| Idle ROs (no time in 3 working days) | 14 of 21 |
+| R1 no work order | 3 |
+| R2 WOs valued $0 | 5 |
+| R3 null-silo WOs | 0 |
+| R7 silo-less open parts | 19 |
+| R9 stuck tech-done > 6 business days | 0 |
+| F1 promised due/overdue | 3 |
+| F4 parts past ETA | 9 |
+| **RO-level readiness** | **48% (10 of 21 fully P&L-ready)** |
+
+**Two guard rules discovered (must add at build):**
+1. **Sentinel/invalid dates** — one flagged "fire" had `promised_date = 0001-01-01` (reads as 739,780 days overdue). Guard: a promised/ETA date only counts as a real flag when it's a sane value (e.g., year ≥ 2020). Invalid dates become their own readiness flag ("promised date is invalid — fix it"), NOT a Fire Watch overdue.
+2. **Exclude soft-deleted / junk ROs** — a `…DELETE` test record appeared on the list. The report must apply the same exclusion filter the reports use (soft-deleted + training) before computing anything, or junk pollutes both the fires and the readiness denominator.
+
+Net: the real fire on Ryan's list was a single legitimate 2-days-overdue RO (Aaron Stepich, On Lot) — exactly the signal the report exists to surface, once the two guards filter the noise.
+
 ## 11. Testing matrix (to expand at build)
 
 - Readiness math on a manager with known gaps (seed a no-WO RO, a $0 WO, a silo-less part) → verify each fails the right check and the % is correct.
