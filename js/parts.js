@@ -756,9 +756,9 @@
             const modal = document.createElement('div');
             modal.id = 'partsStatusModal';
             modal.className = 'modal-overlay active';
-            const _psLabel = (s) => s === 'requested' ? '🙋 PARTS REQUESTED' : s === 'sourcing' ? '🔍 PART SOURCING' : (s === 'ordered' || s === 'outstanding') ? '📦 PARTS ORDERED' : s === 'estimate' ? '📋 PARTS ESTIMATE' : '✅ PARTS RECEIVED';
+            const _psLabel = (s) => s === 'requested' ? '🙋 PARTS REQUESTED' : s === 'sourcing' ? '🔍 PART SOURCING' : s === 'ordered' ? '📦 PARTS ORDERED' : s === 'estimate' ? '📋 PARTS ESTIMATE' : '✅ PARTS RECEIVED';
             const currentChip = ro.partsStatus
-                ? `<span class="parts-status-chip ${ro.partsStatus === 'outstanding' ? 'ordered' : ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${_psLabel(ro.partsStatus)}</span>`
+                ? `<span class="parts-status-chip ${ro.partsStatus}" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">${_psLabel(ro.partsStatus)}</span>`
                 : ro.hasOpenPartsRequest ? `<span class="parts-status-chip requested" style="display:inline-flex; width:auto; margin:0 0 0 8px; padding:3px 10px; font-size:0.65rem;">🙋 PARTS REQUESTED</span>` : '<em style="color:var(--text-secondary); font-size:0.85rem;">None set</em>';
 
             modal.innerHTML = `
@@ -812,7 +812,7 @@
             const userName = currentUser?.name || 'Unknown';
             const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 
-            const labels = { requested: '🙋 PARTS REQUESTED', sourcing: '🔍 PART SOURCING', ordered: '📦 PARTS ORDERED', outstanding: '📦 PARTS ORDERED', received: '✅ PARTS RECEIVED', estimate: '📋 PARTS ESTIMATE' };
+            const labels = { requested: '🙋 PARTS REQUESTED', sourcing: '🔍 PART SOURCING', ordered: '📦 PARTS ORDERED', received: '✅ PARTS RECEIVED', estimate: '📋 PARTS ESTIMATE' };
             const noteText = newStatus
                 ? `[${ts} - ${userName}] Parts status set to: ${labels[newStatus]}`
                 : `[${ts} - ${userName}] Parts status cleared`;
