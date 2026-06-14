@@ -1,7 +1,15 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.449
+    PRVS Dashboard v1.450
+    v1.450: Remove dead 'outstanding' parts_status alias (Session 106, 2026-06-14).
+            Post-Phase-2 dead-code cleanup: the legacy parts_status='outstanding' value
+            was backfilled to 'ordered' and forbidden by the CHECK constraint in v1.449's
+            Phase 2 (Session 100), so the `=== 'outstanding'` render fallbacks could never
+            fire. Stripped 4 fallbacks in js/render.js (ps-ordered filter, compact chip,
+            full-card chip class + label) and 3 in js/parts.js (_psLabel, currentChip
+            class, labels map). Verified 0 live rows + constraint-forbidden via MCP; both
+            modules pass node --check. No DB change, no behavior change.
     v1.449: WEEKLY P&L Phase 3 (Session 99, 2026-06-10) — two-stage WO completion +
             parts silo attribution (spec docs/specs/WEEKLY_PNL_SPEC.md v0.2).
             js/work-orders.js: manager "✓ Mark Completed" (Done-Done) button per silo WO
@@ -537,7 +545,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.449</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.450</span>
             </div>
         </header>
 
@@ -3206,7 +3214,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.449 - Released 2026-06-10 - WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.450 - Released 2026-06-14 - Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
