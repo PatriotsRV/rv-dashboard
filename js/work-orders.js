@@ -140,7 +140,11 @@
             for (const silo of activeSilos) {
                 const wo = orders.find(o => o.service_silo === silo.key);
                 const siloTasks = wo ? tasks.filter(t => t.work_order_id === wo.id).sort((a,b) => a.sort_order - b.sort_order) : [];
-                const totalEstHours = siloTasks.reduce((sum, t) => sum + (parseFloat(t.est_hours) || 0), 0);
+                // Effective WO estimate: roll up task est_hours when the WO has a task
+                // breakdown ("detailed"); otherwise fall back to the WO-level estimated_hours
+                // entered on a "basic" WO. Never double-counts — tasks win when present.
+                const taskEstHours = siloTasks.reduce((sum, t) => sum + (parseFloat(t.est_hours) || 0), 0);
+                const totalEstHours = taskEstHours > 0 ? taskEstHours : (parseFloat(wo?.estimated_hours) || 0);
                 const canManage = canManageSilo(silo.key);
                 const statusColor = WO_STATUS_COLORS[wo?.status] || '#94a3b8';
 
@@ -315,6 +319,11 @@
                         <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Total Dollar Value ($)${dollarLocked ? ' <span style="font-weight:500;color:#94a3b8;">— locked</span>' : ''}</label>
                         <input id="woFormDollar" type="number" min="0" step="0.01" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:${dollarLocked ? '#f1f5f9' : '#fff'};color:#1e293b;box-sizing:border-box;${dollarLocked ? 'cursor:not-allowed;' : ''}" placeholder="0.00" value="${existingWO?.dollar_value||''}"${dollarLocked ? ' readonly title="Pricing locked — silo manager must adjust"' : ''}>
                     </div>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Estimated Hours <span style="font-weight:500;color:#94a3b8;">— basic WO fallback</span></label>
+                    <input id="woFormEstHours" type="number" min="0" step="0.5" style="width:100%;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" placeholder="e.g. 4" value="${existingWO?.estimated_hours||''}">
+                    <div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;">Used for P&amp;L labor efficiency only when this WO has no tasks. If you add tasks below, their hours are summed instead.</div>
                 </div>
                 <div style="margin-bottom:14px;">
                     <label style="font-size:0.8rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Notes</label>
@@ -519,6 +528,7 @@
 
             const status     = document.getElementById('woFormStatus').value;
             const dollar     = parseFloat(document.getElementById('woFormDollar').value) || 0;
+            const estHours   = parseFloat(document.getElementById('woFormEstHours')?.value) || null;
             const notes      = document.getElementById('woFormNotes').value.trim();
             const userEmail  = supabaseSession.user.email;
             const btn        = document.getElementById('woSaveBtn');
@@ -529,13 +539,13 @@
 
                 if (workOrderId) {
                     const { error } = await sb.from('service_work_orders').update({
-                        status, dollar_value: dollar, notes, updated_at: new Date().toISOString()
+                        status, dollar_value: dollar, estimated_hours: estHours, notes, updated_at: new Date().toISOString()
                     }).eq('id', workOrderId);
                     if (error) throw error;
                 } else {
                     const { data, error } = await sb.from('service_work_orders').insert({
                         ro_id: ro._supabaseId, service_silo: silo,
-                        status, dollar_value: dollar, notes, created_by: userEmail
+                        status, dollar_value: dollar, estimated_hours: estHours, notes, created_by: userEmail
                     }).select().single();
                     if (error) throw error;
                     workOrderId = data.id;
