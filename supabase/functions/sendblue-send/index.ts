@@ -93,6 +93,11 @@ Deno.serve(async (req: Request) => {
   if (!to) return json({ error: "Missing 'to' phone number (E.164, e.g. +12145551234)" }, 400);
   if (!content) return json({ error: "Missing message body" }, 400);
 
+  // Sendblue's send-message API requires from_number (which line to send from).
+  // Default to the shared sandbox line; override via the SENDBLUE_FROM_NUMBER
+  // secret when migrating to the hosted office number for production cutover.
+  const fromNumber = (Deno.env.get("SENDBLUE_FROM_NUMBER") || "+16466208124").trim();
+
   // ── Call Sendblue ──────────────────────────────────────────────────
   let sbResp: Response;
   let sbData: any;
@@ -104,7 +109,7 @@ Deno.serve(async (req: Request) => {
         "sb-api-secret-key": keySecret,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ number: to, content }),
+      body: JSON.stringify({ number: to, from_number: fromNumber, content }),
     });
     const text = await sbResp.text();
     try { sbData = JSON.parse(text); } catch { sbData = { raw: text }; }
