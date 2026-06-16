@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Employee Guide v1.0
-    Released: 2026-06-16 (Session 112)
+    PRVS Employee Guide v1.1
+    Released: 2026-06-16 (Session 113)
 
     A living, login-gated guide for Patriots RV Services employees.
     Consolidates the printed training cards built in Session 104 into a
@@ -14,11 +14,19 @@
         guide.html#phantom-hours
         guide.html#part-silo
         guide.html#flags
+    Per-report-block anchors (used by the Manager/Parts report emails):
+        guide.html#rb-active      guide.html#rb-idle
+        guide.html#rb-firewatch   guide.html#rb-readiness
+        guide.html#rb-parts       guide.html#rb-phantom
 
+    v1.1 (Session 113): + "Your daily report, block by block" — a deep
+        per-block walkthrough (what you see / why it matters / what to do)
+        with stable #rb-* anchors so each report block deep-links to its
+        own detail. Guide is now linked from the dashboard + check-in
+        headers and the daily report emails. English only (ES is a follow-up).
     v1.0 (Session 112): English only. Tech/Lead time clock, Silo Manager
         P&L, Parts Manager P&L, Reading the Flags, and a Daily Report
         glossary that maps each report block to the relevant section.
-        Spanish toggle + report-email wiring are follow-ups.
 
     Auth pattern mirrors closed-ros.html (Supabase id-token sign-in via
     Google GIS; persistSession; role badge). No DB writes — read-only
@@ -98,6 +106,15 @@
 
         .content { flex: 1; min-width: 0; padding: 26px 30px 90px; }
 
+        /* ── Intro frame (hero + Start here) ────────── */
+        .intro-frame {
+            border: 3px solid #3b82f6; border-radius: 16px;
+            padding: 18px 20px 22px; margin-bottom: 34px;
+            box-shadow: 0 0 0 1px rgba(59,130,246,0.25);
+        }
+        .intro-frame .hero { margin-bottom: 22px; }
+        .intro-frame > section { margin-bottom: 0; }
+
         /* ── Hero ───────────────────────────────────── */
         .hero {
             background: linear-gradient(135deg, #11203a 0%, #0f172a 100%);
@@ -107,6 +124,7 @@
         .hero h1 { font-size: 2.4rem; color: white; font-weight: 700; margin-bottom: 12px; }
         .hero p { color: #dbe4ee; font-size: 1.45rem; max-width: 820px; }
         .hero p + p { margin-top: 12px; }
+        .hero p b { color: #facc15; }
 
         /* ── Sections ───────────────────────────────── */
         section { margin-bottom: 42px; scroll-margin-top: 76px; }
@@ -114,7 +132,7 @@
             border-bottom: 2px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 6px;
             display: flex; align-items: baseline; gap: 12px;
         }
-        .section-head h2 { font-size: 2rem; color: white; font-weight: 700; }
+        .section-head h2 { font-size: 2rem; color: white; font-weight: 700; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
         .section-head .who { font-size: 1.05rem; color: #94a3b8; font-weight: 600; }
         .section-intro { color: #dbe4ee; font-size: 1.35rem; margin: 12px 0 22px; max-width: 880px; }
         .role-head {
@@ -136,6 +154,13 @@
         .bar-navy { background: var(--navy); }
         .bar-red { background: var(--red); }
         .bar-purple { background: var(--purple); }
+        .bar-amber { background: var(--amber); }
+        .step-body p { color: #eef2f7; font-size: 1.28rem; margin: 9px 0; }
+        .step-body p + p { margin-top: 9px; }
+        .step-body p b { color: #ffffff; }
+        .step-body a { color: #7cb8ff; text-decoration: none; font-weight: 700; }
+        .step-body a:hover { text-decoration: underline; }
+        .step-bar .tag { font-weight: 700; font-size: 1.3rem; letter-spacing: 0.4px; }
         .step-body {
             background: #0f172a; border: 1px solid #1e293b; border-top: none;
             border-radius: 0 0 8px 8px; padding: 12px 18px 14px;
@@ -213,7 +238,7 @@
             </div>
         </div>
         <div class="header-right">
-            <span class="version-pill" id="versionPill">v1.0</span>
+            <span class="version-pill" id="versionPill">v1.1</span>
             <span id="userBadge" class="badge-role badge-user"></span>
             <a href="index.html" class="back-link">&larr; Dashboard</a>
         </div>
@@ -224,7 +249,14 @@
         <nav class="toc" id="toc">
             <h3>Start</h3>
             <a href="#start-here">Start here</a>
-            <a href="#report-glossary">Your daily report, explained</a>
+            <a href="#report-glossary">Your Manager daily report, explained</a>
+            <a href="#report-walkthrough">Report blocks, in depth</a>
+            <a href="#rb-active" class="sub">Active work</a>
+            <a href="#rb-idle" class="sub">Idle ROs</a>
+            <a href="#rb-firewatch" class="sub">Fire Watch</a>
+            <a href="#rb-readiness" class="sub">P&amp;L Readiness</a>
+            <a href="#rb-parts" class="sub">Parts to tag</a>
+            <a href="#rb-phantom" class="sub">Phantom hours</a>
             <h3>The Tutorials</h3>
             <a href="#tech">Time Clock &mdash; Techs &amp; Leads</a>
             <a href="#phantom-hours" class="sub">Phantom hours</a>
@@ -241,55 +273,117 @@
         <!-- ── Content ── -->
         <main class="content">
 
-            <div class="hero">
-                <h1>Patriots RV Services &mdash; Employee Guide</h1>
-                <p>Every morning the dashboard emails out a report &mdash; the <b>Manager Daily Report</b> and the <b>Parts Report</b>. Those reports flag what needs your attention today. This page explains what each flag means and exactly what to do about it.</p>
-                <p>Reports will link straight here. When a report says <b>&ldquo;For more detailed guidance, click here&rdquo;</b>, it drops you at the matching section below.</p>
-            </div>
-
-            <!-- ───────────────── START HERE ───────────────── -->
-            <section id="start-here">
-                <div class="section-head"><h2>Start here</h2><span class="who">Everyone</span></div>
-                <p class="section-intro">We are moving to an AI-assisted setup where the dashboard does the watching, and the morning report tells each manager and parts lead what to focus on. The report is only as good as the data we put in &mdash; clock-ins, work orders, and silo tags. This guide is how we keep that data clean so the report stays honest.</p>
-                <div class="callout">
-                    <b>The one rule that ties it all together:</b> what you enter into the dashboard <i>is</i> the shop's numbers. A missing clock-out, a $0 work order, or an untagged part doesn't just look messy &mdash; it makes real revenue and labor invisible (or worse, lands it on the wrong department).
+            <div class="intro-frame">
+                <div class="hero">
+                    <h1>Patriots RV Services RO Dashboard Guide</h1>
+                    <p>Every morning the PRVS RO dashboard emails out reports &mdash; the <b>Manager Daily Report</b> and the <b>Parts Report</b>. Those reports flag what needs your attention today. This page explains what each flag means and exactly what to do about it.</p>
+                    <p>As these reports grow over time, they will have links which will link straight to this page. When a report says <b>&ldquo;For more detailed guidance, click here&rdquo;</b>, it drops you at the matching section below. If you feel you have something to add to this, just let Roland know and he'll get it added, to make the RO dashboard easier to use for everyone.</p>
                 </div>
-            </section>
+
+                <!-- ───────────────── START HERE ───────────────── -->
+                <section id="start-here">
+                    <div class="section-head"><h2>Start here</h2><span class="who">Everyone</span></div>
+                    <p class="section-intro">We are moving to an AI-assisted setup where the dashboard does the watching, and the morning report tells each manager and parts lead what to focus on. The report is only as good as the data we put in &mdash; clock-ins, work orders, and silo tags. This guide is how we keep that data clean so the report stays honest.</p>
+                    <div class="callout">
+                        <b>The one rule that ties it all together:</b> what you enter into the dashboard <i>is</i> the shop's numbers. A missing clock-out, a $0 work order, or an untagged part doesn't just look messy &mdash; it makes real revenue and labor invisible (or worse, lands it on the wrong department).
+                    </div>
+                </section>
+            </div>
 
             <!-- ───────────────── REPORT GLOSSARY ───────────────── -->
             <section id="report-glossary">
-                <div class="section-head"><h2>Your daily report, explained</h2><span class="who">Managers &amp; Parts</span></div>
+                <div class="section-head"><h2>Your Manager daily report, explained</h2><span class="who">Managers &amp; Parts</span></div>
                 <p class="section-intro">Each block in the Manager Daily Report points back at one habit in this guide. Here's the map &mdash; click through to the detail.</p>
                 <div class="glossary">
                     <div class="gcard">
                         <h4>&#9201; Active work</h4>
                         <p>The good news, first: which of your ROs got worked today and yesterday, the hours logged, and how far the work orders have moved. Driven by tech clock-ins.</p>
-                        <a href="#tech">&rarr; Time Clock guidance</a>
+                        <a href="#rb-active">&rarr; Click Here to go In Depth on this topic</a>
                     </div>
                     <div class="gcard">
                         <h4>&#128164; Idle ROs</h4>
                         <p>ROs on your list with no work for 5+ business days. Either get a tech on it, schedule it, set it to Awaiting Parts/Approval, or remove it from your list.</p>
-                        <a href="#silo-managers">&rarr; Silo Manager guidance</a>
+                        <a href="#rb-idle">&rarr; Click Here to go In Depth on this topic</a>
                     </div>
                     <div class="gcard">
                         <h4>&#128293; Fire Watch</h4>
                         <p>Promised dates coming due or overdue, and parts past their ETA. These are the jobs most likely to burn a customer relationship if they slip.</p>
-                        <a href="#flags">&rarr; Reading the Flags</a>
+                        <a href="#rb-firewatch">&rarr; Click Here to go In Depth on this topic</a>
                     </div>
                     <div class="gcard">
                         <h4>&#9989; P&amp;L Readiness</h4>
                         <p>A percentage of how &ldquo;countable&rdquo; your ROs are: do they have a work order, a real dollar value, the right silo, and were they marked complete? Low % = invisible revenue.</p>
-                        <a href="#mark-completed">&rarr; Mark Completed = revenue</a>
+                        <a href="#rb-readiness">&rarr; Click Here to go In Depth on this topic</a>
                     </div>
                     <div class="gcard">
                         <h4>&#129520; Parts to tag</h4>
                         <p>Parts with no Service Silo land in the <b>Unattributed</b> bucket and answer to no department. The Parts Report lists them so you can tag them daily.</p>
-                        <a href="#part-silo">&rarr; Tag the silo</a>
+                        <a href="#rb-parts">&rarr; Click Here to go In Depth on this topic</a>
                     </div>
                     <div class="gcard">
                         <h4>&#9888; Phantom hours</h4>
                         <p>A &#9888; on a tech's time means the system force-closed a forgotten clock-in at 5 PM &mdash; fake hours on your silo's labor. Coach the tech.</p>
-                        <a href="#phantom-hours">&rarr; Phantom hours</a>
+                        <a href="#rb-phantom">&rarr; Click Here to go In Depth on this topic</a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ───────────────── REPORT WALKTHROUGH (deep) ───────────────── -->
+            <section id="report-walkthrough">
+                <div class="section-head"><h2>Your daily report, block by block</h2><span class="who">Managers &amp; Parts</span></div>
+                <p class="section-intro">The Manager Daily Report lands every weekday at <b>7&nbsp;AM</b>, built top-to-bottom in priority order &mdash; the good news first, then what needs your attention. Here is every block: <b>what you see</b>, <b>why it matters</b>, and <b>exactly what to do</b>. Each block below is also where the report's &ldquo;For more guidance&rdquo; links drop you.</p>
+
+                <div class="step" id="rb-active">
+                    <div class="step-bar bar-green"><span class="tag">&#9989; ACTIVE WORK</span></div>
+                    <div class="step-body">
+                        <p><b>What you see:</b> every RO on your list that got hands-on tech time in the last 5 work days &mdash; with hours logged (last 7 days and today), how many techs touched it today, and work-order progress (e.g. &ldquo;WOs 1/2 done, 1 awaiting your sign-off&rdquo;).</p>
+                        <p><b>Why it leads:</b> this is what's moving. Confirm it matches what you know is happening on the floor. If an RO you believe is being worked is <i>not</i> here, a tech isn't clocking in to it &mdash; and those labor hours are going uncounted.</p>
+                        <p><b>What to do:</b> scan for <b>&ldquo;awaiting your sign-off&rdquo;</b> &mdash; that means a tech lead tapped the blue <i>Tech done</i> chip and the job is sitting on <i>your</i> QA/QC and final <b>&#10003; Mark Completed</b>. Clear those first; they're finished revenue you haven't recognized yet. <a href="#tech">&rarr; Time Clock guidance</a> &middot; <a href="#mark-completed">&rarr; Mark Completed = revenue</a></p>
+                    </div>
+                </div>
+
+                <div class="step" id="rb-idle">
+                    <div class="step-bar bar-blue"><span class="tag">&#128164; IDLE ROs</span></div>
+                    <div class="step-body">
+                        <p><b>What you see:</b> ROs on your work list with <b>no tech time in 5 business days</b>, each with its current status.</p>
+                        <p><b>Why it matters:</b> idle ROs are where jobs quietly stall and promised dates slip. The list is your daily &ldquo;why isn't this moving?&rdquo; check.</p>
+                        <p><b>What to do</b> &mdash; get each one off the list one of four ways: <b>(1)</b> make sure a tech actually clocks in to it; <b>(2)</b> if it's a placeholder, open the RO and use the <b>Schedule</b> button to put it on the calendar; <b>(3)</b> if it's waiting on parts or an approval, set the status correctly (<i>Awaiting parts</i> / <i>Awaiting Approval</i>) so it stops reading as idle; or <b>(4)</b> remove it from your list if it isn't yours right now. <a href="#silo-managers">&rarr; Silo Manager guidance</a></p>
+                    </div>
+                </div>
+
+                <div class="step" id="rb-firewatch">
+                    <div class="step-bar bar-red"><span class="tag">&#128293; FIRE WATCH</span></div>
+                    <div class="step-body">
+                        <p><b>What you see:</b> the jobs most likely to burn a customer &mdash; a <b>promised date</b> that's near or already passed, or a <b>part past its ETA</b>. Each line carries a severity dot: <span class="hl-red">&#128308; = handle today</span>, <span class="hl-amber">&#128992; = handle this week</span>, and a <b>&#8627;</b> note spelling out the exact fix.</p>
+                        <p><b>Why it matters:</b> these are deadline and supply-chain risks, not data-entry nits. A slipped promise the customer hears about <i>second</i> is how relationships break.</p>
+                        <p><b>What to do:</b> work the <span class="hl-red">&#128308;</span> lines first. For a promised-date fire, either get the job moving or call the customer ahead of the date. For a part past ETA, chase the supplier and update the ETA. <a href="#flags">&rarr; Reading the Flags</a></p>
+                    </div>
+                </div>
+
+                <div class="step" id="rb-readiness">
+                    <div class="step-bar bar-navy"><span class="tag">&#9989; P&amp;L READINESS</span></div>
+                    <div class="step-body">
+                        <p><b>What you see:</b> a percentage of how &ldquo;countable&rdquo; your ROs are, plus the specific checks that are failing &mdash; does the RO have a work order, a real dollar value, the right silo, a tech rate, and was it marked complete on time? Each failing line has a <b>&#8627;</b> note saying exactly where to click.</p>
+                        <p><b>Why it matters:</b> this is the one number that measures <i>only your own data-entry job</i>. A low % doesn't mean your team isn't working &mdash; it means their work is <b>invisible to the P&amp;L</b>. No WO or a $0 WO = revenue that never shows up.</p>
+                        <p><b>What to do:</b> walk the failing lines top to bottom. The most common fixes: build the missing Work Order with a real <b>Dollar Value</b> and the right silo, and click <b>&#10003; Mark Completed</b> the same week the work finishes. <a href="#build-wo">&rarr; Build the Work Order</a> &middot; <a href="#mark-completed">&rarr; Mark Completed = revenue</a></p>
+                    </div>
+                </div>
+
+                <div class="step" id="rb-parts">
+                    <div class="step-bar bar-purple"><span class="tag">&#129520; PARTS TO TAG</span></div>
+                    <div class="step-body">
+                        <p><b>What you see</b> (Parts Managers): a count of <b>open parts with no Service Silo</b>, grouped by RO, plus a short how-to-clear guide. One June week had <b>$19,068</b> in parts sitting in the Unattributed bucket.</p>
+                        <p><b>Why it matters:</b> a part with no silo can't be costed to a team, so it lands in the <b>Unattributed</b> row and hides each silo's true margin.</p>
+                        <p><b>What to do:</b> open each <b>customer</b> RO in the list, go to its Parts section, and set the <b>Service Silo</b> on every part to match the work it's for. Leave genuine shop/overhead parts blank &mdash; those are expected to stay here until we add an overhead bucket. <a href="#part-silo">&rarr; Tag the silo</a> &middot; <a href="#part-cost">&rarr; Cost fields</a></p>
+                    </div>
+                </div>
+
+                <div class="step" id="rb-phantom">
+                    <div class="step-bar bar-amber"><span class="tag">&#9888; PHANTOM HOURS</span></div>
+                    <div class="step-body">
+                        <p><b>What you see:</b> a <span class="hl-amber">&#9888;</span> on a tech's time entry &mdash; the system force-closed a forgotten clock-in at 5&nbsp;PM. A forgotten 7:30&nbsp;AM clock-in becomes a fake 9.5-hour day with that tech's name on it.</p>
+                        <p><b>Why it matters:</b> phantom hours inflate your silo's labor and make every margin and efficiency number wrong.</p>
+                        <p><b>What to do:</b> coach the tech to clock out at the end of every job and every day. It's a habit problem, not a system problem &mdash; the fix is at the kiosk. <a href="#phantom-hours">&rarr; Phantom hours (tech step)</a></p>
                     </div>
                 </div>
             </section>
@@ -465,7 +559,7 @@
             <section id="whats-next">
                 <div class="section-head"><h2>What's coming next</h2></div>
                 <div class="grow-note">
-                    <b>This is the v1 guide and it will grow.</b> Coming additions: a Spanish toggle, deeper walkthroughs for each report block, shop-expense and per-job labor reporting, and customer-messaging guidance as we roll out the AI-assisted manager setup. The steps above are the foundation &mdash; get these right and everything that follows gets easier. Spot something confusing or missing? Tell Roland and we'll add it.
+                    <b>This guide will keep growing.</b> Coming additions: a Spanish toggle, shop-expense and per-job labor reporting, and customer-messaging guidance as we roll out the AI-assisted manager setup. The steps above are the foundation &mdash; get these right and everything that follows gets easier. Spot something confusing or missing? Tell Roland and we'll add it.
                 </div>
             </section>
 

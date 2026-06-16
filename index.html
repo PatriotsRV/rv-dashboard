@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.451
+    PRVS Dashboard v1.452
+    v1.452: Employee Guide deep-links (Session 113). NEW header "📖 Guide" button (all authenticated users) opening guide.html. Deep-link ⓘ helpers added at the WO build form header (-> guide.html#build-wo, js/work-orders.js) and the part Service Silo label (-> guide.html#part-silo, js/parts.js). Pairs with guide.html v1.1 (per-report-block walkthroughs) + report-email links. No DB change.
     v1.451: WO Estimated Hours field (Session 109, 2026-06-14) - basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective estimate rolls up task est_hours when present, else WO-level. Enables actual-vs-estimate labor efficiency for the Weekly P&L + Manager Daily Report. Migration wo_estimated_hours.sql.
     v1.450: Remove dead 'outstanding' parts_status alias (Session 106, 2026-06-14).
             Post-Phase-2 dead-code cleanup: the legacy parts_status='outstanding' value
@@ -546,7 +547,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.451</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.452</span>
             </div>
         </header>
 
@@ -572,6 +573,10 @@
                 </button>
                 <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(234,179,8,0.15); color: #facc15; border: 2px solid rgba(234,179,8,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(234,179,8,0.3)'" onmouseout="this.style.background='rgba(234,179,8,0.15)'">
                     &#128451; Closed ROs
+                </button>
+                <!-- S113: Employee Guide — visible to all authenticated users -->
+                <button id="guideBtn" onclick="window.open('guide.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(13,148,136,0.15); color: #5eead4; border: 2px solid rgba(13,148,136,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(13,148,136,0.3)'" onmouseout="this.style.background='rgba(13,148,136,0.15)'">
+                    &#128218; Guide
                 </button>
                 <!-- GH#30: Recently Deleted (admin-only) — soft-deleted ROs awaiting 7-day scrub -->
                 <button id="recentlyDeletedBtn" onclick="openRecentlyDeletedModal()" style="display:none; padding: 10px 16px; background: rgba(220,38,38,0.15); color: #fca5a5; border: 2px solid rgba(220,38,38,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(220,38,38,0.3)'" onmouseout="this.style.background='rgba(220,38,38,0.15)'">
@@ -4395,6 +4400,11 @@
             const closedROsBtn = document.getElementById('closedROsBtn');
             if (closedROsBtn) {
                 closedROsBtn.style.display = 'inline-block';
+            }
+            // S113: Show Employee Guide button (all authenticated users)
+            const guideBtn = document.getElementById('guideBtn');
+            if (guideBtn) {
+                guideBtn.style.display = 'inline-block';
             }
             // GH#30: Show Recently Deleted button (Admin only) + load count badge
             const rdBtn = document.getElementById('recentlyDeletedBtn');

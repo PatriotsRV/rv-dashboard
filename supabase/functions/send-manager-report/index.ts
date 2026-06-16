@@ -80,6 +80,10 @@ const esc = (s: unknown) =>
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const DASH_URL = "https://patriotsrv.github.io/rv-dashboard/";
+// S113: Employee Guide deep-links. Each report block links to its own #rb-* anchor.
+const GUIDE_URL = DASH_URL + "guide.html";
+const guideLink = (anchor: string) =>
+  `<a href="${GUIDE_URL}#${anchor}" style="color:#1d4ed8;text-decoration:none;font-weight:600;font-size:11px;white-space:nowrap;">&#128218; Guide &rsaquo;</a>`;
 const roLink = (code: string | null | undefined, label?: string) => {
   const c = code || "?";
   return `<a href="${DASH_URL}?ro=${encodeURIComponent(c)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${esc(label || c)}</a>`;
@@ -454,7 +458,7 @@ Deno.serve(async (req: Request) => {
       // summary (status · hours · techs today · WO progress).
       const activeHtml = r.workedList.length
         ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
-             <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">✅ Active work — ${r.workedList.length} RO${r.workedList.length > 1 ? "s" : ""} getting hands-on time (last ${IDLE_WORKING_DAYS} work days) · ${r.hours7d.toFixed(1)}h logged across the list in 7 days</div>
+             <div style="font-size:12px;font-weight:800;color:#166534;margin-bottom:6px;">✅ Active work — ${r.workedList.length} RO${r.workedList.length > 1 ? "s" : ""} getting hands-on time (last ${IDLE_WORKING_DAYS} work days) · ${r.hours7d.toFixed(1)}h logged across the list in 7 days &nbsp;${guideLink("rb-active")}</div>
              ${[...r.workedList].sort((a, b) => (b.tl.h7d || 0) - (a.tl.h7d || 0)).map(({ ro, tl }) => {
                const wos = wosByRo[ro.id] || [];
                const woTotal = wos.length;
@@ -473,7 +477,7 @@ Deno.serve(async (req: Request) => {
       // Idle group (the "easy vs hard" tell) — grouped box + plain footer
       const idleHtml = r.idleList.length
         ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
-             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:5px;">🕒 Idle ROs (${r.idleList.length}) — no tech time in ${IDLE_WORKING_DAYS} work days</div>
+             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:5px;">🕒 Idle ROs (${r.idleList.length}) — no tech time in ${IDLE_WORKING_DAYS} work days &nbsp;${guideLink("rb-idle")}</div>
              ${r.idleList.slice(0, 25).map((ro) => `<div style="font-size:12px;margin-bottom:3px;line-height:1.45;">🟡 ${roLink(ro.ro_id, ro.customer_name || ro.ro_id)} <span style="color:#64748b;">— status ${esc(ro.status || "—")}</span></div>`).join("")}
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 12px;">✅ Every RO on the list got tech time within the last ${IDLE_WORKING_DAYS} work days.</div>`;
@@ -481,7 +485,7 @@ Deno.serve(async (req: Request) => {
       // Fire Watch preview (P2 will color-band + expand)
       const fireHtml = r.fires.length
         ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
-             <div style="font-size:12px;font-weight:800;color:#991b1b;margin-bottom:5px;">🔥 Fire Watch (${r.fires.length})</div>
+             <div style="font-size:12px;font-weight:800;color:#991b1b;margin-bottom:5px;">🔥 Fire Watch (${r.fires.length}) &nbsp;${guideLink("rb-firewatch")}</div>
              ${r.fires.slice(0, 15).map((f) => `<div style="font-size:12px;margin-bottom:5px;line-height:1.45;">${sevDot(f.sev)} ${f.html}</div>`).join("")}
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 12px;">✅ No fires on this list today.</div>`;
@@ -489,7 +493,7 @@ Deno.serve(async (req: Request) => {
       // P&L Readiness fails
       const readyHtml = r.readyFails.length
         ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:0 0 8px;">
-             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:5px;">📋 P&L Readiness — fix these (${r.passing}/${r.applicable} checks pass)</div>
+             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:5px;">📋 P&L Readiness — fix these (${r.passing}/${r.applicable} checks pass) &nbsp;${guideLink("rb-readiness")}</div>
              ${r.readyFails.map((f) => `<div style="font-size:12px;margin-bottom:5px;line-height:1.45;">${sevDot(f.sev)} ${f.html}</div>`).join("")}
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 8px;">✅ P&L Readiness 100% — every applicable data check passes.</div>`;
@@ -501,7 +505,7 @@ Deno.serve(async (req: Request) => {
         for (const p of siloLessOpenParts) byRo[p.ro_id] = (byRo[p.ro_id] || 0) + 1;
         const entries = Object.entries(byRo).sort((a, b) => b[1] - a[1]);
         partsExtra = `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin:0 0 8px;">
-          <div style="font-size:12px;font-weight:800;color:#1e40af;margin-bottom:4px;">📦 Action needed — ${siloLessOpenParts.length} open part${siloLessOpenParts.length !== 1 ? "s" : ""} have NO service silo (across ${entries.length} RO${entries.length !== 1 ? "s" : ""})</div>
+          <div style="font-size:12px;font-weight:800;color:#1e40af;margin-bottom:4px;">📦 Action needed — ${siloLessOpenParts.length} open part${siloLessOpenParts.length !== 1 ? "s" : ""} have NO service silo (across ${entries.length} RO${entries.length !== 1 ? "s" : ""}) &nbsp;${guideLink("rb-parts")}</div>
           <div style="font-size:11px;color:#1e3a5f;margin-bottom:7px;line-height:1.5;"><b>What this is:</b> a part with no Service Silo can't be costed to a team, so it falls into the <b>Unattributed</b> cost row and hides each silo's true margin. The number in parentheses is how many silo-less parts are on that RO.</div>
           <div style="font-size:12px;line-height:1.5;">${entries.slice(0, 20).map(([id, n]) => { const ro = roById[id]; return `${roLink(ro?.ro_id, ro?.customer_name || ro?.ro_id)} (${n})`; }).join(", ")}${entries.length > 20 ? " …" : ""}</div>
           <div style="background:#fff;border:1px solid #dbeafe;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:11px;color:#334155;line-height:1.55;">

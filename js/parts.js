@@ -186,7 +186,7 @@
                                     <select id="pf_status" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
                                         ${PART_STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
                                     </select></div>
-                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Service Silo</label>
+                                <div><label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:3px;">Service Silo <a href="guide.html#part-silo" target="_blank" rel="noopener" title="Why this matters — Employee Guide" style="text-decoration:none;color:#2563eb;font-weight:700;">&#9432;</a></label>
                                     <select id="pf_serviceSilo" data-default="${(() => { const ks = (ro.repairType || '').split(',').map(t => REPAIR_TYPE_TO_SILO[t.trim().toLowerCase()]).filter(Boolean); return ks.length === 1 ? ks[0] : ''; })()}" title="Which team's work this part belongs to — feeds the Weekly P&L parts costs" style="width:100%;padding:7px 9px;border:1px solid #e2e8f0;border-radius:6px;font-size:0.9rem;">
                                         <option value="">Select silo…</option>
                                         ${(() => { const ks = (ro.repairType || '').split(',').map(t => REPAIR_TYPE_TO_SILO[t.trim().toLowerCase()]).filter(Boolean); return SERVICE_SILOS.map(s => `<option value="${s.key}">${s.emoji} ${s.label}${ks.includes(s.key) ? ' — on this RO' : ''}</option>`).join(''); })()}

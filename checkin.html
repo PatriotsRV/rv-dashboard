@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.36
-    Released: 2026-06-13
+    PRVS Tech Check-In v1.37
+    Released: 2026-06-16
+    v1.37: EMPLOYEE GUIDE LINK (Session 113). Added a "📖 Guide" link in the header next
+           to the language toggle, opening guide.html#tech (the Tech & Lead time-clock
+           tutorial) in a new tab. No logic change. Pairs with the guide deep-links added
+           to the dashboard + the daily report emails this session.
     v1.36: CLOCK-IN AUTO-FLIP GUARD + audit attribution fix (Session 105). The v1.33
            clock-in auto-status flipped ANY status other than "In progress" to
            "In progress", silently clobbering deliberate manager-set states such as
@@ -342,13 +346,14 @@
         <div class="logo">
             <h1 data-i18n="🚐 PRVS Tech Check-In">🚐 PRVS Tech Check-In</h1>
             <p>Patriots RV Services</p>
-            <div style="margin-top:8px;">
+            <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:monospace;">🌐 ES</button>
+                <a href="guide.html#tech" target="_blank" rel="noopener" title="How to use the time clock — Employee Guide" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:monospace;text-decoration:none;">📖 Guide</a>
             </div>
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.36</div>
+    <div class="version">v1.37</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -681,7 +686,7 @@ async function drainQueue() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    log('📦 PRVS Tech Check-In v1.36 - Released 2026-06-13');
+    log('📦 PRVS Tech Check-In v1.37 - Released 2026-06-16');
     translateStaticUI();
 
     if (!roIdParam) {

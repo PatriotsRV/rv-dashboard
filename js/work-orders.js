@@ -304,7 +304,7 @@
                         style="background:none;border:none;color:#2d5a8e;cursor:pointer;font-size:0.9rem;padding:0;font-weight:600;">← Back</button>
                 </div>
                 <div style="background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border-radius:10px;padding:12px 16px;margin-bottom:14px;">
-                    <div style="font-size:1rem;font-weight:700;">${existingWO ? "Edit" : "Create"} ${siloInfo.emoji} ${siloInfo.label} MASTER Work Order</div>
+                    <div style="font-size:1rem;font-weight:700;">${existingWO ? "Edit" : "Create"} ${siloInfo.emoji} ${siloInfo.label} MASTER Work Order <a href="guide.html#build-wo" target="_blank" rel="noopener" title="How a Work Order drives the P&L — Employee Guide" style="text-decoration:none;color:#bfdbfe;font-weight:700;font-size:0.95rem;">&#9432;</a></div>
                     <div style="font-size:0.82rem;opacity:0.8;">${escapeHtml(ro.customerName)} — ${escapeHtml(ro.roId)}</div>
                     ${restricted ? '<div style="margin-top:6px;font-size:0.72rem;background:rgba(255,255,255,0.18);padding:4px 8px;border-radius:6px;display:inline-block;">📋 Insurance WO mode — silo manager approves, assigns techs, finalizes pricing</div>' : ''}
                 </div>
