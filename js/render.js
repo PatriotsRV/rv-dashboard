@@ -620,6 +620,14 @@
             longestWaitEl.textContent = longestWait;
             longestWaitEl.style.color = getDaysHeatColor(longestWait);
             
+            // [ER BUGFIX v1.453 S114] Brandon (ER cdd77a8b): the "Total RVs" count lumped
+            // units physically on the lot together with "Not On Lot" units, overstating how
+            // many customers are actually at the shop. Surface a distinct on-lot count in the
+            // Total RVs stat tile (on-lot = anything not in the "Not On Lot" status). The big
+            // number stays the filtered total; the green sub-line shows how many are on the lot.
+            const onLotCount = (filteredData || data).filter(ro => ro.status !== 'Not On Lot').length;
+            const statTotalOnLotEl = document.getElementById('statTotalOnLot');
+            if (statTotalOnLotEl) statTotalOnLotEl.textContent = `${onLotCount} on lot`;
             document.getElementById('totalRVs').textContent = `${filtered} ${t('RVs on Lot')}`;
             
             // Status color map for the left border accent on dynamic cards

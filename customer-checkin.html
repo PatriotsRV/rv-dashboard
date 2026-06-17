@@ -1,7 +1,13 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.11
-    Released: 2026-06-09
+    PRVS Customer Check-In v1.12
+    Released: 2026-06-17
+    v1.12: [ER BUGFIX v1.12 S114] Returning-customer duplicate-RO guard (ER 298e0e67, Sofia).
+          When a returning customer who already has a FUTURE scheduled-drop RO (status
+          'Scheduled', or 'Not On Lot' with no arrival date) checks in, the submit now UPDATES
+          that existing RO (sets it On Lot / received, merges the new service description) instead
+          of inserting a second RO. Any active/in-progress RO is left alone (still creates a new
+          RO for the new job). A timeline note records the scheduled->arrived conversion.
     v1.11: [CHECKIN NOTIFY FIX v1.11 S97] Corrected getSignatureDataURL() -> getSignatureData()
           in the RAF send. The former was undefined and threw a ReferenceError that aborted every
           signed-RAF email before it could send - the real root cause of the missing authorization
@@ -967,7 +973,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.11</div>
+<div class="version-badge">PRVS Customer Check-In v1.12</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2017,37 +2023,107 @@
                     ? (document.getElementById('scheduledDropoffDate')?.value || null)
                     : null);
 
-            // Generate RO ID
-            const candidates = generateROIdCandidates(customerName, rv, today);
-
             let insertedRO = null;
-            for (const roId of candidates) {
-                const { data, error } = await getSB().from('repair_orders').insert({
-                    ro_id:          roId,
-                    customer_name:  customerName,
-                    phone:          phone || null,
-                    email:          email || null,
-                    address:        address || null,
-                    rv:             rv || null,
-                    vin:            vin || null,
-                    repair_type:    repairType,
-                    description:    fullDescription,
-                    date_received:  dateReceived,
-                    promised_date:  promisedDate,
-                    pct_complete:   0,
-                    status:         status,
-                    urgency:        roType === 'warranty' ? 'Critical' : null,
-                    customer_type:  formState.customerType === 'returning' ? 'Returning' : 'New',
-                    ro_type:        roType,
-                    planned_dropoff_date: plannedDropoffDate,
-                    photo_library:  { photos: [], docs: [] },
-                }).select().single();
+            let reusedScheduledRO = false;
 
-                if (!error) { insertedRO = data; break; }
-                if (error.code !== '23505') throw error;
+            // [ER BUGFIX v1.12 S114] Returning-customer duplicate-RO guard (ER 298e0e67, Sofia).
+            // If this customer already has a FUTURE scheduled-drop RO (status 'Scheduled', or
+            // 'Not On Lot' with no arrival date) and they now check in, attach this check-in to
+            // that existing RO instead of inserting a second one. Any active/in-progress RO is
+            // left alone — a returning customer with live work still creates a new RO for the new
+            // job. The match is the returning customer the receptionist selected from search.
+            const priorRO = formState.returnCustomerData;
+            if (formState.customerType === 'returning' && priorRO && priorRO._source === 'repair_orders' && priorRO.id) {
+                try {
+                    const { data: existRO } = await getSB()
+                        .from('repair_orders')
+                        .select('id, ro_id, status, date_received, description')
+                        .eq('id', priorRO.id)
+                        .maybeSingle();
+                    const isScheduledDrop = existRO && (
+                        existRO.status === 'Scheduled' ||
+                        (existRO.status === 'Not On Lot' && !existRO.date_received)
+                    );
+                    if (isScheduledDrop) {
+                        // Append the new check-in details rather than overwrite the scheduled RO's description.
+                        const mergedDescription = (existRO.description && existRO.description.trim())
+                            ? `${existRO.description}\n\n[CHECK-IN ${today}]\n${fullDescription}`
+                            : fullDescription;
+                        const updatePayload = {
+                            customer_name:  customerName,
+                            phone:          phone || null,
+                            email:          email || null,
+                            address:        address || null,
+                            rv:             rv || null,
+                            vin:            vin || null,
+                            repair_type:    repairType,
+                            description:    mergedDescription,
+                            date_received:  dateReceived,
+                            promised_date:  promisedDate,
+                            status:         status,
+                            customer_type:  'Returning',
+                            ro_type:        roType,
+                            planned_dropoff_date: plannedDropoffDate,
+                        };
+                        if (roType === 'warranty') updatePayload.urgency = 'Critical';
+                        const { data: updated, error: updErr } = await getSB()
+                            .from('repair_orders')
+                            .update(updatePayload)
+                            .eq('id', priorRO.id)
+                            .select()
+                            .single();
+                        if (updErr) throw updErr;
+                        insertedRO = updated;
+                        reusedScheduledRO = true;
+                    }
+                } catch (e) {
+                    console.warn('Returning-customer dedupe check failed (non-fatal; will create a new RO):', e);
+                }
+            }
+
+            // Generate RO ID + insert a NEW RO (skipped when we reused a scheduled RO above)
+            if (!insertedRO) {
+                const candidates = generateROIdCandidates(customerName, rv, today);
+                for (const roId of candidates) {
+                    const { data, error } = await getSB().from('repair_orders').insert({
+                        ro_id:          roId,
+                        customer_name:  customerName,
+                        phone:          phone || null,
+                        email:          email || null,
+                        address:        address || null,
+                        rv:             rv || null,
+                        vin:            vin || null,
+                        repair_type:    repairType,
+                        description:    fullDescription,
+                        date_received:  dateReceived,
+                        promised_date:  promisedDate,
+                        pct_complete:   0,
+                        status:         status,
+                        urgency:        roType === 'warranty' ? 'Critical' : null,
+                        customer_type:  formState.customerType === 'returning' ? 'Returning' : 'New',
+                        ro_type:        roType,
+                        planned_dropoff_date: plannedDropoffDate,
+                        photo_library:  { photos: [], docs: [] },
+                    }).select().single();
+
+                    if (!error) { insertedRO = data; break; }
+                    if (error.code !== '23505') throw error;
+                }
             }
 
             if (!insertedRO) throw new Error('Could not generate a unique RO ID.');
+
+            // [ER BUGFIX v1.12 S114] Record the scheduled->arrived conversion on the RO timeline.
+            if (reusedScheduledRO) {
+                try {
+                    const tsConv = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                    await getSB().from('notes').insert({
+                        ro_id: insertedRO.id,
+                        type:  'ro_status',
+                        body:  `[${tsConv} - Customer Check-In] ↩ Returning customer checked in against their existing scheduled RO (${insertedRO.ro_id}); no duplicate RO created. Status set to ${status}.`,
+                    });
+                } catch (e) { console.warn('Conversion note insert failed (non-fatal):', e); }
+            }
 
             // Add notes
             if (formState.mode === 'lead') {

@@ -54,8 +54,20 @@
             input.multiple = true;
             // No capture attribute — lets mobile show native picker (Camera OR Photo Library)
 
+            // [ER BUGFIX v1.453 S114] iOS Safari drops the change event on a DETACHED
+            // <input> after the camera/photo picker returns (the page is reloaded/
+            // backgrounded and the orphaned element is GC'd) — the upload silently
+            // never fires (ER 2c3d5633, Ryan). Attaching the input to the DOM off-screen
+            // makes the picker result reliably trigger onchange; it's removed once the
+            // selection is read.
+            input.style.position = 'fixed';
+            input.style.left = '-9999px';
+            input.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(input);
+
             input.onchange = async (e) => {
                 const files = Array.from(e.target.files);
+                if (input.parentNode) input.remove(); // [ER BUGFIX v1.453 S114] clean up the off-screen input
                 if (!files.length) return;
 
                 // Re-check session inside async callback — session may have changed since picker opened
