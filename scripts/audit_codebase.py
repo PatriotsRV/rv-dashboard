@@ -20,11 +20,23 @@ the bug classes that have repeatedly bitten this project:
       defined in this repo. Session 73 archive bug #3.
   (H) SQL ::jsonb casts not wrapped in BEGIN/EXCEPTION blocks.
       Session 73 archive bug #2.
+  (I) Supabase JS .update/.upsert payloads that manually set `updated_at` on a
+      table now covered by the trg_set_updated_at trigger (redundant; remove
+      for clarity). Session 115 — the trigger is now the single source of truth.
+  (J) DB-catalog invariants that a static file scan cannot verify — emitted as
+      SQL to run against the live DB (read-only MCP or Supabase SQL editor).
+      Headline: every table with an `updated_at` column has a maintaining
+      BEFORE UPDATE trigger. Added Session 115 after the `updated_at`-never-
+      maintained gap (no trigger + inconsistent app writes) went uncaught: it
+      is a silent data-integrity invariant, invisible to syntax/render checks,
+      so it must be asserted against the catalog, not grep'd from source.
 
 This is a *static* scan — it reads files and grep-pattern-matches. It does
 not connect to Supabase. Some bug classes (notably 'A') need an authoritative
 schema dump to cross-reference; that dump is embedded inline below so the
-script is self-contained. Update SCHEMA below as tables evolve.
+script is self-contained. Update SCHEMA below as tables evolve. Class J is the
+exception: it cannot be checked statically, so the script PRINTS the SQL to run
+rather than running it.
 
 Usage:
     python3 scripts/audit_codebase.py [--output docs/qa/CODEBASE_AUDIT.md]
@@ -120,6 +132,19 @@ SCHEMA_PARTIAL: set[str] = {
     "cashiered_service_work_orders", "cashiered_service_tasks",
     "cashiered_work_orders", "solar_project_store", "solar_settings",
     "config",
+}
+
+# Tables that carry an `updated_at` column AND are covered by the shared
+# trg_set_updated_at trigger as of Session 115 (migration auto_set_updated_at.sql).
+# The trigger is the single source of truth; app code no longer needs to set
+# updated_at, so any payload that does (Class I) is redundant. Keep this list in
+# sync with the migration's table list. Class J verifies coverage against the
+# live catalog (the authoritative check) so this list can't silently drift.
+UPDATED_AT_TABLES: set[str] = {
+    "repair_orders", "parts", "service_work_orders", "service_tasks",
+    "time_logs", "time_off_requests", "enhancement_requests",
+    "scheduled_notifications", "app_config", "config", "users",
+    "solar_project_store", "solar_settings", "wo_task_templates",
 }
 
 # 11 canonical status values per Session 72 CHECK constraint
@@ -446,6 +471,95 @@ def scan_jsonb_casts(path: Path, text: str) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# Scanner: (I) redundant manual updated_at writes (trigger now owns it)
+# ---------------------------------------------------------------------------
+# Reuses INSERT_RE (.from('t').(insert|update|upsert)({...})) + FIELD_RE.
+# Only .update/.upsert on an UPDATED_AT_TABLES table that hand-sets updated_at
+# is redundant now that trg_set_updated_at maintains it. .insert is exempt
+# (the trigger is BEFORE UPDATE only — inserts may still want an explicit value,
+# though the column default usually covers it).
+
+def scan_redundant_updated_at(path: Path, text: str) -> list[Finding]:
+    findings: list[Finding] = []
+    for m in INSERT_RE.finditer(text):
+        table = m.group(1)
+        op = m.group(2)
+        body = m.group(3)
+        if op == "insert":
+            continue
+        if table not in UPDATED_AT_TABLES:
+            continue
+        for fm in FIELD_RE.finditer(body):
+            if fm.group(1) == "updated_at":
+                line = text[:m.start()].count("\n") + body[:fm.start()].count("\n") + 1
+                findings.append(Finding(
+                    "LOW", "I", str(path), line,
+                    f"`{op}` on `{table}` manually sets `updated_at` — redundant since "
+                    f"trg_set_updated_at (S115) maintains it; remove for clarity",
+                    context=body[max(0, fm.start()-30):fm.end()+30],
+                ))
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# (J) DB-catalog invariants — cannot be checked statically; printed as SQL
+# ---------------------------------------------------------------------------
+# Each entry: a human name, the SQL to run, and the expected result. Run these
+# against the live DB via the read-only Supabase MCP or the SQL editor. The
+# queries are written to SELF-DISCOVER from the catalog so they stay correct as
+# tables are added (they do not hard-code a table list).
+
+@dataclass
+class DbInvariant:
+    name: str
+    expectation: str
+    sql: str
+
+
+DB_INVARIANTS: list[DbInvariant] = [
+    DbInvariant(
+        name="Every table with an updated_at column has a maintaining BEFORE UPDATE trigger",
+        expectation="Zero rows. Any row is a table whose updated_at can silently go stale.",
+        sql=(
+            "SELECT c.relname AS table_missing_updated_at_trigger\n"
+            "FROM pg_class c\n"
+            "JOIN pg_namespace n ON n.oid = c.relnamespace\n"
+            "WHERE n.nspname = 'public' AND c.relkind = 'r'\n"
+            "  AND EXISTS (SELECT 1 FROM pg_attribute a\n"
+            "              WHERE a.attrelid = c.oid AND a.attname = 'updated_at'\n"
+            "                AND NOT a.attisdropped)\n"
+            "  AND NOT EXISTS (SELECT 1 FROM pg_trigger t\n"
+            "                  JOIN pg_proc p ON p.oid = t.tgfoid\n"
+            "                  WHERE t.tgrelid = c.oid AND NOT t.tgisinternal\n"
+            "                    AND p.proname = 'set_updated_at')\n"
+            "ORDER BY 1;"
+        ),
+    ),
+]
+
+
+def render_db_invariants() -> str:
+    out: list[str] = []
+    out.append("## DB Invariants (Class J — run manually)")
+    out.append("")
+    out.append("These cannot be verified by a static file scan. Run each against the live "
+               "DB via the read-only Supabase MCP or the SQL editor. NOTE: query the catalog "
+               "(`pg_trigger` etc.) directly — `information_schema.triggers` is privilege-"
+               "filtered and returns empty for objects the read-only MCP role does not own.")
+    out.append("")
+    for inv in DB_INVARIANTS:
+        out.append(f"### {inv.name}")
+        out.append("")
+        out.append(f"_Expected: {inv.expectation}_")
+        out.append("")
+        out.append("```sql")
+        out.append(inv.sql)
+        out.append("```")
+        out.append("")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
@@ -468,6 +582,7 @@ JS_SCANNERS = [
     scan_access_token_guards,
     scan_status_casing,
     scan_hardcoded_roles,
+    scan_redundant_updated_at,
 ]
 SQL_SCANNERS = [
     scan_on_conflict,
@@ -526,6 +641,7 @@ def render_md(findings: list[Finding]) -> str:
         "F": "Hardcoded role/email constant (post-S2)",
         "G": "SQL ON CONFLICT without UNIQUE constraint",
         "H": "SQL ::jsonb cast without EXCEPTION wrapper",
+        "I": "Redundant manual updated_at write (trigger owns it, S115)",
     }
     for c, desc in descriptions.items():
         out.append(f"| {c} — {desc} | {by_class.get(c, 0)} |")
@@ -543,6 +659,7 @@ def render_md(findings: list[Finding]) -> str:
             for f in class_findings:
                 out.append(f.to_md())
             out.append("")
+    out.append(render_db_invariants())
     return "\n".join(out) + "\n"
 
 
