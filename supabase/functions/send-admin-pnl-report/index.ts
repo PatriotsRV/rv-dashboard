@@ -4,6 +4,8 @@ import nodemailer from "npm:nodemailer@6";
 // ============================================================
 // send-admin-pnl-report — Daily Ops Health email (ADMIN ONLY)
 // Session 101 (2026-06-11) — v1, rule-based (no AI commentary yet).
+// S116 (2026-06-17): added a top "click here for full instructions" banner
+//   (links guide.html#report-glossary) above the exception flags.
 //
 // Called by pg_cron at 6:00 AM CT weekdays. Recipients come from
 // app_config key 'admin_report_recipients' (comma-separated),
@@ -325,6 +327,7 @@ Deno.serve(async (req: Request) => {
     <h1 style="color:#1e3a5f;margin:0;font-size:20px;">📊 Daily Ops Health — Admin</h1>
     <p style="margin:4px 0 0;color:#555;font-size:13px;">Patriots RV Services · ${dateStr} · Week of ${weekISO}</p>
   </div>
+  <a href="https://patriotsrv.github.io/rv-dashboard/guide.html#report-glossary" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:13px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:16px;font-weight:800">&#128218; New here? Click here for full instructions on how to use this report</a>
   ${flagsHtml}
   ${lastWeekHtml}
   ${scorecard}

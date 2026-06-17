@@ -29,10 +29,14 @@ import nodemailer from "npm:nodemailer@6";
 //   2. Soft-deleted (deleted_at) + training (is_training) ROs are excluded
 //      BEFORE anything is computed.
 //
+// v2.1-P4b (S116): added a prominent top "click here for full instructions"
+//   banner (links guide.html#report-glossary) to both the admin combined copy
+//   and each per-manager email — first thing they see.
+//
 // Prior versions (GH#23 per-silo morning report) -> git history.
 // ============================================================
 
-const FN_VERSION = "v2.1-P4";
+const FN_VERSION = "v2.1-P4b";
 
 const ALLOWED_ORIGIN = "https://patriotsrv.github.io";
 function getCorsHeaders(req: Request) {
@@ -84,6 +88,8 @@ const DASH_URL = "https://patriotsrv.github.io/rv-dashboard/";
 const GUIDE_URL = DASH_URL + "guide.html";
 const guideLink = (anchor: string) =>
   `<a href="${GUIDE_URL}#${anchor}" style="color:#1d4ed8;text-decoration:none;font-weight:600;font-size:11px;white-space:nowrap;">&#128218; Guide &rsaquo;</a>`;
+// Prominent top "how to use this report" banner — first thing managers see.
+const guideBanner = `<a href="${GUIDE_URL}#report-glossary" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:13px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:16px;font-weight:800">&#128218; New here? Click here for full instructions on how to use this report</a>`;
 const roLink = (code: string | null | undefined, label?: string) => {
   const c = code || "?";
   return `<a href="${DASH_URL}?ro=${encodeURIComponent(c)}" style="color:#1d4ed8;text-decoration:none;font-weight:700;">${esc(label || c)}</a>`;
@@ -620,6 +626,7 @@ Deno.serve(async (req: Request) => {
     <h1 style="color:#1e3a5f;margin:0;font-size:20px;">${adminTitle}</h1>
     <p style="margin:4px 0 0;color:#555;font-size:13px;">Patriots RV Services · ${dateStr} · Week of ${mondayISO} · ${FN_VERSION}</p>
   </div>
+  ${guideBanner}
   ${adminBanner}
   ${legend}
   <h2 style="color:#1e3a5f;font-size:15px;margin:0 0 6px;">Summary — ${managersWithList} manager${managersWithList !== 1 ? "s" : ""}</h2>
@@ -650,6 +657,7 @@ Deno.serve(async (req: Request) => {
     <h1 style="color:#1e3a5f;margin:0;font-size:20px;">🧭 Your Daily Manager Report</h1>
     <p style="margin:4px 0 0;color:#555;font-size:13px;">Patriots RV Services · ${dateStr} · Week of ${mondayISO}</p>
   </div>
+  ${guideBanner}
   <p style="font-size:13px;color:#334155;margin:0 0 14px;">Good morning, ${esc(x.m.name)} — here's where your work list stands this morning, in priority order. Each flag links straight to the RO, and the <b>↳</b> note under it is the exact fix.</p>
   ${legend}
   ${x.card}
