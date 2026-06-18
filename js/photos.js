@@ -376,6 +376,21 @@
                 ${hasMultiple ? `<div style="position:absolute;bottom:16px;color:rgba(255,255,255,0.7);font-size:13px;">${photoIdx + 1} / ${photos.length}</div>` : ''}`;
 
             document.body.appendChild(overlay);
+
+            // [ER FEATURE v1.454 S117] Brandon (ER 74a33621): keyboard navigation through
+            // photos. Left/Right arrows step prev/next; Escape closes. openPhotoLightbox is
+            // re-invoked on every navigation, so remove any prior handler before adding a new
+            // one to avoid stacking listeners. closePhotoLightbox tears the handler down.
+            if (window._lightboxKeyHandler) {
+                document.removeEventListener('keydown', window._lightboxKeyHandler);
+            }
+            window._lightboxKeyHandler = function(e) {
+                if (!document.getElementById('photoLightbox')) return;
+                if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateLightbox(-1); }
+                else if (e.key === 'ArrowRight') { e.preventDefault(); navigateLightbox(1); }
+                else if (e.key === 'Escape') { e.preventDefault(); closePhotoLightbox(); }
+            };
+            document.addEventListener('keydown', window._lightboxKeyHandler);
         }
 
 
@@ -390,6 +405,11 @@
         export function closePhotoLightbox() {
             const lb = document.getElementById('photoLightbox');
             if (lb) lb.remove();
+            // [ER FEATURE v1.454 S117] tear down the arrow-key navigation handler
+            if (window._lightboxKeyHandler) {
+                document.removeEventListener('keydown', window._lightboxKeyHandler);
+                window._lightboxKeyHandler = null;
+            }
         }
 
 

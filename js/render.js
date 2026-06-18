@@ -590,8 +590,13 @@
                 }
                 return false;
             }).length;
-            // Exclude "Not On Lot" RVs (with no arrival date) from days-on-lot stats
-            const onLotROs = data.filter(ro => !(ro.status === 'Not On Lot' && !ro.dateArrived));
+            // Exclude "Not On Lot" RVs (with no arrival date) from days-on-lot stats.
+            // [ER BUGFIX v1.454 S117] Brandon (ER 9b046808): also exclude "Scheduled"
+            // RVs that have not arrived yet (future drop-off time set, not physically here)
+            // so they don't inflate avg/longest days-on-lot.
+            const onLotROs = data.filter(ro => !(
+                (ro.status === 'Not On Lot' || ro.status === 'Scheduled') && !ro.dateArrived
+            ));
             const avgDays = onLotROs.length > 0
                 ? Math.round(onLotROs.reduce((sum, ro) => sum + (calculateDaysOnLot(ro) || 0), 0) / onLotROs.length)
                 : 0;
@@ -623,9 +628,15 @@
             // [ER BUGFIX v1.453 S114] Brandon (ER cdd77a8b): the "Total RVs" count lumped
             // units physically on the lot together with "Not On Lot" units, overstating how
             // many customers are actually at the shop. Surface a distinct on-lot count in the
-            // Total RVs stat tile (on-lot = anything not in the "Not On Lot" status). The big
-            // number stays the filtered total; the green sub-line shows how many are on the lot.
-            const onLotCount = (filteredData || data).filter(ro => ro.status !== 'Not On Lot').length;
+            // Total RVs stat tile. The big number stays the filtered total; the green sub-line
+            // shows how many are on the lot.
+            // [ER BUGFIX v1.454 S117] Brandon (ER 9b046808): "Scheduled" units have a future
+            // drop-off time and are NOT physically on the lot yet, so they must not be counted
+            // as on-lot either (was overstating the on-lot number). On-lot = not "Not On Lot"
+            // AND not "Scheduled".
+            const onLotCount = (filteredData || data).filter(ro =>
+                ro.status !== 'Not On Lot' && ro.status !== 'Scheduled'
+            ).length;
             const statTotalOnLotEl = document.getElementById('statTotalOnLot');
             if (statTotalOnLotEl) statTotalOnLotEl.textContent = `${onLotCount} on lot`;
             document.getElementById('totalRVs').textContent = `${filtered} ${t('RVs on Lot')}`;
