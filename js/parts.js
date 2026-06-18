@@ -144,6 +144,24 @@
                     </tr>`;
                 }).join('');
 
+            // [ER FEATURE v1.456 S117] Brandon (ER a8e90a7d): ticket totals in Manage Parts.
+            // core_charge holds FREIGHT per line (not per unit); wholesale/retail are per unit.
+            // Cost = sum(wholesale*qty) + sum(freight); retail = sum(retail*qty).
+            const _pnum = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+            const _money = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const totWholesale = parts.reduce((s, p) => s + _pnum(p.wholesalePrice) * (_pnum(p.qty) || 1), 0);
+            const totFreight   = parts.reduce((s, p) => s + _pnum(p.coreCharge), 0);
+            const totRetail    = parts.reduce((s, p) => s + _pnum(p.retailPrice) * (_pnum(p.qty) || 1), 0);
+            const totCost      = totWholesale + totFreight;
+            const partsTotalsHtml = parts.length === 0 ? '' : `
+                <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 16px;">
+                    <span style="color:#64748b;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-right:auto;">🧮 Ticket Totals</span>
+                    <span style="font-size:0.85rem;color:#475569;">Parts (wholesale): <b style="color:#1e293b;">${_money(totWholesale)}</b></span>
+                    <span style="font-size:0.85rem;color:#475569;">Freight: <b style="color:#1e293b;">${_money(totFreight)}</b></span>
+                    <span style="font-size:0.92rem;color:#475569;">Total Cost: <b style="color:#0a84ff;">${_money(totCost)}</b></span>
+                    <span style="font-size:0.85rem;color:#475569;">Retail: <b style="color:#16a34a;">${_money(totRetail)}</b></span>
+                </div>`;
+
             const modalHTML = `
                 <div id="partsModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;" onclick="closePartsModal(event)">
                     <div style="background:white;border-radius:16px;padding:28px;max-width:900px;width:100%;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">
@@ -252,6 +270,7 @@
                                 <tbody id="partsTableBody">${renderPartsRows(parts)}</tbody>
                             </table>
                         </div>
+                        ${partsTotalsHtml}
                         <button onclick="showAddPartForm()" style="width:100%;margin-top:16px;padding:12px;background:linear-gradient(135deg,#ff9500,#e67e00);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">+ Add Part</button>
                     </div>
                 </div>`;
