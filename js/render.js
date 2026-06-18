@@ -343,6 +343,18 @@
                         ` : ''}
                         ` : ''}
 
+                        ${(() => {
+                            // [Key Dates P1 S117] Colored key-date chips (ER 1aeb3f58 promised prominence, 2b814250 date buttons, d2561e11 pickup)
+                            const fmt = (d) => { if (!d) return ''; const p = String(d).slice(0,10).split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) : d; };
+                            const todayStr = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD
+                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Ready for pickup';
+                            const chips = [];
+                            if (ro.plannedDropoffDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#0a84ff1a;color:#0a84ff;border:1px solid #0a84ff44;">📅 Drop ' + fmt(ro.plannedDropoffDate) + '</span>');
+                            if (ro.promisedDate) { const overdue = !doneish && String(ro.promisedDate).slice(0,10) < todayStr; const c = overdue ? '#ef4444' : '#f59e0b'; chips.push('<span title="Promised date" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:10px;font-size:0.78rem;font-weight:800;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '55;">⏰ Promised ' + fmt(ro.promisedDate) + (overdue ? ' !' : '') + '</span>'); }
+                            if (ro.pickupDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#16a34a1a;color:#16a34a;border:1px solid #16a34a44;">🚚 Pickup ' + fmt(ro.pickupDate) + '</span>');
+                            return chips.length ? '<div class="key-dates-row" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0;">' + chips.join('') + '</div>' : '';
+                        })()}
+
                         ${woSummaryChips(ro, index)}
 
                         <!-- QR Code — collapsible toggle always shown, content hidden by default in Regular view -->

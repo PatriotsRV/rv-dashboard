@@ -245,6 +245,7 @@ export function rowToRO(row) {
         requestedByEmail:         row.requested_by_email || null,
         isTraining:               !!row.is_training,
         plannedDropoffDate:       row.planned_dropoff_date || null,
+        pickupDate:               row.pickup_date || null,  // [Key Dates P1 S117] ER d2561e11
         _woSummary:               row._wo_summary || null,  // v1.414 Phase A1+A2
         _supabaseId:              row.id,  // keep uuid for updates
     };

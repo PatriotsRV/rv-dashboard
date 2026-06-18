@@ -251,6 +251,7 @@
                     ro_type:        currentROType || 'standard',
                     is_training:    !!formData.isTraining,
                     planned_dropoff_date: formData.plannedDropoffDate || null,
+                    pickup_date:    formData.pickupDate || null, // [Key Dates P1 S117] ER d2561e11
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -308,6 +309,7 @@
                 ro_type:        currentROType || 'standard',
                 is_training:    !!formData.isTraining,
                 planned_dropoff_date: newPlannedDropoff,
+                pickup_date:    formData.pickupDate || null, // [Key Dates P1 S117] ER d2561e11
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -842,6 +844,11 @@
                 document.getElementById('editTechnicianAssigned').value = ro.technicianAssigned || '';
                 document.getElementById('editDollarValue').value = (ro.dollarValue != null && ro.dollarValue !== '' && !isNaN(parseFloat(ro.dollarValue))) ? parseFloat(ro.dollarValue).toFixed(2) : ''; // [ER BUGFIX v1.447 S94] n33: show 2 decimals
                 document.getElementById('editPromisedDate').value = ro.promisedDate || '';
+                // [Key Dates P1 S117] populate the two added key-date fields
+                const _epd = document.getElementById('editPlannedDropoffDate');
+                if (_epd) _epd.value = ro.plannedDropoffDate || '';
+                const _epu = document.getElementById('editPickupDate');
+                if (_epu) _epu.value = ro.pickupDate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
                 document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';

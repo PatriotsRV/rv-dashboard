@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.456
+    PRVS Dashboard v1.457
+    v1.457: [Key Dates P1 S117] Unified key-date fields (ERs d2561e11, 1aeb3f58, 2b814250). NEW pickup_date column (migration key_dates_pickup_date.sql). New RO + Edit RO forms gain a "Pickup / Completed Date" input; Edit RO also gains the "Planned Drop Off Date" input that was MISSING — which means edit-save was nulling planned_dropoff_date (and wiping its reminder); now preserved. RO cards show a colored Key Dates chip row: 📅 Drop (blue), ⏰ Promised (amber, red if overdue), 🚚 Pickup (green). Mapping pickupDate<-pickup_date in normalizeRO (utils.js + inline) + persist in ro-crud create/update. No calendar/reminder wiring yet (Phase 2/3). See docs/specs/KEY_DATES_SPEC.md.
     v1.456: [ER S117] Ticket Totals bar in Manage Parts (ER a8e90a7d, Brandon): the parts modal now shows running totals below the table — Parts (wholesale) = sum(wholesale x qty), Freight = sum(core_charge per line), Total Cost = wholesale+freight, and Retail = sum(retail x qty) — so staff can track totals when finishing tickets. Recomputes on every add/edit/delete (js/parts.js openPartsModal). No DB change.
     v1.455: [ER S117] ER admin board now defaults to an "Open (active)" view — hides done + declined (archived) ERs so the board isn't cluttered; "All Statuses" still shows everything; in-progress stays visible (js/enhancement.js openERAdminView/loadERAdminData 'open' sentinel + index.html status filter option). No DB change.
     v1.454: [ER S117] Two small ER items. (1) Scheduled units no longer counted as on-lot (ER 9b046808, Brandon): the Total RVs tile "N on lot" sub-line and the avg/longest days-on-lot stats now exclude "Scheduled" units (future drop-off time set, not physically on the lot yet) — completes the v1.453 on-lot count (js/render.js). (2) Arrow-key photo navigation (ER 74a33621, Brandon): in the photo lightbox, Left/Right arrows step prev/next and Escape closes, without clicking each photo (js/photos.js openPhotoLightbox/closePhotoLightbox). No DB change.
@@ -551,7 +552,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.456</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.457</span>
             </div>
         </header>
 
@@ -4648,6 +4649,7 @@
                 requestedByEmail:         row.requested_by_email || null,
                 isTraining:               !!row.is_training,
                 plannedDropoffDate:       row.planned_dropoff_date || null,
+                pickupDate:               row.pickup_date || null,  // [Key Dates P1 S117] ER d2561e11
                 _woSummary:               row._wo_summary || null,  // v1.414 Phase A1+A2
                 _supabaseId:              row.id,  // keep uuid for updates
             };
@@ -5845,6 +5847,8 @@
                         technicianAssigned: document.getElementById('editTechnicianAssigned').value,
                         dollarValue: document.getElementById('editDollarValue').value,
                         promisedDate: document.getElementById('editPromisedDate').value,
+                        plannedDropoffDate: document.getElementById('editPlannedDropoffDate').value, // [Key Dates P1 S117] was missing -> edit-save nulled planned_dropoff_date
+                        pickupDate: document.getElementById('editPickupDate').value, // [Key Dates P1 S117] ER d2561e11
                         dateArrived: document.getElementById('editDateArrived').value,
                         parkingSpot: document.getElementById('editParkingSpot').value,
                         repairType: repairTypes.join(', '),
@@ -6328,6 +6332,11 @@ function toggleWOTasks(tasksId, chevId) {
                         <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">When the customer plans to drop off. Auto-fires a reminder email the morning before.</div>
                     </div>
                     <div class="form-field shop-hide">
+                        <label class="form-label">Pickup / Completed Date</label>
+                        <input type="date" class="form-input" name="pickupDate">
+                        <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">When the unit is ready / picked up (left the lot). Third key date — ER d2561e11.</div>
+                    </div>
+                    <div class="form-field shop-hide">
                         <label class="form-label">Date RV Arrived on Lot</label>
                         <input type="date" class="form-input" name="dateArrived">
                         <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">Leave blank if RV is Not On Lot yet. Set when RV physically arrives.</div>
@@ -6808,6 +6817,15 @@ function toggleWOTasks(tasksId, chevId) {
                     <div class="form-field shop-hide">
                         <label class="form-label">Promised Date</label>
                         <input type="date" class="form-input" id="editPromisedDate">
+                    </div>
+                    <div class="form-field shop-hide">
+                        <label class="form-label">Planned Drop Off Date</label>
+                        <input type="date" class="form-input" id="editPlannedDropoffDate">
+                        <div style="font-size: 0.8rem; color: #9ca3af; margin-top: 4px;">Auto-fires a reminder email the morning before.</div>
+                    </div>
+                    <div class="form-field shop-hide">
+                        <label class="form-label">Pickup / Completed Date</label>
+                        <input type="date" class="form-input" id="editPickupDate">
                     </div>
                     <div class="form-field shop-hide">
                         <label class="form-label">Date RV Arrived on Lot</label>
