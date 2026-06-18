@@ -125,7 +125,10 @@ export async function loadERUnreviewedCount() {
 export async function openERAdminView() {
     const overlay = document.getElementById('erAdminOverlay');
     overlay.style.display = 'flex';
-    _erFilterStatus = 'all';
+    // [ER S117 v1.455] Default the admin board to "open" (everything except done +
+    // declined) so archived/closed ERs don't clutter the board. "All Statuses" in the
+    // filter still shows them. in-progress items stay visible (they count as "open").
+    _erFilterStatus = 'open';
     _erFilterCategory = 'all';
     await loadERAdminData();
 }
@@ -137,7 +140,12 @@ export function closeERAdminView() {
 export async function loadERAdminData() {
     try {
         let query = getSB().from('enhancement_requests').select('*').order('created_at', { ascending: false });
-        if (_erFilterStatus !== 'all') query = query.eq('status', _erFilterStatus);
+        // [ER S117 v1.455] 'open' = active board view: hide done + declined (archived).
+        if (_erFilterStatus === 'open') {
+            query = query.not('status', 'in', '("done","declined")');
+        } else if (_erFilterStatus !== 'all') {
+            query = query.eq('status', _erFilterStatus);
+        }
         if (_erFilterCategory !== 'all') query = query.eq('category', _erFilterCategory);
         const { data, error } = await query;
         if (error) throw error;

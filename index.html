@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.454
+    PRVS Dashboard v1.455
+    v1.455: [ER S117] ER admin board now defaults to an "Open (active)" view — hides done + declined (archived) ERs so the board isn't cluttered; "All Statuses" still shows everything; in-progress stays visible (js/enhancement.js openERAdminView/loadERAdminData 'open' sentinel + index.html status filter option). No DB change.
     v1.454: [ER S117] Two small ER items. (1) Scheduled units no longer counted as on-lot (ER 9b046808, Brandon): the Total RVs tile "N on lot" sub-line and the avg/longest days-on-lot stats now exclude "Scheduled" units (future drop-off time set, not physically on the lot yet) — completes the v1.453 on-lot count (js/render.js). (2) Arrow-key photo navigation (ER 74a33621, Brandon): in the photo lightbox, Left/Right arrows step prev/next and Escape closes, without clicking each photo (js/photos.js openPhotoLightbox/closePhotoLightbox). No DB change.
     v1.453: [ER BUGFIX S114] Two ER bugs fixed. (1) Phone photo upload (ER 2c3d5633, Ryan): js/photos.js uploadPhoto now attaches the file <input> to the DOM before .click() so iOS Safari does not drop the change event when the camera/picker returns (silent no-upload). (2) Total RVs count (ER cdd77a8b, Brandon): the Total RVs stat tile now shows a distinct "N on lot" sub-line (js/render.js statTotalOnLot) so on-lot units are no longer conflated with "Not On Lot" units. No DB change.
     v1.452: Employee Guide deep-links (Session 113). NEW header "📖 Guide" button (all authenticated users) opening guide.html. Deep-link ⓘ helpers added at the WO build form header (-> guide.html#build-wo, js/work-orders.js) and the part Service Silo label (-> guide.html#part-silo, js/parts.js). Pairs with guide.html v1.1 (per-report-block walkthroughs) + report-email links. No DB change.
@@ -549,7 +550,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.454</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.455</span>
             </div>
         </header>
 
@@ -7155,6 +7156,7 @@ let _erFilterCategory = 'all';
         </div>
         <div style="padding:12px 24px;display:flex;gap:12px;flex-wrap:wrap;border-bottom:1px solid #1e3a5f;">
             <select onchange="filterERAdmin('status',this.value)" style="padding:6px 10px;background:#0f172a;color:white;border:1px solid #334155;border-radius:6px;font-size:0.85rem;">
+                <option value="open" selected>Open (active)</option>
                 <option value="all">All Statuses</option>
                 <option value="unreviewed">Unreviewed</option>
                 <option value="reviewed">Reviewed</option>
