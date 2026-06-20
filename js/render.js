@@ -355,6 +355,17 @@
                             return chips.length ? '<div class="key-dates-row" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0;">' + chips.join('') + '</div>' : '';
                         })()}
 
+                        ${(() => {
+                            // [ER BUGFIX v1.458 S118] Keys + Power chips (ERs 34fc03c2 + b87eb2fb)
+                            const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+                            const chips = [];
+                            if (ro.keyStatus === 'keys') chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#a855f71a;color:#c084fc;border:1px solid #a855f744;">🔑 Keys</span>');
+                            else if (ro.keyStatus === 'no_keys') chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#6b72801a;color:#9ca3af;border:1px solid #6b728044;">🚫 No keys</span>');
+                            else if (ro.keyStatus === 'keypad') chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#a855f71a;color:#c084fc;border:1px solid #a855f744;">🔢 Keypad' + (ro.keypadCode ? ': ' + esc(ro.keypadCode) : '') + '</span>');
+                            if (ro.keepPluggedIn) chips.push('<span title="Keep plugged in (shore power)" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#eab3081a;color:#eab308;border:1px solid #eab30844;">⚡ Keep plugged in</span>');
+                            return chips.length ? '<div class="keys-power-row" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0;">' + chips.join('') + '</div>' : '';
+                        })()}
+
                         ${woSummaryChips(ro, index)}
 
                         <!-- QR Code — collapsible toggle always shown, content hidden by default in Regular view -->

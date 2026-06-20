@@ -252,6 +252,9 @@
                     is_training:    !!formData.isTraining,
                     planned_dropoff_date: formData.plannedDropoffDate || null,
                     pickup_date:    formData.pickupDate || null, // [Key Dates P1 S117] ER d2561e11
+                    key_status:     formData.keyStatus || null,      // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
+                    keypad_code:    formData.keypadCode || null,     // [ER BUGFIX v1.458 S118]
+                    keep_plugged_in: !!formData.keepPluggedIn,       // [ER BUGFIX v1.458 S118]
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -310,6 +313,9 @@
                 is_training:    !!formData.isTraining,
                 planned_dropoff_date: newPlannedDropoff,
                 pickup_date:    formData.pickupDate || null, // [Key Dates P1 S117] ER d2561e11
+                key_status:     formData.keyStatus || null,      // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
+                keypad_code:    formData.keypadCode || null,     // [ER BUGFIX v1.458 S118]
+                keep_plugged_in: !!formData.keepPluggedIn,       // [ER BUGFIX v1.458 S118]
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
@@ -849,6 +855,13 @@
                 if (_epd) _epd.value = ro.plannedDropoffDate || '';
                 const _epu = document.getElementById('editPickupDate');
                 if (_epu) _epu.value = ro.pickupDate || '';
+                // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
+                const _eks = document.getElementById('editKeyStatus');
+                if (_eks) _eks.value = ro.keyStatus || '';
+                const _ekc = document.getElementById('editKeypadCode');
+                if (_ekc) _ekc.value = ro.keypadCode || '';
+                const _ekp = document.getElementById('editKeepPluggedIn');
+                if (_ekp) _ekp.checked = !!ro.keepPluggedIn;
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
                 document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';
