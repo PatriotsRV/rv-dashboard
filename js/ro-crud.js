@@ -223,6 +223,92 @@
             }
         }
 
+        // [Key Dates P3 S119] Recipients for promised/pickup reminders:
+        // silo manager(s) for the RO's service(s) + the admin report recipients
+        // (Roland + Lynn from app_config). Falls back to repair@ if none resolve.
+        function _keyDateRecipients(repairType) {
+            const silos = String(repairType || '').split(',')
+                .map(s => REPAIR_TYPE_TO_SILO[s.trim().toLowerCase()]).filter(Boolean);
+            let recipients = [];
+            if (silos.length && Array.isArray(_staffCache)) {
+                recipients = _staffCache
+                    .filter(s => s.active !== false && s.email
+                        && (s.role === 'manager' || s.role === 'sr_manager')
+                        && (silos.includes(s.service_silo) || (s.service_silo == null && s.role === 'sr_manager')))
+                    .map(s => s.email);
+            }
+            const adminCsv = (typeof _appConfig === 'object' && _appConfig && _appConfig['admin_report_recipients']) || '';
+            const admins = String(adminCsv).split(',').map(e => e.trim()).filter(Boolean);
+            const all = [...new Set([...recipients, ...admins])];
+            return all.length ? all : ['repair@patriotsrvservices.com'];
+        }
+
+        // [Key Dates P3 S119] Cancel any pending reminder rows for ONE key-date type and
+        // recreate day-before + morning-of rows (8 AM CDT) if a date is set. Mirrors the
+        // GH#ER1 auto_dropoff_reminder cascade. Sources: auto_promised_reminder /
+        // auto_pickup_reminder. Skips reminder times already in the past. Non-fatal.
+        async function _syncOneKeyDateReminder(supabaseId, roId, dateType, opts) {
+            const source = dateType === 'promised' ? 'auto_promised_reminder' : 'auto_pickup_reminder';
+            const label  = dateType === 'promised' ? 'Promised/Completion' : 'Pickup';
+            try {
+                await getSB().from('scheduled_notifications')
+                    .update({ status: 'cancelled' })
+                    .eq('ro_id', supabaseId).eq('source', source).eq('status', 'pending');
+
+                const date = (opts.newDate || '').slice(0, 10);
+                if (!date) {
+                    if (opts.oldDate) {
+                        const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                        await getSB().from('notes').insert({
+                            ro_id: supabaseId, type: 'ro_status',
+                            body: `[${ts} - ${currentUser?.name || 'Edit RO'}] 🔔 ${label.toUpperCase()} REMINDERS CANCELLED: date was cleared`,
+                        });
+                    }
+                    return;
+                }
+
+                const recipients = _keyDateRecipients(opts.repairType);
+                const niceDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+                const morningOf = new Date(date + 'T13:00:00Z');             // 8 AM CDT on the date
+                const dayBefore = new Date(morningOf.getTime() - 86400000);  // 8 AM CDT the day before
+                const nowMs = Date.now();
+
+                const fires = [];
+                if (dayBefore.getTime() > nowMs) fires.push({ when: dayBefore, rel: 'tomorrow' });
+                if (morningOf.getTime() > nowMs) fires.push({ when: morningOf, rel: 'today' });
+
+                for (const f of fires) {
+                    const subject = `${opts.customerName} — ${label} ${f.rel} (${niceDate})`;
+                    const body = [
+                        `${opts.customerName}'s ${label.toLowerCase()} date for ${opts.rv || 'their RV'} is ${niceDate}.`,
+                        '',
+                        `Service: ${opts.repairType || 'TBD'}`,
+                        `RO ID: ${roId}`,
+                        '',
+                        `This reminder fires the day before and the morning of the ${label.toLowerCase()} date.`,
+                    ].join('\n');
+                    await getSB().from('scheduled_notifications').insert({
+                        ro_id:            supabaseId,
+                        scheduled_at:     f.when.toISOString(),
+                        recipient_emails: recipients,
+                        subject:          subject,
+                        body:             body,
+                        source:           source,
+                        status:           'pending',
+                        created_by_email: currentUser?.email || 'key-dates',
+                    });
+                }
+
+                if (fires.length) {
+                    const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                    await getSB().from('notes').insert({
+                        ro_id: supabaseId, type: 'ro_status',
+                        body: `[${ts} - ${currentUser?.name || 'Edit RO'}] 🔔 ${label.toUpperCase()} REMINDERS SCHEDULED: ${niceDate} → ${fires.length} reminder(s) to ${recipients.length} recipient(s)`,
+                    });
+                }
+            } catch (e) { warn('Key-date reminder sync failed (non-fatal):', dateType, e); }
+        }
+
         export async function appendToSupabase(formData) {
             const today = new Date().toISOString().slice(0, 10);
             const candidates = generateROIdCandidates(formData.customerName, formData.rv || '', today);
@@ -279,6 +365,26 @@
                     body: formData.customerCommunicationNotes,
                 });
             }
+
+            // [Key Dates P2 S119] Create silo calendar events for promised/pickup
+            // (auto-on-save only when a Google Calendar token is present; non-fatal).
+            try {
+                await window.syncKeyDateCalendars?.(data.id, {
+                    repairType:    formData.repairType || '',
+                    customerName:  formData.customerName,
+                    rv:            formData.rv || '',
+                    customerPhone: formData.customerPhone || '',
+                    roId:          data.ro_id,
+                    promisedDate:  formData.promisedDate || '',
+                    pickupDate:    formData.pickupDate || '',
+                    existingIds:   null,
+                });
+            } catch (e) { warn('Key-date calendar sync (new RO) failed:', e); }
+
+            // [Key Dates P3 S119] Enqueue promised/pickup email reminders for the new RO.
+            const _kdInfo = { customerName: formData.customerName, rv: formData.rv, repairType: formData.repairType };
+            if (formData.promisedDate) await _syncOneKeyDateReminder(data.id, data.ro_id, 'promised', { ..._kdInfo, newDate: formData.promisedDate, oldDate: null });
+            if (formData.pickupDate)   await _syncOneKeyDateReminder(data.id, data.ro_id, 'pickup',   { ..._kdInfo, newDate: formData.pickupDate,   oldDate: null });
 
             log('✅ New RO saved to Supabase:', data.ro_id);
             return data;
@@ -409,6 +515,32 @@
                 newValue: value || '',
             }));
             await writeAuditLog(ro.roId, auditChanges);
+
+            // [Key Dates P2 S119] Sync silo calendar events for promised/pickup on edit
+            // (auto-on-save only when a Google Calendar token is present; non-fatal).
+            try {
+                await window.syncKeyDateCalendars?.(supabaseId, {
+                    repairType:    formData.repairType || ro.repairType || '',
+                    customerName:  formData.customerName || ro.customerName,
+                    rv:            formData.rv || ro.rv || '',
+                    customerPhone: formData.customerPhone || ro.customerPhone || '',
+                    roId:          ro.roId,
+                    promisedDate:  formData.promisedDate || '',
+                    pickupDate:    formData.pickupDate || '',
+                    existingIds:   ro.calEventIds || null,
+                });
+            } catch (e) { warn('Key-date calendar sync (edit RO) failed:', e); }
+
+            // [Key Dates P3 S119] Cascade promised/pickup reminders on date change/clear
+            // (mirrors the GH#ER1 drop-off cascade above). Normalize falsy -> '' so an
+            // unchanged empty date does no work.
+            const _kdEditInfo = { customerName: formData.customerName || ro.customerName, rv: formData.rv || ro.rv, repairType: formData.repairType || ro.repairType };
+            if ((formData.promisedDate || '') !== (ro.promisedDate || '')) {
+                await _syncOneKeyDateReminder(supabaseId, ro.roId, 'promised', { ..._kdEditInfo, newDate: formData.promisedDate || null, oldDate: ro.promisedDate || null });
+            }
+            if ((formData.pickupDate || '') !== (ro.pickupDate || '')) {
+                await _syncOneKeyDateReminder(supabaseId, ro.roId, 'pickup', { ..._kdEditInfo, newDate: formData.pickupDate || null, oldDate: ro.pickupDate || null });
+            }
 
             log('✅ RO updated in Supabase');
         }

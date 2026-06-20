@@ -364,10 +364,139 @@ Notes: ${notes}` : '',
         }
 
 
+// ── Key Dates Phase 2 (S119) ────────────────────────────────────────────────
+// Create/update/delete all-day Google Calendar events for an RO's PROMISED and
+// PICKUP key dates on the per-service silo calendars, idempotently. Called from
+// ro-crud.js after a New RO insert or Edit RO update.
+//
+// AUTO-ON-SAVE: writes only when a Google Calendar access token is present
+// (same constraint as the Schedule modal); silently no-ops otherwise so a save
+// never fails for lack of a token. Idempotency via the repair_orders.cal_event_ids
+// jsonb map { promised:{svc:eventId}, pickup:{svc:eventId} }: PATCH if we already
+// have an id, POST to create, DELETE when a date is cleared or its service drops.
+//
+// opts = { repairType, customerName, rv, customerPhone, roId,
+//          promisedDate, pickupDate, existingIds }
+export async function syncKeyDateCalendars(supabaseId, opts) {
+    if (!accessToken || !supabaseId || !opts) return;
+    try {
+        const roServices = String(opts.repairType || '')
+            .split(',').map(s => s.trim()).filter(s => s && getCalendarId(s));
+
+        const ids = (opts.existingIds && typeof opts.existingIds === 'object')
+            ? JSON.parse(JSON.stringify(opts.existingIds)) : {};
+
+        const customerName = opts.customerName || 'Customer';
+        const rv = opts.rv || 'RV';
+        const phone = opts.customerPhone || '';
+        const roCode = opts.roId || '';
+
+        const dateDefs = [
+            { type: 'promised', label: 'Promised', colorId: '5',  date: (opts.promisedDate || '').slice(0, 10) },
+            { type: 'pickup',   label: 'Pickup',   colorId: '10', date: (opts.pickupDate   || '').slice(0, 10) },
+        ];
+
+        let changed = false;
+
+        for (const def of dateDefs) {
+            ids[def.type] = ids[def.type] || {};
+            const perSvc = ids[def.type];
+
+            // Delete events for services no longer on the RO, or when the date was cleared.
+            for (const svc of Object.keys(perSvc)) {
+                if (!def.date || !roServices.includes(svc)) {
+                    const calId = getCalendarId(svc);
+                    if (calId && perSvc[svc]) await _kdCalDelete(calId, perSvc[svc]);
+                    delete perSvc[svc];
+                    changed = true;
+                }
+            }
+
+            if (!def.date) continue;
+
+            const endDate = _kdAddDaysISO(def.date, 1); // all-day end is exclusive
+            const summary = `[${def.label}] ${customerName} — ${rv}`;
+            const description = [
+                `Customer: ${customerName}`,
+                `RV: ${rv}`,
+                phone ? `Phone: ${phone}` : '',
+                `${def.label} date: ${def.date}`,
+                roCode ? `RO ID: ${roCode}` : '',
+            ].filter(Boolean).join('\n');
+
+            for (const svc of roServices) {
+                const calId = getCalendarId(svc);
+                if (!calId) continue;
+                const evt = {
+                    summary, description,
+                    start: { date: def.date },
+                    end:   { date: endDate },
+                    colorId: def.colorId,
+                };
+                const existing = perSvc[svc];
+                try {
+                    let resp = await fetch(
+                        existing
+                            ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(existing)}`
+                            : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`,
+                        {
+                            method: existing ? 'PATCH' : 'POST',
+                            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify(evt),
+                        }
+                    );
+                    // Stored event vanished (deleted in Calendar) — recreate.
+                    if (existing && resp.status === 404) {
+                        resp = await fetch(
+                            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`,
+                            {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify(evt),
+                            }
+                        );
+                    }
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.id && data.id !== existing) { perSvc[svc] = data.id; changed = true; }
+                    } else {
+                        warn('Key-date calendar write failed', def.type, svc, await resp.text());
+                    }
+                } catch (e) { warn('Key-date calendar error', def.type, svc, e); }
+            }
+        }
+
+        if (changed) {
+            await getSB().from('repair_orders').update({ cal_event_ids: ids }).eq('id', supabaseId);
+            const idx = currentData.findIndex(r => r._supabaseId === supabaseId);
+            if (idx >= 0) currentData[idx].calEventIds = ids;
+        }
+    } catch (e) {
+        warn('syncKeyDateCalendars failed (non-fatal):', e);
+    }
+}
+
+function _kdAddDaysISO(isoDate, n) {
+    const d = new Date(isoDate + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+
+async function _kdCalDelete(calId, eventId) {
+    try {
+        await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`,
+            { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+    } catch (e) { warn('Key-date calendar delete failed', e); }
+}
+
+
 // ---- Window bridge (Phase 12 additive) ----
 Object.assign(window, {
   reauthorizeCalendar,
   openScheduleModal,
   confirmSchedule,
   proceedWithSchedule,
+  syncKeyDateCalendars,
 });

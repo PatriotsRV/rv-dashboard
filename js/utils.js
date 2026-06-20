@@ -246,6 +246,7 @@ export function rowToRO(row) {
         isTraining:               !!row.is_training,
         plannedDropoffDate:       row.planned_dropoff_date || null,
         pickupDate:               row.pickup_date || null,  // [Key Dates P1 S117] ER d2561e11
+        calEventIds:              row.cal_event_ids || null, // [Key Dates P2 S119] silo calendar event IDs per key date
         keyStatus:                row.key_status || null,   // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
         keypadCode:               row.keypad_code || null,  // [ER BUGFIX v1.458 S118]
         keepPluggedIn:            !!row.keep_plugged_in,    // [ER BUGFIX v1.458 S118]

@@ -742,6 +742,11 @@
             }
         }
 
+// [ER COMPLETION NOTIFY S119] Escape for textarea content (& and < and >).
+function _erEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export function renderERAdminList() {
     const body = document.getElementById('erAdminBody');
     if (!_erData.length) {
@@ -769,6 +774,14 @@ export function renderERAdminList() {
             '<div style="margin-top:8px;display:flex;gap:8px;">' +
                 '<input id="erNote_' + er.id + '" placeholder="Add admin note..." value="' + (er.admin_notes || '').replace(/"/g, '&quot;') + '" style="flex:1;padding:6px 10px;background:#1e293b;color:white;border:1px solid #334155;border-radius:6px;font-size:0.8rem;" />' +
                 '<button onclick="saveERNote(\'' + er.id + '\')" style="background:#1e3a5f;color:#93c5fd;border:1px solid #334155;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.78rem;font-weight:600;">Save Note</button>' +
+            '</div>' +
+            // [ER COMPLETION NOTIFY S119] Hand-written "what we did / how to test" — emailed to
+            // the requester when this ER is marked Done (DB trigger -> send-er-completion edge fn).
+            '<div style="margin-top:8px;background:#0b1220;border:1px solid #14532d;border-radius:8px;padding:10px;">' +
+                '<div style="font-size:0.72rem;color:#86efac;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">✅ Completion details &middot; emailed to ' + _erEsc(er.submitted_by_name || er.submitted_by) + ' when marked Done' + (er.completion_emailed_at ? ' &middot; <span style="color:#22c55e;">sent ' + new Date(er.completion_emailed_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) + '</span>' : '') + '</div>' +
+                '<textarea id="erDone_' + er.id + '" placeholder="What we did (plain language for the requester)..." style="width:100%;min-height:46px;padding:6px 10px;background:#1e293b;color:white;border:1px solid #334155;border-radius:6px;font-size:0.8rem;margin-bottom:6px;resize:vertical;box-sizing:border-box;">' + _erEsc(er.completion_notes || '') + '</textarea>' +
+                '<textarea id="erTest_' + er.id + '" placeholder="How to see it / test it..." style="width:100%;min-height:40px;padding:6px 10px;background:#1e293b;color:white;border:1px solid #334155;border-radius:6px;font-size:0.8rem;resize:vertical;box-sizing:border-box;">' + _erEsc(er.test_steps || '') + '</textarea>' +
+                '<button onclick="saveERDetails(\'' + er.id + '\')" style="margin-top:6px;background:#14532d;color:#bbf7d0;border:1px solid #166534;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.76rem;font-weight:600;">Save details</button>' +
             '</div>' +
         '</div>';
     }).join('');

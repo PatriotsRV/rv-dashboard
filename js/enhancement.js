@@ -164,13 +164,47 @@ export function filterERAdmin(type, value) {
 
 export async function updateERStatus(id, status) {
     try {
-        const { error } = await getSB().from('enhancement_requests').update({ status }).eq('id', id);
+        const payload = { status };
+        // [ER COMPLETION NOTIFY S119] When marking Done, capture the hand-written
+        // completion details in the SAME update so the DB trigger (which emails the
+        // requester) sees them on the row. Warn — but don't block — if left blank.
+        if (status === 'done') {
+            const doneEl = document.getElementById('erDone_' + id);
+            const testEl = document.getElementById('erTest_' + id);
+            const completionNotes = (doneEl?.value || '').trim();
+            const testSteps = (testEl?.value || '').trim();
+            if (!completionNotes) {
+                const proceed = confirm('No "what we did" note entered.\n\nThe requester will still get a generic "your request is live" email. Add a note first for a clearer message?\n\nOK = send generic · Cancel = go back and add a note');
+                if (!proceed) return;
+            }
+            payload.completion_notes = completionNotes || null;
+            payload.test_steps = testSteps || null;
+        }
+        const { error } = await getSB().from('enhancement_requests').update(payload).eq('id', id);
         if (error) throw error;
         const er = _erData.find(e => e.id === id);
-        if (er) er.status = status;
+        if (er) { er.status = status; if (status === 'done') { er.completion_notes = payload.completion_notes; er.test_steps = payload.test_steps; } }
         renderERAdminList();
         loadERUnreviewedCount();
+        if (status === 'done') showToast('Marked done — completion email queued to the requester.', 'success');
     } catch(err) { showToast('Error updating status: ' + (err.message || err), 'error'); }
+}
+
+// [ER COMPLETION NOTIFY S119] Save completion_notes + test_steps WITHOUT changing
+// status (so the admin can draft them before flipping to Done). No email fires here —
+// the email only fires on the status -> 'done' transition.
+export async function saveERDetails(id) {
+    const completionNotes = (document.getElementById('erDone_' + id)?.value || '').trim();
+    const testSteps = (document.getElementById('erTest_' + id)?.value || '').trim();
+    try {
+        const { error } = await getSB().from('enhancement_requests')
+            .update({ completion_notes: completionNotes || null, test_steps: testSteps || null })
+            .eq('id', id);
+        if (error) throw error;
+        const er = _erData.find(e => e.id === id);
+        if (er) { er.completion_notes = completionNotes || null; er.test_steps = testSteps || null; }
+        showToast('Completion details saved.', 'success');
+    } catch(err) { showToast('Error saving details: ' + (err.message || err), 'error'); }
 }
 
 export async function saveERNote(id) {
@@ -184,4 +218,4 @@ export async function saveERNote(id) {
     } catch(err) { showToast('Error saving note: ' + (err.message || err), 'error'); }
 }
 
-Object.assign(window, { openERModal, closeERModal, startERDictation, submitEnhancementRequest, loadERUnreviewedCount, openERAdminView, closeERAdminView, loadERAdminData, filterERAdmin, updateERStatus, saveERNote });
+Object.assign(window, { openERModal, closeERModal, startERDictation, submitEnhancementRequest, loadERUnreviewedCount, openERAdminView, closeERAdminView, loadERAdminData, filterERAdmin, updateERStatus, saveERNote, saveERDetails });
