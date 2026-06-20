@@ -1,7 +1,16 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.12
-    Released: 2026-06-17
+    PRVS Customer Check-In v1.13
+    Released: 2026-06-20
+    v1.13: [DUP-RO HARDENING v1.13 S118] Submit-time auto-dedupe. The v1.12 guard only ran when
+          staff explicitly TAPPED the matching customer in the returning-customer search, so a
+          duplicate RO was still created whenever they toggled Returning + typed the name (or
+          mis-toggled New) without selecting the match - which is exactly how the 6/19 duplicates
+          (David Flanagan, Joe Sekoral) happened. Now, when no customer was selected from search,
+          the submit looks up an existing Scheduled / Not-On-Lot(no-arrival) RO by normalized
+          phone OR lowercased email and attaches the check-in to it instead of inserting a second
+          RO. The explicit-selection path is unchanged; the re-fetch + status re-check still gates
+          the merge; failures are non-fatal (fall back to creating a new RO).
     v1.12: [ER BUGFIX v1.12 S114] Returning-customer duplicate-RO guard (ER 298e0e67, Sofia).
           When a returning customer who already has a FUTURE scheduled-drop RO (status
           'Scheduled', or 'Not On Lot' with no arrival date) checks in, the submit now UPDATES
@@ -973,7 +982,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.12</div>
+<div class="version-badge">PRVS Customer Check-In v1.13</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2026,19 +2035,58 @@
             let insertedRO = null;
             let reusedScheduledRO = false;
 
-            // [ER BUGFIX v1.12 S114] Returning-customer duplicate-RO guard (ER 298e0e67, Sofia).
-            // If this customer already has a FUTURE scheduled-drop RO (status 'Scheduled', or
-            // 'Not On Lot' with no arrival date) and they now check in, attach this check-in to
+            // [ER BUGFIX v1.12 S114 / DUP-RO HARDENING v1.13 S118] Returning-customer duplicate-RO
+            // guard. If this customer already has a FUTURE scheduled-drop RO (status 'Scheduled',
+            // or 'Not On Lot' with no arrival date) and they now check in, attach this check-in to
             // that existing RO instead of inserting a second one. Any active/in-progress RO is
             // left alone — a returning customer with live work still creates a new RO for the new
-            // job. The match is the returning customer the receptionist selected from search.
-            const priorRO = formState.returnCustomerData;
-            if (formState.customerType === 'returning' && priorRO && priorRO._source === 'repair_orders' && priorRO.id) {
+            // job.
+            //
+            // Finding the prior RO, in priority order:
+            //   (1) the RO the receptionist explicitly selected from the returning-customer search;
+            //   (2) [v1.13] a submit-time lookup by normalized phone OR lowercased email. This is
+            //       the hardening: the v1.12 guard only fired on path (1), so a duplicate was still
+            //       created whenever staff toggled Returning + typed the name (or mis-toggled New)
+            //       without tapping the search match — exactly how the 6/19 dupes happened.
+            let priorROId = null;
+            const selectedRO = formState.returnCustomerData;
+            if (selectedRO && selectedRO._source === 'repair_orders' && selectedRO.id) {
+                priorROId = selectedRO.id;
+            } else if (phone || email) {
+                try {
+                    const phoneDigits = (phone || '').replace(/\D/g, '');
+                    const emailLc = (email || '').toLowerCase().trim();
+                    // Pending drop-offs only — a small set. Filter/match in JS so phone-format
+                    // differences ("(830) 965-5340" vs "830-965-5340") and email case don't miss.
+                    const { data: pending } = await getSB()
+                        .from('repair_orders')
+                        .select('id, status, date_received, phone, email, created_at')
+                        .is('deleted_at', null)
+                        .in('status', ['Scheduled', 'Not On Lot'])
+                        .order('created_at', { ascending: false });
+                    const hit = (pending || []).find(r => {
+                        const rPhone = (r.phone || '').replace(/\D/g, '');
+                        const rEmail = (r.email || '').toLowerCase().trim();
+                        const contactMatch =
+                            (emailLc && rEmail === emailLc) ||
+                            (phoneDigits.length >= 7 && rPhone === phoneDigits);
+                        const isScheduledDrop =
+                            r.status === 'Scheduled' ||
+                            (r.status === 'Not On Lot' && !r.date_received);
+                        return contactMatch && isScheduledDrop;
+                    });
+                    if (hit) priorROId = hit.id;
+                } catch (e) {
+                    console.warn('Submit-time dedupe lookup failed (non-fatal; will create a new RO):', e);
+                }
+            }
+
+            if (priorROId) {
                 try {
                     const { data: existRO } = await getSB()
                         .from('repair_orders')
                         .select('id, ro_id, status, date_received, description')
-                        .eq('id', priorRO.id)
+                        .eq('id', priorROId)
                         .maybeSingle();
                     const isScheduledDrop = existRO && (
                         existRO.status === 'Scheduled' ||
@@ -2069,7 +2117,7 @@
                         const { data: updated, error: updErr } = await getSB()
                             .from('repair_orders')
                             .update(updatePayload)
-                            .eq('id', priorRO.id)
+                            .eq('id', priorROId)
                             .select()
                             .single();
                         if (updErr) throw updErr;
@@ -2323,15 +2371,19 @@
                 ? (formState.dropoffChoice === 'today' ? 'Drop Off' : 'Scheduled Drop Off')
                 : 'New Customer Entry';
             const typeLabel = roType === 'hybrid' ? 'Hybrid (New + Warranty)' : roType === 'warranty' ? 'Warranty' : 'Standard';
+            // [v1.13] When we attached to an existing scheduled RO, say so plainly so staff
+            // don't think a duplicate was made — and word the lead verb accordingly.
+            const createdVerb = reusedScheduledRO ? 'updated' : 'created';
             document.getElementById('successMsg').innerHTML = `
-                ${modeLabel} — ${typeLabel} RO created for <strong>${escapeHtml(customerName)}</strong>.<br>
+                ${modeLabel} — ${typeLabel} RO ${createdVerb} for <strong>${escapeHtml(customerName)}</strong>.<br>
                 Status: <strong>${status}</strong>
+                ${reusedScheduledRO ? '<br>↩ Attached to this customer\'s existing scheduled RO — no duplicate created.' : ''}
                 ${email && formState.mode === 'dropoff' ? '<br>A copy of the signed agreement has been sent to the customer\'s email.' : ''}
             `;
             goToStep(5);
             const successMsg = staffNotified
-                ? '✅ RO created — staff notified at repair@patriotsrvservices.com'
-                : 'Repair Order created successfully!';
+                ? `✅ RO ${createdVerb} — staff notified at repair@patriotsrvservices.com`
+                : `Repair Order ${createdVerb} successfully!`;
             showToast(successMsg, 'success');
 
         } catch (e) {
