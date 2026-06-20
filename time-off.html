@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Time Off v1.3
+    PRVS Time Off v1.4
+    Released: 2026-06-20
+    v1.4: [ER ee50d11c S118] EDIT existing time-off entries (Lynn). The list was delete-only;
+        each row now has an Edit button (admin, or the employee's own record) that opens the
+        same modal pre-filled and UPDATEs the record (day/person/type/hours/reason) instead of
+        inserting a new one. Edit skips the new-request notifications + confirmation modal.
     Released: 2026-05-18
     Session 68 — GH#38: Admin-only employee picker restored on request modal.
         Admins can submit time off records on behalf of ANY active employee
@@ -312,7 +317,7 @@
 <div class="modal-overlay" id="requestModal" style="display:none;">
     <div class="modal">
         <div class="modal-header">
-            <h3>Record Time Off</h3>
+            <h3 id="requestModalTitle">Record Time Off</h3>
             <button class="modal-close" onclick="closeRequestModal()">&#x2715;</button>
         </div>
         <div class="modal-body">
@@ -422,6 +427,7 @@ const PRVS_NOTIFY_URL      = SUPABASE_URL + '/functions/v1/send-quote-email';
 // ── STATE ──
 let _sb = null, supabaseSession = null, userRoles = [], currentUser = null;
 let allStaff = [], allTimeOff = [], filteredTimeOff = [];
+let editingRequestId = null; // [ER ee50d11c S118] non-null = editing an existing time-off record
 let currentView = 'calendar';
 let currentDayType = 'full';
 let calYear = new Date().getFullYear(), calMonth = new Date().getMonth();
@@ -738,7 +744,10 @@ function renderList() {
             + '<td>' + daysChip + '</td>'
             + '<td style="max-width:180px;color:var(--text-secondary);font-size:0.9rem">' + esc(r.notes || '—') + '</td>'
             + '<td style="font-size:0.82rem;color:var(--text-muted)">' + esc(r.submitted_by_email) + '</td>'
-            + '<td>' + (canDel ? '<button class="btn btn-danger btn-sm" onclick="deleteRequest(\'' + r.id + '\')">Delete</button>' : '') + '</td>'
+            + '<td>' + (canDel
+                ? '<button class="btn btn-secondary btn-sm" onclick="editRequest(\'' + r.id + '\')">Edit</button> '
+                  + '<button class="btn btn-danger btn-sm" onclick="deleteRequest(\'' + r.id + '\')">Delete</button>'
+                : '') + '</td>'
             + '</tr>';
     }).join('');
 }
@@ -769,6 +778,10 @@ function setDayType(type) {
 }
 
 function openRequestModal() {
+    // [ER ee50d11c S118] Always open in ADD mode; editRequest() flips this for edits.
+    editingRequestId = null;
+    document.getElementById('requestModalTitle').textContent = 'Record Time Off';
+    document.getElementById('submitRequestBtn').textContent = 'Save Record';
     const today = fmtDate(new Date());
     document.getElementById('modalStartDate').value = today;
     document.getElementById('modalEndDate').value   = today;
@@ -786,6 +799,33 @@ function openRequestModal() {
 
 function closeRequestModal() {
     document.getElementById('requestModal').style.display = 'none';
+    editingRequestId = null; // [ER ee50d11c S118] never leave edit mode armed after close
+}
+
+// [ER ee50d11c S118] Edit an existing time-off record — opens the modal pre-filled.
+function editRequest(id) {
+    const rec = (allTimeOff || []).find(r => r.id === id)
+             || (filteredTimeOff || []).find(r => r.id === id);
+    if (!rec) { showToast('Could not find that record', 'error'); return; }
+    editingRequestId = id;
+    if (isAdmin()) {
+        const modalSel = document.getElementById('modalEmployee');
+        if (modalSel) modalSel.value = (rec.employee_email || '').toLowerCase();
+    }
+    document.getElementById('modalType').value  = rec.request_type || 'sick';
+    document.getElementById('modalNotes').value = rec.notes || '';
+    document.getElementById('modalStartDate').value = rec.start_date || '';
+    if (rec.partial_hours) {
+        setDayType('partial');
+        document.getElementById('modalHours').value = String(parseFloat(rec.partial_hours));
+    } else {
+        setDayType('full');
+        document.getElementById('modalEndDate').value = rec.end_date || rec.start_date || '';
+        updateDaysPreview();
+    }
+    document.getElementById('requestModalTitle').textContent = 'Edit Time Off';
+    document.getElementById('submitRequestBtn').textContent = 'Update Record';
+    document.getElementById('requestModal').style.display = 'flex';
 }
 
 function updateDaysPreview() {
@@ -840,6 +880,28 @@ async function submitRequest() {
         empEmail = selectedEmail;
         const match = allStaff.find(s => (s.email || '').toLowerCase() === selectedEmail);
         empName = match ? (match.name || match.email) : (selectedEmail === (currentUser.email || '').toLowerCase() ? currentUser.name : selectedEmail);
+    }
+
+    // [ER ee50d11c S118] Edit mode — UPDATE the existing record instead of inserting a new one.
+    // Skips the new-request notifications + confirmation modal (this is a correction, not a new ask).
+    if (editingRequestId) {
+        btn.disabled = true; btn.textContent = 'Updating…';
+        const { error: updErr } = await getSB().from('time_off_requests').update({
+            employee_email: empEmail.toLowerCase(),
+            employee_name:  empName,
+            start_date:     start,
+            end_date:       end,
+            request_type:   type,
+            notes:          notes,
+            partial_hours:  partialHours,
+        }).eq('id', editingRequestId);
+        btn.disabled = false; btn.textContent = 'Save Record';
+        if (updErr) { showToast('Update failed: ' + updErr.message, 'error'); return; }
+        editingRequestId = null;
+        closeRequestModal();
+        await loadTimeOffData();
+        showToast('Record updated', 'success');
+        return;
     }
 
     btn.disabled = true; btn.textContent = 'Saving…';
