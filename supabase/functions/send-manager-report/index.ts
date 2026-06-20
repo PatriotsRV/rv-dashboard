@@ -33,10 +33,21 @@ import nodemailer from "npm:nodemailer@6";
 //   banner (links guide.html#report-glossary) to both the admin combined copy
 //   and each per-manager email — first thing they see.
 //
+// v2.2-P4c (S119): NEW "📅 Your Scheduled Reminders" section leads each card —
+//   per-RO key dates (drop-off / promised / pickup) falling this week + next
+//   week, soonest first, split This week / Next week, then rolls into the RO
+//   detail. Pairs with the Key Dates feature (planned_dropoff_date /
+//   promised_date / pickup_date). Forward-looking; overdue promised dates stay
+//   in Fire Watch.
+// v2.3-P4c (S119): the Scheduled Reminders section now ALSO includes manual
+//   🔔 "Important Reminder" notifications (scheduled_notifications source=manual)
+//   set on the manager's ROs, merged + sorted with the key dates. auto_* sources
+//   are excluded (they mirror the key dates already shown).
+//
 // Prior versions (GH#23 per-silo morning report) -> git history.
 // ============================================================
 
-const FN_VERSION = "v2.1-P4b";
+const FN_VERSION = "v2.3-P4c";
 
 const ALLOWED_ORIGIN = "https://patriotsrv.github.io";
 function getCorsHeaders(req: Request) {
@@ -131,6 +142,20 @@ function validDate(s: string | null | undefined): boolean {
   return Number.isFinite(y) && y >= 2020 && y <= 2100;
 }
 
+// Add n days to a YYYY-MM-DD string (UTC math; date-only).
+function addDaysISO(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// "Mon Jun 23" for a YYYY-MM-DD string (no timezone shift).
+function niceDateShort(iso: string): string {
+  return new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", {
+    weekday: "short", month: "short", day: "numeric", timeZone: "UTC",
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: getCorsHeaders(req) });
 
@@ -175,6 +200,10 @@ Deno.serve(async (req: Request) => {
     const mondayISO = chicagoMondayISO();
     const idleCutoff = businessDaysAgoISO(IDLE_WORKING_DAYS);
     const doneDoneCutoff = businessDaysAgoISO(DONE_DONE_BUSINESS_DAYS); // YYYY-MM-DD
+    // Scheduled Reminders window (S119): this week + following week (Chicago).
+    const thisSunISO = addDaysISO(mondayISO, 6);   // Sunday of the current week
+    const nextMonISO = addDaysISO(mondayISO, 7);   // Monday of next week
+    const nextSunISO = addDaysISO(mondayISO, 13);  // Sunday of next week (window end)
     const dateStr = new Date().toLocaleDateString("en-US", {
       timeZone: "America/Chicago", weekday: "long", month: "long", day: "numeric", year: "numeric",
     });
@@ -192,14 +221,21 @@ Deno.serve(async (req: Request) => {
       { data: woRows },
       { data: partRows },
       { data: wlRows },
+      { data: snRows },
     ] = await Promise.all([
       sb.from("staff").select("email, name, role, service_silo, active, hourly_rate"),
       sb.from("repair_orders")
-        .select("id, ro_id, customer_name, rv, status, promised_date, dollar_value, deleted_at, is_training"),
+        .select("id, ro_id, customer_name, rv, status, promised_date, planned_dropoff_date, pickup_date, dollar_value, deleted_at, is_training"),
       sb.from("service_work_orders")
         .select("id, ro_id, service_silo, status, dollar_value, tech_done_at, completed_at"),
       sb.from("parts").select("id, ro_id, service_silo, status, eta, date_ordered, date_received, part_name, wholesale_price, qty, core_charge"),
       sb.from("manager_work_lists").select("manager_email, ro_id, ro_name, service_silo, priority"),
+      // Manual "Important Reminder" notifications (🔔 Schedule Notification UI).
+      // source='manual' only — the auto_* sources mirror the key dates already
+      // shown above, so including them would double up. Pending + future only.
+      sb.from("scheduled_notifications")
+        .select("ro_id, scheduled_at, subject, source, status")
+        .eq("status", "pending").eq("source", "manual"),
     ]);
 
     const eightDaysAgo = new Date(Date.now() - 8 * 86_400_000).toISOString();
@@ -235,6 +271,16 @@ Deno.serve(async (req: Request) => {
     // ── Parts by RO uuid (open = not received) ──────────────────────────
     const partsByRo: Record<string, any[]> = {};
     for (const p of partRows || []) (partsByRo[p.ro_id] ??= []).push(p);
+
+    // ── Manual "Important Reminder" notifications by RO uuid (S119) ──────
+    // Each = { date (Chicago YYYY-MM-DD of firing), subject }. Filtered to the
+    // this-week/next-week window when rendered per manager.
+    const manualRemByRo: Record<string, { date: string; subject: string }[]> = {};
+    for (const n of snRows || []) {
+      if (!n.ro_id || !n.scheduled_at) continue;
+      const d = ctDate(new Date(n.scheduled_at));
+      (manualRemByRo[n.ro_id] ??= []).push({ date: d, subject: n.subject || "Reminder" });
+    }
 
     // ── Time logs aggregated by RO uuid ─────────────────────────────────
     type TlAgg = { todayH: number; wtdH: number; h7d: number; lastDate: string; techsToday: Set<string> };
@@ -296,6 +342,35 @@ Deno.serve(async (req: Request) => {
     function computeManager(email: string) {
       const roIds = listByManager[email] || [];
       const ros = roIds.map((id) => roById[id]).filter(Boolean);
+
+      // ── Scheduled Reminders (S119) — per-RO key dates falling this week or
+      // next, soonest first. Drop-off / Promised / Pickup. Forward-looking
+      // (today onward); overdue promised dates are handled by Fire Watch.
+      const KD_DEFS = [
+        { key: "planned_dropoff_date", label: "Drop-off", emoji: "📅", color: "#1d4ed8" },
+        { key: "promised_date",        label: "Promised", emoji: "⏰", color: "#b45309" },
+        { key: "pickup_date",          label: "Pickup",   emoji: "🚚", color: "#15803d" },
+      ];
+      const kdThisWeek: any[] = [], kdNextWeek: any[] = [];
+      for (const ro of ros) {
+        for (const def of KD_DEFS) {
+          const ds = String((ro as any)[def.key] || "").slice(0, 10);
+          if (!ds || !validDate(ds)) continue;
+          if (ds < todayCT || ds > nextSunISO) continue;
+          const ev = { date: ds, label: def.label, emoji: def.emoji, color: def.color, ro };
+          (ds <= thisSunISO ? kdThisWeek : kdNextWeek).push(ev);
+        }
+        // Manual "Important Reminders" set on this RO, in the same window.
+        for (const rem of (manualRemByRo[ro.id] || [])) {
+          const ds = rem.date;
+          if (!ds || !validDate(ds)) continue;
+          if (ds < todayCT || ds > nextSunISO) continue;
+          const ev = { date: ds, label: rem.subject, emoji: "🔔", color: "#7c3aed", ro };
+          (ds <= thisSunISO ? kdThisWeek : kdNextWeek).push(ev);
+        }
+      }
+      kdThisWeek.sort((a, b) => a.date.localeCompare(b.date));
+      kdNextWeek.sort((a, b) => a.date.localeCompare(b.date));
 
       // List Activity
       let techsToday = new Set<string>();
@@ -431,7 +506,7 @@ Deno.serve(async (req: Request) => {
         roCount: ros.length, techsToday: techsToday.size,
         hoursToday, hoursWTD, hours7d, worked, idle, idleList, workedList,
         readinessPct, checkPct, fullyReady, applicable, passing,
-        readyFails, fires,
+        readyFails, fires, kdThisWeek, kdNextWeek,
       };
     }
 
@@ -448,6 +523,24 @@ Deno.serve(async (req: Request) => {
     function managerCardHtml(m: any, r: ReturnType<typeof computeManager>): string {
       const isParts = m.role === "parts_manager";
       const readyColor = r.readinessPct >= 90 ? "#16a34a" : r.readinessPct >= 70 ? "#d97706" : "#dc2626";
+
+      // ── Scheduled Reminders (S119) — leads the card so every manager sees
+      // the important per-RO dates coming up this week + next, then rolls into
+      // the RO detail below.
+      const kdRow = (e: any) =>
+        `<div style="font-size:12px;margin-bottom:4px;line-height:1.45;">`
+        + `<span style="display:inline-block;min-width:70px;color:#475569;font-weight:700;">${niceDateShort(e.date)}</span> `
+        + `<span style="color:${e.color};font-weight:700;">${e.emoji} ${e.label}</span> — `
+        + `${roLink(e.ro.ro_id, e.ro.customer_name || e.ro.ro_id)}`
+        + `${e.ro.rv ? ` <span style="color:#94a3b8;">(${esc(e.ro.rv)})</span>` : ""}</div>`;
+      const kdTotal = r.kdThisWeek.length + r.kdNextWeek.length;
+      const reminderHtml = kdTotal
+        ? `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
+             <div style="font-size:13px;font-weight:800;color:#3730a3;margin-bottom:6px;">📅 Your Scheduled Reminders — ${kdTotal} key date${kdTotal > 1 ? "s" : ""} this week &amp; next</div>
+             ${r.kdThisWeek.length ? `<div style="font-size:11px;font-weight:700;color:#4338ca;margin:4px 0 3px;text-transform:uppercase;letter-spacing:.03em;">This week</div>${r.kdThisWeek.map(kdRow).join("")}` : ""}
+             ${r.kdNextWeek.length ? `<div style="font-size:11px;font-weight:700;color:#4338ca;margin:8px 0 3px;text-transform:uppercase;letter-spacing:.03em;">Next week</div>${r.kdNextWeek.map(kdRow).join("")}` : ""}
+           </div>`
+        : `<div style="font-size:12px;color:#64748b;margin:0 0 12px;">📅 No drop-off, promised, or pickup dates on your ROs this week or next.</div>`;
 
       // List Activity scorecard
       const activity = `<table style="width:100%;border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin:8px 0 12px;"><tr>
@@ -526,7 +619,7 @@ Deno.serve(async (req: Request) => {
 
       return `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:18px;">
         <div style="font-size:16px;font-weight:800;color:#1e3a5f;">👤 ${esc(m.name)} <span style="font-weight:600;color:#64748b;font-size:12px;">· ${esc(m.role)}${m.service_silo ? " · " + esc(siloName(m.service_silo)) : ""}</span></div>
-        ${activity}${activeHtml}${idleHtml}${fireHtml}${readyHtml}${partsExtra}
+        ${reminderHtml}${activity}${activeHtml}${idleHtml}${fireHtml}${readyHtml}${partsExtra}
       </div>`;
     }
 
@@ -572,6 +665,7 @@ Deno.serve(async (req: Request) => {
     const legend = `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:18px;background:#fafafa;">
       <div style="font-size:13px;font-weight:800;color:#1e3a5f;margin-bottom:6px;">📖 How to read this report</div>
       <div style="font-size:12px;color:#334155;line-height:1.55;">
+        <b>📅 Your Scheduled Reminders</b> — the drop-off, promised, and pickup dates on your ROs, plus any 🔔 reminders you've set, falling this week or next, soonest first. Plan your week around these, then read into the detail below.<br>
         <b>✅ Active work</b> — the ROs on your list getting hands-on tech time, with hours logged and a quick progress read (status, work-order progress, who's on it today). Start here — this is what's moving.<br>
         <b>🕒 Idle ROs</b> — on your work list but no tech time in ${IDLE_WORKING_DAYS} work days. Get an RO off the list by: (1) making sure a tech clocks in; (2) if it is a placeholder, opening the RO and using the <b>Schedule</b> button to put it on the calendar; (3) if it is waiting on parts or an approval, setting the status correctly (Awaiting parts / Awaiting Approval); or (4) removing it from the list if it is not yours right now.<br>
         <b>🔥 Fire Watch</b> — a promised date has passed or a part is late. <b style="color:#dc2626;">🔴 = handle today</b>, <b style="color:#d97706;">🟠 = handle this week</b>. The <b>↳</b> note under each line is the exact fix.<br>
