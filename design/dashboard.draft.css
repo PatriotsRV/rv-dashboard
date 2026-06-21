@@ -1,0 +1,309 @@
+/* ============================================================================
+   PRVS DASHBOARD — "Service Floor" redesign
+   dashboard.css  ·  DRAFT v0.1  ·  Design Session D1 (2026-06-21)
+   ----------------------------------------------------------------------------
+   This is a REDESIGN DRAFT, not a drop-in replacement for the current
+   css/dashboard.css yet. It establishes the new unified token layer and the
+   redesigned core components (header, status rail, stats, filter bar, RO cards).
+
+   MIGRATION NOTES (for the next session):
+   - The current dashboard.css is 3,412 lines and styles many components not yet
+     redesigned here (modals, parts tables, progress inputs, the worklist, etc.).
+     Migrate incrementally: adopt this :root token block first, then re-point
+     existing rules at the new tokens, then restyle components section by section.
+   - COLORS CURRENTLY IN JS (js/config.js, js/render.js statusColorMap) should be
+     migrated INTO these CSS custom properties so there is ONE source of truth.
+     A mapping table is included at the bottom of this file.
+   ============================================================================ */
+
+/* ===========================================================================
+   1. DESIGN TOKENS  — the single layer every page should import
+   =========================================================================== */
+:root {
+  /* ---- Surfaces (warm paper, not screen-black) ---- */
+  --bg-floor:      #ece8e1;   /* the room behind everything */
+  --bg-surface:    #f7f5f1;   /* cards, panels */
+  --bg-raised:     #ffffff;   /* elevated / hover / inputs */
+  --bg-sunken:     #e4dfd6;   /* wells, meter tracks */
+  --ink:           #1c1a17;   /* primary text */
+  --ink-2:         #57514a;   /* secondary text */
+  --ink-3:         #8a847b;   /* muted / captions */
+  --line:          #d8d2c8;   /* hairline borders */
+  --line-strong:   #c4bdb1;
+
+  /* ---- Brand (carried from the customer check-in page navy) ---- */
+  --brand:         #1b3a5c;
+  --brand-ink:     #0f2740;
+  --brand-tint:    #e7edf3;
+
+  /* ---- Status — the ONLY loud colors. Color == meaning, not decoration. ---- */
+  --s-urgent:   #d8261c;  --s-urgent-bg:  #fbe9e7;
+  --s-high:     #c2410c;  --s-high-bg:    #fcebe0;
+  --s-medium:   #b7791f;  --s-medium-bg:  #fbf1dc;
+  --s-progress: #1d6fd6;  --s-progress-bg:#e4eefb;
+  --s-ready:    #18794e;  --s-ready-bg:   #e3f3ea;
+  --s-check:    #c2185b;  --s-check-bg:   #fbe6ef;   /* QA/QC magenta, retained */
+  --s-parts:    #c2410c;  --s-parts-bg:   #fcebe0;
+  --s-neutral:  #6b7280;  --s-neutral-bg: #eceae6;
+
+  /* ---- Type ---- */
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+  --t-display: 2.75rem;
+  --t-h2:      1.375rem;
+  --t-stat:    2.25rem;
+  --t-body:    0.9375rem;
+  --t-small:   0.8125rem;
+  --t-micro:   0.6875rem;
+
+  /* ---- Spacing (4-based scale — replaces hand-picked magic numbers) ---- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* ---- Radius / shadow / motion ---- */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+  --sh-1: 0 1px 2px rgba(28,26,23,.06), 0 1px 3px rgba(28,26,23,.04);
+  --sh-2: 0 2px 8px rgba(28,26,23,.07), 0 4px 16px rgba(28,26,23,.05);
+  --sh-3: 0 8px 28px rgba(28,26,23,.12);
+  --ease: cubic-bezier(.16,1,.3,1);
+}
+
+/* ===========================================================================
+   2. RESET & BASE
+   =========================================================================== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-floor);
+  color: var(--ink);
+  line-height: 1.55;
+  font-size: var(--t-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.wrap { max-width: 1760px; margin: 0 auto; padding: var(--sp-10) var(--sp-8); }
+
+/* ===========================================================================
+   3. HEADER + SIGNATURE STATUS RAIL
+   =========================================================================== */
+header { margin-bottom: var(--sp-8); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--sp-2);
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--t-display);
+  letter-spacing: -.01em;
+  text-transform: uppercase;
+  line-height: .98;
+  color: var(--ink);
+}
+
+.title-row {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--sp-6); flex-wrap: wrap;
+}
+
+.live {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-family: var(--font-mono); font-size: var(--t-small); color: var(--ink-2);
+}
+
+.live-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--s-ready);
+  animation: ping 2.4s var(--ease) infinite;
+}
+@keyframes ping {
+  0%      { box-shadow: 0 0 0 0 rgba(24,121,78,.45); }
+  70%,100%{ box-shadow: 0 0 0 7px rgba(24,121,78,0); }
+}
+
+/* SIGNATURE: shop-wide load in one glance, built from real statuses */
+.rail {
+  margin-top: var(--sp-5);
+  display: flex; height: 10px; border-radius: var(--r-pill);
+  overflow: hidden; box-shadow: var(--sh-1); background: var(--bg-sunken);
+}
+.rail span { height: 100%; transition: flex .6s var(--ease); }
+
+.rail-legend {
+  display: flex; gap: var(--sp-5); flex-wrap: wrap; margin-top: var(--sp-3);
+  font-size: var(--t-small); color: var(--ink-2);
+}
+.rail-legend i {
+  display: inline-block; width: 9px; height: 9px; border-radius: 3px;
+  margin-right: 6px; vertical-align: middle;
+}
+
+/* ===========================================================================
+   4. STATS BAR
+   =========================================================================== */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--sp-4); margin: var(--sp-8) 0;
+}
+.stat {
+  background: var(--bg-surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: var(--sp-5); position: relative;
+  transition: transform .25s var(--ease), box-shadow .25s var(--ease);
+}
+.stat:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+.stat-k {
+  font-size: var(--t-micro); letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; margin-bottom: var(--sp-2);
+}
+.stat-v {
+  font-family: var(--font-mono); font-size: var(--t-stat); font-weight: 600;
+  line-height: 1; color: var(--ink);
+}
+.stat-v small { font-size: 1rem; color: var(--ink-3); margin-left: 4px; }
+.stat[data-tone="urgent"] .stat-v { color: var(--s-urgent); }
+.stat[data-tone="ready"]  .stat-v { color: var(--s-ready); }
+
+/* ===========================================================================
+   5. FILTER BAR
+   =========================================================================== */
+.bar {
+  display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap;
+  background: var(--bg-surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+.bar-label {
+  font-family: var(--font-mono); font-size: var(--t-micro);
+  letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3);
+  margin-right: var(--sp-2);
+}
+.chip {
+  font-family: var(--font-body); font-size: var(--t-small); font-weight: 600;
+  padding: 7px 14px; border-radius: var(--r-pill); cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg-raised); color: var(--ink-2);
+  transition: all .18s var(--ease);
+}
+.chip:hover { border-color: var(--line-strong); color: var(--ink); }
+.chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.bar-spacer { flex: 1; }
+.search {
+  font-family: var(--font-body); font-size: var(--t-small);
+  padding: 8px 14px; border-radius: var(--r-pill);
+  border: 1px solid var(--line); background: var(--bg-raised); color: var(--ink);
+  min-width: 220px;
+}
+.search::placeholder { color: var(--ink-3); }
+
+/* ===========================================================================
+   6. BOARD + RO CARDS
+   =========================================================================== */
+.board {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: var(--sp-5);
+}
+.card {
+  background: var(--bg-surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  position: relative; cursor: pointer; overflow: hidden;
+  transition: transform .25s var(--ease), box-shadow .25s var(--ease), border-color .25s var(--ease);
+  animation: rise .5s var(--ease) backwards;
+}
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.card:hover { transform: translateY(-3px); box-shadow: var(--sh-3); border-color: var(--line-strong); }
+
+/* status accent = tinted left spine (replaces glowing borders) */
+.card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--accent, var(--s-neutral));
+}
+.card[data-status="progress"] { --accent: var(--s-progress); }
+.card[data-status="parts"]    { --accent: var(--s-parts); }
+.card[data-status="approval"] { --accent: var(--s-medium); }
+.card[data-status="ready"]    { --accent: var(--s-ready); }
+.card[data-status="qa"]       { --accent: var(--s-check); }
+.card[data-status="urgent"]   { --accent: var(--s-urgent); }
+
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.ro-no { font-family: var(--font-mono); font-size: var(--t-small); color: var(--ink-3); letter-spacing: .04em; }
+.cust  { font-family: var(--font-display); font-weight: 600; font-size: var(--t-h2); line-height: 1.05; letter-spacing: -.01em; margin-top: 2px; }
+.unit  { font-size: var(--t-small); color: var(--ink-2); margin-top: 2px; }
+
+.badge {
+  font-size: var(--t-micro); font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; padding: 4px 9px; border-radius: var(--r-sm);
+  white-space: nowrap;
+  background: var(--badge-bg, var(--s-neutral-bg)); color: var(--badge-fg, var(--s-neutral));
+}
+.card[data-status="progress"] .badge { --badge-bg: var(--s-progress-bg); --badge-fg: var(--s-progress); }
+.card[data-status="parts"]    .badge { --badge-bg: var(--s-parts-bg);    --badge-fg: var(--s-parts); }
+.card[data-status="approval"] .badge { --badge-bg: var(--s-medium-bg);   --badge-fg: var(--s-medium); }
+.card[data-status="ready"]    .badge { --badge-bg: var(--s-ready-bg);    --badge-fg: var(--s-ready); }
+.card[data-status="qa"]       .badge { --badge-bg: var(--s-check-bg);    --badge-fg: var(--s-check); }
+.card[data-status="urgent"]   .badge { --badge-bg: var(--s-urgent-bg);   --badge-fg: var(--s-urgent); }
+
+.silos { display: flex; gap: var(--sp-1); flex-wrap: wrap; margin: var(--sp-3) 0; }
+.silo {
+  font-size: var(--t-small); padding: 3px 9px 3px 7px; border-radius: var(--r-pill);
+  background: var(--bg-sunken); color: var(--ink-2);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+
+.meter-row { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
+.meter { flex: 1; height: 6px; border-radius: var(--r-pill); background: var(--bg-sunken); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--accent, var(--s-progress)); transition: width .6s var(--ease); }
+.meter-pct { font-family: var(--font-mono); font-size: var(--t-small); color: var(--ink-2); min-width: 38px; text-align: right; }
+
+.card-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line);
+  font-size: var(--t-small); color: var(--ink-3);
+}
+.foot-flag { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.card[data-status="parts"] .foot-flag { color: var(--s-parts); }
+.card[data-status="qa"]    .foot-flag { color: var(--s-check); }
+
+/* parts-request: quiet pulse on the spine only (was a whole-card glow) */
+@keyframes spine-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+.card.parts-pulse::before { animation: spine-pulse 2.6s ease-in-out infinite; }
+
+/* ===========================================================================
+   7. ACCESSIBILITY / RESPONSIVE FLOOR
+   =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+}
+@media (max-width: 640px) {
+  .wrap { padding: var(--sp-6) var(--sp-4); }
+  h1 { font-size: 2rem; }
+}
+
+/* ===========================================================================
+   8. JS-COLOR → CSS-TOKEN MIGRATION MAP   (do this in the next session)
+   ---------------------------------------------------------------------------
+   Move these out of js/config.js + js/render.js and reference the CSS tokens
+   so there is one source of truth. Suggested mapping:
+
+     render.js statusColorMap          ->  CSS token
+     ----------------------------------    -------------------
+     'In progress'        #0a84ff       ->  --s-progress
+     'Awaiting parts'     #ff9500       ->  --s-parts
+     'Awaiting Approval'  #ffcc00       ->  --s-medium
+     'Waiting for QA/QC'  #FF1493       ->  --s-check
+     'Ready for pickup'   #34c759       ->  --s-ready
+     'On Lot'             #34c759       ->  --s-ready
+     'Not On Lot'         #9ca3af       ->  --s-neutral
+
+     config.js WO/TASK/PART status colors: map the same families to
+     --s-progress / --s-medium / --s-parts / --s-ready / --s-urgent / --s-neutral.
+
+   For values JS must still set inline (e.g. dynamic widths), read the CSS var:
+     getComputedStyle(document.documentElement).getPropertyValue('--s-progress')
+   =========================================================================== */
