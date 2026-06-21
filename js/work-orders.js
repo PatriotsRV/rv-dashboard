@@ -256,6 +256,45 @@
                     .eq('id', ro._supabaseId);
                 if (error) { showToast('Failed to update service type: ' + error.message, 'error'); return; }
                 currentData[roIndex].repairType = newRepairType;
+
+                // [ER 9b823d25 S120] Notify the manager(s) of the newly-added silo that
+                // another silo added a service to this RO they need to be aware of.
+                // Queued as a scheduled_notifications row (sent by the every-15-min
+                // process-scheduled-notifications cron). Non-fatal. Requires the
+                // 'service_added_notify' source on the scheduled_notifications CHECK
+                // (migration service_added_notify_source.sql).
+                try {
+                    const recipients = (Array.isArray(_staffCache) ? _staffCache : [])
+                        .filter(s => s.active !== false && s.email
+                            && (s.role === 'manager' || s.role === 'sr_manager')
+                            && s.service_silo === siloKey)
+                        .map(s => s.email);
+                    if (recipients.length) {
+                        const siloInfo = SERVICE_SILOS.find(s => s.key === siloKey);
+                        const siloName = siloInfo ? `${siloInfo.emoji} ${siloInfo.label}` : newLabel;
+                        const addedBy  = currentUser?.name || currentUser?.email || 'A manager';
+                        const subject  = `${ro.customerName} — ${siloName} service added to their RO`;
+                        const body = [
+                            `${addedBy} added a ${siloName} service to ${ro.customerName}'s RO.`,
+                            '',
+                            `RV: ${ro.rv || 'N/A'}`,
+                            `RO ID: ${ro.roId || ''}`,
+                            `All services now on this RO: ${newRepairType}`,
+                            '',
+                            `Please review the RO and build/update your work order for this service.`,
+                        ].join('\n');
+                        await getSB().from('scheduled_notifications').insert({
+                            ro_id:            ro._supabaseId,
+                            scheduled_at:     new Date().toISOString(),
+                            recipient_emails: recipients,
+                            subject:          subject,
+                            body:             body,
+                            source:           'service_added_notify',
+                            status:           'pending',
+                            created_by_email: currentUser?.email || 'service-add',
+                        });
+                    }
+                } catch(e) { warn('Cross-silo service-add notification failed (non-fatal):', e); }
             }
             // Open Build WO form for the new silo
             openBuildWOForm(roIndex, siloKey);

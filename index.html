@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.459
+    PRVS Dashboard v1.460
+    v1.460: [ER S120] Three ER builds (additive). (1) 9b823d25 — when a manager adds a NEW service silo to an RO (js/work-orders.js addServiceToRO), the manager(s) of that newly-added silo are emailed so they know another silo added a repair to their plate. Queued as a scheduled_notifications row (source 'service_added_notify', sent by the every-15-min process-scheduled-notifications cron; recipients resolved from _staffCache by service_silo). REQUIRES migration service_added_notify_source.sql to widen the scheduled_notifications.source CHECK. (2) 0b2e128c — a tech's clock-out work notes are now copied into the RO update timeline (checkin.html clockOut writes a notes-table ro_status line "📝 TECH NOTES (service): ..."; non-fatal, online only, only when notes were typed). (3) dac9fdda — NEW RO status "Off Lot - Returning" for units a customer temporarily took and is bringing back, distinct from "Not On Lot" (never arrived). Added to the status form select + both card status dropdowns (render.js) + status filter buttons + STATUS_PROGRESS_MAP (config.js + inline) + ES translations + statusColorMap (#0ea5e9); EXCLUDED from the "N on lot" count (physically away). Also fd6c122d — Manager Work List drag-drop reorder now works on phones/tablets via touch handlers (HTML5 DnD does not fire on touch); mouse + touch share _reorderWorkList(). checkin.html -> v1.38.
     v1.459: [S119] Two initiatives. (1) ER COMPLETION NOTIFICATION EMAIL — when an enhancement request is marked Done, the requester (enhancement_requests.submitted_by) is emailed what was done + how to test it. NEW columns completion_notes / test_steps / completion_emailed_at (migration er_completion_notify.sql) + a DB trigger (trg_notify_er_completion -> send-er-completion edge fn via pg_net). ER admin card gains two textareas ("what we did" / "how to test") captured atomically when status flips to done (js/render.js + js/enhancement.js saveERDetails/updateERStatus). (2) KEY DATES PHASE 2 + 3 (docs/specs/KEY_DATES_SPEC.md): P2 — setting/changing the PROMISED or PICKUP date now creates/updates/deletes all-day Google Calendar events on the RO's per-service silo calendar(s), auto-on-save when a Google token is present, idempotent via NEW repair_orders.cal_event_ids jsonb (migration key_dates_cal_event_ids.sql; js/scheduling.js syncKeyDateCalendars, hooked in js/ro-crud.js create+update; normalizeRO map utils.js + inline). P3 — promised + pickup now enqueue day-before + morning-of email reminders (8 AM CDT) to the silo manager(s) + admins via scheduled_notifications, superseded on date change/clear (mirrors the drop-off auto-reminder; js/ro-crud.js _syncOneKeyDateReminder). Additive.
     v1.458: [ER BUGFIX v1.458 S118] Keys + Power RO fields (ERs 34fc03c2 Brandon + b87eb2fb Lynn). NEW additive columns key_status (keys / no_keys / keypad), keypad_code (text), keep_plugged_in (bool) on repair_orders (migration keys_power_fields.sql). New RO + Edit RO forms gain a Keys select + Keypad/Lock Code input + a "Keep plugged in (shore power)" checkbox. RO cards show a keys/power chip row (🔑 Keys / 🚫 No keys / 🔢 Keypad:code purple; ⚡ Keep plugged in amber). Persisted in ro-crud create/update; populated in openEditRO; gathered in the edit form-data builder + audit-logged; mapped in normalizeRO (utils.js + inline). Additive only, no behavior change to existing fields.
     v1.457: [Key Dates P1 S117] Unified key-date fields (ERs d2561e11, 1aeb3f58, 2b814250). NEW pickup_date column (migration key_dates_pickup_date.sql). New RO + Edit RO forms gain a "Pickup / Completed Date" input; Edit RO also gains the "Planned Drop Off Date" input that was MISSING — which means edit-save was nulling planned_dropoff_date (and wiping its reminder); now preserved. RO cards show a colored Key Dates chip row: 📅 Drop (blue), ⏰ Promised (amber, red if overdue), 🚚 Pickup (green). Mapping pickupDate<-pickup_date in normalizeRO (utils.js + inline) + persist in ro-crud create/update. No calendar/reminder wiring yet (Phase 2/3). See docs/specs/KEY_DATES_SPEC.md.
@@ -554,7 +555,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.459</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.460</span>
             </div>
         </header>
 
@@ -713,6 +714,7 @@
                             <button class="filter-btn active" data-filter="all" data-type="status">All</button>
                             <button class="filter-btn" data-filter="Not On Lot" data-type="status">Not On Lot</button>
                             <button class="filter-btn" data-filter="On Lot" data-type="status">On Lot</button>
+                            <button class="filter-btn" data-filter="Off Lot - Returning" data-type="status">Off Lot - Returning</button>
                             <button class="filter-btn" data-filter="Awaiting Approval" data-type="status">Awaiting Approval</button>
                             <button class="filter-btn" data-filter="Awaiting parts" data-type="status">Awaiting Parts</button>
                             <button class="filter-btn" data-filter="Ready to Work" data-type="status">Ready to Work</button>
@@ -1203,6 +1205,7 @@
         const STATUS_PROGRESS_MAP = {
             'Not On Lot': 0,
             'On Lot': 10,
+            'Off Lot - Returning': 15,
             'Awaiting Approval': 20,
             'Awaiting parts': 30,
             'Scheduled': 45,
@@ -4036,6 +4039,7 @@
             // RO status values
             'Not On Lot': 'No en el Lote',
             'On Lot': 'En el Lote',
+            'Off Lot - Returning': 'Fuera del Lote - Regresa',
             'Awaiting Approval': 'Esperando Aprobación',
             'Awaiting parts': 'Esperando Partes',
             'Awaiting Parts': 'Esperando Partes',
@@ -6306,6 +6310,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="">Select Status</option>
                             <option value="Not On Lot">Not On Lot</option>
                             <option value="On Lot">On Lot</option>
+                            <option value="Off Lot - Returning">Off Lot - Returning</option>
                             <option value="Awaiting Approval">Awaiting Approval</option>
                             <option value="Awaiting parts">Awaiting parts</option>
                             <option value="Ready to Work">Ready to Work</option>

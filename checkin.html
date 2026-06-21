@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.37
+    PRVS Tech Check-In v1.38
+    v1.38: [ER 0b2e128c S120] On clock-out, the tech's typed work notes are copied into
+           the RO update timeline as a notes-table 'ro_status' line ("📝 TECH NOTES (service): ...")
+           so managers see what was worked on from the dashboard. Online only, non-fatal,
+           only fires when the tech actually typed notes (skips the auto-clock-out marker).
     Released: 2026-06-16
     v1.37: EMPLOYEE GUIDE LINK (Session 113). Added a "📖 Guide" link in the header next
            to the language toggle, opening guide.html#tech (the Tech & Lead time-clock
@@ -353,7 +357,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.37</div>
+    <div class="version">v1.38</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -1427,6 +1431,31 @@ async function clockOut() {
             const { error } = await getSB().from('time_logs').update(updateData).eq('id', activeSession.id);
             if (error) throw error;
             log('✅ Clocked out. Duration:', Math.round(duration / 60), 'minutes');
+
+            // [ER 0b2e128c S120] Transfer the tech's clock-out work notes into the RO
+            // update timeline so managers see them on the dashboard. Only when the tech
+            // actually typed notes (skip the auto "[Auto clocked out ...]" marker-only case).
+            // Non-fatal — a failed note must never block the clock-out.
+            try {
+                const typed = String(document.getElementById('workNotes')?.value || '').trim();
+                if (typed && roData?.id) {
+                    const ts = new Date(now).toLocaleString('en-US', {
+                        timeZone: 'America/Chicago',
+                        month: '2-digit', day: '2-digit', year: '2-digit',
+                        hour: '2-digit', minute: '2-digit',
+                    });
+                    const who = currentUser?.name || currentUser?.email || 'Tech';
+                    const svc = isShopClockOut
+                        ? (selectedShopActivity || activeSession.shop_activity || 'Shop')
+                        : (selectedService || activeSession.service_type || '');
+                    const svcLabel = svc ? ` (${svc})` : '';
+                    await getSB().from('notes').insert({
+                        ro_id: roData.id,
+                        type:  'ro_status',
+                        body:  `[${ts} - ${who}] 📝 TECH NOTES${svcLabel}: ${typed}`,
+                    });
+                }
+            } catch(e) { warn('Clock-out tech-notes -> RO update write failed (non-fatal):', e); }
         } else {
             await queueOfflineAction({ type: 'clock_out', logId: activeSession.id, data: updateData });
             log('📵 Clock-out queued for sync');

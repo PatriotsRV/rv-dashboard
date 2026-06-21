@@ -125,6 +125,7 @@ export const CALENDAR_IDS_FALLBACK = {
 export const STATUS_PROGRESS_MAP = {
     'Not On Lot': 0,
     'On Lot': 10,
+    'Off Lot - Returning': 15,
     'Awaiting Approval': 20,
     'Awaiting parts': 30,
     'Scheduled': 45,
@@ -223,6 +224,7 @@ export const TRANSLATIONS_ES = {
     // RO status values
     'Not On Lot': 'No en el Lote',
     'On Lot': 'En el Lote',
+    'Off Lot - Returning': 'Fuera del Lote - Regresa',
     'Awaiting Approval': 'Esperando Aprobación',
     'Awaiting parts': 'Esperando Partes',
     'Awaiting Parts': 'Esperando Partes',

@@ -237,6 +237,7 @@
                                     <select class="cep-status-dropdown status-dropdown status-${statusClass}" data-ro-index="${index}">
                                         <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>Not On Lot</option>
                                         <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
+                                        <option value="Off Lot - Returning" ${ro.status === 'Off Lot - Returning' ? 'selected' : ''}>Off Lot - Returning</option>
                                         <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
                                         <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>Awaiting Parts</option>
                                         <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
@@ -405,6 +406,7 @@
                                     data-original-status="${escapeHtml(ro.status)}">
                                 <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>${t('Not On Lot')}</option>
                                 <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>${t('On Lot')}</option>
+                                <option value="Off Lot - Returning" ${ro.status === 'Off Lot - Returning' ? 'selected' : ''}>${t('Off Lot - Returning')}</option>
                                 <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>${t('Awaiting Approval')}</option>
                                 <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>${t('Awaiting Parts')}</option>
                                 <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>${t('Scheduled')}</option>
@@ -657,8 +659,10 @@
             // drop-off time and are NOT physically on the lot yet, so they must not be counted
             // as on-lot either (was overstating the on-lot number). On-lot = not "Not On Lot"
             // AND not "Scheduled".
+            // [ER dac9fdda S120] Brandon: "Off Lot - Returning" units are physically away
+            // (customer temporarily took the unit, coming back), so they are not on the lot.
             const onLotCount = (filteredData || data).filter(ro =>
-                ro.status !== 'Not On Lot' && ro.status !== 'Scheduled'
+                ro.status !== 'Not On Lot' && ro.status !== 'Scheduled' && ro.status !== 'Off Lot - Returning'
             ).length;
             const statTotalOnLotEl = document.getElementById('statTotalOnLot');
             if (statTotalOnLotEl) statTotalOnLotEl.textContent = `${onLotCount} on lot`;
@@ -668,6 +672,7 @@
             const statusColorMap = {
                 'Not On Lot':        '#9ca3af',
                 'On Lot':            '#34c759',
+                'Off Lot - Returning': '#0ea5e9',
                 'Awaiting Approval': '#ffcc00',
                 'Awaiting parts':    '#ff9500',
                 'Ready to Work':     '#84cc16',

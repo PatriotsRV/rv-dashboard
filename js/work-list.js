@@ -351,12 +351,41 @@
                 body.appendChild(row);
             });
 
-            // Drag-and-drop reorder (within filtered view)
+            // Drag-and-drop reorder (within filtered view).
+            // [ER fd6c122d S120] Desktop uses HTML5 drag events; phones/tablets get the
+            // equivalent via touchstart/move/end (HTML5 DnD does not fire on touch, which
+            // is why drag-drop "didn't work on the phone"). Both paths funnel into the
+            // shared _reorderWorkList() so behavior stays identical.
             const rows = body.querySelectorAll('.wl-row');
             let dragSrcIdx = null;
             let dragSrcId = null;
+            let touchDestIdx = null;
+
+            // Map a display index (within the current silo filter) to its index in
+            // _workListData, then move the item and persist. Shared by mouse + touch.
+            const _reorderWorkList = (srcDisplayIdx, destDisplayIdx) => {
+                if (srcDisplayIdx === null || destDisplayIdx === null || srcDisplayIdx === destDisplayIdx) return;
+                const filteredIndices = _workListData
+                    .map((item, idx) => ({
+                        idx,
+                        matches: _workListActiveSilo && _workListActiveSilo !== 'all'
+                            ? item.service_silo === _workListActiveSilo
+                            : true
+                    }))
+                    .filter(x => x.matches)
+                    .map(x => x.idx);
+                const srcOriginalIdx = filteredIndices[srcDisplayIdx];
+                const destOriginalIdx = filteredIndices[destDisplayIdx];
+                if (srcOriginalIdx !== undefined && destOriginalIdx !== undefined) {
+                    const moved = _workListData.splice(srcOriginalIdx, 1)[0];
+                    _workListData.splice(destOriginalIdx, 0, moved);
+                    renderWorkList();
+                    _saveWorkListOrder();
+                }
+            };
 
             rows.forEach(row => {
+                // ── Desktop (mouse) ──
                 row.addEventListener('dragstart', () => {
                     dragSrcIdx = parseInt(row.dataset.idx);
                     dragSrcId = row.dataset.id;
@@ -368,29 +397,35 @@
                 row.addEventListener('drop', e => {
                     e.preventDefault();
                     row.style.borderColor = '#334155';
-                    const destIdx = parseInt(row.dataset.idx);
-                    if (dragSrcIdx === null || dragSrcIdx === destIdx) return;
+                    _reorderWorkList(dragSrcIdx, parseInt(row.dataset.idx));
+                });
 
-                    // Find original indices in _workListData
-                    const filteredIndices = _workListData
-                        .map((item, idx) => ({
-                            idx,
-                            matches: _workListActiveSilo && _workListActiveSilo !== 'all'
-                                ? item.service_silo === _workListActiveSilo
-                                : true
-                        }))
-                        .filter(x => x.matches)
-                        .map(x => x.idx);
-
-                    const srcOriginalIdx = filteredIndices[dragSrcIdx];
-                    const destOriginalIdx = filteredIndices[destIdx];
-
-                    if (srcOriginalIdx !== undefined && destOriginalIdx !== undefined) {
-                        const moved = _workListData.splice(srcOriginalIdx, 1)[0];
-                        _workListData.splice(destOriginalIdx, 0, moved);
-                        renderWorkList();
-                        _saveWorkListOrder();
+                // ── Mobile (touch) ──
+                row.addEventListener('touchstart', () => {
+                    dragSrcIdx = parseInt(row.dataset.idx);
+                    dragSrcId = row.dataset.id;
+                    touchDestIdx = null;
+                    row.style.opacity = '0.4';
+                }, { passive: true });
+                row.addEventListener('touchmove', e => {
+                    if (dragSrcIdx === null) return;
+                    e.preventDefault(); // suppress page scroll while reordering a row
+                    const t = e.touches[0];
+                    const el = document.elementFromPoint(t.clientX, t.clientY);
+                    const overRow = el && el.closest ? el.closest('.wl-row') : null;
+                    rows.forEach(r => { if (r !== row) r.style.borderColor = '#334155'; });
+                    if (overRow && overRow !== row) {
+                        overRow.style.borderColor = '#3b82f6';
+                        touchDestIdx = parseInt(overRow.dataset.idx);
+                    } else {
+                        touchDestIdx = null;
                     }
+                }, { passive: false });
+                row.addEventListener('touchend', () => {
+                    row.style.opacity = '1';
+                    rows.forEach(r => { r.style.borderColor = '#334155'; });
+                    _reorderWorkList(dragSrcIdx, touchDestIdx);
+                    dragSrcIdx = null; dragSrcId = null; touchDestIdx = null;
                 });
             });
         }
