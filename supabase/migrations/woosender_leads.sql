@@ -55,6 +55,18 @@ create policy "Authenticated can read woosender_leads"
   to authenticated
   using (true);
 
+-- Authenticated users (admin-gated at the app layer in leads.html) update the
+-- review_status / promoted_ro_id / reviewed_* fields when they Promote, Merge,
+-- or Dismiss a lead. Without an UPDATE policy, RLS silently matches 0 rows (no
+-- error) and the lead never leaves the queue.
+drop policy if exists "Authenticated can update woosender_leads" on public.woosender_leads;
+create policy "Authenticated can update woosender_leads"
+  on public.woosender_leads
+  for update
+  to authenticated
+  using (true)
+  with check (true);
+
 -- 4. updated_at is auto-maintained by the shared trg_set_updated_at trigger
 --    (auto_set_updated_at.sql, Session 115). Attach it here too.
 drop trigger if exists trg_set_updated_at on public.woosender_leads;
