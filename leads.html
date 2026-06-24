@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<!--
+  leads.html — WooSender Lead Review Queue
+  Session 123 (2026-06-24). v1.1
+  v1.1 — Merge a lead into an EXISTING matched RO: add the WooSender call-
+         transcript notes to that RO's timeline and optionally correct its
+         fields, instead of creating a duplicate. (v1.0 = capture + promote.)
+
+  Admin-only review queue for Won-stage WooSender leads captured by the
+  woosender-intake edge fn into public.woosender_leads. An admin reviews each
+  queued lead, optionally fills the gaps the lead form didn't capture, and
+  PROMOTES it into a real repair_orders RO (default status "Not On Lot") — or
+  dismisses it. RO creation mirrors customer-checkin.html (generateROIdCandidates
+  + the repair_orders insert shape). Login-gated (Google id-token -> Supabase),
+  ADMIN ROLE REQUIRED. Read-only against repair_orders except the promote insert.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Review Queue — Patriots RV Services</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#3b82f6; --green:#22c55e;
+    --amber:#f59e0b; --red:#ef4444;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+         background:var(--bg); color:var(--text); }
+  a { color:var(--accent); }
+
+  /* Auth gate */
+  #authGate { min-height:100vh; display:flex; flex-direction:column; align-items:center;
+              justify-content:center; gap:18px; padding:24px; text-align:center; }
+  #authGate h1 { font-size:22px; margin:0; }
+  #authGate p { color:var(--muted); margin:0; max-width:420px; }
+  #notAuthorized { display:none; color:var(--amber); font-weight:600; }
+
+  /* App */
+  #app { display:none; max-width:1080px; margin:0 auto; padding:18px; }
+  header.bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+               padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:18px; }
+  header.bar h1 { font-size:20px; margin:0; flex:1; }
+  .ver { font-size:11px; color:var(--muted); font-weight:400; }
+  .badge-role { font-size:12px; padding:4px 10px; border-radius:999px; background:var(--panel2); color:var(--text); }
+  .badge-admin { background:#7c3aed; color:#fff; }
+  .btn { background:var(--panel2); color:var(--text); border:1px solid var(--line);
+         padding:7px 12px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .btn:hover { border-color:var(--accent); }
+  .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .btn-green { background:var(--green); border-color:var(--green); color:#06240f; font-weight:700; }
+  .btn-ghost { background:transparent; }
+
+  .stats { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .stats b { color:var(--text); font-size:15px; }
+
+  .lead { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+          padding:16px; margin-bottom:14px; }
+  .lead-top { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .lead-name { font-size:17px; font-weight:700; }
+  .pill { font-size:11px; padding:3px 9px; border-radius:999px; background:var(--panel2);
+          color:var(--muted); }
+  .pill-svc { background:#1e3a8a; color:#dbeafe; }
+  .lead-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+               gap:6px 18px; margin:12px 0; font-size:13px; }
+  .lead-grid div span { color:var(--muted); display:inline-block; min-width:62px; }
+  .note { background:var(--panel2); border-radius:8px; padding:10px 12px; font-size:12.5px;
+          color:#cbd5e1; white-space:pre-wrap; max-height:120px; overflow:auto; margin:8px 0; }
+  .dup { background:#3a1d1d; border:1px solid #7f1d1d; color:#fecaca; border-radius:8px;
+         padding:8px 12px; font-size:12.5px; margin:8px 0; }
+  .dup b { color:#fff; }
+  .lead-actions { display:flex; gap:8px; margin-top:10px; }
+  .meta { color:var(--muted); font-size:11px; margin-left:auto; align-self:center; }
+
+  .empty { text-align:center; color:var(--muted); padding:60px 20px; }
+
+  /* Modal */
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6);
+              align-items:flex-start; justify-content:center; padding:30px 16px; overflow:auto; z-index:50; }
+  .modal { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+           width:100%; max-width:620px; padding:22px; }
+  .modal h2 { margin:0 0 4px; font-size:18px; }
+  .modal .sub { color:var(--muted); font-size:12px; margin-bottom:16px; }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .field input, .field select, .field textarea {
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; padding:9px 10px; font-size:13px; font-family:inherit; }
+  .field textarea { min-height:120px; resize:vertical; }
+  .hint { font-size:11px; color:var(--muted); margin-top:3px; }
+  .hint b { color:#cbd5e1; }
+  .hint .use { color:var(--accent); cursor:pointer; text-decoration:underline; margin-left:6px; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+
+  #toastContainer { position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:100; }
+  .toast { padding:10px 16px; border-radius:8px; font-size:13px; color:#fff; transition:opacity .3s; }
+  .toast.info { background:var(--accent); }
+  .toast.success { background:var(--green); color:#06240f; }
+  .toast.error { background:var(--red); }
+</style>
+</head>
+<body>
+
+<div id="authGate">
+  <h1>🛻 Lead Review Queue</h1>
+  <p>Sign in with your Patriots RV Services Google account. This page is restricted to administrators.</p>
+  <div id="g_id_onload"></div>
+  <div id="notAuthorized">You're signed in, but this page is admin-only. Ask Roland if you need access.</div>
+</div>
+
+<div id="app">
+  <header class="bar">
+    <h1>Lead Review Queue <span class="ver">v1.1</span></h1>
+    <span id="userBadge" class="badge-role"></span>
+    <button class="btn" onclick="loadLeads()">↻ Refresh</button>
+    <button class="btn btn-ghost" onclick="signOut()">Sign out</button>
+  </header>
+
+  <div class="stats" id="stats"></div>
+  <div id="leadsContainer"></div>
+</div>
+
+<!-- Promote modal -->
+<div class="modal-bg" id="promoteModal">
+  <div class="modal">
+    <h2>Promote lead to RO</h2>
+    <div class="sub" id="promoteSub"></div>
+    <div class="field">
+      <label>Customer name *</label>
+      <input id="pmName" type="text">
+    </div>
+    <div class="row2">
+      <div class="field"><label>Phone</label><input id="pmPhone" type="text"></div>
+      <div class="field"><label>Email</label><input id="pmEmail" type="text"></div>
+    </div>
+    <div class="field"><label>Address</label><input id="pmAddress" type="text"></div>
+    <div class="row2">
+      <div class="field"><label>RV (year / make / model)</label><input id="pmRv" type="text"></div>
+      <div class="field"><label>VIN</label><input id="pmVin" type="text"></div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Service / repair type</label>
+        <select id="pmRepairType">
+          <option value="">— pick —</option>
+          <option>Repairs</option><option>Vroom</option><option>Solar</option>
+          <option>Roof</option><option>Paint and Body</option><option>Chassis</option>
+          <option>Detailing</option><option>TrueTopper</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="pmStatus">
+          <option>Not On Lot</option>
+          <option>Scheduled</option>
+          <option>On Lot</option>
+        </select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Planned drop-off date</label><input id="pmDropoff" type="date"></div>
+      <div class="field"><label>Promised date</label><input id="pmPromised" type="date"></div>
+    </div>
+    <div class="field">
+      <label>Description / notes</label>
+      <textarea id="pmDesc"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closePromote()">Cancel</button>
+      <button class="btn btn-green" id="pmSubmit" onclick="submitPromote()">Create RO</button>
+    </div>
+  </div>
+</div>
+
+<!-- Merge modal -->
+<div class="modal-bg" id="mergeModal">
+  <div class="modal">
+    <h2>Merge lead into existing RO</h2>
+    <div class="sub">Adds the WooSender call notes to the existing RO and lets you correct its fields. No new RO is created.</div>
+    <div class="field">
+      <label>Target RO</label>
+      <select id="mgTarget" onchange="onMergeTargetChange()"></select>
+    </div>
+    <div class="field">
+      <label>Customer name</label>
+      <input id="mgName" type="text"><div class="hint" id="mgNameHint"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Phone</label><input id="mgPhone" type="text"><div class="hint" id="mgPhoneHint"></div></div>
+      <div class="field"><label>Email</label><input id="mgEmail" type="text"><div class="hint" id="mgEmailHint"></div></div>
+    </div>
+    <div class="field"><label>Address</label><input id="mgAddress" type="text"><div class="hint" id="mgAddressHint"></div></div>
+    <div class="row2">
+      <div class="field"><label>RV</label><input id="mgRv" type="text"><div class="hint" id="mgRvHint"></div></div>
+      <div class="field">
+        <label>Service / repair type</label>
+        <select id="mgRepairType">
+          <option value="">— pick —</option>
+          <option>Repairs</option><option>Vroom</option><option>Solar</option>
+          <option>Roof</option><option>Paint and Body</option><option>Chassis</option>
+          <option>Detailing</option><option>TrueTopper</option>
+        </select>
+        <div class="hint" id="mgRepairTypeHint"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Notes to add to the RO timeline (call transcript &amp; lead details)</label>
+      <textarea id="mgNotes"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeMerge()">Cancel</button>
+      <button class="btn btn-green" id="mgSubmit" onclick="submitMerge()">Merge into RO</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+// ── Constants ────────────────────────────────────────────
+const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+const DEBUG = false;
+function log(...a){ if (DEBUG) console.log(...a); }
+function warn(...a){ if (DEBUG) console.warn(...a); }
+
+// ── State ────────────────────────────────────────────────
+let _sb = null;
+let supabaseSession = null;
+let currentUser = null;
+let userRoles = [];
+let _leads = [];
+let _activeROs = [];   // for duplicate detection
+let _promoteLeadId = null;
+
+function getSB() {
+  if (!_sb) {
+    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_leads_auth' }
+    });
+  }
+  return _sb;
+}
+
+// ── RBAC ─────────────────────────────────────────────────
+async function loadUserRoles() {
+  userRoles = [];
+  const email = (supabaseSession?.user?.email || '').toLowerCase();
+  if (!email) return;
+  const { data: userRow } = await getSB().from('users').select('id').eq('email', email).maybeSingle();
+  if (userRow?.id) {
+    const { data: roleRows } = await getSB().from('user_roles').select('roles(name)').eq('user_id', userRow.id);
+    if (roleRows) userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
+  }
+}
+function isAdmin() { return userRoles.includes('Admin'); }
+
+// ── Auth ─────────────────────────────────────────────────
+async function initAuth() {
+  getSB().auth.onAuthStateChange((event, session) => {
+    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') supabaseSession = session;
+    else if (event === 'SIGNED_OUT') { supabaseSession = null; currentUser = null; }
+  });
+  const { data: { session } } = await getSB().auth.getSession();
+  if (session) {
+    supabaseSession = session;
+    currentUser = { email: session.user.email, name: session.user.user_metadata?.full_name || session.user.email };
+    await loadUserRoles();
+    showApp();
+    return;
+  }
+  initGoogleSignIn();
+}
+
+function initGoogleSignIn() {
+  if (typeof google === 'undefined' || !google.accounts) { setTimeout(initGoogleSignIn, 200); return; }
+  const rawBytes = new Uint8Array(16);
+  crypto.getRandomValues(rawBytes);
+  const rawNonce = Array.from(rawBytes).map(b => b.toString(16).padStart(2,'0')).join('');
+  window._rawNonce = rawNonce;
+  crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawNonce)).then(hash => {
+    const hashedNonce = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+    google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential, nonce: hashedNonce });
+    google.accounts.id.renderButton(document.getElementById('g_id_onload'),
+      { theme:'filled_blue', size:'large', shape:'pill', text:'signin_with' });
+  });
+}
+
+async function handleGoogleCredential(response) {
+  try {
+    const { data, error } = await getSB().auth.signInWithIdToken({
+      provider:'google', token:response.credential, nonce:window._rawNonce
+    });
+    if (error) throw error;
+    supabaseSession = data.session;
+    currentUser = { email:data.user.email, name:data.user.user_metadata?.full_name || data.user.email };
+    await loadUserRoles();
+    showApp();
+  } catch (err) {
+    console.error('Auth error:', err);
+    alert('Sign-in failed: ' + (err.message || err));
+  }
+}
+
+async function signOut() {
+  try { await getSB().auth.signOut(); } catch(_){}
+  location.reload();
+}
+
+function showApp() {
+  // Admin gate
+  if (!isAdmin()) {
+    document.getElementById('g_id_onload').style.display = 'none';
+    document.getElementById('notAuthorized').style.display = 'block';
+    return;
+  }
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  const badge = document.getElementById('userBadge');
+  badge.className = 'badge-role badge-admin';
+  badge.textContent = (currentUser?.name || currentUser?.email || '') + ' (Admin)';
+  loadLeads();
+}
+
+// ── Data ─────────────────────────────────────────────────
+async function loadLeads() {
+  const container = document.getElementById('leadsContainer');
+  container.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    // New leads + active ROs (for dup detection) in parallel.
+    const [leadsRes, roRes] = await Promise.all([
+      getSB().from('woosender_leads').select('*').eq('review_status','new').order('received_at',{ascending:false}),
+      getSB().from('repair_orders').select('id, ro_id, customer_name, phone, email, status, address, rv, repair_type').is('deleted_at', null)
+    ]);
+    if (leadsRes.error) throw leadsRes.error;
+    _leads = leadsRes.data || [];
+    _activeROs = roRes.error ? [] : (roRes.data || []);
+    if (roRes.error) warn('RO load (dedupe) failed:', roRes.error);
+    renderLeads();
+  } catch (err) {
+    console.error('Load error:', err);
+    container.innerHTML = '<div class="empty">Error loading leads: ' + escapeHtml(err.message || String(err)) + '</div>';
+  }
+}
+
+function digits(s){ return (s||'').replace(/\D/g,''); }
+function last10(s){ const d = digits(s); return d.length >= 10 ? d.slice(-10) : ''; }
+
+function findMatches(lead) {
+  const ph = last10(lead.lead_phone);
+  const em = (lead.lead_email||'').trim().toLowerCase();
+  if (!ph && !em) return [];
+  return _activeROs.filter(ro =>
+    (ph && last10(ro.phone) === ph) ||
+    (em && (ro.email||'').trim().toLowerCase() === em)
+  );
+}
+
+function prettyPipeline(s) {
+  return (s||'').replace(/^[^\w$]+/,'').replace(/\s*-\s*Inbound Pipeline\s*$/i,'').trim();
+}
+
+function renderLeads() {
+  const container = document.getElementById('leadsContainer');
+  document.getElementById('stats').innerHTML = `<b>${_leads.length}</b> lead${_leads.length===1?'':'s'} waiting for review`;
+  if (!_leads.length) { container.innerHTML = '<div class="empty">🎉 No leads waiting. New Won-stage WooSender leads will appear here.</div>'; return; }
+
+  container.innerHTML = _leads.map(lead => {
+    const p = lead.raw_payload || {};
+    const matches = findMatches(lead);
+    const svc = lead.service_request ? escapeHtml(lead.service_request) : '—';
+    const pipeline = p.opportunity?.pipeline ? prettyPipeline(p.opportunity.pipeline) : '';
+    const note = (p.note || '').trim();
+    const when = lead.received_at ? new Date(lead.received_at).toLocaleString() : '';
+    const estimate = p.opportunity?.value && p.opportunity.value !== '0' ? `$${escapeHtml(p.opportunity.value)}` : '';
+
+    const dupHtml = matches.length ? `<div class="dup">⚠ Possible existing customer: ` +
+      matches.map(m => `<b>${escapeHtml(m.customer_name||'?')}</b> (${escapeHtml(m.ro_id||'')}, ${escapeHtml(m.status||'')})`).join(' · ') +
+      ` — check before creating a duplicate RO.</div>` : '';
+
+    return `
+      <div class="lead">
+        <div class="lead-top">
+          <span class="lead-name">${escapeHtml(lead.lead_name || 'Unknown lead')}</span>
+          ${pipeline ? `<span class="pill pill-svc">${escapeHtml(pipeline)}</span>` : ''}
+          ${estimate ? `<span class="pill">Est. ${estimate}</span>` : ''}
+          <span class="meta">${escapeHtml(when)}</span>
+        </div>
+        <div class="lead-grid">
+          <div><span>Phone</span> ${escapeHtml(lead.lead_phone || '—')}</div>
+          <div><span>Email</span> ${escapeHtml(lead.lead_email || '—')}</div>
+          <div><span>RV</span> ${escapeHtml(lead.rv_info || '—')}</div>
+          <div><span>Service</span> ${svc}</div>
+        </div>
+        ${dupHtml}
+        ${note ? `<div class="note">${escapeHtml(note)}</div>` : ''}
+        <div class="lead-actions">
+          <button class="btn btn-green" onclick="openPromote('${lead.id}')">✓ Promote to new RO</button>
+          ${matches.length ? `<button class="btn btn-primary" onclick="openMerge('${lead.id}')">⇆ Merge into existing RO</button>` : ''}
+          <button class="btn btn-ghost" onclick="dismissLead('${lead.id}')">Dismiss</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Pipeline -> repair type ──────────────────────────────
+function pipelineToRepairType(s) {
+  const t = (s||'').toLowerCase();
+  if (t.includes('roof')) return 'Roof';          // AeroArmor Solar Shield RV Roof
+  if (t.includes('solar')) return 'Solar';
+  if (t.includes('paint') || t.includes('body')) return 'Paint and Body';
+  if (t.includes('chassis')) return 'Chassis';
+  if (t.includes('detail')) return 'Detailing';
+  if (t.includes('topper')) return 'TrueTopper';
+  if (t.includes('vroom')) return 'Vroom';
+  if (t.includes('repair')) return 'Repairs';
+  return '';
+}
+
+function buildDescription(lead) {
+  const p = lead.raw_payload || {};
+  const lines = [];
+  const pipeline = p.opportunity?.pipeline ? prettyPipeline(p.opportunity.pipeline) : '';
+  lines.push(`[WooSender lead${pipeline ? ' — ' + pipeline : ''}]`);
+  if (lead.service_request) lines.push(`Service: ${lead.service_request}`);
+  if (lead.rv_info) lines.push(`RV: ${lead.rv_info}`);
+  if (p.opportunity?.value && p.opportunity.value !== '0') lines.push(`Opportunity value: $${p.opportunity.value}`);
+  if ((p.note||'').trim()) lines.push('', p.note.trim());
+  if (p.url) lines.push('', `WooSender: ${p.url}`);
+  return lines.join('\n');
+}
+
+// ── Promote ──────────────────────────────────────────────
+function openPromote(leadId) {
+  const lead = _leads.find(l => l.id === leadId);
+  if (!lead) return;
+  _promoteLeadId = leadId;
+  const p = lead.raw_payload || {};
+  document.getElementById('promoteSub').textContent =
+    'Creating a new RO in the dashboard. Fill any gaps the lead form left blank.';
+  document.getElementById('pmName').value = lead.lead_name || '';
+  document.getElementById('pmPhone').value = lead.lead_phone || '';
+  document.getElementById('pmEmail').value = lead.lead_email || '';
+  document.getElementById('pmAddress').value = (p.address || '').trim();
+  document.getElementById('pmRv').value = lead.rv_info || '';
+  document.getElementById('pmVin').value = '';
+  document.getElementById('pmRepairType').value = pipelineToRepairType(p.opportunity?.pipeline || lead.service_request || '');
+  document.getElementById('pmStatus').value = 'Not On Lot';
+  document.getElementById('pmDropoff').value = '';
+  document.getElementById('pmPromised').value = '';
+  document.getElementById('pmDesc').value = buildDescription(lead);
+  document.getElementById('promoteModal').style.display = 'flex';
+}
+function closePromote() {
+  document.getElementById('promoteModal').style.display = 'none';
+  _promoteLeadId = null;
+}
+
+// RO ID generation — mirrors customer-checkin.html.
+function simpleHash(str) {
+  let h = 0;
+  for (let i=0;i<str.length;i++){ h = ((h<<5)-h)+str.charCodeAt(i); h |= 0; }
+  return Math.abs(h);
+}
+function generateROId(customerName, rv, dateStr) {
+  const namePart = (customerName || 'UNKN').replace(/[^A-Za-z]/g,'').substring(0,4).toUpperCase().padEnd(4,'X');
+  const datePart = dateStr.replace(/-/g,'').substring(2);
+  const hex = simpleHash(namePart + (rv||'') + dateStr).toString(16).toUpperCase().padStart(4,'0').substring(0,4);
+  return `PRVS-${namePart.substring(0,2)}${datePart.substring(2,4)}-${hex}`;
+}
+function generateROIdCandidates(customerName, rv, dateStr) {
+  const base = generateROId(customerName, rv, dateStr);
+  const suffixed = Array.from({length:8}, (_,i) => `${base}-${i+2}`);
+  const fallback = `${base}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+  return [base, ...suffixed, fallback];
+}
+function todayStr() {
+  const d = new Date(), pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+async function submitPromote() {
+  const lead = _leads.find(l => l.id === _promoteLeadId);
+  if (!lead) return;
+  const name = document.getElementById('pmName').value.trim();
+  if (!name) { showToast('Customer name is required.', 'error'); return; }
+
+  const btn = document.getElementById('pmSubmit');
+  btn.disabled = true; btn.textContent = 'Creating…';
+
+  const rv = document.getElementById('pmRv').value.trim();
+  const payload = {
+    customer_name: name,
+    phone:   document.getElementById('pmPhone').value.trim() || null,
+    email:   document.getElementById('pmEmail').value.trim() || null,
+    address: document.getElementById('pmAddress').value.trim() || null,
+    rv:      rv || null,
+    vin:     document.getElementById('pmVin').value.trim() || null,
+    repair_type: document.getElementById('pmRepairType').value || null,
+    status:  document.getElementById('pmStatus').value,
+    description: document.getElementById('pmDesc').value.trim() || null,
+    planned_dropoff_date: document.getElementById('pmDropoff').value || null,
+    promised_date: document.getElementById('pmPromised').value || null,
+    pct_complete: 0,
+    customer_type: 'New',
+    photo_library: { photos: [], docs: [] },
+  };
+
+  try {
+    let insertedRO = null;
+    const candidates = generateROIdCandidates(name, rv, todayStr());
+    for (const roId of candidates) {
+      const { data, error } = await getSB().from('repair_orders')
+        .insert({ ro_id: roId, ...payload }).select().single();
+      if (!error) { insertedRO = data; break; }
+      if (error.code !== '23505') throw error;   // not a dup-key collision -> real error
+    }
+    if (!insertedRO) throw new Error('Could not generate a unique RO ID.');
+
+    // Mark the lead promoted + link it to the RO.
+    const { error: updErr } = await getSB().from('woosender_leads').update({
+      review_status: 'promoted',
+      promoted_ro_id: insertedRO.id,
+      reviewed_by: currentUser?.email || null,
+      reviewed_at: new Date().toISOString(),
+    }).eq('id', lead.id);
+    if (updErr) warn('lead update failed (RO still created):', updErr);
+
+    // Timeline note on the new RO.
+    try {
+      await getSB().from('notes').insert({
+        ro_id: insertedRO.id,
+        type: 'ro_status',
+        body: `Created from WooSender lead (${insertedRO.ro_id}) by ${currentUser?.email || 'admin'}.`,
+      });
+    } catch (e) { warn('note insert failed (non-fatal):', e); }
+
+    closePromote();
+    showToast(`RO ${insertedRO.ro_id} created.`, 'success');
+    await loadLeads();
+  } catch (err) {
+    console.error('Promote error:', err);
+    showToast('Could not create RO: ' + (err.message || err), 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create RO';
+  }
+}
+
+async function dismissLead(leadId) {
+  const lead = _leads.find(l => l.id === leadId);
+  if (!lead) return;
+  if (!confirm(`Dismiss the lead for ${lead.lead_name || 'this contact'}? It will leave the review queue.`)) return;
+  try {
+    const { error } = await getSB().from('woosender_leads').update({
+      review_status: 'dismissed',
+      reviewed_by: currentUser?.email || null,
+      reviewed_at: new Date().toISOString(),
+    }).eq('id', leadId);
+    if (error) throw error;
+    showToast('Lead dismissed.', 'info');
+    await loadLeads();
+  } catch (err) {
+    console.error('Dismiss error:', err);
+    showToast('Could not dismiss: ' + (err.message || err), 'error');
+  }
+}
+
+// ── Merge into existing RO ───────────────────────────────
+let _mergeLeadId = null;
+let _mergeLeadVals = {};   // lead's values, for the "use" hints
+
+const MERGE_FIELDS = [
+  ['name','mgName','customer_name'],
+  ['phone','mgPhone','phone'],
+  ['email','mgEmail','email'],
+  ['address','mgAddress','address'],
+  ['rv','mgRv','rv'],
+  ['repairType','mgRepairType','repair_type'],
+];
+
+function buildMergeNotes(lead) {
+  const p = lead.raw_payload || {};
+  const lines = [];
+  const pipeline = p.opportunity?.pipeline ? prettyPipeline(p.opportunity.pipeline) : '';
+  lines.push(`[WooSender lead${pipeline ? ' — ' + pipeline : ''}]`);
+  if (p.opportunity?.value && p.opportunity.value !== '0') lines.push(`Opportunity value: $${p.opportunity.value}`);
+  if ((p.note||'').trim()) lines.push('', p.note.trim());
+  if (p.url) lines.push('', `WooSender: ${p.url}`);
+  return lines.join('\n');
+}
+
+function openMerge(leadId) {
+  const lead = _leads.find(l => l.id === leadId);
+  if (!lead) return;
+  const matches = findMatches(lead);
+  if (!matches.length) { showToast('No matching RO found for this lead.', 'error'); return; }
+  _mergeLeadId = leadId;
+
+  // Lead values used for the "use" hints + repair-type derivation.
+  _mergeLeadVals = {
+    customer_name: lead.lead_name || '',
+    phone: lead.lead_phone || '',
+    email: lead.lead_email || '',
+    address: (lead.raw_payload?.address || '').trim(),
+    rv: lead.rv_info || '',
+    repair_type: pipelineToRepairType(lead.raw_payload?.opportunity?.pipeline || lead.service_request || ''),
+  };
+
+  // Target RO selector.
+  const sel = document.getElementById('mgTarget');
+  sel.innerHTML = matches.map(m =>
+    `<option value="${escapeHtml(m.id)}">${escapeHtml(m.ro_id || m.id)} — ${escapeHtml(m.customer_name || '?')} (${escapeHtml(m.status || '')})</option>`
+  ).join('');
+
+  document.getElementById('mgNotes').value = buildMergeNotes(lead);
+  fillMergeFromRO(matches[0]);
+  document.getElementById('mergeModal').style.display = 'flex';
+}
+
+function onMergeTargetChange() {
+  const ro = _activeROs.find(r => r.id === document.getElementById('mgTarget').value);
+  if (ro) fillMergeFromRO(ro);
+}
+
+function fillMergeFromRO(ro) {
+  // Prefill each field with the EXISTING RO value (we're updating that RO).
+  document.getElementById('mgName').value = ro.customer_name || '';
+  document.getElementById('mgPhone').value = ro.phone || '';
+  document.getElementById('mgEmail').value = ro.email || '';
+  document.getElementById('mgAddress').value = ro.address || '';
+  document.getElementById('mgRv').value = ro.rv || '';
+  document.getElementById('mgRepairType').value = ro.repair_type || '';
+
+  // Show the lead value as a one-click suggestion where it differs and is non-empty.
+  const roVals = {
+    customer_name: ro.customer_name || '', phone: ro.phone || '', email: ro.email || '',
+    address: ro.address || '', rv: ro.rv || '', repair_type: ro.repair_type || '',
+  };
+  MERGE_FIELDS.forEach(([key, inputId, col]) => {
+    const hint = document.getElementById(inputId + 'Hint');
+    const leadVal = _mergeLeadVals[col] || '';
+    if (leadVal && leadVal !== roVals[col]) {
+      hint.innerHTML = `Lead: <b>${escapeHtml(leadVal)}</b><span class="use" onclick="useLeadVal('${inputId}','${col}')">use</span>`;
+    } else {
+      hint.textContent = '';
+    }
+  });
+}
+
+function useLeadVal(inputId, col) {
+  document.getElementById(inputId).value = _mergeLeadVals[col] || '';
+}
+
+function closeMerge() {
+  document.getElementById('mergeModal').style.display = 'none';
+  _mergeLeadId = null; _mergeLeadVals = {};
+}
+
+async function submitMerge() {
+  const lead = _leads.find(l => l.id === _mergeLeadId);
+  if (!lead) return;
+  const targetId = document.getElementById('mgTarget').value;
+  if (!targetId) { showToast('Pick a target RO.', 'error'); return; }
+  const target = _activeROs.find(r => r.id === targetId);
+
+  const btn = document.getElementById('mgSubmit');
+  btn.disabled = true; btn.textContent = 'Merging…';
+
+  const updates = {
+    customer_name: document.getElementById('mgName').value.trim() || null,
+    phone:   document.getElementById('mgPhone').value.trim() || null,
+    email:   document.getElementById('mgEmail').value.trim() || null,
+    address: document.getElementById('mgAddress').value.trim() || null,
+    rv:      document.getElementById('mgRv').value.trim() || null,
+    repair_type: document.getElementById('mgRepairType').value || null,
+  };
+  const notesBody = document.getElementById('mgNotes').value.trim();
+
+  try {
+    // 1. Update the existing RO's fields (the trg_set_updated_at trigger stamps updated_at).
+    const { error: updErr } = await getSB().from('repair_orders').update(updates).eq('id', targetId);
+    if (updErr) throw updErr;
+
+    // 2. Add the call transcript / lead details to the RO timeline.
+    if (notesBody) {
+      const { error: noteErr } = await getSB().from('notes').insert({
+        ro_id: targetId,
+        type: 'customer_comm',
+        body: `[Merged from WooSender lead by ${currentUser?.email || 'admin'}]\n${notesBody}`,
+      });
+      if (noteErr) warn('note insert failed (non-fatal):', noteErr);
+    }
+
+    // 3. Mark the lead merged + link it to the RO.
+    const { error: leadErr } = await getSB().from('woosender_leads').update({
+      review_status: 'merged',
+      promoted_ro_id: targetId,
+      matched_ro_id: targetId,
+      reviewed_by: currentUser?.email || null,
+      reviewed_at: new Date().toISOString(),
+    }).eq('id', lead.id);
+    if (leadErr) warn('lead update failed (RO already updated):', leadErr);
+
+    closeMerge();
+    showToast(`Merged into ${target?.ro_id || 'RO'}.`, 'success');
+    await loadLeads();
+  } catch (err) {
+    console.error('Merge error:', err);
+    showToast('Could not merge: ' + (err.message || err), 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Merge into RO';
+  }
+}
+
+// ── Utils ────────────────────────────────────────────────
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = (str == null ? '' : String(str));
+  return div.innerHTML;
+}
+function showToast(message, type='info') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = message;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4000);
+}
+
+// ── Boot ─────────────────────────────────────────────────
+initAuth();
+</script>
+</body>
+</html>
