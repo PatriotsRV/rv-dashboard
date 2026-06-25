@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <!--
   leads.html — WooSender Lead Review Queue
-  Session 123 (2026-06-24). v1.1
+  Session 124 (2026-06-25). v1.2
+  v1.2 — Promote-to-new-RO now fires the SAME staff notification email as a
+         New Customer RO on the check-in page: cloned sendLeadStaffNotification
+         (lead_staff_notify -> send-quote-email, to repair@) so a promoted
+         WooSender lead does the exact same RO creation AND notification.
   v1.1 — Merge a lead into an EXISTING matched RO: add the WooSender call-
          transcript notes to that RO's timeline and optionally correct its
          fields, instead of creating a duplicate. (v1.0 = capture + promote.)
@@ -114,7 +118,7 @@
 
 <div id="app">
   <header class="bar">
-    <h1>Lead Review Queue <span class="ver">v1.1</span></h1>
+    <h1>Lead Review Queue <span class="ver">v1.2</span></h1>
     <span id="userBadge" class="badge-role"></span>
     <button class="btn" onclick="loadLeads()">↻ Refresh</button>
     <button class="btn btn-ghost" onclick="signOut()">Sign out</button>
@@ -225,6 +229,45 @@
 const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+// Shared-secret header for the send-quote-email edge function. Matches
+// customer-checkin.html (PRVS_FUNCTION_SECRET) so the lead_staff_notify
+// path authenticates identically.
+const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
+
+// Staff notification recipient — mirrors customer-checkin.html.
+const STAFF_NOTIFY_TO = 'repair@patriotsrvservices.com';
+
+// Canonical silo order + labels/emoji — mirrors customer-checkin.html SERVICE_SILOS.
+const SERVICE_SILOS = [
+  { key: 'repair',     label: 'Repair',       emoji: '🔧' },
+  { key: 'vroom',      label: 'Vroom',        emoji: '✨' },
+  { key: 'solar',      label: 'Solar',        emoji: '☀️' },
+  { key: 'roof',       label: 'Roof',         emoji: '🏠' },
+  { key: 'paint_body', label: 'Paint & Body', emoji: '🎨' },
+  { key: 'chassis',    label: 'Chassis',      emoji: '🔩' },
+  { key: 'detailing',  label: 'Detailing',    emoji: '🧽' },
+  { key: 'truetopper', label: 'TrueTopper',   emoji: '🏕️' },
+];
+
+// Map the RO's repair_type (as produced by pipelineToRepairType) back to a
+// silo key so the notification's silos[] payload matches the check-in shape.
+const REPAIR_TYPE_TO_SILO_KEY = {
+  'Repairs':        'repair',
+  'Vroom':          'vroom',
+  'Solar':          'solar',
+  'Roof':           'roof',
+  'Paint and Body': 'paint_body',
+  'Chassis':        'chassis',
+  'Detailing':      'detailing',
+  'TrueTopper':     'truetopper',
+};
+function silosFromRepairType(repairType) {
+  const key = REPAIR_TYPE_TO_SILO_KEY[repairType];
+  if (!key) return [];
+  const s = SERVICE_SILOS.find(x => x.key === key);
+  return s ? [{ key: s.key, label: s.label, emoji: s.emoji }] : [];
+}
 
 const DEBUG = false;
 function log(...a){ if (DEBUG) console.log(...a); }
@@ -541,14 +584,114 @@ async function submitPromote() {
       });
     } catch (e) { warn('note insert failed (non-fatal):', e); }
 
+    // ── STAFF NOTIFICATION EMAIL ─────────────────────────────
+    // Same notice a New Customer RO sends from the check-in page. Non-fatal:
+    // a send failure does not undo the RO that was already created.
+    let staffNotified = false;
+    try {
+      await sendLeadStaffNotification(insertedRO, {
+        customerName:    name,
+        customerType:    'New',
+        customerPhone:   payload.phone,
+        customerEmail:   payload.email,
+        customerAddress: payload.address,
+        rv:              payload.rv,
+        vin:             payload.vin,
+        silos:           silosFromRepairType(payload.repair_type),
+        workDescription: payload.description,
+        plannedDropoff:  payload.planned_dropoff_date,
+        promisedDate:    payload.promised_date,
+        leadNotes:       (lead.raw_payload?.note || '').trim() || null,
+      });
+      staffNotified = true;
+    } catch (e) {
+      console.error('Staff notification email failed:', e);
+      showToast('RO created, but staff notification email failed to send.', 'warning');
+    }
+
     closePromote();
-    showToast(`RO ${insertedRO.ro_id} created.`, 'success');
+    showToast(staffNotified
+      ? `RO ${insertedRO.ro_id} created — staff notified at ${STAFF_NOTIFY_TO}`
+      : `RO ${insertedRO.ro_id} created.`, 'success');
     await loadLeads();
   } catch (err) {
     console.error('Promote error:', err);
     showToast('Could not create RO: ' + (err.message || err), 'error');
   } finally {
     btn.disabled = false; btn.textContent = 'Create RO';
+  }
+}
+
+// ── Staff notification email ─────────────────────────────
+// Cloned from customer-checkin.html sendLeadStaffNotification (the
+// "New Customer Entry" notice). Posts to the deployed send-quote-email
+// edge fn with type 'lead_staff_notify' so promoting a WooSender lead
+// fires the SAME staff email as a New Customer RO created at the front desk.
+// Non-fatal — a send failure never fails the RO creation.
+async function sendLeadStaffNotification(ro, payload) {
+  // Look up submitter from the staff table (friendly name + role).
+  let createdByName = null;
+  let createdByRole = null;
+  const createdByEmail = supabaseSession?.user?.email || currentUser?.email || null;
+  if (createdByEmail) {
+    try {
+      const { data: staffRec } = await getSB()
+        .from('staff').select('name, role').eq('email', createdByEmail).maybeSingle();
+      if (staffRec) {
+        createdByName = staffRec.name || null;
+        const roleMap = {
+          'sr_manager':    'Sr Manager',
+          'manager':       'Manager',
+          'parts_manager': 'Parts Manager',
+          'tech':          'Tech',
+          'admin':         'Admin',
+        };
+        createdByRole = roleMap[staffRec.role] || staffRec.role || null;
+      }
+    } catch (e) { /* staff record may not exist — fall back to email */ }
+  }
+
+  const dashboardLink = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(ro.ro_id)}`;
+  const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
+
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+      'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+    },
+    body: JSON.stringify({
+      type:                 'lead_staff_notify',
+      to:                   STAFF_NOTIFY_TO,
+      roId:                 ro.ro_id,
+      mode:                 'lead',
+      customerName:         payload.customerName,
+      customerType:         'New',
+      customerPhone:        payload.customerPhone || null,
+      customerEmail:        payload.customerEmail || null,
+      customerAddress:      payload.customerAddress || null,
+      rv:                   payload.rv || null,
+      vin:                  payload.vin || null,
+      silos:                payload.silos || [],
+      workType:             'new',
+      workDescription:      payload.workDescription || null,
+      warrantyDescription:  null,
+      warrantyOrigRO:       null,
+      plannedDropoff:       payload.plannedDropoff || null,
+      promisedDate:         payload.promisedDate || null,
+      leadNotes:            payload.leadNotes || null,
+      createdByName:        createdByName,
+      createdByRole:        createdByRole,
+      createdByEmail:       createdByEmail,
+      createdAt:            new Date().toISOString(),
+      dashboardLink:        dashboardLink,
+    }),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    console.error('Staff notify response not ok:', resp.status, errText);
+    throw new Error(`Staff notify send failed (HTTP ${resp.status})`);
   }
 }
 

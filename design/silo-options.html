@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRVS — Silo treatment A/B (Service Floor)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-floor:#ece8e1; --bg-surface:#f7f5f1; --bg-raised:#ffffff; --bg-sunken:#e4dfd6;
+    --ink:#1c1a17; --ink-2:#57514a; --ink-3:#8a847b; --line:#d8d2c8; --line-strong:#c4bdb1;
+    --brand:#1b3a5c;
+    --s-urgent:#d8261c;  --s-urgent-bg:#fbe9e7;
+    --s-medium:#b7791f;  --s-medium-bg:#fbf1dc;
+    --s-progress:#1d6fd6;--s-progress-bg:#e4eefb;
+    --s-ready:#18794e;   --s-ready-bg:#e3f3ea;
+    --s-parts:#c2410c;   --s-parts-bg:#fcebe0;
+    --s-neutral:#6b7280; --s-neutral-bg:#eceae6;
+    --font-display:'Barlow Condensed',sans-serif;
+    --font-body:'Inter',-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+    --r-sm:6px; --r-md:10px; --r-pill:999px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg-floor); color:var(--ink); font-family:var(--font-body); padding:32px 28px 56px; }
+  .pagehead { max-width:980px; margin:0 auto 6px; }
+  .eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); }
+  h1 { font-family:var(--font-display); font-weight:700; font-size:2.4rem; letter-spacing:.01em; line-height:1.05; margin:2px 0 4px; }
+  .sub { font-size:.9rem; color:var(--ink-2); max-width:680px; }
+
+  .cols { max-width:980px; margin:28px auto 0; display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media (max-width:760px){ .cols{ grid-template-columns:1fr; } }
+  .col-head { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .col-head .opt { font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:var(--brand); padding:3px 9px; border-radius:var(--r-pill); }
+  .col-head .ct { font-family:var(--font-display); font-weight:600; font-size:1.5rem; }
+  .col-head .hint { font-size:.78rem; color:var(--ink-3); }
+
+  .stack { display:flex; flex-direction:column; gap:14px; }
+
+  .card {
+    position:relative; background:var(--bg-surface); border:1px solid var(--line);
+    border-radius:var(--r-md); padding:16px 18px 14px 20px; overflow:hidden;
+  }
+  .card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--accent,var(--s-neutral)); }
+  .card[data-status="progress"]{ --accent:var(--s-progress); }
+  .card[data-status="parts"]   { --accent:var(--s-parts); }
+  .card[data-status="review"]  { --accent:var(--s-medium); }
+
+  .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .ro-num { font-family:var(--font-mono); font-size:.74rem; color:var(--ink-3); letter-spacing:.02em; }
+  .cust { font-family:var(--font-display); font-weight:700; font-size:1.45rem; line-height:1.05; margin:1px 0 2px; }
+  .rv { font-size:.8rem; color:var(--ink-3); }
+  .badge {
+    font-family:var(--font-body); font-size:.66rem; font-weight:700; letter-spacing:.05em;
+    text-transform:uppercase; padding:4px 9px; border-radius:var(--r-sm); white-space:nowrap;
+    background:var(--badge-bg,var(--s-neutral-bg)); color:var(--badge-fg,var(--s-neutral));
+  }
+  .card[data-status="progress"] .badge{ --badge-bg:var(--s-progress-bg); --badge-fg:var(--s-progress); }
+  .card[data-status="parts"]    .badge{ --badge-bg:var(--s-parts-bg);    --badge-fg:var(--s-parts); }
+  .card[data-status="review"]   .badge{ --badge-bg:var(--s-medium-bg);   --badge-fg:var(--s-medium); }
+
+  .silos { display:flex; gap:7px; flex-wrap:wrap; margin:12px 0 2px; }
+  .silo {
+    font-size:.8rem; padding:4px 10px 4px 8px; border-radius:var(--r-pill);
+    background:var(--bg-sunken); color:var(--ink-2);
+    display:inline-flex; align-items:center; gap:6px; line-height:1;
+  }
+  .silo .emo { font-size:.92rem; line-height:1; }
+  .silo svg { width:15px; height:15px; stroke:var(--ink-2); stroke-width:1.7; fill:none; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+
+  .meter-row { display:flex; align-items:center; gap:12px; margin-top:14px; }
+  .meter { flex:1; height:6px; border-radius:var(--r-pill); background:var(--bg-sunken); overflow:hidden; }
+  .meter i { display:block; height:100%; border-radius:var(--r-pill); background:var(--accent,var(--s-progress)); }
+  .meter-pct { font-family:var(--font-mono); font-size:.8rem; color:var(--ink-2); min-width:36px; text-align:right; }
+
+  .card-foot {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-top:13px; padding-top:11px; border-top:1px solid var(--line);
+    font-size:.78rem; color:var(--ink-3);
+  }
+  .foot-flag { display:inline-flex; align-items:center; gap:5px; font-weight:600; }
+  .card[data-status="parts"] .foot-flag{ color:var(--s-parts); }
+
+  .footnote { max-width:980px; margin:30px auto 0; font-size:.8rem; color:var(--ink-3); border-top:1px solid var(--line); padding-top:14px; }
+</style>
+</head>
+<body>
+
+  <div class="pagehead">
+    <div class="eyebrow">Patriots RV Services · design workstream · silo treatment A/B</div>
+    <h1>Silo chips — emoji vs flat icons</h1>
+    <p class="sub">Same cards, same statuses on both sides. The only thing that changes is how the service silos are marked. Pick the side that reads better to you on the shop floor.</p>
+  </div>
+
+  <div class="cols">
+
+    <!-- ============ OPTION A: EMOJI ============ -->
+    <div class="col">
+      <div class="col-head">
+        <span class="opt">Option A</span>
+        <span class="ct">Emoji</span>
+        <span class="hint">already in the data · zero extra build</span>
+      </div>
+      <div class="stack">
+
+        <div class="card" data-status="progress">
+          <div class="card-top">
+            <div>
+              <div class="ro-num">RO-24187</div>
+              <div class="cust">Hollingsworth</div>
+              <div class="rv">2023 Grand Design Solitude 390RK</div>
+            </div>
+            <span class="badge">In progress</span>
+          </div>
+          <div class="silos">
+            <span class="silo"><span class="emo">🔧</span>Repair</span>
+            <span class="silo"><span class="emo">☀️</span>Solar</span>
+          </div>
+          <div class="meter-row"><div class="meter"><i style="width:68%"></i></div><span class="meter-pct">68%</span></div>
+          <div class="card-foot"><span>Tech · M. Reyes</span><span>Promised Fri</span></div>
+        </div>
+
+        <div class="card" data-status="parts">
+          <div class="card-top">
+            <div>
+              <div class="ro-num">RO-24162</div>
+              <div class="cust">Delgado</div>
+              <div class="rv">2021 Jayco Eagle 321RSTS</div>
+            </div>
+            <span class="badge">Awaiting parts</span>
+          </div>
+          <div class="silos">
+            <span class="silo"><span class="emo">🏠</span>Roof</span>
+            <span class="silo"><span class="emo">🚐</span>Chassis</span>
+          </div>
+          <div class="meter-row"><div class="meter"><i style="width:30%"></i></div><span class="meter-pct">30%</span></div>
+          <div class="card-foot"><span class="foot-flag">⚠ Parts request open</span><span>ETA Jun 24</span></div>
+        </div>
+
+        <div class="card" data-status="review">
+          <div class="card-top">
+            <div>
+              <div class="ro-num">RO-24109</div>
+              <div class="cust">Whitaker</div>
+              <div class="rv">2022 Winnebago View 24D</div>
+            </div>
+            <span class="badge">QA / QC</span>
+          </div>
+          <div class="silos">
+            <span class="silo"><span class="emo">✨</span>Detailing</span>
+            <span class="silo"><span class="emo">🎨</span>Paint &amp; Body</span>
+          </div>
+          <div class="meter-row"><div class="meter"><i style="width:85%"></i></div><span class="meter-pct">85%</span></div>
+          <div class="card-foot"><span>Final inspection</span><span>QA · D. Cole</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ============ OPTION B: FLAT ICONS ============ -->
+    <div class="col">
+      <div class="col-head">
+        <span class="opt">Option B</span>
+        <span class="ct">Flat icons</span>
+        <span class="hint">more polished · one icon per silo type</span>
+      </div>
+      <div class="stack">
+
+        <div class="card" data-status="progress">
+          <div class="card-top">
+            <div>
+              <div class="ro-num">RO-24187</div>
+              <div class="cust">Hollingsworth</div>
+              <div class="rv">2023 Grand Design Solitude 390RK</div>
+            </div>
+            <span class="badge">In progress</span>
+          </div>
+          <div class="silos">
+            <span class="silo"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.3-.7-.7-2.3z"/></svg>Repair</span>
+            <span class="silo"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Solar</span>
+          </div>
+          <div class="meter-row"><div class="meter"><i style="width:68%"></i></div><span class="meter-pct">68%</span></div>
+          <div class="card-foot"><span>Tech · M. Reyes</span><span>Promised Fri</span></div>
+        </div>
+
+        <div class="card" data-status="parts">
+          <div class="card-top">
+            <div>
+              <div class="ro-num">RO-24162</div>
+              <div class="cust">Delgado</div>
+              <div class="rv">2021 Jayco Eagle 321RSTS</div>
+            </div>
+            <span class="badge">Awaiting parts</span>
+          </div>
+          <div class="silos">
+            <span class="silo"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg>Roof</span>
+            <span class="silo"><svg viewBox="0 0 24 24"><path d="M3 13h11l3 3h4"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/><path d="M3 13V9h8l3 4"/></svg>Chassis</span>
+          </div>
+          <div class="meter-row"><div class="meter"><i style="width:30%"></i></div><span class="meter-pct">30%</span></div>
+          <div class="card-foot"><span class="foot-flag"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--s-parts)"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Parts request open</span><span>ETA Jun 24</span></div>
+        </div>
+
+        <div class="card" data-status="review">
+          <div class="card-top">
+            <div>
+              <div class="ro-num">RO-24109</div>
+              <div class="cust">Whitaker</div>
+              <div class="rv">2022 Winnebago View 24D</div>
+            </div>
+            <span class="badge">QA / QC</span>
+          </div>
+          <div class="silos">
+            <span class="silo"><svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/></svg>Detailing</span>
+            <span class="silo"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="13" height="6" rx="1"/><path d="M17 7h3v4H9v3"/><rect x="7" y="14" width="4" height="6" rx="1"/></svg>Paint &amp; Body</span>
+          </div>
+          <div class="meter-row"><div class="meter"><i style="width:85%"></i></div><span class="meter-pct">85%</span></div>
+          <div class="card-foot"><span>Final inspection</span><span>QA · D. Cole</span></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <p class="footnote">Note: QA / QC now uses the standard amber review color (folded into the status family, per your call) instead of the old magenta. The status accent is the tinted left spine + matching badge on both sides — unchanged between the two options.</p>
+
+</body>
+</html>

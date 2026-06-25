@@ -1,14 +1,24 @@
 /* ============================================================================
    PRVS DASHBOARD — "Service Floor" redesign
-   dashboard.css  ·  DRAFT v0.1  ·  Design Session D1 (2026-06-21)
+   dashboard.css  ·  DRAFT v0.2  ·  Design Sessions D1-D2 (2026-06-21)
    ----------------------------------------------------------------------------
    This is a REDESIGN DRAFT, not a drop-in replacement for the current
-   css/dashboard.css yet. It establishes the new unified token layer and the
-   redesigned core components (header, status rail, stats, filter bar, RO cards).
+   css/dashboard.css yet. It establishes the unified token layer (now LIGHT +
+   DARK) and the redesigned core components (header, per-silo load rail, stats,
+   filter bar, RO cards, silo icon system).
 
-   MIGRATION NOTES (for the next session):
-   - The current dashboard.css is 3,412 lines and styles many components not yet
-     redesigned here (modals, parts tables, progress inputs, the worklist, etc.).
+   D2 DECISIONS BAKED IN (2026-06-21, Roland):
+   1. Light + DARK toggle  -> html[data-theme="dark"] override block below.
+   2. Signature rail now shows PER-SILO load (not per-status) -> new --silo-*
+      categorical palette + .rail / .rail-legend rebuilt around the 8 silos.
+   3. Silos use a FLAT ICON SET (not emoji) -> .silo .si + #ic-* <symbol> sprite
+      (the sprite markup lives in the HTML; see SILO ICON SPRITE note, section 6).
+   4. QA/QC folded into the standard amber review family -> --s-check REMOVED;
+      data-status="qa" now points at --s-medium.
+
+   MIGRATION NOTES (next):
+   - The current css/dashboard.css is 3,412 lines and styles many components not
+     yet redesigned here (modals, parts tables, progress inputs, the worklist).
      Migrate incrementally: adopt this :root token block first, then re-point
      existing rules at the new tokens, then restyle components section by section.
    - COLORS CURRENTLY IN JS (js/config.js, js/render.js statusColorMap) should be
@@ -35,16 +45,28 @@
   --brand:         #1b3a5c;
   --brand-ink:     #0f2740;
   --brand-tint:    #e7edf3;
+  --on-brand:      #ffffff;   /* text on a --brand fill (flips in dark) */
 
-  /* ---- Status — the ONLY loud colors. Color == meaning, not decoration. ---- */
+  /* ---- Status — the ONLY loud workflow colors. Color == meaning. ---- */
   --s-urgent:   #d8261c;  --s-urgent-bg:  #fbe9e7;
   --s-high:     #c2410c;  --s-high-bg:    #fcebe0;
-  --s-medium:   #b7791f;  --s-medium-bg:  #fbf1dc;
+  --s-medium:   #b7791f;  --s-medium-bg:  #fbf1dc;   /* review/approval + QA/QC */
   --s-progress: #1d6fd6;  --s-progress-bg:#e4eefb;
   --s-ready:    #18794e;  --s-ready-bg:   #e3f3ea;
-  --s-check:    #c2185b;  --s-check-bg:   #fbe6ef;   /* QA/QC magenta, retained */
   --s-parts:    #c2410c;  --s-parts-bg:   #fcebe0;
   --s-neutral:  #6b7280;  --s-neutral-bg: #eceae6;
+
+  /* ---- Silo categorical palette (the per-silo rail; muted, warm-compatible) --
+     One stop per service silo (js/config.js SILO_TO_REPAIR_TYPE). These are
+     CATEGORY colors, distinct from the workflow status colors above. */
+  --silo-repair:  #5b7a99;
+  --silo-vroom:   #b5683f;
+  --silo-solar:   #c79a3a;
+  --silo-roof:    #8a6d4f;
+  --silo-paint:   #7d6a9c;
+  --silo-chassis: #6b7280;
+  --silo-detail:  #4f8a82;
+  --silo-topper:  #7a8a4f;
 
   /* ---- Type ---- */
   --font-display: 'Barlow Condensed', sans-serif;
@@ -69,6 +91,48 @@
   --ease: cubic-bezier(.16,1,.3,1);
 }
 
+/* ---- DARK THEME ----------------------------------------------------------
+   Toggle by setting <html data-theme="dark">. Warm dark (not pure black) so it
+   sits in the same family as the paper light theme. Only tokens change; every
+   component below reads tokens, so nothing else needs a dark variant. */
+html[data-theme="dark"] {
+  --bg-floor:      #17150f;
+  --bg-surface:    #211d16;
+  --bg-raised:     #2a251c;
+  --bg-sunken:     #100e0a;
+  --ink:           #f1ede4;
+  --ink-2:         #c4bcad;
+  --ink-3:         #928a7c;
+  --line:          #37312a;
+  --line-strong:   #4b443a;
+
+  --brand:         #cdb98f;   /* warm sand reads as the accent on dark paper */
+  --brand-ink:     #e7d9bb;
+  --brand-tint:    #2a2419;
+  --on-brand:      #17150f;   /* dark text on the light sand brand fill */
+
+  --s-urgent:   #ff6b5e;  --s-urgent-bg:  #3a1714;
+  --s-high:     #ef7a45;  --s-high-bg:    #33190d;
+  --s-medium:   #e0a93c;  --s-medium-bg:  #332611;
+  --s-progress: #5aa6f0;  --s-progress-bg:#10243b;
+  --s-ready:    #46b483;  --s-ready-bg:   #0e2a1e;
+  --s-parts:    #ef7a45;  --s-parts-bg:   #33190d;
+  --s-neutral:  #9aa1ad;  --s-neutral-bg: #23211c;
+
+  --silo-repair:  #7c9cbb;
+  --silo-vroom:   #cf8259;
+  --silo-solar:   #dab355;
+  --silo-roof:    #a98a68;
+  --silo-paint:   #9b87bb;
+  --silo-chassis: #9aa1ad;
+  --silo-detail:  #67a89f;
+  --silo-topper:  #9aab66;
+
+  --sh-1: 0 1px 2px rgba(0,0,0,.4);
+  --sh-2: 0 2px 8px rgba(0,0,0,.45), 0 4px 16px rgba(0,0,0,.35);
+  --sh-3: 0 8px 28px rgba(0,0,0,.55);
+}
+
 /* ===========================================================================
    2. RESET & BASE
    =========================================================================== */
@@ -82,12 +146,13 @@ body {
   font-size: var(--t-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  transition: background .3s var(--ease), color .3s var(--ease);
 }
 
 .wrap { max-width: 1760px; margin: 0 auto; padding: var(--sp-10) var(--sp-8); }
 
 /* ===========================================================================
-   3. HEADER + SIGNATURE STATUS RAIL
+   3. HEADER + SIGNATURE PER-SILO LOAD RAIL
    =========================================================================== */
 header { margin-bottom: var(--sp-8); }
 
@@ -115,6 +180,8 @@ h1 {
   gap: var(--sp-6); flex-wrap: wrap;
 }
 
+.title-aux { display: flex; align-items: center; gap: var(--sp-4); }
+
 .live {
   display: flex; align-items: center; gap: var(--sp-2);
   font-family: var(--font-mono); font-size: var(--t-small); color: var(--ink-2);
@@ -129,22 +196,34 @@ h1 {
   70%,100%{ box-shadow: 0 0 0 7px rgba(24,121,78,0); }
 }
 
-/* SIGNATURE: shop-wide load in one glance, built from real statuses */
+/* light/dark toggle */
+.theme-toggle {
+  font-family: var(--font-body); font-size: var(--t-small); font-weight: 600;
+  color: var(--ink-2); background: var(--bg-raised); border: 1px solid var(--line);
+  padding: 7px 13px; border-radius: var(--r-pill); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: border-color .18s var(--ease), color .18s var(--ease);
+}
+.theme-toggle:hover { border-color: var(--line-strong); color: var(--ink); }
+
+/* SIGNATURE: shop-wide load by SERVICE SILO in one glance */
 .rail {
   margin-top: var(--sp-5);
-  display: flex; height: 10px; border-radius: var(--r-pill);
+  display: flex; height: 12px; border-radius: var(--r-pill);
   overflow: hidden; box-shadow: var(--sh-1); background: var(--bg-sunken);
 }
-.rail span { height: 100%; transition: flex .6s var(--ease); }
+.rail span { height: 100%; transition: flex .6s var(--ease), width .6s var(--ease); }
 
 .rail-legend {
-  display: flex; gap: var(--sp-5); flex-wrap: wrap; margin-top: var(--sp-3);
+  display: flex; gap: var(--sp-2) var(--sp-5); flex-wrap: wrap;
+  margin-top: var(--sp-3);
   font-size: var(--t-small); color: var(--ink-2);
 }
-.rail-legend i {
-  display: inline-block; width: 9px; height: 9px; border-radius: 3px;
-  margin-right: 6px; vertical-align: middle;
-}
+.rail-legend .lg { display: inline-flex; align-items: center; gap: 7px; }
+.rail-legend .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.rail-legend svg { width: 14px; height: 14px; flex: none; }
+.rail-legend svg use { stroke: var(--ink-2); stroke-width: 1.7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.rail-legend b { font-family: var(--font-mono); font-weight: 500; color: var(--ink); }
 
 /* ===========================================================================
    4. STATS BAR
@@ -192,7 +271,7 @@ h1 {
   transition: all .18s var(--ease);
 }
 .chip:hover { border-color: var(--line-strong); color: var(--ink); }
-.chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chip.on { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 .bar-spacer { flex: 1; }
 .search {
   font-family: var(--font-body); font-size: var(--t-small);
@@ -228,7 +307,7 @@ h1 {
 .card[data-status="parts"]    { --accent: var(--s-parts); }
 .card[data-status="approval"] { --accent: var(--s-medium); }
 .card[data-status="ready"]    { --accent: var(--s-ready); }
-.card[data-status="qa"]       { --accent: var(--s-check); }
+.card[data-status="qa"]       { --accent: var(--s-medium); }   /* QA/QC folded into amber */
 .card[data-status="urgent"]   { --accent: var(--s-urgent); }
 
 .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3); }
@@ -246,15 +325,24 @@ h1 {
 .card[data-status="parts"]    .badge { --badge-bg: var(--s-parts-bg);    --badge-fg: var(--s-parts); }
 .card[data-status="approval"] .badge { --badge-bg: var(--s-medium-bg);   --badge-fg: var(--s-medium); }
 .card[data-status="ready"]    .badge { --badge-bg: var(--s-ready-bg);    --badge-fg: var(--s-ready); }
-.card[data-status="qa"]       .badge { --badge-bg: var(--s-check-bg);    --badge-fg: var(--s-check); }
+.card[data-status="qa"]       .badge { --badge-bg: var(--s-medium-bg);   --badge-fg: var(--s-medium); }
 .card[data-status="urgent"]   .badge { --badge-bg: var(--s-urgent-bg);   --badge-fg: var(--s-urgent); }
 
+/* ---- SILO CHIPS + FLAT ICON SET -----------------------------------------
+   SILO ICON SPRITE: include this once per page (hidden), then reference an
+   icon with <svg class="si"><use href="#ic-repair"/></svg>. Symbol ids:
+   ic-repair ic-vroom ic-solar ic-roof ic-paint ic-chassis ic-detail ic-topper
+   (same sprite feeds the .rail-legend icons). Keep the sprite in version
+   control alongside this file; the production build can inline it in index.html
+   or ship it as an external svg loaded once. */
 .silos { display: flex; gap: var(--sp-1); flex-wrap: wrap; margin: var(--sp-3) 0; }
 .silo {
-  font-size: var(--t-small); padding: 3px 9px 3px 7px; border-radius: var(--r-pill);
+  font-size: var(--t-small); padding: 3px 10px 3px 8px; border-radius: var(--r-pill);
   background: var(--bg-sunken); color: var(--ink-2);
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 6px; line-height: 1;
 }
+.silo .si { width: 15px; height: 15px; flex: none; }
+.silo .si use { stroke: var(--ink-2); stroke-width: 1.7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 
 .meter-row { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
 .meter { flex: 1; height: 6px; border-radius: var(--r-pill); background: var(--bg-sunken); overflow: hidden; }
@@ -267,8 +355,9 @@ h1 {
   font-size: var(--t-small); color: var(--ink-3);
 }
 .foot-flag { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
-.card[data-status="parts"] .foot-flag { color: var(--s-parts); }
-.card[data-status="qa"]    .foot-flag { color: var(--s-check); }
+.foot-flag svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.card[data-status="parts"]  .foot-flag { color: var(--s-parts); }
+.card[data-status="urgent"] .foot-flag { color: var(--s-urgent); }
 
 /* parts-request: quiet pulse on the spine only (was a whole-card glow) */
 @keyframes spine-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
@@ -286,17 +375,17 @@ h1 {
 }
 
 /* ===========================================================================
-   8. JS-COLOR → CSS-TOKEN MIGRATION MAP   (do this in the next session)
+   8. JS-COLOR -> CSS-TOKEN MIGRATION MAP   (the next build step)
    ---------------------------------------------------------------------------
    Move these out of js/config.js + js/render.js and reference the CSS tokens
-   so there is one source of truth. Suggested mapping:
+   so there is one source of truth.
 
      render.js statusColorMap          ->  CSS token
      ----------------------------------    -------------------
      'In progress'        #0a84ff       ->  --s-progress
      'Awaiting parts'     #ff9500       ->  --s-parts
      'Awaiting Approval'  #ffcc00       ->  --s-medium
-     'Waiting for QA/QC'  #FF1493       ->  --s-check
+     'Waiting for QA/QC'  #FF1493       ->  --s-medium   (folded in, D2)
      'Ready for pickup'   #34c759       ->  --s-ready
      'On Lot'             #34c759       ->  --s-ready
      'Not On Lot'         #9ca3af       ->  --s-neutral
@@ -304,6 +393,13 @@ h1 {
      config.js WO/TASK/PART status colors: map the same families to
      --s-progress / --s-medium / --s-parts / --s-ready / --s-urgent / --s-neutral.
 
-   For values JS must still set inline (e.g. dynamic widths), read the CSS var:
-     getComputedStyle(document.documentElement).getPropertyValue('--s-progress')
+   SILO COLORS (for the per-silo rail) live in the --silo-* tokens above and map
+   1:1 to js/config.js SILO_TO_REPAIR_TYPE keys:
+     repair -> --silo-repair   vroom   -> --silo-vroom   solar    -> --silo-solar
+     roof   -> --silo-roof     paint_body -> --silo-paint chassis  -> --silo-chassis
+     detailing -> --silo-detail   truetopper -> --silo-topper
+
+   For values JS must still set inline (e.g. dynamic widths / rail segments),
+   read the CSS var:
+     getComputedStyle(document.documentElement).getPropertyValue('--silo-repair')
    =========================================================================== */

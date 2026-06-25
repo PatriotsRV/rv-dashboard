@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRVS Service Board — Service Floor (v2 preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-floor:#ece8e1; --bg-surface:#f7f5f1; --bg-raised:#ffffff; --bg-sunken:#e4dfd6;
+    --ink:#1c1a17; --ink-2:#57514a; --ink-3:#8a847b; --line:#d8d2c8; --line-strong:#c4bdb1;
+    --brand:#1b3a5c;
+    --s-urgent:#d8261c;  --s-urgent-bg:#fbe9e7;
+    --s-medium:#b7791f;  --s-medium-bg:#fbf1dc;
+    --s-progress:#1d6fd6;--s-progress-bg:#e4eefb;
+    --s-ready:#18794e;   --s-ready-bg:#e3f3ea;
+    --s-parts:#c2410c;   --s-parts-bg:#fcebe0;
+    --s-neutral:#6b7280; --s-neutral-bg:#eceae6;
+    /* silo categorical palette (muted, warm-compatible) */
+    --silo-repair:#5b7a99; --silo-vroom:#b5683f; --silo-solar:#c79a3a; --silo-roof:#8a6d4f;
+    --silo-paint:#7d6a9c; --silo-chassis:#6b7280; --silo-detail:#4f8a82; --silo-topper:#7a8a4f;
+    --font-display:'Barlow Condensed',sans-serif;
+    --font-body:'Inter',-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+    --r-sm:6px; --r-md:10px; --r-pill:999px;
+  }
+  html[data-theme="dark"] {
+    --bg-floor:#17150f; --bg-surface:#211d16; --bg-raised:#2a251c; --bg-sunken:#100e0a;
+    --ink:#f1ede4; --ink-2:#c4bcad; --ink-3:#928a7c; --line:#37312a; --line-strong:#4b443a;
+    --brand:#cdb98f;
+    --s-urgent:#ff6b5e;  --s-urgent-bg:#3a1714;
+    --s-medium:#e0a93c;  --s-medium-bg:#332611;
+    --s-progress:#5aa6f0;--s-progress-bg:#10243b;
+    --s-ready:#46b483;   --s-ready-bg:#0e2a1e;
+    --s-parts:#ef7a45;   --s-parts-bg:#33190d;
+    --s-neutral:#9aa1ad; --s-neutral-bg:#23211c;
+    --silo-repair:#7c9cbb; --silo-vroom:#cf8259; --silo-solar:#dab355; --silo-roof:#a98a68;
+    --silo-paint:#9b87bb; --silo-chassis:#9aa1ad; --silo-detail:#67a89f; --silo-topper:#9aab66;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg-floor); color:var(--ink); font-family:var(--font-body); -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; padding:30px 26px 60px; }
+
+  /* header */
+  .topbar { display:flex; justify-content:space-between; align-items:flex-start; }
+  .eyebrow { font-family:var(--font-mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); }
+  h1 { font-family:var(--font-display); font-weight:700; font-size:2.75rem; letter-spacing:.01em; line-height:1; margin-top:2px; }
+  .topright { display:flex; align-items:center; gap:14px; }
+  .live { font-size:.8rem; color:var(--ink-2); display:inline-flex; align-items:center; gap:7px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--s-ready); }
+  .toggle { font-family:var(--font-body); font-size:.78rem; font-weight:600; color:var(--ink-2); background:var(--bg-raised); border:1px solid var(--line); padding:7px 13px; border-radius:var(--r-pill); cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .toggle:hover { border-color:var(--line-strong); }
+
+  /* per-silo load rail */
+  .rail-wrap { margin-top:22px; }
+  .rail { display:flex; height:12px; border-radius:var(--r-pill); overflow:hidden; background:var(--bg-sunken); }
+  .rail span { height:100%; }
+  .rail-legend { display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:11px; }
+  .lg { font-size:.78rem; color:var(--ink-2); display:inline-flex; align-items:center; gap:7px; }
+  .lg .sw { width:10px; height:10px; border-radius:3px; flex:none; }
+  .lg svg { width:14px; height:14px; stroke:var(--ink-2); stroke-width:1.7; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .lg b { font-family:var(--font-mono); font-weight:500; color:var(--ink); }
+
+  /* stat strip */
+  .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:26px; }
+  .stat { background:var(--bg-surface); border:1px solid var(--line); border-radius:var(--r-md); padding:14px 16px; }
+  .stat .k { font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); }
+  .stat .v { font-family:var(--font-display); font-weight:700; font-size:2.25rem; line-height:1.05; margin-top:3px; }
+  .stat.alert .v { color:var(--s-urgent); }
+  .stat.good .v { color:var(--s-ready); }
+
+  /* filter bar */
+  .filters { display:flex; align-items:center; gap:9px; margin-top:24px; background:var(--bg-surface); border:1px solid var(--line); border-radius:var(--r-pill); padding:8px 12px; }
+  .filters .fl { font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-right:2px; }
+  .chip { font-size:.82rem; font-weight:500; color:var(--ink-2); background:transparent; border:none; padding:6px 13px; border-radius:var(--r-pill); cursor:pointer; }
+  .chip.on { background:var(--brand); color:#fff; }
+  html[data-theme="dark"] .chip.on { color:#17150f; }
+  .search { margin-left:auto; font-size:.82rem; color:var(--ink-3); background:var(--bg-raised); border:1px solid var(--line); border-radius:var(--r-pill); padding:6px 14px; min-width:230px; }
+
+  /* board */
+  .board { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+  @media (max-width:720px){ .board{ grid-template-columns:1fr; } .stats{ grid-template-columns:repeat(2,1fr);} }
+
+  .card { position:relative; background:var(--bg-surface); border:1px solid var(--line); border-radius:var(--r-md); padding:15px 17px 13px 20px; overflow:hidden; }
+  .card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:5px; background:var(--accent,var(--s-neutral)); }
+  .card[data-status="progress"]{ --accent:var(--s-progress); }
+  .card[data-status="parts"]   { --accent:var(--s-parts); }
+  .card[data-status="review"]  { --accent:var(--s-medium); }
+  .card[data-status="ready"]   { --accent:var(--s-ready); }
+  .card[data-status="urgent"]  { --accent:var(--s-urgent); }
+
+  .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .ro-num { font-family:var(--font-mono); font-size:.72rem; color:var(--ink-3); letter-spacing:.02em; }
+  .cust { font-family:var(--font-display); font-weight:700; font-size:1.4rem; line-height:1.05; margin:1px 0 2px; }
+  .rv { font-size:.79rem; color:var(--ink-3); }
+  .badge { font-size:.64rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:4px 9px; border-radius:var(--r-sm); white-space:nowrap; background:var(--badge-bg,var(--s-neutral-bg)); color:var(--badge-fg,var(--s-neutral)); }
+  .card[data-status="progress"] .badge{ --badge-bg:var(--s-progress-bg); --badge-fg:var(--s-progress); }
+  .card[data-status="parts"]    .badge{ --badge-bg:var(--s-parts-bg);    --badge-fg:var(--s-parts); }
+  .card[data-status="review"]   .badge{ --badge-bg:var(--s-medium-bg);   --badge-fg:var(--s-medium); }
+  .card[data-status="ready"]    .badge{ --badge-bg:var(--s-ready-bg);    --badge-fg:var(--s-ready); }
+  .card[data-status="urgent"]   .badge{ --badge-bg:var(--s-urgent-bg);   --badge-fg:var(--s-urgent); }
+
+  .silos { display:flex; gap:7px; flex-wrap:wrap; margin:11px 0 2px; }
+  .silo { font-size:.79rem; padding:4px 10px 4px 8px; border-radius:var(--r-pill); background:var(--bg-sunken); color:var(--ink-2); display:inline-flex; align-items:center; gap:6px; line-height:1; }
+  .silo .si { width:15px; height:15px; flex:none; }
+  .silo .si use { stroke:var(--ink-2); stroke-width:1.7; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+
+  .meter-row { display:flex; align-items:center; gap:12px; margin-top:13px; }
+  .meter { flex:1; height:6px; border-radius:var(--r-pill); background:var(--bg-sunken); overflow:hidden; }
+  .meter i { display:block; height:100%; border-radius:var(--r-pill); background:var(--accent,var(--s-progress)); }
+  .meter-pct { font-family:var(--font-mono); font-size:.79rem; color:var(--ink-2); min-width:36px; text-align:right; }
+
+  .card-foot { display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--line); font-size:.77rem; color:var(--ink-3); }
+  .foot-flag { display:inline-flex; align-items:center; gap:5px; font-weight:600; }
+  .card[data-status="parts"] .foot-flag{ color:var(--s-parts); }
+  .card[data-status="urgent"] .foot-flag{ color:var(--s-urgent); }
+  .foot-flag svg { width:14px; height:14px; stroke:currentColor; stroke-width:1.8; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-repair" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.3-.7-.7-2.3z"/></symbol>
+  <symbol id="ic-solar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></symbol>
+  <symbol id="ic-roof" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></symbol>
+  <symbol id="ic-chassis" viewBox="0 0 24 24"><path d="M3 13h11l3 3h4"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/><path d="M3 13V9h8l3 4"/></symbol>
+  <symbol id="ic-detail" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/></symbol>
+  <symbol id="ic-paint" viewBox="0 0 24 24"><rect x="4" y="4" width="13" height="6" rx="1"/><path d="M17 7h3v4H9v3"/><rect x="7" y="14" width="4" height="6" rx="1"/></symbol>
+  <symbol id="ic-vroom" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 14.5V21M9.8 10.8 4.2 7.4M14.2 10.8l5.6-3.4"/></symbol>
+  <symbol id="ic-topper" viewBox="0 0 24 24"><path d="M3 9h18V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M3 9l3 4 3-4 3 4 3-4 3 4 3-4"/></symbol>
+</svg>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">Patriots RV Services · repair order floor</div>
+      <h1>Service Board</h1>
+    </div>
+    <div class="topright">
+      <span class="live"><span class="dot"></span>Live · synced 14:53</span>
+      <button class="toggle" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light or dark theme">◐ Dark</button>
+    </div>
+  </div>
+
+  <div class="rail-wrap">
+    <div class="rail">
+      <span style="width:26%;background:var(--silo-repair)"></span>
+      <span style="width:17.4%;background:var(--silo-roof)"></span>
+      <span style="width:13%;background:var(--silo-solar)"></span>
+      <span style="width:13%;background:var(--silo-chassis)"></span>
+      <span style="width:8.7%;background:var(--silo-vroom)"></span>
+      <span style="width:8.7%;background:var(--silo-paint)"></span>
+      <span style="width:8.7%;background:var(--silo-detail)"></span>
+      <span style="width:4.5%;background:var(--silo-topper)"></span>
+    </div>
+    <div class="rail-legend">
+      <span class="lg"><span class="sw" style="background:var(--silo-repair)"></span><svg><use href="#ic-repair"/></svg>Repair <b>6</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-roof)"></span><svg><use href="#ic-roof"/></svg>Roof <b>4</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-solar)"></span><svg><use href="#ic-solar"/></svg>Solar <b>3</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-chassis)"></span><svg><use href="#ic-chassis"/></svg>Chassis <b>3</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-vroom)"></span><svg><use href="#ic-vroom"/></svg>Vroom <b>2</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-paint)"></span><svg><use href="#ic-paint"/></svg>Paint &amp; Body <b>2</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-detail)"></span><svg><use href="#ic-detail"/></svg>Detailing <b>2</b></span>
+      <span class="lg"><span class="sw" style="background:var(--silo-topper)"></span><svg><use href="#ic-topper"/></svg>TrueTopper <b>1</b></span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Open ROs</div><div class="v">18</div></div>
+    <div class="stat alert"><div class="k">Need attention</div><div class="v">4</div></div>
+    <div class="stat good"><div class="k">Ready for pickup</div><div class="v">4</div></div>
+    <div class="stat"><div class="k">Avg progress</div><div class="v">62%</div></div>
+    <div class="stat"><div class="k">Parts pending</div><div class="v">7</div></div>
+  </div>
+
+  <div class="filters">
+    <span class="fl">View</span>
+    <button class="chip on">All</button>
+    <button class="chip">In progress</button>
+    <button class="chip">Awaiting parts</button>
+    <button class="chip">QA / QC</button>
+    <button class="chip">Ready</button>
+    <span class="search">Search RO #, customer, unit…</span>
+  </div>
+
+  <div class="board">
+
+    <div class="card" data-status="progress">
+      <div class="card-top">
+        <div><div class="ro-num">RO-24187</div><div class="cust">Hollingsworth</div><div class="rv">2023 Grand Design Solitude 390RK</div></div>
+        <span class="badge">In progress</span>
+      </div>
+      <div class="silos">
+        <span class="silo"><svg class="si"><use href="#ic-repair"/></svg>Repair</span>
+        <span class="silo"><svg class="si"><use href="#ic-solar"/></svg>Solar</span>
+      </div>
+      <div class="meter-row"><div class="meter"><i style="width:68%"></i></div><span class="meter-pct">68%</span></div>
+      <div class="card-foot"><span>Tech · M. Reyes</span><span>Promised Fri</span></div>
+    </div>
+
+    <div class="card" data-status="parts">
+      <div class="card-top">
+        <div><div class="ro-num">RO-24162</div><div class="cust">Delgado</div><div class="rv">2021 Jayco Eagle 321RSTS</div></div>
+        <span class="badge">Awaiting parts</span>
+      </div>
+      <div class="silos">
+        <span class="silo"><svg class="si"><use href="#ic-roof"/></svg>Roof</span>
+        <span class="silo"><svg class="si"><use href="#ic-chassis"/></svg>Chassis</span>
+      </div>
+      <div class="meter-row"><div class="meter"><i style="width:30%"></i></div><span class="meter-pct">30%</span></div>
+      <div class="card-foot"><span class="foot-flag"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Parts request open</span><span>ETA Jun 24</span></div>
+    </div>
+
+    <div class="card" data-status="review">
+      <div class="card-top">
+        <div><div class="ro-num">RO-24109</div><div class="cust">Whitaker</div><div class="rv">2022 Winnebago View 24D</div></div>
+        <span class="badge">QA / QC</span>
+      </div>
+      <div class="silos">
+        <span class="silo"><svg class="si"><use href="#ic-detail"/></svg>Detailing</span>
+        <span class="silo"><svg class="si"><use href="#ic-paint"/></svg>Paint &amp; Body</span>
+      </div>
+      <div class="meter-row"><div class="meter"><i style="width:85%"></i></div><span class="meter-pct">85%</span></div>
+      <div class="card-foot"><span>Final inspection</span><span>QA · D. Cole</span></div>
+    </div>
+
+    <div class="card" data-status="ready">
+      <div class="card-top">
+        <div><div class="ro-num">RO-24071</div><div class="cust">Abernathy</div><div class="rv">2020 Airstream Flying Cloud 27FB</div></div>
+        <span class="badge">Ready</span>
+      </div>
+      <div class="silos">
+        <span class="silo"><svg class="si"><use href="#ic-paint"/></svg>Paint &amp; Body</span>
+        <span class="silo"><svg class="si"><use href="#ic-topper"/></svg>TrueTopper</span>
+      </div>
+      <div class="meter-row"><div class="meter"><i style="width:95%"></i></div><span class="meter-pct">95%</span></div>
+      <div class="card-foot"><span>Customer notified</span><span>Pickup today</span></div>
+    </div>
+
+    <div class="card" data-status="urgent">
+      <div class="card-top">
+        <div><div class="ro-num">RO-24190</div><div class="cust">Fontaine</div><div class="rv">2024 Newmar Dutch Star 4369</div></div>
+        <span class="badge">Urgent</span>
+      </div>
+      <div class="silos">
+        <span class="silo"><svg class="si"><use href="#ic-repair"/></svg>Repair</span>
+        <span class="silo"><svg class="si"><use href="#ic-vroom"/></svg>Vroom</span>
+      </div>
+      <div class="meter-row"><div class="meter"><i style="width:45%"></i></div><span class="meter-pct">45%</span></div>
+      <div class="card-foot"><span class="foot-flag"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Customer in town Sat</span><span>Tech · A. Boyd</span></div>
+    </div>
+
+    <div class="card" data-status="review">
+      <div class="card-top">
+        <div><div class="ro-num">RO-24175</div><div class="cust">Sorensen</div><div class="rv">2019 Tiffin Allegro 34PA</div></div>
+        <span class="badge">Awaiting approval</span>
+      </div>
+      <div class="silos">
+        <span class="silo"><svg class="si"><use href="#ic-chassis"/></svg>Chassis</span>
+      </div>
+      <div class="meter-row"><div class="meter"><i style="width:20%"></i></div><span class="meter-pct">20%</span></div>
+      <div class="card-foot"><span>Estimate sent</span><span>2 days out</span></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function toggleTheme(){
+    var root = document.documentElement;
+    var dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    document.getElementById('themeBtn').textContent = dark ? '◐ Dark' : '◑ Light';
+  }
+</script>
+</body>
+</html>

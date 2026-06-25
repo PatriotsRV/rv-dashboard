@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRVS Service Board — Service Floor (LIVE redesign preview)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="dashboard.draft.css">
+<style>
+  .loading, .errbox { font-family: var(--font-body); color: var(--ink-2); padding: var(--sp-6); text-align: center; }
+  .errbox { color: var(--s-urgent); }
+  .draft-tag { font-family: var(--font-mono); font-size: var(--t-micro); letter-spacing:.1em; text-transform:uppercase; color: var(--ink-3); border:1px solid var(--line); border-radius: var(--r-pill); padding:3px 9px; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-repair" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.3-.7-.7-2.3z"/></symbol>
+  <symbol id="ic-solar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></symbol>
+  <symbol id="ic-roof" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></symbol>
+  <symbol id="ic-chassis" viewBox="0 0 24 24"><path d="M3 13h11l3 3h4"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/><path d="M3 13V9h8l3 4"/></symbol>
+  <symbol id="ic-detail" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/></symbol>
+  <symbol id="ic-paint" viewBox="0 0 24 24"><rect x="4" y="4" width="13" height="6" rx="1"/><path d="M17 7h3v4H9v3"/><rect x="7" y="14" width="4" height="6" rx="1"/></symbol>
+  <symbol id="ic-vroom" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 14.5V21M9.8 10.8 4.2 7.4M14.2 10.8l5.6-3.4"/></symbol>
+  <symbol id="ic-topper" viewBox="0 0 24 24"><path d="M3 9h18V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M3 9l3 4 3-4 3 4 3-4 3 4 3-4"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header>
+    <div class="title-row">
+      <div>
+        <div class="eyebrow">Patriots RV Services · repair order floor</div>
+        <h1>Service Board</h1>
+      </div>
+      <div class="title-aux">
+        <span class="draft-tag">Service Floor · live preview</span>
+        <span class="live"><span class="live-dot"></span><span id="syncTxt">connecting…</span></span>
+        <button class="theme-toggle" id="themeBtn" onclick="toggleTheme()" aria-label="Toggle light or dark theme">◐ Dark</button>
+      </div>
+    </div>
+
+    <div class="rail" id="rail"></div>
+    <div class="rail-legend" id="railLegend"></div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="bar">
+    <span class="bar-label">View</span>
+    <button class="chip on" data-f="all" onclick="setFilter(this)">All</button>
+    <button class="chip" data-f="In progress" onclick="setFilter(this)">In progress</button>
+    <button class="chip" data-f="Awaiting parts" onclick="setFilter(this)">Awaiting parts</button>
+    <button class="chip" data-f="Waiting for QA/QC" onclick="setFilter(this)">QA / QC</button>
+    <button class="chip" data-f="Ready for pickup" onclick="setFilter(this)">Ready</button>
+    <span class="bar-spacer"></span>
+    <input class="search" id="search" placeholder="Search RO #, customer, unit…" oninput="render()">
+  </div>
+
+  <div class="board" id="board"><div class="loading">Loading the live board…</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  var SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+
+  var REPAIR_TYPE_TO_SILO = {
+    'repairs':'repair','repair':'repair','vroom':'vroom','solar':'solar','roof':'roof',
+    'paint and body':'paint_body','paint & body':'paint_body','chassis':'chassis',
+    'detailing':'detailing','truetopper':'truetopper'
+  };
+  var SILO_META = {
+    repair:    {label:'Repair',       icon:'ic-repair',  c:'--silo-repair'},
+    vroom:     {label:'Vroom',        icon:'ic-vroom',   c:'--silo-vroom'},
+    solar:     {label:'Solar',        icon:'ic-solar',   c:'--silo-solar'},
+    roof:      {label:'Roof',         icon:'ic-roof',    c:'--silo-roof'},
+    paint_body:{label:'Paint & Body', icon:'ic-paint',   c:'--silo-paint'},
+    chassis:   {label:'Chassis',      icon:'ic-chassis', c:'--silo-chassis'},
+    detailing: {label:'Detailing',    icon:'ic-detail',  c:'--silo-detail'},
+    truetopper:{label:'TrueTopper',   icon:'ic-topper',  c:'--silo-topper'}
+  };
+  var SILO_ORDER = ['repair','vroom','solar','roof','paint_body','chassis','detailing','truetopper'];
+
+  var STATUS_META = {
+    'Not On Lot':          {cls:'neutral',  prog:0},
+    'On Lot':              {cls:'neutral',  prog:10},
+    'Off Lot - Returning': {cls:'neutral',  prog:15},
+    'Awaiting Approval':   {cls:'approval', prog:20},
+    'Awaiting parts':      {cls:'parts',    prog:30},
+    'Scheduled':           {cls:'neutral',  prog:45},
+    'Ready to Work':       {cls:'progress', prog:50},
+    'In progress':         {cls:'progress', prog:60},
+    'Repairs Completed':   {cls:'ready',    prog:80},
+    'Waiting for QA/QC':   {cls:'qa',       prog:85},
+    'Ready for pickup':    {cls:'ready',    prog:95}
+  };
+
+  var ROWS = [], FILTER = 'all';
+
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function clean(s){ return (s==null?'':String(s)).trim().replace(/\s+/g,' '); }
+  function silosOf(rt){
+    if(!rt) return [];
+    var seen={}, out=[];
+    rt.split(',').forEach(function(p){
+      var k = REPAIR_TYPE_TO_SILO[p.trim().toLowerCase()];
+      if(k && !seen[k]){ seen[k]=1; out.push(k); }
+    });
+    return out;
+  }
+  function daysOnLot(d){
+    if(!d) return null;
+    var t = new Date(d+'T00:00:00'); if(isNaN(t)) return null;
+    return Math.max(0, Math.round((Date.now()-t)/86400000));
+  }
+  function validDate(d){ if(!d) return null; var t=new Date(d+'T00:00:00'); if(isNaN(t)||t.getFullYear()<2000) return null; return t; }
+  function shortDate(d){ var t=validDate(d); if(!t) return null; return t.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+  function toggleTheme(){
+    var r=document.documentElement, dark=r.getAttribute('data-theme')==='dark';
+    r.setAttribute('data-theme', dark?'light':'dark');
+    document.getElementById('themeBtn').textContent = dark?'◐ Dark':'◑ Light';
+  }
+  function setFilter(btn){
+    FILTER = btn.getAttribute('data-f');
+    document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('on'); });
+    btn.classList.add('on');
+    render();
+  }
+
+  function renderRail(){
+    var counts={}, total=0;
+    ROWS.forEach(function(r){ silosOf(r.repair_type).forEach(function(k){ counts[k]=(counts[k]||0)+1; total++; }); });
+    var rail=document.getElementById('rail'), leg=document.getElementById('railLegend');
+    rail.innerHTML=''; leg.innerHTML='';
+    if(!total){ return; }
+    SILO_ORDER.forEach(function(k){
+      var n=counts[k]||0; if(!n) return;
+      var m=SILO_META[k];
+      var seg=document.createElement('span');
+      seg.style.width=(100*n/total)+'%';
+      seg.style.background='var('+m.c+')';
+      rail.appendChild(seg);
+      var lg=document.createElement('span'); lg.className='lg';
+      lg.innerHTML='<span class="sw" style="background:var('+m.c+')"></span>'+
+        '<svg><use href="#'+m.icon+'"/></svg>'+esc(m.label)+' <b>'+n+'</b>';
+      leg.appendChild(lg);
+    });
+  }
+
+  function renderStats(){
+    var n=ROWS.length;
+    var inProg=ROWS.filter(function(r){return r.status==='In progress';}).length;
+    var ready=ROWS.filter(function(r){return r.status==='Ready for pickup';}).length;
+    var parts=ROWS.filter(function(r){return r.status==='Awaiting parts';}).length;
+    var attn=ROWS.filter(function(r){return ['Awaiting parts','Awaiting Approval','Waiting for QA/QC'].indexOf(r.status)>=0;}).length;
+    var avg = n ? Math.round(ROWS.reduce(function(a,r){ return a + ((STATUS_META[r.status]||{}).prog||0); },0)/n) : 0;
+    var cards=[
+      {k:'Active ROs', v:n},
+      {k:'In progress', v:inProg},
+      {k:'Need attention', v:attn, tone:'urgent'},
+      {k:'Ready for pickup', v:ready, tone:'ready'},
+      {k:'Avg progress', v:avg+'%'},
+      {k:'Awaiting parts', v:parts}
+    ];
+    document.getElementById('stats').innerHTML = cards.map(function(c){
+      return '<div class="stat"'+(c.tone?' data-tone="'+c.tone+'"':'')+'><div class="stat-k">'+esc(c.k)+'</div><div class="stat-v">'+c.v+'</div></div>';
+    }).join('');
+  }
+
+  function cardHTML(r){
+    var sm = STATUS_META[r.status] || {cls:'neutral', prog:0};
+    var silos = silosOf(r.repair_type);
+    var siloHTML = silos.map(function(k){
+      var m=SILO_META[k]; return '<span class="silo"><svg class="si"><use href="#'+m.icon+'"/></svg>'+esc(m.label)+'</span>';
+    }).join('');
+    var dol = daysOnLot(r.date_received);
+    var promised = shortDate(r.promised_date);
+    var pickup = shortDate(r.pickup_date);
+    var footLeft, footRight;
+    if(r.status==='Awaiting parts'){ footLeft='<span class="foot-flag"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Awaiting parts</span>'; }
+    else if(r.status==='Waiting for QA/QC'){ footLeft='<span>Final inspection</span>'; }
+    else { footLeft = '<span>'+(dol!=null? dol+' day'+(dol===1?'':'s')+' on lot' : '&nbsp;')+'</span>'; }
+    footRight = pickup ? ('Pickup '+pickup) : (promised ? ('Promised '+promised) : (dol!=null && r.status!=='Awaiting parts' && r.status!=='Waiting for QA/QC' ? '&nbsp;' : (dol!=null? dol+'d on lot':'&nbsp;')));
+    var rv = clean(r.rv) || '—';
+    return '<div class="card" data-status="'+sm.cls+'">'+
+      '<div class="card-top"><div>'+
+        '<div class="ro-no">RO · '+esc((r.id||'').slice(0,8))+'</div>'+
+        '<div class="cust">'+esc(clean(r.customer_name)||'Unnamed')+'</div>'+
+        '<div class="unit">'+esc(rv)+'</div>'+
+      '</div><span class="badge">'+esc(r.status||'')+'</span></div>'+
+      (siloHTML?'<div class="silos">'+siloHTML+'</div>':'')+
+      '<div class="meter-row"><div class="meter"><i style="width:'+sm.prog+'%"></i></div><span class="meter-pct">'+sm.prog+'%</span></div>'+
+      '<div class="card-foot">'+footLeft+'<span>'+footRight+'</span></div>'+
+    '</div>';
+  }
+
+  function render(){
+    var q=(document.getElementById('search').value||'').toLowerCase();
+    var list = ROWS.filter(function(r){
+      if(FILTER!=='all' && r.status!==FILTER) return false;
+      if(q){ var hay=((r.customer_name||'')+' '+(r.rv||'')+' '+(r.id||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      return true;
+    });
+    var board=document.getElementById('board');
+    board.innerHTML = list.length ? list.map(cardHTML).join('') : '<div class="loading">No ROs match this view.</div>';
+  }
+
+  function order(rows){
+    return rows.slice().sort(function(a,b){
+      var pa=(STATUS_META[a.status]||{}).prog||0, pb=(STATUS_META[b.status]||{}).prog||0;
+      if(pb!==pa) return pb-pa;
+      return (b.date_received||'').localeCompare(a.date_received||'');
+    });
+  }
+
+  (async function(){
+    try{
+      var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      var res = await sb.from('repair_orders')
+        .select('id,customer_name,rv,status,repair_type,planned_dropoff_date,promised_date,pickup_date,date_received,deleted_at')
+        .is('deleted_at', null)
+        .neq('status','Delivered/Cashed Out');
+      if(res.error) throw res.error;
+      ROWS = order((res.data||[]).filter(function(r){ return r.status; }));
+      document.getElementById('syncTxt').textContent = 'Live · '+ROWS.length+' active · '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+      renderRail(); renderStats(); render();
+    }catch(e){
+      document.getElementById('syncTxt').textContent = 'offline';
+      document.getElementById('board').innerHTML = '<div class="errbox">Could not load live data: '+esc(e.message||e)+'</div>';
+    }
+  })();
+</script>
+</body>
+</html>

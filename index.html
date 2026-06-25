@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.460
+    PRVS Dashboard v1.461
+    v1.461: [S124] NEW admin-only "📥 Leads" header button -> opens leads.html (the WooSender lead review queue), gated by isAdmin() exactly like the Wishes/Recently-Deleted admin buttons. Additive UI only; no DB change. Pairs with leads.html v1.2 (promote-to-RO now fires the same New-Customer staff notification email as the check-in page).
     v1.460: [ER S120] Three ER builds (additive). (1) 9b823d25 — when a manager adds a NEW service silo to an RO (js/work-orders.js addServiceToRO), the manager(s) of that newly-added silo are emailed so they know another silo added a repair to their plate. Queued as a scheduled_notifications row (source 'service_added_notify', sent by the every-15-min process-scheduled-notifications cron; recipients resolved from _staffCache by service_silo). REQUIRES migration service_added_notify_source.sql to widen the scheduled_notifications.source CHECK. (2) 0b2e128c — a tech's clock-out work notes are now copied into the RO update timeline (checkin.html clockOut writes a notes-table ro_status line "📝 TECH NOTES (service): ..."; non-fatal, online only, only when notes were typed). (3) dac9fdda — NEW RO status "Off Lot - Returning" for units a customer temporarily took and is bringing back, distinct from "Not On Lot" (never arrived). Added to the status form select + both card status dropdowns (render.js) + status filter buttons + STATUS_PROGRESS_MAP (config.js + inline) + ES translations + statusColorMap (#0ea5e9); EXCLUDED from the "N on lot" count (physically away). Also fd6c122d — Manager Work List drag-drop reorder now works on phones/tablets via touch handlers (HTML5 DnD does not fire on touch); mouse + touch share _reorderWorkList(). checkin.html -> v1.38.
     v1.459: [S119] Two initiatives. (1) ER COMPLETION NOTIFICATION EMAIL — when an enhancement request is marked Done, the requester (enhancement_requests.submitted_by) is emailed what was done + how to test it. NEW columns completion_notes / test_steps / completion_emailed_at (migration er_completion_notify.sql) + a DB trigger (trg_notify_er_completion -> send-er-completion edge fn via pg_net). ER admin card gains two textareas ("what we did" / "how to test") captured atomically when status flips to done (js/render.js + js/enhancement.js saveERDetails/updateERStatus). (2) KEY DATES PHASE 2 + 3 (docs/specs/KEY_DATES_SPEC.md): P2 — setting/changing the PROMISED or PICKUP date now creates/updates/deletes all-day Google Calendar events on the RO's per-service silo calendar(s), auto-on-save when a Google token is present, idempotent via NEW repair_orders.cal_event_ids jsonb (migration key_dates_cal_event_ids.sql; js/scheduling.js syncKeyDateCalendars, hooked in js/ro-crud.js create+update; normalizeRO map utils.js + inline). P3 — promised + pickup now enqueue day-before + morning-of email reminders (8 AM CDT) to the silo manager(s) + admins via scheduled_notifications, superseded on date change/clear (mirrors the drop-off auto-reminder; js/ro-crud.js _syncOneKeyDateReminder). Additive.
     v1.458: [ER BUGFIX v1.458 S118] Keys + Power RO fields (ERs 34fc03c2 Brandon + b87eb2fb Lynn). NEW additive columns key_status (keys / no_keys / keypad), keypad_code (text), keep_plugged_in (bool) on repair_orders (migration keys_power_fields.sql). New RO + Edit RO forms gain a Keys select + Keypad/Lock Code input + a "Keep plugged in (shore power)" checkbox. RO cards show a keys/power chip row (🔑 Keys / 🚫 No keys / 🔢 Keypad:code purple; ⚡ Keep plugged in amber). Persisted in ro-crud create/update; populated in openEditRO; gathered in the edit form-data builder + audit-logged; mapped in normalizeRO (utils.js + inline). Additive only, no behavior change to existing fields.
@@ -555,7 +556,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.460</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.461</span>
             </div>
         </header>
 
@@ -601,6 +602,10 @@
                 </button>
                 <button id="manageDupesBtn" onclick="openDuplicateManager()" style="display:none; padding: 10px 16px; background: rgba(239,68,68,0.15); color: #f87171; border: 2px solid rgba(239,68,68,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'">
                     🔗 Merge Dupes <span id="dupesCount" style="background:#ef4444;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
+                </button>
+                <!-- S124: WooSender Lead Review Queue (admin-only) -> leads.html -->
+                <button id="leadsBtn" onclick="window.open('leads.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(59,130,246,0.15); color: #93c5fd; border: 2px solid rgba(59,130,246,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(59,130,246,0.15)'">
+                    📥 Leads
                 </button>
             </div>
             
@@ -4438,6 +4443,11 @@
             if (erAdminBtn) {
                 erAdminBtn.style.display = isAdmin() ? 'inline-block' : 'none';
                 if (isAdmin()) loadERUnreviewedCount();
+            }
+            // S124: Show/hide WooSender Leads button (Admin only)
+            const leadsBtn = document.getElementById('leadsBtn');
+            if (leadsBtn) {
+                leadsBtn.style.display = isAdmin() ? 'inline-block' : 'none';
             }
             // Show/hide Merge Dupes button (Admin only — visible only when duplicates exist)
             const manageDupesBtn = document.getElementById('manageDupesBtn');
