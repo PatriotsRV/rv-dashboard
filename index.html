@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.463
+    PRVS Dashboard v1.464
+    v1.464: [ER e27311bf S125] WO task drag-and-drop reorder (Ryan: "edit templates, drag and drop, change order at will"). Each task row in the Build/Edit Work Order form gets a grip handle (⠿); dragging reorders the rows (desktop HTML5 drag + touch for phones/tablets, mirroring the Manager Work List pattern). DOM order is the source of truth — saveWOTemplate/submitWOForm already assign sort_order from row position — so the new order persists on Save Work Order, Save as Template, and Overwrite Selected Template. Combined with the existing Load Template -> modify -> Overwrite flow, this delivers full template editing + reordering. New js/work-orders.js _initWOTaskDrag (idempotent via data-wo-drag-wired) + _renumberWOTaskRows; wired in openBuildWOForm, applyWOTemplate, and the inline addWOTaskRow. No DB/schema change.
     v1.463: [ER 3f415c88 S125] Recurring reminders. The Schedule Notification modal gains a Repeat selector (Does not repeat / Daily / Weekly same-weekday) + a "Repeat until" date. On save, the reminder is expanded client-side into one pending scheduled_notifications row PER occurrence (capped at 60) through the until date; each row is independently cancellable in the existing "Existing for this RO" list and fires via the same every-15-min process-scheduled-notifications cron. No DB migration, no edge-fn change (source stays 'manual'). Past occurrences are dropped on save. "Every Monday until X" = pick a Monday start + Weekly.
     v1.462: [ER BUGFIX v1.462 S125] Shop Operations tiles pinned + searchable (ER 80390f36, Lynn). js/render.js renderBoard now sorts Shop Operations ROs (roType==='shop') to the TOP of the board (then by priority within each group), and adds a synthetic "shop operations shop" token to the search haystack so shop ROs are reliably found by search regardless of their customerName text. Additive UI only; no DB change.
     v1.461: [S124] NEW admin-only "📥 Leads" header button -> opens leads.html (the WooSender lead review queue), gated by isAdmin() exactly like the Wishes/Recently-Deleted admin buttons. Additive UI only; no DB change. Pairs with leads.html v1.2 (promote-to-RO now fires the same New-Customer staff notification email as the check-in page).
@@ -558,7 +559,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.463</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.464</span>
             </div>
         </header>
 
@@ -6091,6 +6092,8 @@ function toggleWOTasks(tasksId, chevId) {
                 techs.map(t => `<option value="${t.email}">${t.name}</option>`).join('');
             const count = container.querySelectorAll('.wo-task-form-row').length;
             container.insertAdjacentHTML('beforeend', buildWOTaskRowHtml(count, null, techOptions, silo));
+            // [ER e27311bf v1.464 S125] wire drag-reorder on the newly added row
+            if (window._initWOTaskDrag) window._initWOTaskDrag();
         }
 
         // [PHASE 9 DELETED v1.437 S88] loadWOTemplate() -> js/work-orders.js (module-owned via window bridge; byte-identical extraction verified)

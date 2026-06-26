@@ -381,6 +381,7 @@
                     style="width:100%;padding:12px;background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">
                     💾 Save Work Order
                 </button>`;
+            _initWOTaskDrag();
         }
 
 
@@ -413,7 +414,10 @@
                    </div>`;
             return `<div id="${uid}" class="wo-task-form-row" data-task-id="${task?.id||''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:0.8rem;font-weight:700;color:#475569;">Task ${index+1}${siloBadge}</span>
+                    <span style="display:flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:700;color:#475569;">
+                        <span class="wo-drag-handle" draggable="true" title="Drag to reorder this task" style="cursor:grab;color:#94a3b8;font-size:1rem;line-height:1;user-select:none;touch-action:none;">&#10303;</span>
+                        <span class="wo-task-num">Task ${index+1}</span>${siloBadge}
+                    </span>
                     ${removeBtnHtml}
                 </div>
                 <input type="text" placeholder="Task title *" value="${escapeHtml(task?.task_title)||''}" class="wo-task-title" style="width:100%;margin-bottom:6px;padding:10px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:0.875rem;background:#fff;color:#1e293b;box-sizing:border-box;" required>
@@ -432,6 +436,79 @@
                     </div>
                 </div>
             </div>`;
+        }
+
+
+        // [ER e27311bf v1.464 S125] Drag-and-drop reorder of WO task rows (Ryan: "edit
+        // templates, drag and drop, change order at will"). DOM order IS the source of
+        // truth — saveWOTemplate/submitWOForm assign sort_order from row position — so
+        // moving the nodes here persists the new order on Save / Save-as-Template /
+        // Overwrite. Desktop uses HTML5 drag from the grip handle; touch devices get the
+        // equivalent via touchstart/move/end (HTML5 DnD does not fire on touch). Idempotent
+        // via data-wo-drag-wired so it is safe to re-run after every row add.
+        let _woDragRow = null, _woTouchRow = null, _woTouchOver = null;
+
+        export function _renumberWOTaskRows() {
+            const container = document.getElementById('woTaskRows');
+            if (!container) return;
+            container.querySelectorAll('.wo-task-form-row').forEach((row, i) => {
+                const num = row.querySelector('.wo-task-num');
+                if (num) num.textContent = 'Task ' + (i + 1);
+            });
+        }
+
+        export function _initWOTaskDrag() {
+            const container = document.getElementById('woTaskRows');
+            if (!container) return;
+            const clearOutlines = () => container.querySelectorAll('.wo-task-form-row')
+                .forEach(r => { r.style.outline = 'none'; });
+            const doMove = (srcRow, destRow) => {
+                if (!srcRow || !destRow || srcRow === destRow) return;
+                if (!container.contains(srcRow) || !container.contains(destRow)) return;
+                const list = Array.from(container.querySelectorAll('.wo-task-form-row'));
+                const before = list.indexOf(srcRow) > list.indexOf(destRow);
+                container.insertBefore(srcRow, before ? destRow : destRow.nextSibling);
+                _renumberWOTaskRows();
+            };
+            container.querySelectorAll('.wo-task-form-row').forEach(row => {
+                if (row.dataset.woDragWired) return;
+                row.dataset.woDragWired = '1';
+                const handle = row.querySelector('.wo-drag-handle');
+                if (!handle) return;
+                // Desktop (mouse) — drag initiated from the grip handle
+                handle.addEventListener('dragstart', e => {
+                    _woDragRow = row; row.style.opacity = '0.4';
+                    try { e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
+                });
+                handle.addEventListener('dragend', () => { row.style.opacity = '1'; clearOutlines(); _woDragRow = null; });
+                row.addEventListener('dragover', e => {
+                    if (!_woDragRow) return;
+                    e.preventDefault();
+                    row.style.outline = row === _woDragRow ? 'none' : '2px solid #3b82f6';
+                });
+                row.addEventListener('dragleave', () => { row.style.outline = 'none'; });
+                row.addEventListener('drop', e => {
+                    e.preventDefault(); row.style.outline = 'none';
+                    doMove(_woDragRow, row); _woDragRow = null;
+                });
+                // Mobile (touch) — same gesture from the grip handle
+                handle.addEventListener('touchstart', () => { _woTouchRow = row; _woTouchOver = null; row.style.opacity = '0.4'; }, { passive: true });
+                handle.addEventListener('touchmove', e => {
+                    if (!_woTouchRow) return;
+                    e.preventDefault();
+                    const t = e.touches[0];
+                    const el = document.elementFromPoint(t.clientX, t.clientY);
+                    const overRow = el && el.closest ? el.closest('.wo-task-form-row') : null;
+                    clearOutlines();
+                    if (overRow && overRow !== _woTouchRow) { overRow.style.outline = '2px solid #3b82f6'; _woTouchOver = overRow; }
+                    else { _woTouchOver = null; }
+                }, { passive: false });
+                handle.addEventListener('touchend', () => {
+                    row.style.opacity = '1'; clearOutlines();
+                    doMove(_woTouchRow, _woTouchOver);
+                    _woTouchRow = null; _woTouchOver = null;
+                });
+            });
         }
 
 
@@ -501,6 +578,8 @@
                 document.getElementById('woNoTasks')?.remove();
                 container.insertAdjacentHTML('beforeend', buildWOTaskRowHtml(startIdx + i, task, techOptions, silo));
             });
+            _renumberWOTaskRows();
+            _initWOTaskDrag();
         }
 
 
@@ -771,6 +850,8 @@ Object.assign(window, {
   addServiceToRO,
   openBuildWOForm,
   buildWOTaskRowHtml,
+  _initWOTaskDrag,
+  _renumberWOTaskRows,
   loadWOTemplate,
   applyWOTemplate,
   saveWOTemplate,
