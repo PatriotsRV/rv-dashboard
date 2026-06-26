@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Employee Guide v1.1
-    Released: 2026-06-16 (Session 113)
+    PRVS Employee Guide v1.2
+    Released: 2026-06-26 (Session 126)
 
     A living, login-gated guide for Patriots RV Services employees.
     Consolidates the printed training cards built in Session 104 into a
@@ -19,6 +19,14 @@
         guide.html#rb-firewatch   guide.html#rb-readiness
         guide.html#rb-parts       guide.html#rb-phantom
 
+    v1.2 (Session 126): expanded the Silo Manager + Parts Manager training
+        around building and closing out work orders with revenue values and
+        parts, so the Weekly P&L reflects shop numbers. Added the four-step
+        "how a WO becomes revenue" callout, concrete Dollar-Value guidance,
+        one-WO-per-silo, the two-stage close-out emphasis (tech Done is NOT
+        the revenue event — the manager's Mark Completed is), a pre-sign-off
+        check, a parts-attribution P&L callout, and freight/wholesale cost
+        rules. All existing anchor ids preserved (report-email contract).
     v1.1 (Session 113): + "Your daily report, block by block" — a deep
         per-block walkthrough (what you see / why it matters / what to do)
         with stable #rb-* anchors so each report block deep-links to its
@@ -238,7 +246,7 @@
             </div>
         </div>
         <div class="header-right">
-            <span class="version-pill" id="versionPill">v1.1</span>
+            <span class="version-pill" id="versionPill">v1.2</span>
             <span id="userBadge" class="badge-role badge-user"></span>
             <a href="index.html" class="back-link">&larr; Dashboard</a>
         </div>
@@ -445,10 +453,17 @@
                 <div class="section-head"><h2>Service Silo Managers</h2><span class="who">Roof / Solar / Vroom / Repair</span></div>
                 <p class="section-intro">P&amp;L weeks run <b>Monday through Sunday</b>. Every number traces to an action below: <b>Revenue</b> = work-order dollar values, counted only when you click &#10003; Mark Completed. <b>Labor</b> = tech clock-ins. <b>Parts cost</b> = wholesale &times; qty + freight, attributed by the part's Service Silo tag.</p>
 
+                <div class="callout">
+                    <b>How a work order becomes shop revenue &mdash; the four-step path:</b> (1) you <b>build the WO</b> with its Dollar Value and silo, (2) techs <b>clock in</b> and the work happens, (3) the lead taps <span class="hl-blue">Our work is done</span>, and (4) <b>you</b> click <span class="hl-green">&#10003; Mark Completed</span>. <b>Only step 4 books the revenue</b> &mdash; the dollars land in the week you click, on the silo you chose. Skip it and a finished, paid job still reads as $0 on the Weekly P&amp;L. This is the single biggest reason shop numbers come in low.
+                </div>
+
                 <div class="step" id="build-wo">
                     <div class="step-bar bar-green"><span class="num">STEP 1</span><span class="when">THE MOMENT A JOB IS SCOPED &mdash; before work starts</span></div>
                     <div class="step-body"><ul>
                         <li>Build the Work Order &mdash; <b>real Dollar Value, right silo</b>. The WO's Dollar Value IS the revenue number. No WO, or a $0 WO = the job is <b>invisible</b> to the P&amp;L, no matter how much work goes into it.</li>
+                        <li><b>What to put in Dollar Value:</b> the full amount the customer is charged for that work &mdash; the estimate or quoted price (labor + marked-up parts). Not your cost, not the hours. If the price changes later, update the WO.</li>
+                        <li><b>One Work Order per service silo.</b> A roof job that also needs solar gets a Roof WO <i>and</i> a Solar WO, each with its own Dollar Value &mdash; so each department's P&amp;L gets credit for its own share.</li>
+                        <li>Parts attach to the work order, so the WO is also where their cost gets booked. An RO with parts but <b>no WO</b> has nowhere to land that cost &mdash; the report flags it.</li>
                         <li>Don't worry about status &mdash; the WO flips to In Progress <b>by itself</b> at the first tech clock-in.</li>
                     </ul></div>
                 </div>
@@ -472,7 +487,9 @@
                     <div class="step-bar bar-red"><span class="num">STEP 4</span><span class="when">THE SAME WEEK THE WORK FINISHES &mdash; recognize the revenue</span></div>
                     <div class="step-body"><ul>
                         <li>Click <span class="hl-green">&#10003; Mark Completed</span> on the WO. <b>This is THE revenue event.</b> Until you click it, Revenue Completed stays $0 &mdash; no matter how finished the job is.</li>
-                        <li>Revenue counts in the week you click &mdash; <b>don't batch them up</b>.</li>
+                        <li><b>The tech's &ldquo;Our work is done&rdquo; is NOT the revenue event &mdash; your &#10003; is.</b> The blue chip just means it's ready for your QA/QC and sign-off. Two stages on purpose: the tech reports finished, the manager confirms and books it.</li>
+                        <li>Revenue counts in the week you click &mdash; <b>don't batch them up</b>. A job finished Friday but signed off the next Tuesday lands in the wrong week's numbers.</li>
+                        <li>Before you click, a 10-second check: <b>Dollar Value right? Silo right? Parts on the WO tagged?</b> Mark Completed locks all of it into the P&amp;L.</li>
                         <li>Clicked too early? <b>&#8617; Reopen</b> pulls the revenue back out.</li>
                     </ul></div>
                 </div>
@@ -482,6 +499,10 @@
             <section id="parts-managers">
                 <div class="section-head"><h2>Parts Managers</h2><span class="who">Parts</span></div>
                 <p class="section-intro">Parts cost only lands on the right department when the part carries a Service Silo. Tag it and the math is automatic; leave it blank and it disappears into Unattributed.</p>
+
+                <div class="callout">
+                    <b>Why parts data decides whose P&amp;L takes the hit:</b> every part's cost (<b>wholesale &times; qty + freight</b>) is subtracted from the silo on its <b>Service Silo</b> tag. Tag it Roof and Roof's margin absorbs it; leave it blank and it falls into <span class="hl-amber">Unattributed</span>, where no department's P&amp;L reflects the real cost of the job. Clean tags + correct costs = honest department numbers.
+                </div>
 
                 <div class="step" id="part-silo">
                     <div class="step-bar bar-green"><span class="num">STEP 1</span><span class="when">EVERY PART YOU ENTER &mdash; tag the silo</span></div>
@@ -494,8 +515,9 @@
                 <div class="step" id="part-cost">
                     <div class="step-bar bar-blue"><span class="num">STEP 2</span><span class="when">EVERY PART YOU ENTER &mdash; get the cost fields right</span></div>
                     <div class="step-body"><ul>
-                        <li><b>Wholesale cost is per unit</b> (the system multiplies by quantity).</li>
-                        <li><b>Freight goes in its own field.</b> Together these are the parts-cost side of the P&amp;L.</li>
+                        <li><b>Wholesale cost is per unit</b> (the system multiplies by quantity). Enter your actual supplier cost &mdash; not the retail or charge-out price.</li>
+                        <li><b>Freight goes in its own field</b> (labeled Freight Charge) &mdash; it is <b>per line</b>, added once, not per unit. Together, wholesale &times; qty + freight is the part's full cost on the P&amp;L.</li>
+                        <li><b>Don't fold freight into the wholesale price</b> &mdash; on a qty &gt; 1 line the system would multiply it and overstate the silo's cost.</li>
                     </ul></div>
                 </div>
 

@@ -44,10 +44,19 @@ import nodemailer from "npm:nodemailer@6";
 //   set on the manager's ROs, merged + sorted with the key dates. auto_* sources
 //   are excluded (they mirror the key dates already shown).
 //
+// v2.4-P2 (S126): Fire Watch expansion (spec 5.2/5.3). Added F2 (promised
+//   within 3 days AND no tech time in 3 work days — 🟠), F3 (part past ETA AND
+//   promised near-term — 🔴, supersedes F4 for that RO), and F5 (part ordered
+//   > 3 business days ago with no ETA, not received — 🟠) to the existing F1
+//   (promised due/overdue — 🔴) and F4 (part past ETA — 🟠). Added weekend/
+//   Monday escalation: on a Monday run, promised dates and part ETAs that fell
+//   on Sat/Sun are tagged "(rolled over the weekend)". Fires now sort
+//   critical → warning → watch. (F8 aging-tech-done stays in P&L Readiness R9.)
+//
 // Prior versions (GH#23 per-silo morning report) -> git history.
 // ============================================================
 
-const FN_VERSION = "v2.3-P4c";
+const FN_VERSION = "v2.4-P2";
 
 const ALLOWED_ORIGIN = "https://patriotsrv.github.io";
 function getCorsHeaders(req: Request) {
@@ -86,6 +95,11 @@ const MANAGER_ROLES = ["sr_manager", "manager", "parts_manager"];
 const IDLE_WORKING_DAYS = 5;
 // R9 / F8 Done-Done window (D-R9, locked): 6 business days.
 const DONE_DONE_BUSINESS_DAYS = 6;
+// Fire Watch P2 (S126, spec 5.2):
+//   F2/F3 "promised approaching" window — promised within N calendar days.
+const FIRE_PROMISED_SOON_DAYS = 3;
+//   F2 "no active work" + F5 "aging order" threshold — N business days.
+const FIRE_STALE_BUSINESS_DAYS = 3;
 
 const num = (v: unknown) => Number(v) || 0;
 const usd = (v: unknown) =>
@@ -200,6 +214,21 @@ Deno.serve(async (req: Request) => {
     const mondayISO = chicagoMondayISO();
     const idleCutoff = businessDaysAgoISO(IDLE_WORKING_DAYS);
     const doneDoneCutoff = businessDaysAgoISO(DONE_DONE_BUSINESS_DAYS); // YYYY-MM-DD
+    // Fire Watch P2 (S126): "no active work" / "aging order" cutoff + the
+    // "promised approaching" window end. Computed once; shared by all managers.
+    const fireStaleCutoff = businessDaysAgoISO(FIRE_STALE_BUSINESS_DAYS); // no tech time / order aging since
+    const promisedSoonISO = addDaysISO(todayCT, FIRE_PROMISED_SOON_DAYS); // promised within today..+3 days
+    // Weekend/Monday escalation (spec 5.3): on a Monday run, a promised date or
+    // part ETA that fell on Sat/Sun is overdue today — tag it "rolled over the
+    // weekend" so it doesn't read as brand-new. Off Monday these are inert.
+    const nowCT_dow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" })).getDay();
+    const isMondayRun = nowCT_dow === 1;
+    const weekendSatISO = addDaysISO(todayCT, -2);
+    const weekendSunISO = addDaysISO(todayCT, -1);
+    const rolledOverWeekend = (iso: string | null | undefined) =>
+      isMondayRun && !!iso && (iso === weekendSatISO || iso === weekendSunISO);
+    const weekendNote = (rolled: boolean, label = "rolled over the weekend") =>
+      rolled ? ` <span style="color:#b91c1c;font-weight:700;">(${label})</span>` : "";
     // Scheduled Reminders window (S119): this week + following week (Chicago).
     const thisSunISO = addDaysISO(mondayISO, 6);   // Sunday of the current week
     const nextMonISO = addDaysISO(mondayISO, 7);   // Monday of next week
@@ -454,23 +483,60 @@ Deno.serve(async (req: Request) => {
       }
       for (const te of techsOnList) if (staffRate[te] == null) r5NoRate.add(te);
 
-      // Fire Watch (computed in P1; rendered as a compact preview line)
+      // Fire Watch (P1: F1, F4 · P2 S126: F2, F3, F5 + weekend/Monday escalation)
+      // Severity bands (spec 5.1): 🔴 critical = today · 🟠 warning = this week.
+      const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, watch: 2 };
       const fires: Item[] = [];
       for (const ro of ros) {
         if (DONE_STATUSES.has(ro.status)) continue;
-        if (ro.promised_date && validDate(ro.promised_date) && ro.promised_date <= todayCT) {
+        const name = ro.customer_name || ro.ro_id;
+
+        const hasPromised = ro.promised_date && validDate(ro.promised_date);
+        const promisedDue = hasPromised && ro.promised_date <= todayCT;          // overdue / due today
+        const promisedSoon = hasPromised && ro.promised_date > todayCT && ro.promised_date <= promisedSoonISO;
+        const promisedNear = hasPromised && ro.promised_date <= promisedSoonISO; // overdue OR within 3 days
+        const tl = tlByRo[ro.id];
+        const workedRecently = !!tl && tl.lastDate >= fireStaleCutoff;           // tech time within 3 work days
+
+        // F1 — promised date due/overdue (🔴). Monday tags weekend rollovers.
+        if (promisedDue) {
           fires.push({ sev: "critical", code: "F1",
-            html: `${roLink(ro.ro_id, ro.customer_name || ro.ro_id)} — promised ${esc(ro.promised_date)} (due/overdue), status ${esc(ro.status)}`
+            html: `${roLink(ro.ro_id, name)} — promised ${esc(ro.promised_date)} (due/overdue), status ${esc(ro.status)}${weekendNote(rolledOverWeekend(ro.promised_date))}`
               + crumb("Open the RO. If the work is finished, set status to Ready for pickup. If not, get a tech on it today and update the promised date to a real date you can hit.") });
         }
+        // F2 — promised approaching (≤3 days) AND no active work (🟠).
+        else if (promisedSoon && !workedRecently) {
+          fires.push({ sev: "warning", code: "F2",
+            html: `${roLink(ro.ro_id, name)} — promised ${esc(ro.promised_date)} (${niceDateShort(ro.promised_date)}) and no tech time in ${FIRE_STALE_BUSINESS_DAYS} work days`
+              + crumb("Get a tech on this RO now — the promised date is days away and nobody has touched it. If the date has slipped, update it to one you can actually hit.") });
+        }
+
         const openParts = (partsByRo[ro.id] || []).filter((p: any) => !p.date_received);
         const pastEta = openParts.filter((p: any) => p.eta && validDate(p.eta) && p.eta < todayCT);
-        if (pastEta.length) {
+        const etaRolled = isMondayRun && pastEta.some((p: any) => rolledOverWeekend(p.eta));
+        // F3 — part past ETA AND promised near-term (🔴) — supersedes the F4 warning.
+        if (pastEta.length && promisedNear) {
+          fires.push({ sev: "critical", code: "F3",
+            html: `${roLink(ro.ro_id, name)} — ${pastEta.length} part${pastEta.length > 1 ? "s" : ""} past ETA with promised ${esc(ro.promised_date)} near-term${weekendNote(etaRolled, "ETA rolled over the weekend")}`
+              + crumb("Customer deadline is close and parts are late. Call the supplier today, source locally or escalate, and give the customer a heads-up if the promised date is at risk.") });
+        }
+        // F4 — part past ETA, general (🟠).
+        else if (pastEta.length) {
           fires.push({ sev: "warning", code: "F4",
-            html: `${roLink(ro.ro_id, ro.customer_name || ro.ro_id)} — ${pastEta.length} part${pastEta.length > 1 ? "s" : ""} past ETA`
+            html: `${roLink(ro.ro_id, name)} — ${pastEta.length} part${pastEta.length > 1 ? "s" : ""} past ETA${weekendNote(etaRolled, "ETA rolled over the weekend")}`
               + crumb("Open the RO and go to Parts. Call the supplier, then update the ETA to the new date, or mark the part Received if it has arrived.") });
         }
+        // F5 — part ordered, no ETA, aging > 3 business days (🟠).
+        const aging = openParts.filter((p: any) =>
+          p.date_ordered && validDate(p.date_ordered) && p.date_ordered < fireStaleCutoff && !p.eta);
+        if (aging.length) {
+          fires.push({ sev: "warning", code: "F5",
+            html: `${roLink(ro.ro_id, name)} — ${aging.length} ordered part${aging.length > 1 ? "s" : ""} with no ETA, ordered over ${FIRE_STALE_BUSINESS_DAYS} business days ago`
+              + crumb("Open the RO, go to Parts, and call the supplier for a ship/ETA date — then enter the ETA so the part stops aging silently.") });
+        }
       }
+      // Order the list critical → warning → watch so the worst reads first.
+      fires.sort((a, b) => SEV_RANK[a.sev] - SEV_RANK[b.sev]);
 
       // Build readiness fail items (dollar/action framed, deep-linked)
       const mkList = (ros2: any[]) => ros2.slice(0, 12).map((r) => roLink(r.ro_id, r.customer_name || r.ro_id)).join(", ");
@@ -581,7 +647,7 @@ Deno.serve(async (req: Request) => {
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 12px;">✅ Every RO on the list got tech time within the last ${IDLE_WORKING_DAYS} work days.</div>`;
 
-      // Fire Watch preview (P2 will color-band + expand)
+      // Fire Watch (P2 S126: F1-F5, color-banded by severity, critical-first)
       const fireHtml = r.fires.length
         ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
              <div style="font-size:12px;font-weight:800;color:#991b1b;margin-bottom:5px;">🔥 Fire Watch (${r.fires.length}) &nbsp;${guideLink("rb-firewatch")}</div>
