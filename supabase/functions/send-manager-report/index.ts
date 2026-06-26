@@ -53,10 +53,19 @@ import nodemailer from "npm:nodemailer@6";
 //   on Sat/Sun are tagged "(rolled over the weekend)". Fires now sort
 //   critical → warning → watch. (F8 aging-tech-done stays in P&L Readiness R9.)
 //
+// v2.4-P2b (S126): card layout reorder + clearer section headers (Roland).
+//   Idle ROs moved to the BOTTOM of each card; Fire Watch + P&L Readiness
+//   moved up (now: reminders, scorecard, active work, fire watch, readiness,
+//   parts, idle). Fire Watch + P&L Readiness headers gained a plain-language
+//   "what this is / see the Guide" line.
+// v2.4-P2c (S126): Idle ROs header gained the same plain-language line
+//   ("in your Worklist but no time in N work days; may be stale, remove
+//   from your worklist") + Guide link.
+//
 // Prior versions (GH#23 per-silo morning report) -> git history.
 // ============================================================
 
-const FN_VERSION = "v2.4-P2";
+const FN_VERSION = "v2.4-P2c";
 
 const ALLOWED_ORIGIN = "https://patriotsrv.github.io";
 function getCorsHeaders(req: Request) {
@@ -642,7 +651,8 @@ Deno.serve(async (req: Request) => {
       // Idle group (the "easy vs hard" tell) — grouped box + plain footer
       const idleHtml = r.idleList.length
         ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
-             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:5px;">🕒 Idle ROs (${r.idleList.length}) — no tech time in ${IDLE_WORKING_DAYS} work days &nbsp;${guideLink("rb-idle")}</div>
+             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:3px;">🕒 Idle ROs (${r.idleList.length})</div>
+             <div style="font-size:11px;color:#78350f;margin-bottom:7px;line-height:1.5;">These are ROs that are in your Worklist but have had no time spent on them for the last ${IDLE_WORKING_DAYS} work days. They may be stale or out of date and should be removed from your worklist. For more info please see the ${guideLink("rb-idle")}.</div>
              ${r.idleList.slice(0, 25).map((ro) => `<div style="font-size:12px;margin-bottom:3px;line-height:1.45;">🟡 ${roLink(ro.ro_id, ro.customer_name || ro.ro_id)} <span style="color:#64748b;">— status ${esc(ro.status || "—")}</span></div>`).join("")}
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 12px;">✅ Every RO on the list got tech time within the last ${IDLE_WORKING_DAYS} work days.</div>`;
@@ -650,7 +660,8 @@ Deno.serve(async (req: Request) => {
       // Fire Watch (P2 S126: F1-F5, color-banded by severity, critical-first)
       const fireHtml = r.fires.length
         ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin:0 0 12px;">
-             <div style="font-size:12px;font-weight:800;color:#991b1b;margin-bottom:5px;">🔥 Fire Watch (${r.fires.length}) &nbsp;${guideLink("rb-firewatch")}</div>
+             <div style="font-size:12px;font-weight:800;color:#991b1b;margin-bottom:3px;">🔥 Fire Watch (${r.fires.length})</div>
+             <div style="font-size:11px;color:#7f1d1d;margin-bottom:7px;line-height:1.5;">These are the ROs that have dates or parts that need your attention. Please see the ${guideLink("rb-firewatch")} for how to deal with these ASAP.</div>
              ${r.fires.slice(0, 15).map((f) => `<div style="font-size:12px;margin-bottom:5px;line-height:1.45;">${sevDot(f.sev)} ${f.html}</div>`).join("")}
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 12px;">✅ No fires on this list today.</div>`;
@@ -658,7 +669,8 @@ Deno.serve(async (req: Request) => {
       // P&L Readiness fails
       const readyHtml = r.readyFails.length
         ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin:0 0 8px;">
-             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:5px;">📋 P&L Readiness — fix these (${r.passing}/${r.applicable} checks pass) &nbsp;${guideLink("rb-readiness")}</div>
+             <div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:3px;">📋 P&L Readiness</div>
+             <div style="font-size:11px;color:#78350f;margin-bottom:7px;line-height:1.5;">These ROs are missing repair values in their Work Orders. Please look at the ${guideLink("rb-readiness")} for steps on how to fix these.</div>
              ${r.readyFails.map((f) => `<div style="font-size:12px;margin-bottom:5px;line-height:1.45;">${sevDot(f.sev)} ${f.html}</div>`).join("")}
            </div>`
         : `<div style="font-size:12px;color:#16a34a;margin:0 0 8px;">✅ P&L Readiness 100% — every applicable data check passes.</div>`;
@@ -685,7 +697,7 @@ Deno.serve(async (req: Request) => {
 
       return `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:18px;">
         <div style="font-size:16px;font-weight:800;color:#1e3a5f;">👤 ${esc(m.name)} <span style="font-weight:600;color:#64748b;font-size:12px;">· ${esc(m.role)}${m.service_silo ? " · " + esc(siloName(m.service_silo)) : ""}</span></div>
-        ${reminderHtml}${activity}${activeHtml}${idleHtml}${fireHtml}${readyHtml}${partsExtra}
+        ${reminderHtml}${activity}${activeHtml}${fireHtml}${readyHtml}${partsExtra}${idleHtml}
       </div>`;
     }
 
