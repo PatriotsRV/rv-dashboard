@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.462
+    PRVS Dashboard v1.463
+    v1.463: [ER 3f415c88 S125] Recurring reminders. The Schedule Notification modal gains a Repeat selector (Does not repeat / Daily / Weekly same-weekday) + a "Repeat until" date. On save, the reminder is expanded client-side into one pending scheduled_notifications row PER occurrence (capped at 60) through the until date; each row is independently cancellable in the existing "Existing for this RO" list and fires via the same every-15-min process-scheduled-notifications cron. No DB migration, no edge-fn change (source stays 'manual'). Past occurrences are dropped on save. "Every Monday until X" = pick a Monday start + Weekly.
     v1.462: [ER BUGFIX v1.462 S125] Shop Operations tiles pinned + searchable (ER 80390f36, Lynn). js/render.js renderBoard now sorts Shop Operations ROs (roType==='shop') to the TOP of the board (then by priority within each group), and adds a synthetic "shop operations shop" token to the search haystack so shop ROs are reliably found by search regardless of their customerName text. Additive UI only; no DB change.
     v1.461: [S124] NEW admin-only "📥 Leads" header button -> opens leads.html (the WooSender lead review queue), gated by isAdmin() exactly like the Wishes/Recently-Deleted admin buttons. Additive UI only; no DB change. Pairs with leads.html v1.2 (promote-to-RO now fires the same New-Customer staff notification email as the check-in page).
     v1.460: [ER S120] Three ER builds (additive). (1) 9b823d25 — when a manager adds a NEW service silo to an RO (js/work-orders.js addServiceToRO), the manager(s) of that newly-added silo are emailed so they know another silo added a repair to their plate. Queued as a scheduled_notifications row (source 'service_added_notify', sent by the every-15-min process-scheduled-notifications cron; recipients resolved from _staffCache by service_silo). REQUIRES migration service_added_notify_source.sql to widen the scheduled_notifications.source CHECK. (2) 0b2e128c — a tech's clock-out work notes are now copied into the RO update timeline (checkin.html clockOut writes a notes-table ro_status line "📝 TECH NOTES (service): ..."; non-fatal, online only, only when notes were typed). (3) dac9fdda — NEW RO status "Off Lot - Returning" for units a customer temporarily took and is bringing back, distinct from "Not On Lot" (never arrived). Added to the status form select + both card status dropdowns (render.js) + status filter buttons + STATUS_PROGRESS_MAP (config.js + inline) + ES translations + statusColorMap (#0ea5e9); EXCLUDED from the "N on lot" count (physically away). Also fd6c122d — Manager Work List drag-drop reorder now works on phones/tablets via touch handlers (HTML5 DnD does not fire on touch); mouse + touch share _reorderWorkList(). checkin.html -> v1.38.
@@ -557,7 +558,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.462</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.463</span>
             </div>
         </header>
 
@@ -2627,6 +2628,26 @@
                         </div>
                     </div>
 
+                    <!-- [ER 3f415c88 v1.463 S125] Repeat the reminder daily/weekly through an "until" date.
+                         Expands into one cancellable scheduled_notifications row per occurrence on save. -->
+                    <div style="display:flex;gap:10px;margin-bottom:6px;">
+                        <div style="flex:1;">
+                            <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Repeat</label>
+                            <select id="snRepeat" onchange="document.getElementById('snUntilWrap').style.display = this.value === 'none' ? 'none' : 'block';"
+                                style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;box-sizing:border-box;">
+                                <option value="none" selected>Does not repeat</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly (same weekday)</option>
+                            </select>
+                        </div>
+                        <div id="snUntilWrap" style="flex:1;display:none;">
+                            <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Repeat until</label>
+                            <input type="date" id="snUntil" min="${defaultDate}"
+                                style="width:100%;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:8px;font-size:0.9rem;box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <div style="font-size:0.7rem;color:var(--text-secondary);margin-bottom:12px;">Creates one reminder per occurrence through the “until” date — cancel any of them individually above.</div>
+
                     <div style="margin-bottom:12px;">
                         <label style="display:block;font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">Subject</label>
                         <input type="text" id="snSubject" maxlength="120" placeholder="e.g. Window install needs Jesus on site"
@@ -2678,30 +2699,49 @@
             if (!body)              { showToast('Message is required.', 'warning'); return; }
             if (recipients.length === 0) { showToast('Pick at least one recipient.', 'warning'); return; }
 
-            // Build scheduled_at as a local-time ISO. Browser interprets the
-            // date+time as local time; toISOString converts to UTC for storage.
-            const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
-
-            // Reject past dates (race window allows 60 sec slack for clock skew)
-            if (new Date(scheduledAt).getTime() < Date.now() - 60_000) {
-                showToast('Scheduled time is in the past.', 'warning'); return;
+            // [ER 3f415c88 v1.463 S125] Repeat support. Build the list of occurrence
+            // datetimes (local time), then expand into one pending row per occurrence.
+            const repeat = document.getElementById('snRepeat')?.value || 'none';
+            const until  = document.getElementById('snUntil')?.value || '';
+            const firstDt = new Date(`${date}T${time}:00`);
+            const MAX_OCCURRENCES = 60;
+            let occurrences = [];
+            if (repeat === 'none') {
+                occurrences.push(firstDt);
+            } else {
+                if (!until) { showToast('Pick a "Repeat until" date.', 'warning'); return; }
+                const untilDt = new Date(`${until}T23:59:59`);
+                if (untilDt.getTime() < firstDt.getTime()) { showToast('"Repeat until" is before the start date.', 'warning'); return; }
+                const stepDays = repeat === 'daily' ? 1 : 7;
+                const cur = new Date(firstDt);
+                while (cur.getTime() <= untilDt.getTime() && occurrences.length < MAX_OCCURRENCES) {
+                    occurrences.push(new Date(cur));
+                    cur.setDate(cur.getDate() + stepDays);
+                }
             }
+
+            // Drop any occurrence in the past (60 sec slack for clock skew)
+            occurrences = occurrences.filter(d => d.getTime() >= Date.now() - 60_000);
+            if (occurrences.length === 0) { showToast('All occurrences are in the past.', 'warning'); return; }
 
             const btn = document.getElementById('snSubmitBtn');
             if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving...'; }
 
             try {
-                const { error } = await getSB().from('scheduled_notifications').insert({
+                const rows = occurrences.map(d => ({
                     ro_id:            ro._supabaseId,
-                    scheduled_at:     scheduledAt,
+                    scheduled_at:     d.toISOString(),
                     recipient_emails: recipients,
                     subject:          subject,
                     body:             body,
                     source:           'manual',
                     status:           'pending',
                     created_by_email: currentUser?.email || 'unknown',
-                });
+                }));
+                const { error } = await getSB().from('scheduled_notifications').insert(rows);
                 if (error) throw error;
+
+                const count = occurrences.length;
 
                 // Audit trail to RO Status notes (Item 4)
                 try {
@@ -2710,17 +2750,22 @@
                         hour: '2-digit', minute: '2-digit',
                     });
                     const userName = currentUser?.name || 'Unknown';
-                    const niceTime = new Date(scheduledAt).toLocaleString('en-US', {
+                    const niceTime = occurrences[0].toLocaleString('en-US', {
                         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                     });
+                    const when = repeat === 'none'
+                        ? `fires ${niceTime}`
+                        : `${count} reminder(s), ${repeat} from ${niceTime} through ${new Date(`${until}T00:00:00`).toLocaleDateString('en-US', { month:'short', day:'numeric' })}`;
                     await getSB().from('notes').insert({
                         ro_id: ro._supabaseId,
                         type:  'ro_status',
-                        body:  `[${ts} - ${userName}] 🔔 NOTIFICATION SCHEDULED: "${subject}" → fires ${niceTime} to ${recipients.length} recipient(s)`,
+                        body:  `[${ts} - ${userName}] 🔔 NOTIFICATION SCHEDULED: "${subject}" → ${when} to ${recipients.length} recipient(s)`,
                     });
                 } catch (auditErr) { warn('Audit note insert failed (non-fatal):', auditErr); }
 
-                showToast(`🔔 Notification scheduled for ${recipients.length} recipient(s).`, 'success');
+                showToast(count === 1
+                    ? `🔔 Notification scheduled for ${recipients.length} recipient(s).`
+                    : `🔔 ${count} reminders scheduled (${repeat}) for ${recipients.length} recipient(s).`, 'success');
                 closeScheduleNotificationModal();
             } catch (err) {
                 warn('Schedule notification failed:', err);
