@@ -26,11 +26,17 @@
         export function renderBoard() {
             const grid = document.getElementById('boardGrid');
             
-            // Sort by priority
+            // Sort by priority — [ER BUGFIX v1.462 S125] Shop Operations ROs (roType==='shop')
+            // pinned to the top of the board (ER 80390f36, Lynn), then by priority within each group.
             const sorted = [...currentData].map(ro => ({
                 ...ro,
                 priorityScore: calculatePriority(ro)
-            })).sort((a, b) => b.priorityScore - a.priorityScore);
+            })).sort((a, b) => {
+                const aShop = a.roType === 'shop' ? 1 : 0;
+                const bShop = b.roType === 'shop' ? 1 : 0;
+                if (aShop !== bShop) return bShop - aShop;
+                return b.priorityScore - a.priorityScore;
+            });
 
             // Apply all filters
             let filtered = sorted;
@@ -50,6 +56,9 @@
                         ro.customerPhone,
                         ro.customerEmail,
                         ro.repairType,
+                        // [ER BUGFIX v1.462 S125] make Shop Operations ROs reliably findable
+                        // by search regardless of customerName text (ER 80390f36, Lynn).
+                        ro.roType === 'shop' ? 'shop operations shop' : '',
                     ].filter(Boolean).join(' ').toLowerCase();
                     return haystack.includes(needle);
                 });
