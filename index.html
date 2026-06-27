@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.464
+    PRVS Dashboard v1.465
+    v1.465: [ER S127] Two ER builds (additive, no DB change). (1) b06a285f (Lynn) — a 🗓 hover panel beside the customer name on each card lists all key dates (drop-off / promised / pickup) in full, so the dates are viewable without crowding the tile (js/render.js renders the inline indicator; css/dashboard.css .kd-name-cal/.kd-pop scoped styles). (2) a5ff3e2d (Lynn) — NEW "Warranty + Repair" RO type for a warranty claim that ALSO has billable repair work: new type button on New + Edit RO (setROType 'warranty_repair' reuses the Warranty Details fields but does NOT force $0/No-Charge or auto-Critical — the repair is billed via normal work orders), warranty notes-prefix persists, distinct 🔄🔧 badge + compact chip + board filter button, restored on edit (ro-crud openEditRO). ro_type stores 'warranty_repair' (generic save path; no migration). Pairs with time-off.html v1.5 (ER 88395acc — exact partial-day absence window).
     v1.464: [ER e27311bf S125] WO task drag-and-drop reorder (Ryan: "edit templates, drag and drop, change order at will"). Each task row in the Build/Edit Work Order form gets a grip handle (⠿); dragging reorders the rows (desktop HTML5 drag + touch for phones/tablets, mirroring the Manager Work List pattern). DOM order is the source of truth — saveWOTemplate/submitWOForm already assign sort_order from row position — so the new order persists on Save Work Order, Save as Template, and Overwrite Selected Template. Combined with the existing Load Template -> modify -> Overwrite flow, this delivers full template editing + reordering. New js/work-orders.js _initWOTaskDrag (idempotent via data-wo-drag-wired) + _renumberWOTaskRows; wired in openBuildWOForm, applyWOTemplate, and the inline addWOTaskRow. No DB/schema change.
     v1.463: [ER 3f415c88 S125] Recurring reminders. The Schedule Notification modal gains a Repeat selector (Does not repeat / Daily / Weekly same-weekday) + a "Repeat until" date. On save, the reminder is expanded client-side into one pending scheduled_notifications row PER occurrence (capped at 60) through the until date; each row is independently cancellable in the existing "Existing for this RO" list and fires via the same every-15-min process-scheduled-notifications cron. No DB migration, no edge-fn change (source stays 'manual'). Past occurrences are dropped on save. "Every Monday until X" = pick a Monday start + Weekly.
     v1.462: [ER BUGFIX v1.462 S125] Shop Operations tiles pinned + searchable (ER 80390f36, Lynn). js/render.js renderBoard now sorts Shop Operations ROs (roType==='shop') to the TOP of the board (then by priority within each group), and adds a synthetic "shop operations shop" token to the search haystack so shop ROs are reliably found by search regardless of their customerName text. Additive UI only; no DB change.
@@ -559,7 +560,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.464</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.465</span>
             </div>
         </header>
 
@@ -682,6 +683,7 @@
                             <button class="filter-btn" data-filter="hybrid" data-type="rotype" onclick="toggleROTypeFilter('hybrid')">🔀 Hybrid</button>
                             <button class="filter-btn" data-filter="standard" data-type="rotype" onclick="toggleROTypeFilter('standard')">🔧 Standard</button>
                             <button class="filter-btn" data-filter="warranty" data-type="rotype" onclick="toggleROTypeFilter('warranty')">🔄 Warranty</button>
+                            <button class="filter-btn" data-filter="warranty_repair" data-type="rotype" onclick="toggleROTypeFilter('warranty_repair')">🔄🔧 Warranty + Repair</button>
                             <button class="filter-btn" data-filter="shop" data-type="rotype" onclick="toggleROTypeFilter('shop')">🏪 Shop</button>
                             <button class="filter-btn" data-filter="training" data-type="rotype" onclick="toggleROTypeFilter('training')">🎓 Training</button>
                         </div>
@@ -1835,8 +1837,8 @@
             const isEdit = prefix === 'edit';
 
             // Toggle buttons — may be in either modal
-            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn', 'warrantyROBtn', 'shopROBtn',
-             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn', 'editWarrantyROBtn', 'editShopROBtn'].forEach(id => {
+            ['standardROBtn', 'insuranceROBtn', 'hybridROBtn', 'warrantyROBtn', 'warrantyRepairROBtn', 'shopROBtn',
+             'editStandardROBtn', 'editInsuranceROBtn', 'editHybridROBtn', 'editWarrantyROBtn', 'editWarrantyRepairROBtn', 'editShopROBtn'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.remove('active');
             });
@@ -1901,6 +1903,16 @@
                     urgencySelect.classList.remove('urgency-high','urgency-medium','urgency-low');
                     urgencySelect.classList.add('urgency-critical');
                 }
+            } else if (type === 'warranty_repair') {
+                // [ER a5ff3e2d v1.465 S127] Warranty work WITH additional billable repair (Lynn).
+                // Reuses the Warranty Details fields, but does NOT force $0/No-Charge or Critical —
+                // the repair portion is billed through the normal work orders.
+                const warRepId = isEdit ? 'editWarrantyRepairROBtn' : 'warrantyRepairROBtn';
+                document.getElementById(warRepId)?.classList.add('active', 'warranty');
+                if (insSec) insSec.classList.remove('visible');
+                if (cpSec)  cpSec.classList.remove('visible');
+                if (warSec) warSec.classList.add('visible');
+                if (modalTitle) modalTitle.textContent = '🔄🔧 Warranty + Repair RO';
             } else {
                 document.getElementById(stdId)?.classList.add('active');
                 if (insSec) insSec.classList.remove('visible');
@@ -1938,7 +1950,7 @@
 
         function collectInsuranceFields(context) {
             const isEdit = context === 'edit';
-            if (currentROType === 'standard' || currentROType === 'warranty') return null;
+            if (currentROType === 'standard' || currentROType === 'warranty' || currentROType === 'warranty_repair') return null;
             const cpPrefix = isEdit ? 'editCp_' : 'cp_';
             const insPrefix = isEdit ? 'editIns_' : 'ins_';
             const base = {
@@ -5833,8 +5845,8 @@
                 // GH#24: Training RO flag
                 data.isTraining = !!document.getElementById('newIsTraining')?.checked;
 
-                // Prepend warranty details to notes if warranty RO
-                if (currentROType === 'warranty') {
+                // Prepend warranty details to notes if warranty RO (incl. Warranty + Repair) [ER a5ff3e2d v1.465 S127]
+                if (currentROType === 'warranty' || currentROType === 'warranty_repair') {
                     const wOrigRO = document.getElementById('warrantyOriginalRO')?.value || '';
                     const wReason = document.getElementById('warrantyReason')?.value || '';
                     const warPrefix = '[WARRANTY: Original RO: ' + wOrigRO + ' | Reason: ' + wReason + ']\n';
@@ -5954,8 +5966,8 @@
                         }
                     }
 
-                    // Update warranty notes prefix if warranty RO
-                    if (currentROType === 'warranty') {
+                    // Update warranty notes prefix if warranty RO (incl. Warranty + Repair) [ER a5ff3e2d v1.465 S127]
+                    if (currentROType === 'warranty' || currentROType === 'warranty_repair') {
                         const wOrigRO = document.getElementById('editWarrantyOriginalRO')?.value || '';
                         const wReason = document.getElementById('editWarrantyReason')?.value || '';
                         const warPrefix = '[WARRANTY: Original RO: ' + wOrigRO + ' | Reason: ' + wReason + ']';
@@ -6200,6 +6212,7 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn insurance" id="insuranceROBtn" onclick="setROType('insurance')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="hybridROBtn" onclick="setROType('hybrid')">🔀 Insurance + Customer Pay</button>
                 <button type="button" class="ro-type-btn warranty" id="warrantyROBtn" onclick="setROType('warranty')">🔄 Warranty RO</button>
+                <button type="button" class="ro-type-btn warranty" id="warrantyRepairROBtn" onclick="setROType('warranty_repair')">🔄🔧 Warranty + Repair</button>
                 <button type="button" class="ro-type-btn shop" id="shopROBtn" onclick="setROType('shop')">🏪 Shop RO</button>
             </div>
 
@@ -6774,6 +6787,7 @@ function toggleWOTasks(tasksId, chevId) {
                 <button type="button" class="ro-type-btn insurance" id="editInsuranceROBtn" onclick="setROType('insurance','edit')">🛡️ Insurance Claim</button>
                 <button type="button" class="ro-type-btn hybrid" id="editHybridROBtn" onclick="setROType('hybrid','edit')">🔀 Insurance + Customer Pay</button>
                 <button type="button" class="ro-type-btn warranty" id="editWarrantyROBtn" onclick="setROType('warranty','edit')">🔄 Warranty RO</button>
+                <button type="button" class="ro-type-btn warranty" id="editWarrantyRepairROBtn" onclick="setROType('warranty_repair','edit')">🔄🔧 Warranty + Repair</button>
                 <button type="button" class="ro-type-btn shop" id="editShopROBtn" onclick="setROType('shop','edit')">🏪 Shop RO</button>
             </div>
 

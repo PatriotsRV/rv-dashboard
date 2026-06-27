@@ -119,6 +119,7 @@
                     if (currentROTypeFilter === 'hybrid') return roType === 'hybrid';
                     if (currentROTypeFilter === 'standard') return roType === 'standard';
                     if (currentROTypeFilter === 'warranty') return roType === 'warranty';
+                    if (currentROTypeFilter === 'warranty_repair') return roType === 'warranty_repair';
                     if (currentROTypeFilter === 'shop') return roType === 'shop';
                     return true;
                 });
@@ -192,6 +193,7 @@
                         if (ins && ins.isInsuranceClaim) chips += '<span class="compact-chip ch-insurance">Insurance</span>';
                     } catch(e) {}
                     if (ro.roType === 'warranty') chips += '<span class="compact-chip ch-warranty">Warranty</span>';
+                    if (ro.roType === 'warranty_repair') chips += '<span class="compact-chip ch-warranty">🔄🔧 War+Rep</span>';
                     if (ro.roType === 'hybrid') chips += '<span class="compact-chip ch-hybrid">🔧🛡️ Hybrid</span>';
                     if (ro.roType === 'shop') chips += '<span class="compact-chip ch-shop">🏪 Shop</span>';
                     if (ro.isTraining) chips += '<span class="compact-chip ch-training">🎓 Training</span>';
@@ -333,11 +335,21 @@
                         ` : ''}
                         
                         ${shouldShow('customerName') ? `
-                        <div class="customer-name">${escapeHtml(ro.customerName) || t('Unknown Customer')}</div>
+                        <div class="customer-name">${escapeHtml(ro.customerName) || t('Unknown Customer')}${(() => {
+                            // [ER BUGFIX v1.465 S127] Hover panel by the customer name listing all key dates in full (ER b06a285f, Lynn)
+                            const full = (d) => { if (!d) return ''; const dt = new Date(String(d).slice(0,10) + 'T00:00:00'); return isNaN(dt) ? String(d).slice(0,10) : dt.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'}); };
+                            const rows = [];
+                            if (ro.plannedDropoffDate) rows.push('<span class="kd-pop-row"><span style="color:#0a84ff;">📅 Drop-off</span><b>' + full(ro.plannedDropoffDate) + '</b></span>');
+                            if (ro.promisedDate) rows.push('<span class="kd-pop-row"><span style="color:#f59e0b;">⏰ Promised</span><b>' + full(ro.promisedDate) + '</b></span>');
+                            if (ro.pickupDate) rows.push('<span class="kd-pop-row"><span style="color:#16a34a;">🚚 Pickup</span><b>' + full(ro.pickupDate) + '</b></span>');
+                            if (!rows.length) return '';
+                            return '<span class="kd-name-cal" tabindex="0" aria-label="Key dates">🗓<span class="kd-pop"><span class="kd-pop-h">Key Dates</span>' + rows.join('') + '</span></span>';
+                        })()}</div>
                         ${ro.roId ? `<div class="card-ro-id">${escapeHtml(ro.roId)}</div>` : ''}
                         ${ro.parkingSpot ? `<div class="card-parking-badge" data-action="parking-spot" data-idx="${index}" title="Click Edit RO to change parking spot">📍 ${escapeHtml(ro.parkingSpot)}</div>` : ''}
                         ${ro.insuranceData ? (() => { try { const d = JSON.parse(ro.insuranceData); if (!d.isInsuranceClaim) return ''; const badges = '<div class="insurance-badge">🛡️ ' + t('Insurance Claim') + '</div>'; const hybrid = d.roType === 'hybrid' ? '<div class="customer-pay-badge">💵 ' + t('Customer Pay') + '</div>' : ''; return badges + hybrid; } catch(e) { return ''; } })() : ''}
                         ${ro.roType === 'warranty' ? '<div class="warranty-badge">🔄 Warranty</div><div class="warranty-badge" style="background:rgba(0,0,0,0.08);border-color:rgba(0,0,0,0.15);color:#6b7280;margin-top:2px;">$0 — No Charge</div>' : ''}
+                        ${ro.roType === 'warranty_repair' ? '<div class="warranty-badge">🔄🔧 Warranty + Repair</div>' : ''}
                         ${ro.roType === 'hybrid' ? '<div class="hybrid-badge">🔧🛡️ New + Warranty</div>' : ''}
                         ${ro.roType === 'shop' ? '<div class="shop-badge">🏪 Shop Operations</div>' : ''}
                         ${ro.isTraining ? '<div class="training-badge">🎓 Training</div>' : ''}

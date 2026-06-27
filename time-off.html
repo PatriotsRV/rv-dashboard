@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <!--
-    PRVS Time Off v1.4
+    PRVS Time Off v1.5
+    Released: 2026-06-27
+    v1.5: [ER 88395acc S127] Partial-day time off is now captured as an EXACT absence window
+        (Lynn) — clock-out time -> return time, or a Morning/Afternoon half-day preset — instead
+        of a total of hours. New time_off_requests columns absence_start_time / absence_end_time
+        (migration add_absence_window_to_time_off.sql); partial_hours is still derived from the
+        window so all stats keep working. Calendar chips + list now show the time range.
     Released: 2026-06-20
     v1.4: [ER ee50d11c S118] EDIT existing time-off entries (Lynn). The list was delete-only;
         each row now has an Edit button (admin, or the employee's own record) that opens the
@@ -346,30 +352,27 @@
                 <div class="days-num" id="daysPreviewNum">0</div>
                 <small id="daysPreviewLabel">calendar day(s)</small>
             </div>
-            <!-- Partial day hours (hidden until partial selected) -->
+            <!-- Partial day — exact absence window (hidden until partial selected) [ER 88395acc v1.5 S127] -->
             <div id="partialGroup" style="display:none;margin-bottom:16px;">
-                <div class="form-group" style="margin-bottom:0;">
-                    <label>Hours Away <span style="color:var(--accent-urgent)">*</span></label>
-                    <select class="form-control" id="modalHours">
-                        <option value="">Select hours…</option>
-                        <option value="0.5">0.5 h — 30 minutes</option>
-                        <option value="1">1.0 h — 1 hour</option>
-                        <option value="1.5">1.5 h — 1 hour 30 min</option>
-                        <option value="2">2.0 h — 2 hours</option>
-                        <option value="2.5">2.5 h — 2 hours 30 min</option>
-                        <option value="3">3.0 h — 3 hours</option>
-                        <option value="3.5">3.5 h — 3 hours 30 min</option>
-                        <option value="4">4.0 h — 4 hours (half day)</option>
-                        <option value="4.5">4.5 h — 4 hours 30 min</option>
-                        <option value="5">5.0 h — 5 hours</option>
-                        <option value="5.5">5.5 h — 5 hours 30 min</option>
-                        <option value="6">6.0 h — 6 hours</option>
-                        <option value="6.5">6.5 h — 6 hours 30 min</option>
-                        <option value="7">7.0 h — 7 hours</option>
-                        <option value="7.5">7.5 h — 7 hours 30 min</option>
-                        <option value="8">8.0 h — full 8-hour day</option>
+                <div class="form-group" style="margin-bottom:10px;">
+                    <label>Partial Day Type <span style="color:var(--accent-urgent)">*</span></label>
+                    <select class="form-control" id="modalPartialType" onchange="applyPartialPreset()">
+                        <option value="morning">Morning half-day (8:00 – 12:00)</option>
+                        <option value="afternoon">Afternoon half-day (12:00 – 4:00)</option>
+                        <option value="custom">Custom time range</option>
                     </select>
                 </div>
+                <div class="form-row">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Clock out at <span style="color:var(--accent-urgent)">*</span></label>
+                        <input type="time" class="form-control" id="modalStartTime" oninput="onPartialTimeEdited()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Back at <span style="color:var(--accent-urgent)">*</span></label>
+                        <input type="time" class="form-control" id="modalEndTime" oninput="onPartialTimeEdited()">
+                    </div>
+                </div>
+                <small id="partialHoursHint" style="display:block;margin-top:8px;color:var(--text-muted);font-size:0.85rem;"></small>
             </div>
             <div class="form-group" style="margin-top:14px;">
                 <label>Type</label>
@@ -459,6 +462,7 @@ async function loadUserRoles() {
 
 // ── AUTH ──
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('PRVS Time Off v1.5 [ER 88395acc S127 — exact partial-day absence window]');
     const { data: { session } } = await getSB().auth.getSession();
     if (session) {
         supabaseSession = session;
@@ -562,7 +566,7 @@ async function loadStaff() {
 async function loadTimeOffData() {
     let query = getSB()
         .from('time_off_requests')
-        .select('id,employee_email,employee_name,start_date,end_date,request_type,notes,total_days,partial_hours,submitted_by_email,created_at')
+        .select('id,employee_email,employee_name,start_date,end_date,request_type,notes,total_days,partial_hours,absence_start_time,absence_end_time,submitted_by_email,created_at')
         .order('start_date', { ascending: false });
 
     if (!isManagerOrAbove()) {
@@ -691,9 +695,9 @@ function renderCalendar() {
             const chip = document.createElement('div');
             chip.className = 'cal-chip ' + r.request_type;
             const firstName = (r.employee_name || r.employee_email).split(' ')[0];
-            chip.textContent = r.partial_hours ? '⏱ ' + firstName + ' ' + parseFloat(r.partial_hours) + 'h' : firstName;
+            chip.textContent = isPartialRec(r) ? '⏱ ' + firstName + ' ' + partialLabel(r) : firstName;
             const reasonNote = r.notes ? ': ' + r.notes : '';
-            const hoursNote  = r.partial_hours ? ' (' + parseFloat(r.partial_hours) + 'h partial)' : '';
+            const hoursNote  = isPartialRec(r) ? ' (' + partialLabel(r) + ' partial)' : '';
             chip.title = (r.employee_name || r.employee_email) + ' — ' + typeLabel(r.request_type) + hoursNote + reasonNote;
             cell.appendChild(chip);
         });
@@ -733,14 +737,14 @@ function renderList() {
     }
     tbody.innerHTML = filteredTimeOff.map(r => {
         const canDel = isAdmin() || r.employee_email === currentUser.email.toLowerCase();
-        const daysChip = r.partial_hours
-            ? '<span class="days-chip" style="color:var(--accent-info)">⏱ ' + parseFloat(r.partial_hours) + 'h</span>'
+        const daysChip = isPartialRec(r)
+            ? '<span class="days-chip" style="color:var(--accent-info)">⏱ ' + partialLabel(r) + '</span>'
             : '<span class="days-chip">' + fmtStat(dayValue(r)) + 'd</span>';
         return '<tr>'
             + '<td><strong>' + esc(r.employee_name || r.employee_email) + '</strong><br><span style="font-size:0.78rem;color:var(--text-muted)">' + esc(r.employee_email) + '</span></td>'
             + '<td><span class="type-badge ' + r.request_type + '">' + typeLabel(r.request_type) + '</span></td>'
             + '<td>' + fmtDisplay(r.start_date) + '</td>'
-            + '<td>' + (r.partial_hours ? '<span style="color:var(--text-muted);font-size:0.85rem">same day</span>' : fmtDisplay(r.end_date)) + '</td>'
+            + '<td>' + (isPartialRec(r) ? '<span style="color:var(--text-muted);font-size:0.85rem">same day</span>' : fmtDisplay(r.end_date)) + '</td>'
             + '<td>' + daysChip + '</td>'
             + '<td style="max-width:180px;color:var(--text-secondary);font-size:0.9rem">' + esc(r.notes || '—') + '</td>'
             + '<td style="font-size:0.82rem;color:var(--text-muted)">' + esc(r.submitted_by_email) + '</td>'
@@ -772,10 +776,60 @@ function setDayType(type) {
     document.getElementById('startDateLabel').textContent  = type === 'partial' ? 'Date' : 'Start Date';
     if (type === 'partial') {
         document.getElementById('daysPreview').style.display = 'none';
+        // [ER 88395acc v1.5 S127] Seed the absence window from the preset if not already set.
+        if (!document.getElementById('modalStartTime').value) applyPartialPreset();
+        else updatePartialHours();
     } else {
         updateDaysPreview();
     }
 }
+
+// ── PARTIAL-DAY ABSENCE WINDOW [ER 88395acc v1.5 S127] ──
+// Lynn: capture the exact clock-out -> return time (or AM/PM half-day) instead of a total of hours.
+function applyPartialPreset() {
+    const t  = document.getElementById('modalPartialType').value;
+    const st = document.getElementById('modalStartTime');
+    const en = document.getElementById('modalEndTime');
+    if (t === 'morning')        { st.value = '08:00'; en.value = '12:00'; }
+    else if (t === 'afternoon') { st.value = '12:00'; en.value = '16:00'; }
+    // 'custom' — leave whatever the user has entered
+    updatePartialHours();
+}
+// When a time is hand-edited, flip the type selector to Custom so the preset label doesn't lie.
+function onPartialTimeEdited() {
+    document.getElementById('modalPartialType').value = 'custom';
+    updatePartialHours();
+}
+function partialHoursFromTimes(s, e) {
+    if (!s || !e) return null;
+    const [sh, sm] = s.split(':').map(Number);
+    const [eh, em] = e.split(':').map(Number);
+    const mins = (eh * 60 + em) - (sh * 60 + sm);
+    return mins > 0 ? Math.round((mins / 60) * 100) / 100 : null;
+}
+function fmtTime12(t) {
+    if (!t) return '';
+    let [h, m] = String(t).slice(0,5).split(':').map(Number);
+    const ap = h >= 12 ? 'p' : 'a';
+    h = h % 12; if (h === 0) h = 12;
+    return h + (m ? ':' + String(m).padStart(2, '0') : '') + ap;
+}
+function updatePartialHours() {
+    const s = document.getElementById('modalStartTime').value;
+    const e = document.getElementById('modalEndTime').value;
+    const hint = document.getElementById('partialHoursHint');
+    const hrs = partialHoursFromTimes(s, e);
+    if (hrs)            hint.textContent = 'Away ' + fmtTime12(s) + '–' + fmtTime12(e) + ' (' + hrs + ' h)';
+    else if (s && e)    hint.textContent = '⚠ Return time must be after clock-out time';
+    else                hint.textContent = '';
+}
+// Human label for a saved record's partial window (time range if present, else legacy hours).
+function partialLabel(r) {
+    if (r.absence_start_time && r.absence_end_time) return fmtTime12(r.absence_start_time) + '–' + fmtTime12(r.absence_end_time);
+    if (r.partial_hours) return parseFloat(r.partial_hours) + 'h';
+    return '';
+}
+function isPartialRec(r) { return !!(r.partial_hours || r.absence_start_time); }
 
 function openRequestModal() {
     // [ER ee50d11c S118] Always open in ADD mode; editRequest() flips this for edits.
@@ -787,7 +841,11 @@ function openRequestModal() {
     document.getElementById('modalEndDate').value   = today;
     document.getElementById('modalNotes').value     = '';
     document.getElementById('modalType').value      = 'sick';
-    document.getElementById('modalHours').value     = '';
+    // [ER 88395acc v1.5 S127] reset the partial-day absence window
+    document.getElementById('modalPartialType').value = 'morning';
+    document.getElementById('modalStartTime').value   = '';
+    document.getElementById('modalEndTime').value     = '';
+    document.getElementById('partialHoursHint').textContent = '';
     // v1.3 — Admin-only employee picker: default to the admin themselves on every open.
     if (isAdmin()) {
         const modalSel = document.getElementById('modalEmployee');
@@ -815,9 +873,19 @@ function editRequest(id) {
     document.getElementById('modalType').value  = rec.request_type || 'sick';
     document.getElementById('modalNotes').value = rec.notes || '';
     document.getElementById('modalStartDate').value = rec.start_date || '';
-    if (rec.partial_hours) {
+    if (isPartialRec(rec)) {
+        // [ER 88395acc v1.5 S127] populate the absence window; legacy hours-only records map to an 8am-anchored range
+        document.getElementById('modalPartialType').value = 'custom';
+        if (rec.absence_start_time && rec.absence_end_time) {
+            document.getElementById('modalStartTime').value = String(rec.absence_start_time).slice(0,5);
+            document.getElementById('modalEndTime').value   = String(rec.absence_end_time).slice(0,5);
+        } else {
+            const endMin = 8 * 60 + Math.round((parseFloat(rec.partial_hours) || 0) * 60);
+            document.getElementById('modalStartTime').value = '08:00';
+            document.getElementById('modalEndTime').value   = String(Math.floor(endMin/60)).padStart(2,'0') + ':' + String(endMin%60).padStart(2,'0');
+        }
         setDayType('partial');
-        document.getElementById('modalHours').value = String(parseFloat(rec.partial_hours));
+        updatePartialHours();
     } else {
         setDayType('full');
         document.getElementById('modalEndDate').value = rec.end_date || rec.start_date || '';
@@ -858,12 +926,14 @@ async function submitRequest() {
         if (end < start){ showToast('End date must be on or after start date', 'error'); return; }
     }
 
-    // Validate hours for partial
-    let partialHours = null;
+    // [ER 88395acc v1.5 S127] Validate the exact absence window for partial days
+    let partialHours = null, absStart = null, absEnd = null;
     if (isPartial) {
-        const hoursVal = document.getElementById('modalHours').value;
-        if (!hoursVal) { showToast('Please select the number of hours', 'error'); return; }
-        partialHours = parseFloat(hoursVal);
+        absStart = document.getElementById('modalStartTime').value;
+        absEnd   = document.getElementById('modalEndTime').value;
+        if (!absStart || !absEnd) { showToast('Please enter the clock-out and return times', 'error'); return; }
+        partialHours = partialHoursFromTimes(absStart, absEnd);
+        if (!partialHours) { showToast('Return time must be after clock-out time', 'error'); return; }
     }
 
     // Reason is required for all requests
@@ -894,6 +964,8 @@ async function submitRequest() {
             request_type:   type,
             notes:          notes,
             partial_hours:  partialHours,
+            absence_start_time: absStart,
+            absence_end_time:   absEnd,
         }).eq('id', editingRequestId);
         btn.disabled = false; btn.textContent = 'Save Record';
         if (updErr) { showToast('Update failed: ' + updErr.message, 'error'); return; }
@@ -914,6 +986,8 @@ async function submitRequest() {
         notes:              notes,
         submitted_by_email: currentUser.email.toLowerCase(),
         partial_hours:      partialHours,
+        absence_start_time: absStart,
+        absence_end_time:   absEnd,
     };
     const { error } = await getSB().from('time_off_requests').insert(insertData);
     btn.disabled = false; btn.textContent = 'Save Record';

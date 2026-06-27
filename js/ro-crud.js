@@ -1004,8 +1004,9 @@
                 try { savedInsData = ro.insuranceData ? JSON.parse(ro.insuranceData) : null; } catch(e) {}
                 if (ro.roType === 'shop') {
                     setROType('shop', 'edit');
-                } else if (ro.roType === 'warranty') {
-                    setROType('warranty', 'edit');
+                } else if (ro.roType === 'warranty' || ro.roType === 'warranty_repair') {
+                    // [ER a5ff3e2d v1.465 S127] warranty_repair reuses the Warranty Details fields
+                    setROType(ro.roType, 'edit');
                     // Restore warranty fields from notes prefix
                     const notes = ro.roStatusNotes || '';
                     const warMatch = notes.match(/\[WARRANTY: Original RO: ([^\|]*)\| Reason: ([^\]]*)\]/);

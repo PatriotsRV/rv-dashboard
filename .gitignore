@@ -25,3 +25,8 @@ supabase/.temp/
 __pycache__/
 *.pyc
 .context_backups/
+
+# Disposable / derived design artifacts — never commit (S124/S127)
+index.draft.html
+PRVS_style_extract/
+PRVS_style_extract.zip

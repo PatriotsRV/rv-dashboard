@@ -3410,3 +3410,11 @@
             border-radius: 10px;
             padding: 12px;
         }
+
+/* [ER BUGFIX v1.465 S127] Key-date hover panel by the customer name (ER b06a285f, Lynn) */
+.kd-name-cal { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; border-radius: 6px; background: rgba(0,0,0,0.05); font-size: 0.8rem; line-height: 1; cursor: help; vertical-align: middle; outline: none; }
+.kd-name-cal .kd-pop { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 190px; background: #ffffff; border: 1px solid #d8dee9; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.16); padding: 8px 10px; font-size: 0.78rem; color: #1f2937; text-align: left; font-weight: 400; }
+.kd-name-cal:hover .kd-pop, .kd-name-cal:focus .kd-pop, .kd-name-cal:focus-within .kd-pop { display: block; }
+.kd-pop-h { display: block; font-weight: 800; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; margin-bottom: 5px; }
+.kd-pop-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
+.kd-pop-row b { font-weight: 700; }
