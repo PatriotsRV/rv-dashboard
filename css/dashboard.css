@@ -3418,3 +3418,8 @@
 .kd-pop-h { display: block; font-weight: 800; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; margin-bottom: 5px; }
 .kd-pop-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
 .kd-pop-row b { font-weight: 700; }
+
+/* [ER a7d1474e v1.466 S127] Always-visible urgent-update banner on RO cards (Lynn) */
+.urgent-update-banner { display: block; margin: 0 10px 12px 10px; padding: 9px 12px; border: 2px solid #dc2626; background: #dc2626; color: #ffffff; font-weight: 700; font-size: 0.9rem; line-height: 1.3; border-radius: 8px; word-break: break-word; box-shadow: 0 2px 6px rgba(220,38,38,0.35); }
+.urgent-update-banner .uub-label { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 2px; }
+.uub-compact { font-size: 0.95rem; }

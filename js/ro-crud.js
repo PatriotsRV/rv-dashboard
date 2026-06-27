@@ -309,6 +309,40 @@
             } catch (e) { warn('Key-date reminder sync failed (non-fatal):', dateType, e); }
         }
 
+        // [ER a7d1474e v1.466 S127] Notify silo manager(s) + admins when an RO's urgent-update
+        // note is set or changed. Enqueues an immediate scheduled_notifications row (sent by the
+        // every-15-min process-scheduled-notifications cron) + drops an RO timeline note. Non-fatal.
+        async function _notifyUrgentUpdate(supabaseId, roId, opts) {
+            try {
+                const recipients = _keyDateRecipients(opts.repairType);
+                const subject = `🚨 Urgent update — ${opts.customerName} (${roId})`;
+                const body = [
+                    `An urgent update was set on ${opts.customerName}'s RO (${opts.rv || 'RV'}).`,
+                    '',
+                    `"${opts.text}"`,
+                    '',
+                    `Service: ${opts.repairType || 'TBD'}`,
+                    `RO ID: ${roId}`,
+                    `Set by: ${currentUser?.name || currentUser?.email || 'staff'}`,
+                ].join('\n');
+                await getSB().from('scheduled_notifications').insert({
+                    ro_id:            supabaseId,
+                    scheduled_at:     new Date().toISOString(),
+                    recipient_emails: recipients,
+                    subject:          subject,
+                    body:             body,
+                    source:           'urgent_update_notify',
+                    status:           'pending',
+                    created_by_email: currentUser?.email || 'urgent-update',
+                });
+                const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                await getSB().from('notes').insert({
+                    ro_id: supabaseId, type: 'ro_status',
+                    body: `[${ts} - ${currentUser?.name || 'Edit RO'}] 🚨 URGENT UPDATE SET: ${opts.text} (notified ${recipients.length} recipient(s))`,
+                });
+            } catch (e) { warn('Urgent-update notify failed (non-fatal):', e); }
+        }
+
         export async function appendToSupabase(formData) {
             const today = new Date().toISOString().slice(0, 10);
             const candidates = generateROIdCandidates(formData.customerName, formData.rv || '', today);
@@ -341,6 +375,7 @@
                     key_status:     formData.keyStatus || null,      // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
                     keypad_code:    formData.keypadCode || null,     // [ER BUGFIX v1.458 S118]
                     keep_plugged_in: !!formData.keepPluggedIn,       // [ER BUGFIX v1.458 S118]
+                    urgent_update:  formData.urgentUpdate || null,   // [ER a7d1474e v1.466 S127]
                     photo_library:  { photos: [], docs: [] },
                 }).select().single();
 
@@ -386,6 +421,9 @@
             if (formData.promisedDate) await _syncOneKeyDateReminder(data.id, data.ro_id, 'promised', { ..._kdInfo, newDate: formData.promisedDate, oldDate: null });
             if (formData.pickupDate)   await _syncOneKeyDateReminder(data.id, data.ro_id, 'pickup',   { ..._kdInfo, newDate: formData.pickupDate,   oldDate: null });
 
+            // [ER a7d1474e v1.466 S127] Notify on an urgent update entered at creation time.
+            if (formData.urgentUpdate) await _notifyUrgentUpdate(data.id, data.ro_id, { ..._kdInfo, text: formData.urgentUpdate });
+
             log('✅ New RO saved to Supabase:', data.ro_id);
             return data;
         }
@@ -400,6 +438,8 @@
 
             const newPlannedDropoff = formData.plannedDropoffDate || null;
             const oldPlannedDropoff = ro.plannedDropoffDate || null;
+            const newUrgentUpdate = (formData.urgentUpdate || '').trim() || null; // [ER a7d1474e v1.466 S127]
+            const oldUrgentUpdate = (ro.urgentUpdate || '').trim() || null;
 
             const { error } = await getSB().from('repair_orders').update({
                 customer_name:  formData.customerName,
@@ -422,10 +462,22 @@
                 key_status:     formData.keyStatus || null,      // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
                 keypad_code:    formData.keypadCode || null,     // [ER BUGFIX v1.458 S118]
                 keep_plugged_in: !!formData.keepPluggedIn,       // [ER BUGFIX v1.458 S118]
+                urgent_update:  newUrgentUpdate,                 // [ER a7d1474e v1.466 S127]
                 updated_at:     new Date().toISOString(),
             }).eq('id', supabaseId);
 
             if (error) throw error;
+
+            // [ER a7d1474e v1.466 S127] Notify silo manager(s) + admins when the urgent update
+            // is set or changed to a non-empty value (not when cleared). Non-fatal.
+            if (newUrgentUpdate && newUrgentUpdate !== oldUrgentUpdate) {
+                await _notifyUrgentUpdate(supabaseId, ro.roId, {
+                    customerName: formData.customerName,
+                    rv:           formData.rv,
+                    repairType:   formData.repairType,
+                    text:         newUrgentUpdate,
+                });
+            }
 
             // GH#ER1 — cascade planned_dropoff_date change to auto-reminder row.
             // If the date changed (or was cleared/added), cancel any pending
@@ -994,6 +1046,8 @@
                 if (_ekc) _ekc.value = ro.keypadCode || '';
                 const _ekp = document.getElementById('editKeepPluggedIn');
                 if (_ekp) _ekp.checked = !!ro.keepPluggedIn;
+                const _euu = document.getElementById('editUrgentUpdate'); // [ER a7d1474e v1.466 S127]
+                if (_euu) _euu.value = ro.urgentUpdate || '';
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
                 document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';

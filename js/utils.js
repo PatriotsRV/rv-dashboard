@@ -250,6 +250,7 @@ export function rowToRO(row) {
         keyStatus:                row.key_status || null,   // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
         keypadCode:               row.keypad_code || null,  // [ER BUGFIX v1.458 S118]
         keepPluggedIn:            !!row.keep_plugged_in,    // [ER BUGFIX v1.458 S118]
+        urgentUpdate:             row.urgent_update || null, // [ER a7d1474e v1.466 S127] always-visible urgent-update banner
         _woSummary:               row._wo_summary || null,  // v1.414 Phase A1+A2
         _supabaseId:              row.id,  // keep uuid for updates
     };

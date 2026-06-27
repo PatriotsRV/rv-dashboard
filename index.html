@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.465
+    PRVS Dashboard v1.466
+    v1.466: [ER a7d1474e S127] Urgent Updates tile field (Lynn). NEW additive repair_orders.urgent_update column (migration urgent_update_field.sql). New + Edit RO forms gain a "🚨 Urgent Update" textarea; when present it renders as an always-visible bold RED banner at the top of the RO card (compact view shows a 🚨 marker by the name). Any signed-in staff can set it. Setting/changing it (not clearing) enqueues an immediate scheduled_notifications row (source urgent_update_notify; needs the source CHECK widened) to the silo manager(s) + admins, sent by the every-15-min process-scheduled-notifications cron, and drops an RO timeline note. Persisted in ro-crud create/update; populated in openEditRO; gathered + audit-logged in the edit form; mapped in normalizeRO (utils.js + inline); banner CSS in dashboard.css.
     v1.465: [ER S127] Two ER builds (additive, no DB change). (1) b06a285f (Lynn) — a 🗓 hover panel beside the customer name on each card lists all key dates (drop-off / promised / pickup) in full, so the dates are viewable without crowding the tile (js/render.js renders the inline indicator; css/dashboard.css .kd-name-cal/.kd-pop scoped styles). (2) a5ff3e2d (Lynn) — NEW "Warranty + Repair" RO type for a warranty claim that ALSO has billable repair work: new type button on New + Edit RO (setROType 'warranty_repair' reuses the Warranty Details fields but does NOT force $0/No-Charge or auto-Critical — the repair is billed via normal work orders), warranty notes-prefix persists, distinct 🔄🔧 badge + compact chip + board filter button, restored on edit (ro-crud openEditRO). ro_type stores 'warranty_repair' (generic save path; no migration). Pairs with time-off.html v1.5 (ER 88395acc — exact partial-day absence window).
     v1.464: [ER e27311bf S125] WO task drag-and-drop reorder (Ryan: "edit templates, drag and drop, change order at will"). Each task row in the Build/Edit Work Order form gets a grip handle (⠿); dragging reorders the rows (desktop HTML5 drag + touch for phones/tablets, mirroring the Manager Work List pattern). DOM order is the source of truth — saveWOTemplate/submitWOForm already assign sort_order from row position — so the new order persists on Save Work Order, Save as Template, and Overwrite Selected Template. Combined with the existing Load Template -> modify -> Overwrite flow, this delivers full template editing + reordering. New js/work-orders.js _initWOTaskDrag (idempotent via data-wo-drag-wired) + _renumberWOTaskRows; wired in openBuildWOForm, applyWOTemplate, and the inline addWOTaskRow. No DB/schema change.
     v1.463: [ER 3f415c88 S125] Recurring reminders. The Schedule Notification modal gains a Repeat selector (Does not repeat / Daily / Weekly same-weekday) + a "Repeat until" date. On save, the reminder is expanded client-side into one pending scheduled_notifications row PER occurrence (capped at 60) through the until date; each row is independently cancellable in the existing "Existing for this RO" list and fires via the same every-15-min process-scheduled-notifications cron. No DB migration, no edge-fn change (source stays 'manual'). Past occurrences are dropped on save. "Every Monday until X" = pick a Monday start + Weekly.
@@ -560,7 +561,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.465</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.466</span>
             </div>
         </header>
 
@@ -4729,6 +4730,7 @@
                 keyStatus:                row.key_status || null,   // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
                 keypadCode:               row.keypad_code || null,  // [ER BUGFIX v1.458 S118]
                 keepPluggedIn:            !!row.keep_plugged_in,    // [ER BUGFIX v1.458 S118]
+                urgentUpdate:             row.urgent_update || null, // [ER a7d1474e v1.466 S127] always-visible urgent-update banner
                 _woSummary:               row._wo_summary || null,  // v1.414 Phase A1+A2
                 _supabaseId:              row.id,  // keep uuid for updates
             };
@@ -5931,6 +5933,7 @@
                         keyStatus: document.getElementById('editKeyStatus')?.value || '', // [ER BUGFIX v1.458 S118] keys/power (ERs 34fc03c2 + b87eb2fb)
                         keypadCode: document.getElementById('editKeypadCode')?.value || '', // [ER BUGFIX v1.458 S118]
                         keepPluggedIn: !!document.getElementById('editKeepPluggedIn')?.checked, // [ER BUGFIX v1.458 S118]
+                        urgentUpdate: document.getElementById('editUrgentUpdate')?.value || '', // [ER a7d1474e v1.466 S127]
                         dateArrived: document.getElementById('editDateArrived').value,
                         parkingSpot: document.getElementById('editParkingSpot').value,
                         repairType: repairTypes.join(', '),
@@ -5956,6 +5959,7 @@
                         keyStatus: 'Keys', // [ER BUGFIX v1.458 S118]
                         keypadCode: 'Keypad Code', // [ER BUGFIX v1.458 S118]
                         keepPluggedIn: 'Keep Plugged In', // [ER BUGFIX v1.458 S118]
+                        urgentUpdate: 'Urgent Update', // [ER a7d1474e v1.466 S127]
                     };
                     const changes = [];
                     for (const [key, label] of Object.entries(fieldLabels)) {
@@ -6449,6 +6453,11 @@ function toggleWOTasks(tasksId, chevId) {
                         <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:#d1d5db;cursor:pointer;margin-top:6px;">
                             <input type="checkbox" name="keepPluggedIn" value="on" style="width:auto;"> Keep plugged in (shore power)
                         </label>
+                    </div>
+                    <!-- [ER a7d1474e v1.466 S127] Always-visible urgent-update banner (Lynn) -->
+                    <div class="form-field full-width">
+                        <label class="form-label">🚨 Urgent Update <span style="font-weight:400;color:#9ca3af;">(shows as a red banner on the card)</span></label>
+                        <textarea class="form-input" name="urgentUpdate" rows="2" placeholder="Time-sensitive note: timeframes, insurance updates, anything that must stand out. Changing this emails the silo manager(s) + admins."></textarea>
                     </div>
                     <div class="form-field full-width">
                         <label class="form-label">RO Status Notes</label>
@@ -6956,6 +6965,11 @@ function toggleWOTasks(tasksId, chevId) {
                         <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:#d1d5db;cursor:pointer;margin-top:6px;">
                             <input type="checkbox" id="editKeepPluggedIn" style="width:auto;"> Keep plugged in (shore power)
                         </label>
+                    </div>
+                    <!-- [ER a7d1474e v1.466 S127] Always-visible urgent-update banner (Lynn) -->
+                    <div class="form-field full-width">
+                        <label class="form-label">🚨 Urgent Update <span style="font-weight:400;color:#9ca3af;">(shows as a red banner on the card; changing it emails the silo manager(s) + admins)</span></label>
+                        <textarea class="form-input" id="editUrgentUpdate" rows="2" placeholder="Time-sensitive note: timeframes, insurance updates, anything that must stand out."></textarea>
                     </div>
                     <div class="form-field shop-hide">
                         <label class="form-label">Date RV Arrived on Lot</label>

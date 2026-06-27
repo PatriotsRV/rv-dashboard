@@ -211,7 +211,7 @@
                     <div class="ro-card-compact ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}" data-compact-row="1">
                         <div class="compact-col-photo">${ro.rvPhotoUrl ? '<img src="' + ro.rvPhotoUrl + '" alt="RV" onerror="this.style.opacity=\'0.3\'">' : '<span class="compact-no-photo">No Photo</span>'}</div>
                         <div class="compact-col-id">
-                            <span class="compact-customer">${escapeHtml(ro.customerName) || t('Unknown')}</span>
+                            <span class="compact-customer">${ro.urgentUpdate ? '<span class="uub-compact" title="' + escapeHtml(ro.urgentUpdate) + '">🚨</span> ' : ''}${escapeHtml(ro.customerName) || t('Unknown')}</span>
                             ${ro.roId ? '<span class="compact-ro-id">' + escapeHtml(ro.roId) + '</span>' : ''}
                             <span class="compact-rv">${escapeHtml(ro.rv) || t('RV not specified')}</span>
                         </div>
@@ -301,6 +301,7 @@
                             🔔 ${t('Schedule Important Tasks or Update Notifications')}
                         </button>
                         ${woMissingBadge(ro)}
+                        ${ro.urgentUpdate ? `<div class="urgent-update-banner" title="Urgent update — change it via Edit RO">🚨 <span class="uub-label">URGENT:</span> ${escapeHtml(ro.urgentUpdate)}</div>` : ''}
                         ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
