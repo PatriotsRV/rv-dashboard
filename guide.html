@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Employee Guide v1.2
-    Released: 2026-06-26 (Session 126)
+    PRVS Employee Guide v1.3
+    Released: 2026-06-27 (Session 127)
+
+    v1.3 (Session 127): added the "What's new — June 2026" section (anchor
+        #whats-new) summarizing the week's dashboard updates for staff:
+        urgent-update banner (#wn-urgent), key-date hover (#wn-keydates),
+        Warranty + Repair RO type (#wn-warranty-repair), exact partial-day
+        time off (#wn-timeoff), Shop Operations pin/search (#wn-shop), and
+        scheduled/recurring reminders (#wn-reminders). All prior anchor ids
+        preserved (report-email contract).
 
     A living, login-gated guide for Patriots RV Services employees.
     Consolidates the printed training cards built in Session 104 into a
@@ -246,7 +254,7 @@
             </div>
         </div>
         <div class="header-right">
-            <span class="version-pill" id="versionPill">v1.2</span>
+            <span class="version-pill" id="versionPill">v1.3</span>
             <span id="userBadge" class="badge-role badge-user"></span>
             <a href="index.html" class="back-link">&larr; Dashboard</a>
         </div>
@@ -275,6 +283,7 @@
             <a href="#part-silo" class="sub">Tag the silo</a>
             <a href="#flags">Reading the Flags</a>
             <h3>More</h3>
+            <a href="#whats-new">What's new &mdash; June 2026</a>
             <a href="#whats-next">What's coming next</a>
         </nav>
 
@@ -575,6 +584,61 @@
                         </tr>
                     </tbody>
                 </table>
+            </section>
+
+            <!-- ───────────────── WHAT'S NEW (June 2026) ───────────────── -->
+            <section id="whats-new">
+                <div class="section-head"><h2>What's new &mdash; June 2026</h2><span class="who">Everyone</span></div>
+                <p class="section-intro">A batch of dashboard updates went live the week of June 27. Here's what changed and how to use each one.</p>
+
+                <div class="step" id="wn-urgent">
+                    <div class="step-bar bar-red"><span class="num">NEW</span><span class="when">&#x1F6A8; Urgent Update banner on RO cards</span></div>
+                    <div class="step-body"><ul>
+                        <li>New RO and Edit RO now have an <b>&ldquo;Urgent Update&rdquo;</b> box. Type anything time-sensitive &mdash; a timeframe, an insurance update, &ldquo;customer calling at 3pm.&rdquo;</li>
+                        <li>When you save, that text shows as a <b>bold red URGENT banner pinned to the top of that RO's card</b>. In the compact/list view it's a &#x1F6A8; next to the customer name (hover to read it).</li>
+                        <li><b>Any staff can set it.</b> Setting or changing it <b>emails the silo manager(s) for that RO plus the admins</b> within about 15 minutes, so the right people know. Clearing it removes the banner (no email on clear).</li>
+                    </ul></div>
+                </div>
+
+                <div class="step" id="wn-keydates">
+                    <div class="step-bar bar-blue"><span class="num">NEW</span><span class="when">&#x1F5D3; Hover for all key dates</span></div>
+                    <div class="step-body"><ul>
+                        <li>Each RO card has a small <b>calendar icon next to the customer name</b>. Hover it (or tap on mobile) to see that unit's <b>drop-off, promised, and pickup</b> dates in full.</li>
+                        <li>It only appears on cards that have dates set. The colored date chips on the card are still there too &mdash; this is just a tidy way to see them all at a glance.</li>
+                    </ul></div>
+                </div>
+
+                <div class="step" id="wn-warranty-repair">
+                    <div class="step-bar bar-navy"><span class="num">NEW</span><span class="when">&#x1F504;&#x1F527; &ldquo;Warranty + Repair&rdquo; RO type</span></div>
+                    <div class="step-body"><ul>
+                        <li>New RO / Edit RO has a new type button, <b>Warranty + Repair</b>, next to Warranty, Insurance, etc. Use it when a unit is in for a <b>warranty claim AND has additional billable repair work</b>.</li>
+                        <li>It keeps the Original RO# and Warranty Reason fields, but <b>unlike plain Warranty it does NOT mark the RO $0 / No-Charge</b> &mdash; the repair side gets billed normally through the work orders.</li>
+                        <li>The card shows a &#x1F504;&#x1F527; Warranty + Repair badge, and there's a matching <b>filter button</b> on the board to pull up just those units.</li>
+                    </ul></div>
+                </div>
+
+                <div class="step" id="wn-timeoff">
+                    <div class="step-bar bar-green"><span class="num">NEW</span><span class="when">&#x23F1; Time off by exact time, not a lump of hours</span></div>
+                    <div class="step-body"><ul>
+                        <li>On the Time Off page, when you pick <b>Partial Day</b> you now set the <b>actual times</b>: a <b>Partial Day Type</b> (Morning half-day, Afternoon half-day, or Custom) plus <b>&ldquo;Clock out at&rdquo;</b> and <b>&ldquo;Back at&rdquo;</b>.</li>
+                        <li>Morning/Afternoon prefill standard times; Custom lets you enter exactly (e.g. 1:00&ndash;4:00). The calendar and list then show the real time range (like &ldquo;1p&ndash;4p&rdquo;).</li>
+                    </ul></div>
+                </div>
+
+                <div class="step" id="wn-shop">
+                    <div class="step-bar bar-purple"><span class="num">FIXED</span><span class="when">&#x1F3EA; Shop Operations tiles are easy to find</span></div>
+                    <div class="step-body"><ul>
+                        <li>Shop Operations RO tiles now <b>sort to the top of the board</b>, and searching <b>&ldquo;shop&rdquo;</b> reliably finds them (it used to require scrolling).</li>
+                    </ul></div>
+                </div>
+
+                <div class="step" id="wn-reminders">
+                    <div class="step-bar bar-blue"><span class="num">REMINDER</span><span class="when">&#x1F514; Schedule reminders ahead of time (incl. repeating)</span></div>
+                    <div class="step-body"><ul>
+                        <li>The <b>&#x1F514; button on each RO card</b> lets you schedule a future email reminder &mdash; pick a date/time, a message, and who gets it. Use it for &ldquo;call the customer Friday&rdquo; type heads-ups.</li>
+                        <li>It can <b>repeat daily or weekly until a date you choose</b>, and each occurrence can be cancelled on its own.</li>
+                    </ul></div>
+                </div>
             </section>
 
             <!-- ───────────────── WHAT'S NEXT ───────────────── -->
