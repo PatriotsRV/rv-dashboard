@@ -8,13 +8,13 @@
   :root{
     --bg:#0b1220; --panel:#111c30; --panel2:#0e1626; --line:#1e2d45;
     --text:#e6edf7; --muted:#8aa0bd; --accent:#3b82f6;
-    --done:#22c55e; --bug:#ef4444; --needed:#f59e0b; --data:#a855f7; --dup:#64748b;
+    --xl:#ef4444; --l:#f59e0b; --m:#3b82f6; --s:#22c55e;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:22px}
   h1{font-size:1.5rem;margin:0 0 2px}
   .sub{color:var(--muted);font-size:.85rem;margin-bottom:18px}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
   .stat .n{font-size:1.9rem;font-weight:800;line-height:1}
   .stat .l{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;margin-top:4px}
@@ -29,23 +29,24 @@
   .er .meta{color:var(--muted);font-size:.76rem;margin-top:3px}
   .er .verdict{font-size:.82rem;margin-top:7px;color:#cdd9ec}
   .tag{font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
-  .b-done{border-left-color:var(--done)} .t-done{background:rgba(34,197,94,.16);color:var(--done)}
-  .b-needed{border-left-color:var(--needed)} .t-needed{background:rgba(245,158,11,.16);color:var(--needed)}
-  .b-dup{border-left-color:var(--dup)} .t-dup{background:rgba(100,116,139,.2);color:#aab8cc}
-  .loe{font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:6px}
+  .b-XL{border-left-color:var(--xl)} .t-XL{background:rgba(239,68,68,.16);color:var(--xl)}
+  .b-L{border-left-color:var(--l)} .t-L{background:rgba(245,158,11,.16);color:var(--l)}
+  .b-M{border-left-color:var(--m)} .t-M{background:rgba(59,130,246,.18);color:#7fb0ff}
+  .b-S{border-left-color:var(--s)} .t-S{background:rgba(34,197,94,.16);color:var(--s)}
 </style>
 </head>
 <body>
   <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-06-26 · Session 125 · full pass vs index.html v1.461 · 20 open ERs</div>
+  <div class="sub">2026-06-28 · Session 128 · full pass vs index.html v1.466 · 11 open ERs (all Needed)</div>
 
   <div class="cards" id="stats"></div>
 
   <div class="controls">
     <span class="pill active" data-f="all">All</span>
-    <span class="pill" data-f="done">Done</span>
-    <span class="pill" data-f="needed">Needed</span>
-    <span class="pill" data-f="dup">Duplicate</span>
+    <span class="pill" data-f="XL">XL</span>
+    <span class="pill" data-f="L">L</span>
+    <span class="pill" data-f="M">M</span>
+    <span class="pill" data-f="S">S</span>
     <input id="q" placeholder="Search ERs…">
   </div>
 
@@ -53,97 +54,70 @@
 
 <script>
 const ERS = [
- {id:"34fc03c2",by:"Brandon",date:"05-29",cat:"Feature",bucket:"done",loe:"",theme:"RO display / fields",
-  desc:"Section in RO / sign-in / auth form to confirm customer left keys with the unit.",
-  verdict:"DELIVERED v1.458 (S118): key_status select + keypad_code on New/Edit RO (ro-crud.js L341) + card chip. Close as done — email fires to Brandon."},
- {id:"80390f36",by:"Lynn",date:"06-23",cat:"UI/UX",bucket:"done",loe:"",theme:"RO display / fields",
-  desc:"Pin Shop Operations tile to top of the list; search never finds it.",
-  verdict:"DONE — shipped v1.462 (render.js L29-36 shop-first sort + L59-61 synthetic 'shop operations shop' search token). Reverted to unreviewed by the S125 data incident; re-close. [Triage 2026-06-27]"},
- {id:"e06d747e",by:"solar",date:"04-10",cat:"Time Clock",bucket:"needed",loe:"S",theme:"Time clock / off",
-  desc:"Tech check-in float for ease of access.",
-  verdict:"Vague. checkin.html requires a QR roId param today. Needs scoping with submitter before build."},
- {id:"a5ff3e2d",by:"Lynn",date:"04-21",cat:"RO Mgmt",bucket:"needed",loe:"M",theme:"RO display / fields",
-  desc:"Add 'Warranty + Repair' RO type (roof warranty with additional repair).",
-  verdict:"Types today: standard/insurance/hybrid/warranty/shop (setROType ~L1828). Hybrid=New+Warranty; this is Warranty+paid-Repair. PRODUCT DECISION needed; touches badges/filters/P&L."},
- {id:"e27311bf",by:"Ryan",date:"05-04",cat:"Work Orders",bucket:"needed",loe:"M",theme:"Work Orders",
-  desc:"Edit WO templates; drag-drop, change order at will.",
-  verdict:"work-orders.js has load/saveWOTemplate (create/apply) but no edit/reorder; sort_order immutable after save."},
- {id:"1fe68261",by:"Rod",date:"04-13",cat:"Work Orders",bucket:"needed",loe:"M",theme:"Work Orders",
-  desc:"Tasks not tied to a customer unit (swap poly barrels, prep roof bays).",
-  verdict:"Overlaps Shop Operations ROs; needs a shop/non-RO task model."},
- {id:"cbc70a86",by:"Lynn",date:"05-21",cat:"UI/UX",bucket:"needed",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Returning-customer check-in auto-adds customer to each involved team lead's work list.",
-  verdict:"Extends customer-checkin + manager_work_lists."},
- {id:"3f415c88",by:"Lynn",date:"05-26",cat:"UI/UX",bucket:"needed",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Reminder button: schedule multiple days / weekly-recurring until complete.",
-  verdict:"Extends scheduled_notifications (currently one-shot) with recurrence."},
- {id:"b06a285f",by:"Lynn",date:"06-19",cat:"UI/UX",bucket:"needed",loe:"M",theme:"RO display / fields",
-  desc:"Near customer name, show important dates/tasks as a hover list.",
-  verdict:"Overlaps Key Dates chips (v1.457) + a7d1474e urgent field."},
- {id:"88395acc",by:"Lynn",date:"06-19",cat:"UI/UX",bucket:"needed",loe:"M",theme:"Time clock / off",
-  desc:"Time-off: exact absence window (clock-out→return; AM/PM half-day) not total hours.",
-  verdict:"partial_hours captures duration only (time-off.html L344). Add start/end time-of-day + half-day fields."},
- {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Feature",bucket:"needed",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Every RO update → notify manager + daily task list scraped from status notes.",
-  verdict:"Partially served by Manager Daily Report; full scraped-task-list ask is larger."},
- {id:"17492066",by:"Lynn",date:"04-09",cat:"Notif",bucket:"needed",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Future/scheduled notifications (subcontractor pickup window; reminder a day out).",
-  verdict:"In-progress. Overlaps scheduled_notifications + Key Dates reminders."},
- {id:"a7d1474e",by:"Lynn",date:"04-23",cat:"RO Mgmt",bucket:"needed",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Always-visible urgent-updates field on tile + notify on modify + font sizing.",
-  verdict:"Overlaps b06a285f (hover dates/tasks)."},
- {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"UI/UX",bucket:"needed",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Daily reminder + per-customer task tracker; tasks persist until marked complete.",
-  verdict:"Dup-theme of 5925fc01."},
- {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",bucket:"needed",loe:"XL",theme:"Parts & Inventory",
-  desc:"In-house parts inventory/stock (order 25, use 5, 20 to stock, searchable).",
-  verdict:"New subsystem."},
- {id:"ed1b873e",by:"Roland",date:"06-07",cat:"UI/UX",bucket:"needed",loe:"L",theme:"Auth & cost",
-  desc:"Google-email auth ~$25/mo each (~$500/mo); most don't use email. Explore alt auth.",
-  verdict:"Explore magic-link / shared accounts to cut Workspace seats."},
- {id:"0448de62",by:"Sofia",date:"06-11",cat:"UI/UX",bucket:"needed",loe:"L",theme:"Auth & cost",
-  desc:"Send authorization form remotely for e-signature.",
-  verdict:"Overlaps Sendblue messaging (Phase 3) + RAF."},
- {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",bucket:"needed",loe:"S-M",theme:"Parts & Inventory",
-  desc:"Rework the parts-entry screen field order.",
-  verdict:"Needs a mockup from Lynn before building."},
- {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",bucket:"needed",loe:"M",theme:"Parts & Inventory",
-  desc:"Part returned-to-supplier / warrantied-by-supplier tracking.",
-  verdict:"A 'Returned' parts status exists; needs a supplier-return/warranty workflow. Canonical for 86bbaf50."},
- {id:"86bbaf50",by:"Lynn",date:"05-13",cat:"RO Mgmt",bucket:"dup",loe:"",theme:"Parts & Inventory",
-  desc:"gordon parts missing / window ordered & returned to vogt.",
-  verdict:"Specific RO note; folds into b19975d4 (supplier-return tracking). Decline as duplicate."},
+ {id:"7f2d0d70",by:"Lynn",date:"06-26",cat:"Reporting",loe:"M",theme:"Notifications & Task-Tracking",
+  desc:"Monday report of the week's drop-offs so each team can confirm the customer is in their work list.",
+  verdict:"No dedicated drop-off-reconciliation report exists. Partially related to the send-manager-report Monday escalation, but that flags promised/part dates, not a roster of the week's arrivals. Build = new weekly edge fn (or section) listing ROs whose planned_dropoff_date fell in the prior week + their target silo/manager. Pairs with cbc70a86."},
+ {id:"cbc70a86",by:"Lynn",date:"05-21",cat:"Workflow",loe:"M",theme:"Notifications & Task-Tracking",
+  desc:"Returning-customer check-in auto-adds the customer to the work list of each involved team lead.",
+  verdict:"Confirmed NOT done: no manager_work_lists insert anywhere in customer-checkin.html. Build = on commit, map the RO's repair_type(s) -> silo(s) -> manager(s) (REPAIR_TYPE_TO_SILO + staff cache) and insert manager_work_lists rows, reusing the dashboard addToWorkList logic. Directly enables 7f2d0d70."},
+ {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
+  verdict:"No task-tracker subsystem exists today. Needs a tasks table (per RO), UI to add/complete tasks, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
+ {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Notif/Digest",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Notify the right team on every RO update; daily comprehensive list of all in-progress jobs with to-dos scraped from status notes.",
+  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager Daily Report (per-manager active work + fire watch). Still open: a notification on every RO update + auto-scraping to-dos from status notes into a list. Anchor of the Notifications/Task-Tracking initiative."},
+ {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
+  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock — listed as available, priced, and searchable.",
+  verdict:"New subsystem. Confirmed nothing in js/parts.js handles stock/inventory. Needs an inventory table, receive/consume/adjust flows, a searchable stock view, and links from the parts-request path. Largest item on the board."},
+ {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",loe:"L",theme:"Parts & Inventory",
+  desc:"Track a part that needs to be returned to the supplier or warrantied by the supplier.",
+  verdict:"No supplier-return/warranty workflow in code. = GH#24 Shop Operations Phase 2 (Parts Returns): reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
+ {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
+  desc:"Rework the field order on the parts-entry / ordering screen (move fields around).",
+  verdict:"Underspecified — a layout tweak with no target layout given. Quick to build once Lynn provides the desired field order / a mockup. BLOCKED on detail, not on effort."},
+ {id:"1fe68261",by:"Rod",date:"04-13",cat:"Shop tasks",loe:"M",theme:"Work Orders & Shop tasks",
+  desc:"Track tasks not tied to a customer unit (e.g. swapping poly barrels, prepping roof bays for multiple units).",
+  verdict:"Overlaps the existing Shop Operations RO type but those are single ROs, not a recurring shared-task model. Needs a lightweight non-customer/shop task list (could ride on Shop Operations ROs or a new shop_tasks model)."},
+ {id:"0448de62",by:"Sofia",date:"06-11",cat:"Auth form",loe:"L",theme:"Messaging & e-sign",
+  desc:"Send an authorization form remotely for e-signature.",
+  verdict:"No remote-signing flow today (RAF is signed on the in-person check-in kiosk). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with Sendblue messaging Phase 3."},
+ {id:"ed1b873e",by:"Roland",date:"06-07",cat:"Auth/Cost",loe:"XL",theme:"Auth & cost",
+  desc:"Replace Google-email auth (~$25/mo each, ~$500/mo total; most staff don't use the email) with database-specific auth.",
+  verdict:"Security-critical subsystem swap. Auth today is Google id-token + RBAC keyed on email. Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Roland wants to scope this together. Touches every page's sign-in + RBAC."},
+ {id:"e06d747e",by:"solar",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock",
+  desc:"Tech check-in 'float' for ease of access.",
+  verdict:"Underspecified. Likely a floating/sticky check-in button for quick access, but page + exact behavior unclear (checkin.html is QR/roId-driven today). Needs scoping with the submitter before build."},
 ];
 
-const BUCKETS={done:"Done",needed:"Needed",dup:"Duplicate"};
+const ORDER={XL:0,L:1,M:2,S:3};
 let activeFilter="all", query="";
 
 function renderStats(){
-  const c={done:0,needed:0,dup:0};
-  ERS.forEach(e=>c[e.bucket]++);
+  const c={XL:0,L:0,M:0,S:0};
+  ERS.forEach(e=>c[e.loe]++);
   document.getElementById('stats').innerHTML=
-    `<div class="stat"><div class="n">${ERS.length}</div><div class="l">Open ERs</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--done)">${c.done}</div><div class="l">Done — close</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--needed)">${c.needed}</div><div class="l">Needed</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--dup)">${c.dup}</div><div class="l">Duplicate</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--accent)">1</div><div class="l">Buildable now</div></div>`;
+    `<div class="stat"><div class="n">${ERS.length}</div><div class="l">Open ERs (all Needed)</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--xl)">${c.XL}</div><div class="l">XL — new subsystem</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--l)">${c.L}</div><div class="l">L — multi-session</div></div>`+
+    `<div class="stat"><div class="n" style="color:#7fb0ff">${c.M}</div><div class="l">M — ½–1 session</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--s)">${c.S}</div><div class="l">S — under 2h*</div></div>`;
 }
 function renderList(){
   const list=document.getElementById('list'); list.innerHTML="";
   const q=query.toLowerCase();
   const shown=ERS.filter(e=>{
-    if(activeFilter!=="all"&&e.bucket!==activeFilter) return false;
+    if(activeFilter!=="all"&&e.loe!==activeFilter) return false;
     if(q){const blob=(e.id+e.by+e.cat+e.desc+e.verdict+e.theme).toLowerCase(); if(!blob.includes(q)) return false;}
     return true;
   });
   const themes=[...new Set(shown.map(e=>e.theme))];
   themes.forEach(th=>{
     const h=document.createElement('div'); h.className="theme"; h.textContent=th; list.appendChild(h);
-    shown.filter(e=>e.theme===th).forEach(e=>{
-      const d=document.createElement('div'); d.className="er b-"+e.bucket;
+    shown.filter(e=>e.theme===th).sort((a,b)=>ORDER[a.loe]-ORDER[b.loe]).forEach(e=>{
+      const d=document.createElement('div'); d.className="er b-"+e.loe;
       d.innerHTML=`<div class="top"><p class="desc">${e.desc}</p>
-        <span class="tag t-${e.bucket}">${BUCKETS[e.bucket]}</span></div>
-        <div class="meta">${e.id} · ${e.by} · ${e.date} · ${e.cat}${e.loe?`<span class="loe">LOE ${e.loe}</span>`:''}</div>
+        <span class="tag t-${e.loe}">LOE ${e.loe}</span></div>
+        <div class="meta">${e.id} · ${e.by} · ${e.date} · ${e.cat}</div>
         <div class="verdict">${e.verdict}</div>`;
       list.appendChild(d);
     });

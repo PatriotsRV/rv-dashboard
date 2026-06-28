@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.13
-    Released: 2026-06-20
+    PRVS Customer Check-In v1.14
+    Released: 2026-06-28
+    v1.14: [ER cbc70a86 S128] Auto-add to team work lists. When a drop-off / scheduled-drop RO is
+          committed, the customer is automatically placed on the Manager Work List of each involved
+          silo's team lead (falling back to sr-managers for any silo with no mapped lead). Goes
+          through the add_ro_to_silo_work_lists() SECURITY DEFINER RPC because RLS only lets a user
+          write their own work list. Non-fatal; a timeline note records how many lists it hit.
     v1.13: [DUP-RO HARDENING v1.13 S118] Submit-time auto-dedupe. The v1.12 guard only ran when
           staff explicitly TAPPED the matching customer in the returning-customer search, so a
           duplicate RO was still created whenever they toggled Returning + typed the name (or
@@ -982,7 +987,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.13</div>
+<div class="version-badge">PRVS Customer Check-In v1.14</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2275,6 +2280,35 @@
                     type: 'ro_status',
                     body: `Services requested: ${siloLabels}`,
                 });
+            }
+
+            // [ER cbc70a86 S128] Auto-add this RO to the involved team leads' work lists.
+            // A real drop-off / scheduled-drop (mode 'dropoff') places the customer on each
+            // selected silo lead's Manager Work List automatically, so nobody has to add it
+            // by hand. RLS only lets a user write their OWN work list, so this goes through the
+            // add_ro_to_silo_work_lists() SECURITY DEFINER RPC, which maps each silo -> team
+            // lead(s) from the staff table and falls back to sr-managers for any silo with no
+            // mapped lead. Non-fatal; lead-only entries (no real drop-off) are skipped.
+            if (formState.mode === 'dropoff'
+                && Array.isArray(formState.selectedSilos) && formState.selectedSilos.length) {
+                try {
+                    const { data: wlAdded, error: wlErr } = await getSB().rpc('add_ro_to_silo_work_lists', {
+                        p_ro_id: insertedRO.id,
+                        p_silos: formState.selectedSilos,
+                    });
+                    if (wlErr) throw wlErr;
+                    if (wlAdded && wlAdded > 0) {
+                        const tsWl = new Date().toLocaleString('en-US', {
+                            month: '2-digit', day: '2-digit', year: '2-digit',
+                            hour: '2-digit', minute: '2-digit',
+                        });
+                        await getSB().from('notes').insert({
+                            ro_id: insertedRO.id,
+                            type:  'ro_status',
+                            body:  `[${tsWl} - Customer Check-In] 📋 Auto-added to ${wlAdded} team work list(s) for the selected service(s).`,
+                        });
+                    }
+                } catch (e) { console.warn('Work-list auto-add failed (non-fatal):', e); }
             }
 
             // Store signature in Supabase Storage
