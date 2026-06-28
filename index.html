@@ -1,7 +1,8 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.466
+    PRVS Dashboard v1.467
+    v1.467: [ER 1fe68261 S128] Shop Tasks — internal (non-customer) task tracker (Rod). NEW standalone shop_tasks table (migration shop_tasks.sql) + a "🏭 Shop Tasks" header button (managers/sr-managers/parts-managers/admins via canSeeShopTasks) opening a slide-in panel (js/shop-tasks.js). Tracks tasks not tied to a customer unit (swap poly barrels, prep roof bays) as a shared checklist; each task can optionally be assigned to a staff member and/or a service silo; add / complete / reopen / delete + a "Completed" toggle. Deliberately NOT an RO/WO/silo — zero impact on the board, Weekly P&L, parts attribution, or reports. New module wired in app.js; button shown from loadStaff (work-orders.js) alongside _initWorkListBtn.
     v1.466: [ER a7d1474e S127] Urgent Updates tile field (Lynn). NEW additive repair_orders.urgent_update column (migration urgent_update_field.sql). New + Edit RO forms gain a "🚨 Urgent Update" textarea; when present it renders as an always-visible bold RED banner at the top of the RO card (compact view shows a 🚨 marker by the name). Any signed-in staff can set it. Setting/changing it (not clearing) enqueues an immediate scheduled_notifications row (source urgent_update_notify; needs the source CHECK widened) to the silo manager(s) + admins, sent by the every-15-min process-scheduled-notifications cron, and drops an RO timeline note. Persisted in ro-crud create/update; populated in openEditRO; gathered + audit-logged in the edit form; mapped in normalizeRO (utils.js + inline); banner CSS in dashboard.css.
     v1.465: [ER S127] Two ER builds (additive, no DB change). (1) b06a285f (Lynn) — a 🗓 hover panel beside the customer name on each card lists all key dates (drop-off / promised / pickup) in full, so the dates are viewable without crowding the tile (js/render.js renders the inline indicator; css/dashboard.css .kd-name-cal/.kd-pop scoped styles). (2) a5ff3e2d (Lynn) — NEW "Warranty + Repair" RO type for a warranty claim that ALSO has billable repair work: new type button on New + Edit RO (setROType 'warranty_repair' reuses the Warranty Details fields but does NOT force $0/No-Charge or auto-Critical — the repair is billed via normal work orders), warranty notes-prefix persists, distinct 🔄🔧 badge + compact chip + board filter button, restored on edit (ro-crud openEditRO). ro_type stores 'warranty_repair' (generic save path; no migration). Pairs with time-off.html v1.5 (ER 88395acc — exact partial-day absence window).
     v1.464: [ER e27311bf S125] WO task drag-and-drop reorder (Ryan: "edit templates, drag and drop, change order at will"). Each task row in the Build/Edit Work Order form gets a grip handle (⠿); dragging reorders the rows (desktop HTML5 drag + touch for phones/tablets, mirroring the Manager Work List pattern). DOM order is the source of truth — saveWOTemplate/submitWOForm already assign sort_order from row position — so the new order persists on Save Work Order, Save as Template, and Overwrite Selected Template. Combined with the existing Load Template -> modify -> Overwrite flow, this delivers full template editing + reordering. New js/work-orders.js _initWOTaskDrag (idempotent via data-wo-drag-wired) + _renumberWOTaskRows; wired in openBuildWOForm, applyWOTemplate, and the inline addWOTaskRow. No DB/schema change.
@@ -549,6 +550,7 @@
                     </button>
                     <button class="new-ro-btn" id="newROBtn" style="width: 100%;">+ New RO</button>
                     <button id="workListBtn" onclick="toggleWorkListPanel()" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#2d5a8e);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:700;display:none;">&#128203; My Work List</button>
+                    <button id="shopTasksBtn" onclick="toggleShopTasksPanel()" title="Internal shop tasks not tied to a customer unit" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#3f2d1e,#6b4423);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:700;display:none;">&#127978; Shop Tasks</button>
                 </div>
             </div>
             <div class="header-meta">
@@ -561,7 +563,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.466</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.467</span>
             </div>
         </header>
 
@@ -7204,6 +7206,18 @@ function toggleWOTasks(tasksId, chevId) {
     <div id="workListSiloTabs" style="display:none;padding:8px 14px;background:#0f172a;border-bottom:1px solid #1e3a5f;flex-shrink:0;overflow-x:auto;overflow-y:hidden;gap:6px;flex-wrap:wrap;align-items:center;"></div>
     <div id="workListBody" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
     <div style="padding:10px 14px;background:#0f172a;border-top:1px solid #1e3a5f;color:#6b7280;font-size:0.72rem;text-align:center;flex-shrink:0;">Drag rows to reprioritize · Click an RO to scroll to it</div>
+</div>
+<!-- [ER 1fe68261 S128] Shop Tasks panel — internal non-customer task tracker -->
+<div id="shopTasksBackdrop" onclick="toggleShopTasksPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:11999;"></div>
+<div id="shopTasksPanel" style="position:fixed;top:0;right:-420px;width:400px;max-width:92vw;height:100vh;background:#111827;border-left:2px solid #6b4423;z-index:12000;display:flex;flex-direction:column;transition:right 0.3s ease;box-shadow:-6px 0 24px rgba(0,0,0,0.6);">
+    <div style="background:linear-gradient(135deg,#3f2d1e,#6b4423);padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0;">
+        <div>
+            <div style="color:white;font-size:1.1rem;font-weight:700;">&#127978; Shop Tasks</div>
+            <div style="color:#e7c9a3;font-size:0.75rem;margin-top:3px;">Internal tasks not tied to a customer unit</div>
+        </div>
+        <button onclick="toggleShopTasksPanel()" style="background:none;border:none;color:rgba(255,255,255,0.8);font-size:1.5rem;cursor:pointer;line-height:1;margin-top:-2px;">×</button>
+    </div>
+    <div id="shopTasksBody" style="flex:1;overflow-y:auto;padding:14px;"></div>
 </div>
 <!-- ═══════════════════════════════════════════════════════════════════
      GH#19: Enhancement Request (ER) — Floating Genie Lamp + Modal

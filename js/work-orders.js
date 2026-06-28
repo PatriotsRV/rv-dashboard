@@ -41,6 +41,7 @@
                 _staffCache = data || [];
                 log('👥 Staff loaded:', _staffCache.length, 'members');
                 _initWorkListBtn();
+                if (typeof _initShopTasksBtn === 'function') _initShopTasksBtn(); // [ER 1fe68261 S128] Shop Tasks button
             } catch (err) {
                 warn('⚠️ Could not load staff table:', err.message);
             }
