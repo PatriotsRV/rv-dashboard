@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.14
-    Released: 2026-06-28
+    PRVS Customer Check-In v1.15
+    Released: 2026-07-01
+    v1.15: [ER cb7742a8 S129] Server-side team-calendar sync. After a check-in RO commits, POST the RO id to the new sync-ro-calendar edge fn (server-side OAuth refresh token, no Google token needed on the kiosk) so the drop-off / promised / pickup dates create all-day events on the correct team silo calendar(s). Fixes Lynn's report that a scheduled service date entered at check-in never reached the repair calendar. Non-fatal.
     v1.14: [ER cbc70a86 S128] Auto-add to team work lists. When a drop-off / scheduled-drop RO is
           committed, the customer is automatically placed on the Manager Work List of each involved
           silo's team lead (falling back to sr-managers for any silo with no mapped lead). Goes
@@ -987,7 +988,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.14</div>
+<div class="version-badge">PRVS Customer Check-In v1.15</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2165,6 +2166,24 @@
             }
 
             if (!insertedRO) throw new Error('Could not generate a unique RO ID.');
+
+            // [ER cb7742a8 S129] Server-side team-calendar sync. The kiosk has no
+            // Google token, so drop-off/promised/pickup dates entered at check-in never
+            // reached the team calendar. This service-account edge fn creates the all-day
+            // events on the correct silo calendar(s) regardless of who is signed in.
+            // Non-fatal: check-in never fails because of the calendar.
+            try {
+                const authTokenCal = supabaseSession?.access_token || SUPABASE_ANON_KEY;
+                await fetch(`${SUPABASE_URL}/functions/v1/sync-ro-calendar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authTokenCal}`,
+                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                    },
+                    body: JSON.stringify({ ro_id: insertedRO.id }),
+                });
+            } catch (e) { console.warn('sync-ro-calendar (check-in) failed (non-fatal):', e); }
 
             // [ER BUGFIX v1.12 S114] Record the scheduled->arrived conversion on the RO timeline.
             if (reusedScheduledRO) {

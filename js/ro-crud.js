@@ -243,6 +243,28 @@
             return all.length ? all : ['repair@patriotsrvservices.com'];
         }
 
+        // [ER cb7742a8 S129] Server-side calendar sync. Replaces the client-side
+        // window.syncKeyDateCalendars (which only ran when the saver had a Google
+        // Calendar token). This POSTs the RO id to the sync-ro-calendar edge fn,
+        // which authenticates with a service account and creates/updates/deletes the
+        // drop-off + promised + pickup all-day events on the team silo calendars,
+        // idempotently via repair_orders.cal_event_ids. Non-fatal: a save never fails
+        // because of the calendar. Works regardless of who is signed in.
+        async function _syncROCalendarServer(supabaseId) {
+            if (!supabaseId) return;
+            try {
+                await fetch(`${SUPABASE_URL}/functions/v1/sync-ro-calendar`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                    },
+                    body: JSON.stringify({ ro_id: supabaseId }),
+                });
+            } catch (e) { warn('sync-ro-calendar call failed (non-fatal):', e); }
+        }
+
         // [Key Dates P3 S119] Cancel any pending reminder rows for ONE key-date type and
         // recreate day-before + morning-of rows (8 AM CDT) if a date is set. Mirrors the
         // GH#ER1 auto_dropoff_reminder cascade. Sources: auto_promised_reminder /
@@ -401,21 +423,10 @@
                 });
             }
 
-            // [Key Dates P2 S119] Create silo calendar events for promised/pickup
-            // (auto-on-save only when a Google Calendar token is present; non-fatal).
-            try {
-                await window.syncKeyDateCalendars?.(data.id, {
-                    repairType:    formData.repairType || '',
-                    customerName:  formData.customerName,
-                    rv:            formData.rv || '',
-                    customerPhone: formData.customerPhone || '',
-                    roId:          data.ro_id,
-                    dropoffDate:   formData.plannedDropoffDate || '',
-                    promisedDate:  formData.promisedDate || '',
-                    pickupDate:    formData.pickupDate || '',
-                    existingIds:   null,
-                });
-            } catch (e) { warn('Key-date calendar sync (new RO) failed:', e); }
+            // [ER cb7742a8 S129] Server-side calendar sync (drop-off + promised + pickup),
+            // via the service-account edge fn — no Google token needed on the client.
+            // Replaces the old client-side window.syncKeyDateCalendars path.
+            await _syncROCalendarServer(data.id);
 
             // [Key Dates P3 S119] Enqueue promised/pickup email reminders for the new RO.
             const _kdInfo = { customerName: formData.customerName, rv: formData.rv, repairType: formData.repairType };
@@ -569,21 +580,10 @@
             }));
             await writeAuditLog(ro.roId, auditChanges);
 
-            // [Key Dates P2 S119] Sync silo calendar events for promised/pickup on edit
-            // (auto-on-save only when a Google Calendar token is present; non-fatal).
-            try {
-                await window.syncKeyDateCalendars?.(supabaseId, {
-                    repairType:    formData.repairType || ro.repairType || '',
-                    customerName:  formData.customerName || ro.customerName,
-                    rv:            formData.rv || ro.rv || '',
-                    customerPhone: formData.customerPhone || ro.customerPhone || '',
-                    roId:          ro.roId,
-                    dropoffDate:   formData.plannedDropoffDate || '',
-                    promisedDate:  formData.promisedDate || '',
-                    pickupDate:    formData.pickupDate || '',
-                    existingIds:   ro.calEventIds || null,
-                });
-            } catch (e) { warn('Key-date calendar sync (edit RO) failed:', e); }
+            // [ER cb7742a8 S129] Server-side calendar sync on edit (drop-off + promised +
+            // pickup) via the service-account edge fn — no Google token needed on the
+            // client. Replaces the old client-side window.syncKeyDateCalendars path.
+            await _syncROCalendarServer(supabaseId);
 
             // [Key Dates P3 S119] Cascade promised/pickup reminders on date change/clear
             // (mirrors the GH#ER1 drop-off cascade above). Normalize falsy -> '' so an
