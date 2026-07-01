@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-06-28 · Session 128 · full pass vs index.html v1.466 · 11 open ERs (all Needed)</div>
+  <div class="sub">2026-07-01 - Headless nightly runner - incremental pass vs index.html v1.467 - 10 open Needed ERs + 1 bug (3f7fb4fc, see report)</div>
 
   <div class="cards" id="stats"></div>
 
@@ -54,36 +54,33 @@
 
 <script>
 const ERS = [
- {id:"7f2d0d70",by:"Lynn",date:"06-26",cat:"Reporting",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Monday report of the week's drop-offs so each team can confirm the customer is in their work list.",
-  verdict:"No dedicated drop-off-reconciliation report exists. Partially related to the send-manager-report Monday escalation, but that flags promised/part dates, not a roster of the week's arrivals. Build = new weekly edge fn (or section) listing ROs whose planned_dropoff_date fell in the prior week + their target silo/manager. Pairs with cbc70a86."},
- {id:"cbc70a86",by:"Lynn",date:"05-21",cat:"Workflow",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Returning-customer check-in auto-adds the customer to the work list of each involved team lead.",
-  verdict:"Confirmed NOT done: no manager_work_lists insert anywhere in customer-checkin.html. Build = on commit, map the RO's repair_type(s) -> silo(s) -> manager(s) (REPAIR_TYPE_TO_SILO + staff cache) and insert manager_work_lists rows, reusing the dashboard addToWorkList logic. Directly enables 7f2d0d70."},
- {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
-  verdict:"No task-tracker subsystem exists today. Needs a tasks table (per RO), UI to add/complete tasks, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
  {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Notif/Digest",loe:"L",theme:"Notifications & Task-Tracking",
   desc:"Notify the right team on every RO update; daily comprehensive list of all in-progress jobs with to-dos scraped from status notes.",
-  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager Daily Report (per-manager active work + fire watch). Still open: a notification on every RO update + auto-scraping to-dos from status notes into a list. Anchor of the Notifications/Task-Tracking initiative."},
+  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager/Admin daily reports. Still open: a notification on every RO update + auto-scraping to-dos from status notes into a list. Verified no ro_tasks/customer_tasks in js/. Anchor of the Notifications/Task-Tracking initiative."},
+ {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
+  verdict:"No per-RO task-tracker subsystem exists (shop_tasks is shop-level, not per-RO). Needs a tasks table (per RO), UI to add/complete tasks, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
  {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
-  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock — listed as available, priced, and searchable.",
-  verdict:"New subsystem. Confirmed nothing in js/parts.js handles stock/inventory. Needs an inventory table, receive/consume/adjust flows, a searchable stock view, and links from the parts-request path. Largest item on the board."},
+  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock - listed as available, priced, and searchable.",
+  verdict:"New subsystem. Verified nothing in js/parts.js handles stock/inventory. Needs an inventory table, receive/consume/adjust flows, a searchable stock view, and links from the parts-request path. Largest item on the board."},
  {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",loe:"L",theme:"Parts & Inventory",
   desc:"Track a part that needs to be returned to the supplier or warrantied by the supplier.",
-  verdict:"No supplier-return/warranty workflow in code. = GH#24 Shop Operations Phase 2 (Parts Returns): reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
+  verdict:"No supplier-return/warranty workflow in code (verified). = GH#24 Shop Operations Phase 2 (Parts Returns): reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
  {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
   desc:"Rework the field order on the parts-entry / ordering screen (move fields around).",
-  verdict:"Underspecified — a layout tweak with no target layout given. Quick to build once Lynn provides the desired field order / a mockup. BLOCKED on detail, not on effort."},
- {id:"1fe68261",by:"Rod",date:"04-13",cat:"Shop tasks",loe:"M",theme:"Work Orders & Shop tasks",
-  desc:"Track tasks not tied to a customer unit (e.g. swapping poly barrels, prepping roof bays for multiple units).",
-  verdict:"Overlaps the existing Shop Operations RO type but those are single ROs, not a recurring shared-task model. Needs a lightweight non-customer/shop task list (could ride on Shop Operations ROs or a new shop_tasks model)."},
+  verdict:"Underspecified - a layout tweak with no target layout given. Quick to build once Lynn provides the desired field order / a mockup. BLOCKED on detail, not on effort."},
+ {id:"cb7742a8",by:"Lynn",date:"06-29",cat:"Scheduling",loe:"M",theme:"Scheduling & Calendar",
+  desc:"New-customer check-in should post the scheduled service date to the correct team (repair/solar) calendar; today it is not added.",
+  verdict:"Not built. Verified customer-checkin.html has no calendar hook (only drop-off scheduling UI, no gapi/calendarId). Calendar writes live only in js/scheduling.js (manual admin Google Calendar flow). Needs a server-side/service-account calendar write triggered from check-in."},
+ {id:"5fbfa299",by:"Brandon",date:"06-30",cat:"RO/Status",loe:"M",theme:"RO Fields/Status",
+  desc:"Archive customers/units that were only quoted and never moved forward, so they don't clutter the board.",
+  verdict:"New (06-30). Verified the only archive path (ro-crud.js L644 archiveROInSupabase) writes to the cashiered table, which mislabels un-worked quotes as completed P&L jobs. Needs a separate lost/quoted-only disposition + a board filter."},
  {id:"0448de62",by:"Sofia",date:"06-11",cat:"Auth form",loe:"L",theme:"Messaging & e-sign",
   desc:"Send an authorization form remotely for e-signature.",
   verdict:"No remote-signing flow today (RAF is signed on the in-person check-in kiosk). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with Sendblue messaging Phase 3."},
  {id:"ed1b873e",by:"Roland",date:"06-07",cat:"Auth/Cost",loe:"XL",theme:"Auth & cost",
   desc:"Replace Google-email auth (~$25/mo each, ~$500/mo total; most staff don't use the email) with database-specific auth.",
-  verdict:"Security-critical subsystem swap. Auth today is Google id-token + RBAC keyed on email. Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Roland wants to scope this together. Touches every page's sign-in + RBAC."},
+  verdict:"Security-critical subsystem swap. Auth today is Google id-token + RBAC keyed on email (verified js/auth.js, no password/magic-link). Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Touches every page's sign-in + RBAC."},
  {id:"e06d747e",by:"solar",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock",
   desc:"Tech check-in 'float' for ease of access.",
   verdict:"Underspecified. Likely a floating/sticky check-in button for quick access, but page + exact behavior unclear (checkin.html is QR/roId-driven today). Needs scoping with the submitter before build."},
