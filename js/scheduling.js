@@ -392,6 +392,12 @@ export async function syncKeyDateCalendars(supabaseId, opts) {
         const roCode = opts.roId || '';
 
         const dateDefs = [
+            // [ER cb7742a8 v1.468 S129] Lynn: the scheduled service / drop-off date set at
+            // RO creation was never auto-added to the team silo calendar (only the manual
+            // 📅 Schedule modal created a drop-off event). Sync it here too, idempotently,
+            // exactly like promised/pickup. Stored under cal_event_ids.dropoff (a separate
+            // key from the Schedule modal's timed appointment events, so no collision).
+            { type: 'dropoff',  label: 'Drop-Off', colorId: '2',  date: (opts.dropoffDate  || '').slice(0, 10) },
             { type: 'promised', label: 'Promised', colorId: '5',  date: (opts.promisedDate || '').slice(0, 10) },
             { type: 'pickup',   label: 'Pickup',   colorId: '10', date: (opts.pickupDate   || '').slice(0, 10) },
         ];

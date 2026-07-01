@@ -3179,6 +3179,12 @@
                 color: var(--text-primary);
                 font-weight: 500;
             }
+            /* [ER 3f7fb4fc S129] Static status for Shop ROs (no dropdown) */
+            .cep-static-status {
+                font-size: 0.82rem;
+                color: var(--text-primary);
+                font-weight: 600;
+            }
             /* Status dropdown in panel */
             .cep-status-dropdown {
                 width: 100%;

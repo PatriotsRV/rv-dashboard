@@ -245,6 +245,7 @@
                             <div class="cep-fields">
                                 <div class="cep-row">
                                     <span class="cep-label">Status</span>
+                                    ${ro.roType === 'shop' ? `<span class="cep-static-status">${escapeHtml(ro.status)}</span>` : `
                                     <select class="cep-status-dropdown status-dropdown status-${statusClass}" data-ro-index="${index}">
                                         <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>Not On Lot</option>
                                         <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
@@ -259,6 +260,7 @@
                                         <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>Ready for Pickup</option>
                                         <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
                                     </select>
+                                    `}
                                 </div>
                                 <div class="cep-row">
                                     <span class="cep-label">Urgency</span>
@@ -422,7 +424,7 @@
                         </button>
                         ` : ''}
                         
-                        ${shouldShow('statusDropdown') ? `
+                        ${shouldShow('statusDropdown') && ro.roType !== 'shop' ? `
                         <div class="status-selector-container">
                             <select class="status-dropdown status-${statusClass}"
                                     data-original-status="${escapeHtml(ro.status)}">
@@ -624,8 +626,12 @@
         }
 
         export function updateStats(data, filteredData) {
+            // [ER BUGFIX v1.468 S129] Brandon (ER 3f7fb4fc): Shop Operations ROs
+            // (roType==='shop') are not physical units on the lot, so they must not
+            // be counted toward "RVs in Queue" or the "on lot" sub-count.
+            const nonShop = (arr) => (arr || []).filter(ro => ro.roType !== 'shop');
             const total = data.length;
-            const filtered = filteredData ? filteredData.length : total;
+            const filtered = filteredData ? nonShop(filteredData).length : nonShop(data).length;
             const inProgress = data.filter(ro => ro.status === 'In progress').length;
             const awaitingParts = data.filter(ro => {
                 if (ro.status === 'Awaiting parts') return true;
@@ -683,7 +689,10 @@
             // AND not "Scheduled".
             // [ER dac9fdda S120] Brandon: "Off Lot - Returning" units are physically away
             // (customer temporarily took the unit, coming back), so they are not on the lot.
+            // [ER BUGFIX v1.468 S129] Brandon (ER 3f7fb4fc): exclude Shop Operations
+            // ROs from the on-lot count too (they are not units physically on the lot).
             const onLotCount = (filteredData || data).filter(ro =>
+                ro.roType !== 'shop' &&
                 ro.status !== 'Not On Lot' && ro.status !== 'Scheduled' && ro.status !== 'Off Lot - Returning'
             ).length;
             const statTotalOnLotEl = document.getElementById('statTotalOnLot');
