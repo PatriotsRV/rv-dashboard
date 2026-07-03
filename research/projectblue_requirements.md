@@ -16,16 +16,22 @@
 > API key created ("PRVS RO DB Project Blue", proj_f1317a3...5850) and stored in password manager.
 > Send + list endpoints verified working with the key.
 >
-> **🔴 OPEN ISSUE 2026-07-03 — outbound iMessages never reach the handset.** Every outbound
-> from the line reports `status:"delivered"` (API + portal ✓✓) but NONE arrived on two separate
-> iPhones (Roland +1214-288-2887, Lynn +1817-320-8773 on a second fresh account) — confirmed by
-> content search on-device (word `hear` from "Can you hear me?" = No Results). Inbound
-> (phone → PB) works perfectly both accounts. Conclusion: PB "delivered" is NOT a real handset
-> receipt, and outbound from the new line is being silently dropped — consistent with Apple
-> filtering a freshly-registered iMessage relay line (their own marketing offers "device line
-> recovery support" for flagged/restricted lines). Support ticket sent to PB rep. This also
-> hardens Q4 (delivery status) below: we cannot trust their delivered status for automation
-> until they explain what it represents.
+> **✅ RESOLVED same day (2026-07-03 PM) — outbound delivery issue.** Morning: every outbound
+> reported `status:"delivered"` but nothing reached two separate iPhones for ~4+ hours
+> (content-search-proven absent); inbound worked throughout. Ticket filed. Afternoon: delivery
+> working, and the morning's stuck messages BACKFILLED into the threads — so it was severely
+> DELAYED delivery on the fresh line, not a permanent drop. PB has not yet explained root cause.
+> **Standing caution for automation:** (1) PB `delivered` status fires while messages can still
+> be hours from the handset — it is NOT a real-time handset receipt (Q4 below still matters);
+> (2) fresh lines may need a settling/warm-up period — factor into the office-number port plan.
+>
+> **✅ VALIDATION MATRIX (2026-07-03 PM, all via API with the PRVS key):**
+> - API send → iPhone iMessage: PASS (blue bubble, correct line, `messageType:"iMessage"` at send time)
+> - API send → Android: SMS auto-detected at send time (`messageType:"SMS"`); receipt pending Rusty's confirmation
+> - MMS → iPhone (`mediaAttachmentUrl`, logo.png from GitHub Pages): PASS — rendered as a real image + caption (thread had prior replies per the reply-first rule)
+> - Inbound phone → PB: PASS both accounts (portal + `/get-messages-api`)
+> - `/get-messages-api` + `message_handle` lookups: PASS
+> - Still untested: webhook capture (needs an endpoint — build phase), delivery-status semantics (Q4), read receipts.
 
 ## A. What Roland grabs from the Project Blue portal (day 1)
 
