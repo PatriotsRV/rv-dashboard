@@ -1,7 +1,15 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.470
+    PRVS Dashboard v1.471
+    v1.471: [GH#39 S132] Card-level customer messaging. The 💬 Message Customer surface moves
+    OUT of the Edit RO form onto the RO card itself: full card gains a "💬 Message Customer"
+    secondary-action button (the old Kenect Messages slot), the compact row gains a 💬 icon
+    button, the compact expand panel gains a "💬 Message" button, and the legacy Customer Comm
+    note header gains a small "💬 Thread" link — all delegate to openMessagesModal(
+    currentFilteredData[idx]) via a new 'message-customer' case in the board click handler.
+    The Customer Comm notes field itself is unchanged (manual call/visit log) and the Edit RO
+    button remains. render.js + css/dashboard.css (.comm-thread-link) + this file; no DB change.
     v1.470: [GH#39 S131] Customer messaging via Project Blue. NEW js/messaging.js module
     (openMessagesModal / sendCustomerMessage / refreshMessagesThread / loadMessages via the
     window bridge) + a "Message Customer" button on the RO edit modal (below Customer Phone)
@@ -576,7 +584,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.470</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.471</span>
             </div>
         </header>
 
@@ -3498,6 +3506,8 @@
                     case 'work-orders':       openWorkOrderModal(idx);            break;
                     case 'add-to-list':       addToWorkList(btn.dataset.sid);     break;
                     // [KENECT TEARDOWN v1.445 S92] case 'messages' removed (openKenectModal deleted)
+                    // [GH#39 v1.471 S132] card-level Project Blue messaging (js/messaging.js window bridge)
+                    case 'message-customer':  openMessagesModal(currentFilteredData[idx]); break;
                     case 'set-parts-status':  openPartsStatusModal(idx);          break;
                     case 'schedule':          openScheduleModal(idx);             break;
                     case 'schedule-notification': openScheduleNotificationModal(idx); break;
@@ -4168,6 +4178,8 @@
             'Repair Description': 'Descripción de Reparación',
             'RO Status': 'Estado de la OR',
             'Customer Comm': 'Comunicación',
+            'Message Customer': 'Mensaje al Cliente',
+            'Thread': 'Hilo',
             'Progress': 'Progreso',
             // Time logs
             'View Time Logs': 'Ver Horas',

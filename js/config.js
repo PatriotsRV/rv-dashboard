@@ -271,6 +271,8 @@ export const TRANSLATIONS_ES = {
     'Repair Description': 'Descripción de Reparación',
     'RO Status': 'Estado de la OR',
     'Customer Comm': 'Comunicación',
+    'Message Customer': 'Mensaje al Cliente',
+    'Thread': 'Hilo',
     'Progress': 'Progreso',
     // Time logs
     'View Time Logs': 'Ver Horas',

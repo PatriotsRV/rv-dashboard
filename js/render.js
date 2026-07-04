@@ -230,6 +230,7 @@
                             <button class="compact-action-btn" data-action="manage-parts" data-idx="${index}" title="Manage Parts">🔩</button>
                             <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
                             <button class="compact-action-btn" data-action="schedule-notification" data-idx="${index}" title="Schedule Notification">🔔</button>
+                            ${ro.roType !== 'shop' ? '<button class="compact-action-btn" data-action="message-customer" data-idx="' + index + '" title="Message Customer">💬</button>' : ''}
                             ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
                         </div>
                         <div class="compact-mobile-summary">
@@ -286,6 +287,7 @@
                                 <button class="cep-action-btn" data-action="edit-ro" data-idx="${index}">✏️ Edit RO</button>
                                 <button class="cep-action-btn" data-action="manage-parts" data-idx="${index}">🔩 Parts</button>
                                 <button class="cep-action-btn" data-action="work-orders" data-idx="${index}">🔧 WO</button>
+                                ${ro.roType !== 'shop' ? '<button class="cep-action-btn" data-action="message-customer" data-idx="' + index + '">💬 Message</button>' : ''}
                                 ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="cep-action-btn" data-action="schedule" data-idx="' + index + '">📅 Schedule</button>' : ''}
                             </div>
                         </div>
@@ -540,6 +542,7 @@
                                 <div class="note-header">
                                     <span class="note-icon">💬</span>
                                     <span class="note-title">${t('Customer Comm')}</span>
+                                    ${ro.roType !== 'shop' ? `<button class="comm-thread-link" data-action="message-customer" data-idx="${index}" title="Open the live text/iMessage thread with this customer">💬 ${t('Thread')}</button>` : ''}
                                 </div>
                                 <div class="note-content">${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.split('\n').map(escapeHtml).reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                             </div>
@@ -590,7 +593,12 @@
                         </div>
                         <div class="card-actions-secondary">
                         ${canSeeWorkList() ? `<button class="card-secondary-btn" data-action="add-to-list" data-idx="${index}" data-sid="${ro._supabaseId}" title="Add this RO to your personal work list">&#128203; Add to My List</button>` : ''}
-                        ${''/* [KENECT TEARDOWN v1.445 S92] Messages button removed — kenect-proxy edge fn was deleted 2026-04-11; clicking threw CORS/ERR_FAILED */}
+                        ${''/* [KENECT TEARDOWN v1.445 S92] Kenect Messages button removed; [GH#39 v1.471 S132] replaced by Project Blue card-level messaging below (hidden on Shop Ops ROs — no customer) */}
+                        ${ro.roType !== 'shop' ? `
+                        <button class="card-secondary-btn message-customer-btn" data-action="message-customer" data-idx="${index}" title="Text / iMessage this customer (Project Blue)">
+                            💬 ${t('Message Customer')}
+                        </button>
+                        ` : ''}
                         ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && (ro.partsStatus || ro.hasOpenPartsRequest) ? `
                         <button class="mark-ordered-btn" data-action="set-parts-status" data-idx="${index}" title="Update parts status for this RO">
                             ${t('🔩 Set Parts Status')}

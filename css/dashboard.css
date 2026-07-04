@@ -1202,6 +1202,23 @@
             font-size: 0.9rem;
         }
 
+        /* [GH#39 v1.471 S132] Live-thread link in the Customer Comm note header */
+        .comm-thread-link {
+            margin-left: auto;
+            padding: 2px 8px;
+            background: rgba(59, 130, 246, 0.10);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.45);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 1.4;
+            transition: all 0.2s;
+        }
+        .comm-thread-link:hover { background: rgba(59, 130, 246, 0.2); }
+
         .note-title {
             font-size: 0.9rem;
             color: var(--text-primary);
