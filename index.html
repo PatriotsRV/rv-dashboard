@@ -1,7 +1,18 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.469
+    PRVS Dashboard v1.470
+    v1.470: [GH#39 S131] Customer messaging via Project Blue. NEW js/messaging.js module
+    (openMessagesModal / sendCustomerMessage / refreshMessagesThread / loadMessages via the
+    window bridge) + a "Message Customer" button on the RO edit modal (below Customer Phone)
+    that texts the customer through the NEW projectblue-send edge function (dedicated PB line
+    +1 940 407-4145) and logs to the messages table. Inbound replies are captured by the NEW
+    projectblue-webhook edge fn (secret-in-URL; PB retries never happen so a reconciliation
+    poll is a later phase); the modal thread follows the spec locked "customer-inbox, RO-tagged"
+    model — it shows ALL messages for the customer's phone (both directions) merged with
+    RO-tagged rows, plus a Refresh button to pull new replies. Supersedes the Sendblue Phase 2
+    POC (v1.448, feature/sendblue-poc); sendblue-send stays deployed but unreferenced.
+    Dormant-safe: projectblue-send returns 503 until PROJECTBLUE_API_KEY is set.
     v1.469: [ER cb7742a8 S129] Server-side calendar sync (single source of truth). New sync-ro-calendar edge fn (server-side OAuth refresh token, no per-user Google token needed) now owns the drop-off + promised + pickup all-day team-calendar events, idempotent via repair_orders.cal_event_ids. ro-crud.js create + edit now POST the RO id to it (_syncROCalendarServer) instead of the old client-side window.syncKeyDateCalendars (which only fired when the saver had a Google token). customer-checkin.html v1.15 calls it too, so kiosk-created ROs finally get calendar events. NOTE: the client-side scheduling.js syncKeyDateCalendars is no longer called from ro-crud (kept in place, unreferenced); the manual 📅 Schedule modal still creates its own timed drop-off appointment separately.
     v1.468: TWO ERs. [ER BUGFIX 3f7fb4fc S129] Shop RO counts + status (Brandon) — Shop Operations ROs (roType==='shop') are no longer counted in "RVs in Queue" or the "on lot" sub-count (render.js updateStats nonShop filter + onLotCount roType guard), and their status dropdown is removed on both the full card and the compact expand panel (shown as static text) since a shop RO is not a physical unit on the lot with a real status lifecycle. [ER cb7742a8 S129] Scheduled/drop-off date -> team calendar (Lynn) — setting the planned drop-off (scheduled service) date on New/Edit RO now auto-creates an all-day event on the RO's service silo calendar(s), idempotently, exactly like promised/pickup (scheduling.js syncKeyDateCalendars gains a 'dropoff' dateDef stored under cal_event_ids.dropoff; ro-crud passes dropoffDate on create+edit). NOTE: like all client-side calendar writes, this fires only when the saver is signed in with Google Calendar authorized (same token constraint as the Schedule modal + promised/pickup); the check-in kiosk has no Google token so kiosk-created ROs still need the dashboard/server path — tracked separately.
     v1.467: [ER 1fe68261 S128] Shop Tasks — internal (non-customer) task tracker (Rod). NEW standalone shop_tasks table (migration shop_tasks.sql) + a "🏭 Shop Tasks" header button (managers/sr-managers/parts-managers/admins via canSeeShopTasks) opening a slide-in panel (js/shop-tasks.js). Tracks tasks not tied to a customer unit (swap poly barrels, prep roof bays) as a shared checklist; each task can optionally be assigned to a staff member and/or a service silo; add / complete / reopen / delete + a "Completed" toggle. Deliberately NOT an RO/WO/silo — zero impact on the board, Weekly P&L, parts attribution, or reports. New module wired in app.js; button shown from loadStaff (work-orders.js) alongside _initWorkListBtn.
@@ -565,7 +576,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.469</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.470</span>
             </div>
         </header>
 
@@ -6824,6 +6835,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" id="editCustomerPhone">
                         <div id="sug_edit_customerPhone"></div>
+                        <button type="button" onclick="(typeof editingROIndex==='number' &amp;&amp; currentData[editingROIndex]) ? openMessagesModal(currentData[editingROIndex]) : showToast('Open the repair order first.','warning')" style="margin-top:8px; width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid rgba(59,130,246,0.45); background:rgba(59,130,246,0.10); color:#3b82f6; cursor:pointer; font-size:0.82rem; font-weight:700;">&#128172; Message Customer</button>
                     </div>
                     <div class="form-field shop-hide">
                         <label class="form-label">Customer Email</label>

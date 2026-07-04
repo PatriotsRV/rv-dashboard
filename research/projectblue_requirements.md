@@ -77,6 +77,43 @@
 9. **Pricing — written.** Setup fee, per-line monthly, per-message or per-contact fees, contact caps, contract term. (Third-party pages claim $500 setup + ~$300/mo/line — please confirm actuals for our volume.)
 10. **Compliance / opt-out.** Do you provide automatic STOP/HELP/START keyword handling and a suppression list, or do we implement that ourselves? What is your TCPA guidance for automated (non-marketing) transactional service updates?
 
+## C2. PB SUPPORT ANSWERS (received 2026-07-04) + build implications
+
+| Q | Answer | Implication for our build |
+|---|---|---|
+| Q2 correlation | `/send-api-message` returns NO message id. Correlate via phone + body + timestamp; webhooks carry `guid`/`messageId`, list API carries `message_handle` — different id spaces. Identical payloads deduped ~1 hr. | After send, poll `/get-messages-api` (`to_number` + `created_at_gte`) to capture `message_handle` into our `messages` row. The ~1-hr payload dedupe also gives us free idempotency on retries BUT will swallow legit identical texts sent twice within an hour — vary body (e.g. include RO code/time) in automation. |
+| Q3 webhooks | Plain HTTPS JSON POST. NO HMAC/signature, NO retries (single attempt), ~10s timeout. Secret-in-URL is their suggested auth. | Our webhook edge fn: secret as URL query param (+ keep X-PRVS-Secret unavailable since PB can't send headers), respond 200 fast (enqueue, don't process inline). Because single-attempt = missed events are LOST, we need a reconciliation poll (cron sweeping `/get-messages-api`) as the source of truth; webhook is just the low-latency hint. |
+| Q4 status | `status` = `pending` (queued) or `delivered` (= `sent_at` set, i.e. LEFT THEIR QUEUE — not handset receipt). No failure or read events; stuck sends stay `pending` forever. Immediate errors are 4xx/5xx on send. | Matches our S130 finding. Automation treats `delivered` as "sent". Add a stale-`pending` alarm (row older than N min still pending = raise to admin). No read receipts available programmatically. |
+| Q5 inbound MMS | Webhooks are TEXT-ONLY today; media URLs appear in `/get-messages-api` (`media_attachment_url`), sometimes delayed. Webhook media "near future". | On inbound webhook, poll the list API by `from_number` + time to pick up media. Reconciliation cron covers late-arriving media too. |
+| Q6 rate limits | API 60 req/min/key (429). Sends ~15 per 10 min per line (excess queued). New destinations 50/day/line (excess queued to next day; repeat destinations + contact-initiated replies don't count). | Fine for our 10-100/day repeat-customer volume. EOD digest pacing: 15/10min = ~90/hr/line — start the digest run early enough (e.g. 40 customers ≈ 30-45 min). New-destination cap only bites on first-touch to brand-new customers. |
+| Q7 trial | Shared line, 5 verified contacts, outbound to verified only, unregistered inbound silently dropped (same as Sendblue). | Moot — we already have a dedicated line. |
+| Q8 dedicated inbound | Any number, no pre-registration. ✅ | Production customer replies work. |
+| Q10 compliance | NO built-in STOP/HELP/START, no suppression-list API — implement ourselves off inbound webhooks. Transactional guidance: existing relationship, informational, honor STOP, include business name. | Spec §8 hard gate stands and is fully OUR build: STOP keyword handling in the webhook fn + suppression check in the dispatcher. No vendor help, but no vendor lock-in either. |
+
+**STILL OPEN with PB:** Q9 written pricing (the reason we're here — chase this), office-number
+port residuals (voice continuity, LOA, timeline, iMessage registration on the ported number),
+and root cause of the S130 delayed-delivery incident.
+
+## D2. BUILD STATUS (Session 131, 2026-07-04) — PB transport layer LIVE + VALIDATED
+
+Both edge fns built, deployed to live Supabase, and live-tested end-to-end:
+
+- **`projectblue-send`** (deployed, JWT on): contract-identical to `sendblue-send` (drop-in for
+  `js/messaging.js` on the POC branch). Validated: X-PRVS-Secret gate → PB → Roland's handset
+  (arrived within ~1 min), `message_handle` capture poll works (pbm_ handle stored),
+  `is_imessage:true` at send time, `messages` row logged w/ line number + sender; a failed
+  (401) attempt logged as an `error` row. Secrets: `PROJECTBLUE_API_KEY` (first set was a bad
+  paste → PB 401; re-set after verifying the key via `/get-lines`).
+- **`projectblue-webhook`** (deployed `--no-verify-jwt`): secret-in-URL gate
+  (`PROJECTBLUE_WEBHOOK_SECRET`). Validated: PB portal test payload captured; REAL inbound
+  ("Webhook test live" from Roland's iPhone) logged in seconds with real guid; outbound-echo
+  dedupe confirmed (a send via the fn produced exactly ONE `messages` row — the webhook echo
+  was skipped). PB webhook registered Active, Inbound + Outbound.
+
+NOT YET BUILT (deliberately): reconciliation poll cron (source of truth for missed webhooks /
+late media / stale-pending alarm), RO routing for inbound, STOP/HELP handling, `js/messaging.js`
+endpoint swap (POC branch). All queued behind the provider decision (pricing).
+
 ## D. Integration mapping (ours — for the swap build, no vendor input needed)
 
 | Sendblue (current POC) | Project Blue equivalent |
