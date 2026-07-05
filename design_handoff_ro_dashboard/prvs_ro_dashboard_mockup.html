@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRVS RO Dashboard — Floating Rail Mockup</title>
+<style>
+  :root{
+    --page:#F5F5F7;
+    --card:#FFFFFF;
+    --text:#1D1D1F;
+    --text-2:#6E6E73;
+    --text-3:#86868B;
+    --hairline:rgba(0,0,0,0.05);
+    --fill:#F5F5F7;
+    --accent:#1D4E89;          /* PRVS patriot navy */
+    --accent-tint:rgba(29,78,137,0.08);
+    --green:#34C759; --green-tint:rgba(52,199,89,0.12);
+    --amber:#FF9500; --amber-tint:rgba(255,149,0,0.14);
+    --red:#FF3B30;   --red-tint:rgba(255,59,48,0.10);
+    --gray-chip:#8E8E93; --gray-tint:rgba(142,142,147,0.14);
+    --radius-card:16px;
+    --radius-ui:10px;
+    --shadow-card:0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+    --gutter:20px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--page);
+    color:var(--text);
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- App frame: two floating cards ---------- */
+  .app{
+    display:grid;
+    grid-template-columns:280px 1fr;
+    gap:var(--gutter);
+    padding:var(--gutter);
+    min-height:100vh;
+    max-width:1600px;
+    margin:0 auto;
+  }
+
+  /* ---------- Floating filter rail ---------- */
+  .rail{
+    background:var(--card);
+    border-radius:var(--radius-card);
+    box-shadow:var(--shadow-card);
+    padding:20px 14px;
+    align-self:start;
+    position:sticky;
+    top:var(--gutter);
+    max-height:calc(100vh - 2*var(--gutter));
+    overflow-y:auto;
+  }
+  .brand{
+    display:flex;align-items:center;gap:10px;
+    padding:2px 8px 16px;
+  }
+  .brand-mark{
+    width:30px;height:30px;border-radius:8px;
+    background:var(--accent);
+    color:#fff;font-weight:700;font-size:12px;
+    display:flex;align-items:center;justify-content:center;
+    letter-spacing:.02em;
+  }
+  .brand-name{font-weight:600;font-size:15px;letter-spacing:-0.01em}
+  .brand-sub{font-size:11px;color:var(--text-3)}
+
+  .search{
+    display:flex;align-items:center;gap:8px;
+    background:var(--fill);
+    border-radius:var(--radius-ui);
+    padding:9px 12px;
+    margin:0 2px 18px;
+    color:var(--text-3);
+  }
+  .search input{
+    border:none;background:transparent;outline:none;
+    font:inherit;color:var(--text);width:100%;
+  }
+  .search input::placeholder{color:var(--text-3)}
+
+  .rail-section{margin-bottom:18px}
+  .rail-label{
+    font-size:11px;font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--text-3);
+    padding:0 10px 8px;
+  }
+  .rail-item{
+    display:flex;align-items:center;gap:10px;
+    height:40px;padding:0 10px;
+    border-radius:var(--radius-ui);
+    cursor:pointer;
+    transition:background 150ms ease;
+    color:var(--text);
+    user-select:none;
+  }
+  .rail-item:hover{background:var(--fill)}
+  .rail-item.active{background:var(--accent-tint);font-weight:600;color:var(--accent)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .rail-item .label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .count{
+    font-size:12px;color:var(--text-2);
+    background:var(--fill);
+    border-radius:999px;padding:2px 9px;
+    font-variant-numeric:tabular-nums;
+  }
+  .rail-item.active .count{background:rgba(29,78,137,0.12);color:var(--accent)}
+
+  .rail-divider{height:1px;background:var(--hairline);margin:6px 8px 18px}
+
+  .admin-item{
+    display:flex;align-items:center;gap:10px;
+    height:38px;padding:0 10px;
+    border-radius:var(--radius-ui);
+    color:var(--text-2);cursor:pointer;
+    transition:background 150ms ease,color 150ms ease;
+  }
+  .admin-item:hover{background:var(--fill);color:var(--text)}
+  .admin-item svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ---------- Main card ---------- */
+  .main{
+    background:var(--card);
+    border-radius:var(--radius-card);
+    box-shadow:var(--shadow-card);
+    padding:26px 26px 10px;
+    min-width:0;
+  }
+  .main-head{
+    display:flex;align-items:flex-start;justify-content:space-between;
+    gap:16px;margin-bottom:6px;
+  }
+  .main-title{font-size:22px;font-weight:600;letter-spacing:-0.02em}
+  .main-sub{color:var(--text-2);margin-top:4px;font-size:13px}
+  .head-meta{color:var(--text-3);font-size:13px;white-space:nowrap;padding-top:6px}
+  .btn-primary{
+    background:var(--accent);color:#fff;border:none;
+    font:inherit;font-weight:600;font-size:13px;
+    padding:9px 16px;border-radius:var(--radius-ui);
+    cursor:pointer;transition:opacity 150ms ease;
+    white-space:nowrap;
+  }
+  .btn-primary:hover{opacity:.9}
+
+  table{width:100%;border-collapse:collapse;margin-top:16px}
+  thead th{
+    text-align:left;font-size:11px;font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-3);
+    padding:10px 12px;border-bottom:1px solid var(--hairline);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:0 12px;height:60px;
+    border-bottom:1px solid var(--hairline);
+    vertical-align:middle;
+  }
+  tbody tr{transition:background 120ms ease;cursor:pointer}
+  tbody tr:hover{background:#FAFAFA}
+  .wo{font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent)}
+  .cust{font-weight:500}
+  .unit{color:var(--text-2);font-size:13px}
+  .silo{color:var(--text-2)}
+  .writer{color:var(--text-2)}
+  .updated{color:var(--text-3);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:600;
+    padding:4px 11px;border-radius:999px;white-space:nowrap;
+  }
+  .chip .dot{width:6px;height:6px}
+  .chip.open{background:var(--accent-tint);color:var(--accent)}
+  .chip.progress{background:var(--amber-tint);color:#B36B00}
+  .chip.waiting{background:var(--red-tint);color:#C7362E}
+  .chip.done{background:var(--green-tint);color:#1F8A3D}
+  .chip.closed{background:var(--gray-tint);color:var(--gray-chip)}
+
+  .table-foot{
+    display:flex;justify-content:space-between;align-items:center;
+    color:var(--text-3);font-size:13px;padding:14px 12px 12px;
+  }
+  .table-foot a{color:var(--accent);text-decoration:none;font-weight:500}
+
+  /* ---------- Responsive: rail collapses below 1100px ---------- */
+  @media (max-width:1100px){
+    .app{grid-template-columns:1fr}
+    .rail{position:static;max-height:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= Floating filter rail ================= -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">PR</div>
+      <div>
+        <div class="brand-name">Patriots RV Services</div>
+        <div class="brand-sub">RO Dashboard</div>
+      </div>
+    </div>
+
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input type="text" placeholder="Search work orders…">
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-label">Filter by status</div>
+      <div class="rail-item active"><span class="dot" style="background:var(--accent)"></span><span class="label">All Work Orders</span><span class="count">142</span></div>
+      <div class="rail-item"><span class="dot" style="background:#0A84FF"></span><span class="label">Open</span><span class="count">31</span></div>
+      <div class="rail-item"><span class="dot" style="background:var(--amber)"></span><span class="label">In Progress</span><span class="count">27</span></div>
+      <div class="rail-item"><span class="dot" style="background:var(--red)"></span><span class="label">Waiting Approval</span><span class="count">9</span></div>
+      <div class="rail-item"><span class="dot" style="background:#BF5AF2"></span><span class="label">Waiting Parts</span><span class="count">14</span></div>
+      <div class="rail-item"><span class="dot" style="background:var(--green)"></span><span class="label">Completed</span><span class="count">38</span></div>
+      <div class="rail-item"><span class="dot" style="background:var(--gray-chip)"></span><span class="label">Closed</span><span class="count">23</span></div>
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-label">Filter by silo</div>
+      <div class="rail-item"><span class="dot" style="background:#1D4E89"></span><span class="label">Roofs</span><span class="count">41</span></div>
+      <div class="rail-item"><span class="dot" style="background:#0A84FF"></span><span class="label">Repairs</span><span class="count">56</span></div>
+      <div class="rail-item"><span class="dot" style="background:#FF9500"></span><span class="label">Paint &amp; Body</span><span class="count">28</span></div>
+      <div class="rail-item"><span class="dot" style="background:#34C759"></span><span class="label">Solar</span><span class="count">17</span></div>
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-label">Filter by writer</div>
+      <div class="rail-item"><span class="dot" style="background:var(--text-3)"></span><span class="label">All Writers</span><span class="count">142</span></div>
+      <div class="rail-item"><span class="dot" style="background:#FFD60A"></span><span class="label">Brandon Dillon</span><span class="count">22</span></div>
+      <div class="rail-item"><span class="dot" style="background:#FFD60A"></span><span class="label">Writer Two</span><span class="count">34</span></div>
+      <div class="rail-item"><span class="dot" style="background:#FFD60A"></span><span class="label">Writer Three</span><span class="count">29</span></div>
+    </div>
+
+    <div class="rail-divider"></div>
+
+    <div class="rail-section">
+      <div class="rail-label">Admin</div>
+      <div class="admin-item">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Work Order
+      </div>
+      <div class="admin-item">
+        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+        Clone Work Order
+      </div>
+      <div class="admin-item">
+        <svg viewBox="0 0 24 24"><path d="M3 20h18"/><rect x="5" y="11" width="3" height="6"/><rect x="10.5" y="7" width="3" height="10"/><rect x="16" y="4" width="3" height="13"/></svg>
+        Reports
+      </div>
+      <div class="admin-item">
+        <svg viewBox="0 0 24 24"><path d="M12 3l2.1 4.9L19 9l-4 3.4 1.2 5.1L12 14.8 7.8 17.5 9 12.4 5 9l4.9-1.1z"/></svg>
+        Make-A-Wish
+      </div>
+      <div class="admin-item">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>
+        Settings
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= Main work-order card ================= -->
+  <main class="main">
+    <div class="main-head">
+      <div>
+        <div class="main-title">Work Orders</div>
+        <div class="main-sub">All silos · sorted by last update</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <span class="head-meta">142 work orders</span>
+        <button class="btn-primary">New Work Order</button>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>WO #</th><th>Customer</th><th>Unit</th><th>Silo</th><th>Writer</th><th>Status</th><th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="wo">WO-4187</td>
+          <td class="cust">D. Whitfield<div class="unit">2019 Winnebago Vista 29V</div></td>
+          <td class="unit">Class A · 30 ft</td>
+          <td class="silo">Roofs</td>
+          <td class="writer">Brandon Dillon</td>
+          <td><span class="chip progress"><span class="dot" style="background:var(--amber)"></span>In Progress</span></td>
+          <td class="updated">Today, 9:41 AM</td>
+        </tr>
+        <tr>
+          <td class="wo">WO-4186</td>
+          <td class="cust">M. Alvarez<div class="unit">2022 Grand Design Reflection</div></td>
+          <td class="unit">Fifth Wheel · 34 ft</td>
+          <td class="silo">Repairs</td>
+          <td class="writer">Writer Two</td>
+          <td><span class="chip waiting"><span class="dot" style="background:var(--red)"></span>Waiting Approval</span></td>
+          <td class="updated">Today, 8:15 AM</td>
+        </tr>
+        <tr>
+          <td class="wo">WO-4181</td>
+          <td class="cust">K. Nguyen<div class="unit">2017 Jayco Eagle HT</div></td>
+          <td class="unit">Travel Trailer · 28 ft</td>
+          <td class="silo">Solar</td>
+          <td class="writer">Writer Three</td>
+          <td><span class="chip open"><span class="dot" style="background:#0A84FF"></span>Open</span></td>
+          <td class="updated">Yesterday</td>
+        </tr>
+        <tr>
+          <td class="wo">WO-4179</td>
+          <td class="cust">R. Castillo<div class="unit">2021 Thor Ace 32.3</div></td>
+          <td class="unit">Class A · 33 ft</td>
+          <td class="silo">Paint &amp; Body</td>
+          <td class="writer">Brandon Dillon</td>
+          <td><span class="chip progress"><span class="dot" style="background:var(--amber)"></span>In Progress</span></td>
+          <td class="updated">Yesterday</td>
+        </tr>
+        <tr>
+          <td class="wo">WO-4174</td>
+          <td class="cust">S. Patterson<div class="unit">2015 Newmar Bay Star</div></td>
+          <td class="unit">Class A · 31 ft</td>
+          <td class="silo">Roofs</td>
+          <td class="writer">Writer Two</td>
+          <td><span class="chip done"><span class="dot" style="background:var(--green)"></span>Completed</span></td>
+          <td class="updated">Jul 3</td>
+        </tr>
+        <tr>
+          <td class="wo">WO-4170</td>
+          <td class="cust">L. Brooks<div class="unit">2020 Airstream Flying Cloud</div></td>
+          <td class="unit">Travel Trailer · 25 ft</td>
+          <td class="silo">Repairs</td>
+          <td class="writer">Writer Three</td>
+          <td><span class="chip closed"><span class="dot" style="background:var(--gray-chip)"></span>Closed</span></td>
+          <td class="updated">Jul 2</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="table-foot">
+      <span>Showing 6 of 142</span>
+      <a href="#">Load more</a>
+    </div>
+  </main>
+
+</div>
+</body>
+</html>

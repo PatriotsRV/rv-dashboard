@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    html,body{margin:0;padding:0;background:#F5F5F7}
+    body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+    input::placeholder{color:#86868B}
+    @keyframes prvs-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    ::-webkit-scrollbar{width:8px;height:8px}
+    ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.12);border-radius:99px}
+    ::-webkit-scrollbar-track{background:transparent}
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:#F5F5F7;color:#1D1D1F;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px">
+  <div style="display:grid;grid-template-columns:{{gridCols}};gap:20px;padding:20px;max-width:1600px;margin:0 auto;align-items:start">
+
+    <!-- ============ Floating filter rail (desktop) ============ -->
+    <sc-if value="{{railDesktop}}" hint-placeholder-val="{{true}}">
+      <aside style="background:#FFFFFF;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 8px 24px rgba(0,0,0,0.04);padding:20px 14px;position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;padding:2px 8px 16px">
+          <div style="width:30px;height:30px;border-radius:8px;background:#1D4E89;color:#FFFFFF;font-weight:600;font-size:12px;display:flex;align-items:center;justify-content:center;letter-spacing:0.02em;flex:none">PR</div>
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:15px;letter-spacing:-0.01em;white-space:nowrap">Patriots RV Services</div>
+            <div style="font-size:11px;color:#86868B">RO Dashboard</div>
+          </div>
+        </div>
+
+        <div style="position:relative;margin:0 2px 18px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86868B" stroke-width="2" stroke-linecap="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+          <input type="text" placeholder="Search work orders…" value="{{query}}" onChange="{{onSearch}}" style="width:100%;box-sizing:border-box;border:none;outline:none;background:#F5F5F7;border-radius:10px;padding:9px 12px 9px 34px;font:inherit;color:#1D1D1F;transition:box-shadow 150ms ease" style-focus="box-shadow:0 0 0 3px rgba(29,78,137,0.18)">
+        </div>
+
+        <div style="margin-bottom:18px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Filter by status</div>
+          <sc-for list="{{statusItems}}" as="it" hint-placeholder-count="7">
+            <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:10px;cursor:pointer;user-select:none;transition:background 150ms ease;background:{{it.bg}};color:{{it.color}};font-weight:{{it.weight}}" style-hover="background:{{it.hoverBg}}">
+              <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{it.dot}}"></span>
+              <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+              <span style="font-size:12px;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;background:{{it.countBg}};color:{{it.countColor}}">{{it.count}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="margin-bottom:18px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Filter by silo</div>
+          <sc-for list="{{siloItems}}" as="it" hint-placeholder-count="4">
+            <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:10px;cursor:pointer;user-select:none;transition:background 150ms ease;background:{{it.bg}};color:{{it.color}};font-weight:{{it.weight}}" style-hover="background:{{it.hoverBg}}">
+              <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{it.dot}}"></span>
+              <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+              <span style="font-size:12px;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;background:{{it.countBg}};color:{{it.countColor}}">{{it.count}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="margin-bottom:18px">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Filter by writer</div>
+          <sc-for list="{{writerItems}}" as="it" hint-placeholder-count="4">
+            <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:10px;cursor:pointer;user-select:none;transition:background 150ms ease;background:{{it.bg}};color:{{it.color}};font-weight:{{it.weight}}" style-hover="background:{{it.hoverBg}}">
+              <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{it.dot}}"></span>
+              <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+              <span style="font-size:12px;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;background:{{it.countBg}};color:{{it.countColor}}">{{it.count}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="height:1px;background:rgba(0,0,0,0.05);margin:6px 8px 18px"></div>
+
+        <div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Admin</div>
+          <sc-for list="{{adminItems}}" as="it" hint-placeholder-count="5">
+            <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:10px;color:#6E6E73;cursor:pointer;transition:background 150ms ease,color 150ms ease" style-hover="background:#F5F5F7;color:#1D1D1F">{{it.icon}}<span>{{it.label}}</span></div>
+          </sc-for>
+        </div>
+      </aside>
+    </sc-if>
+
+    <!-- ============ Main card ============ -->
+    <main style="background:#FFFFFF;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 8px 24px rgba(0,0,0,0.04);padding:26px 26px 10px;min-width:0">
+
+      <!-- ---- List view ---- -->
+      <sc-if value="{{showList}}" hint-placeholder-val="{{true}}">
+        <div data-screen-label="Work Orders" style="min-width:0">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+                <button onClick="{{onToggleRail}}" title="Filters" style="width:36px;height:36px;background:#F5F5F7;border:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#1D1D1F;flex:none;transition:background 150ms ease" style-hover="background:#EBEBED">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="7" y1="12" x2="17" y2="12"></line><line x1="10" y1="17" x2="14" y2="17"></line></svg>
+                </button>
+              </sc-if>
+              <div>
+                <div style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Work Orders</div>
+                <div style="color:#6E6E73;margin-top:4px;font-size:13px">{{subtitle}}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <span style="color:#86868B;font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums">{{countText}}</span>
+              <button onClick="{{onNew}}" style="background:#1D4E89;color:#FFFFFF;border:none;font:inherit;font-weight:600;font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:opacity 150ms ease,transform 100ms ease" style-hover="opacity:0.9" style-active="transform:scale(0.97)">New Work Order</button>
+            </div>
+          </div>
+
+          <sc-if value="{{loading}}" hint-placeholder-val="{{false}}">
+            <div style="margin-top:16px;padding-bottom:16px">
+              <div style="display:flex;gap:12px;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05)">
+                <div style="width:64px;height:10px;border-radius:5px;background:#EBEBED"></div>
+                <div style="width:140px;height:10px;border-radius:5px;background:#EBEBED"></div>
+                <div style="flex:1"></div>
+                <div style="width:90px;height:10px;border-radius:5px;background:#EBEBED"></div>
+              </div>
+              <sc-for list="{{skeletonRows}}" as="sk" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;gap:16px;height:60px;border-bottom:1px solid rgba(0,0,0,0.05);animation:prvs-pulse 1.4s ease-in-out infinite;animation-delay:{{sk.delay}}">
+                  <div style="width:64px;height:12px;border-radius:6px;background:#F0F0F2;margin-left:12px"></div>
+                  <div><div style="width:130px;height:12px;border-radius:6px;background:#F0F0F2"></div><div style="width:180px;height:10px;border-radius:5px;background:#F5F5F7;margin-top:6px"></div></div>
+                  <div style="flex:1"></div>
+                  <div style="width:110px;height:24px;border-radius:999px;background:#F0F0F2"></div>
+                  <div style="width:80px;height:12px;border-radius:6px;background:#F0F0F2;margin-right:12px"></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{showTable}}" hint-placeholder-val="{{true}}">
+            <table style="width:100%;border-collapse:collapse;margin-top:16px">
+              <thead>
+                <tr>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">WO #</th>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">Customer</th>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">Unit</th>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">Silo</th>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">Writer</th>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">Status</th>
+                  <th style="text-align:left;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.05);white-space:nowrap">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+                  <tr onClick="{{r.onClick}}" style="cursor:pointer;transition:background 120ms ease" style-hover="background:#FAFAFA">
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle;font-weight:600;font-variant-numeric:tabular-nums;color:#1D4E89;white-space:nowrap">{{r.wo}}</td>
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle">
+                      <div style="font-weight:600">{{r.cust}}</div>
+                      <div style="color:#6E6E73;font-size:13px;margin-top:1px">{{r.model}}</div>
+                    </td>
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle;color:#6E6E73;font-size:13px;white-space:nowrap">{{r.unit}}</td>
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle;color:#6E6E73;white-space:nowrap">{{r.silo}}</td>
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle;color:#6E6E73;white-space:nowrap">{{r.writer}}</td>
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle">
+                      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;background:{{r.chipBg}};color:{{r.chipColor}}"><span style="width:6px;height:6px;border-radius:50%;flex:none;background:{{r.chipDot}}"></span>{{r.statusLabel}}</span>
+                    </td>
+                    <td style="padding:0 12px;height:{{rowH}};border-bottom:1px solid rgba(0,0,0,0.05);vertical-align:middle;color:#86868B;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap">{{r.updated}}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#86868B;font-size:13px;padding:14px 12px 12px;font-variant-numeric:tabular-nums">
+              <span>{{footText}}</span>
+              <span style="color:#86868B">Updated just now</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{showEmpty}}" hint-placeholder-val="{{false}}">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:90px 20px 100px;text-align:center">
+              <div style="width:44px;height:44px;border-radius:50%;background:#F5F5F7;display:flex;align-items:center;justify-content:center;margin-bottom:6px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#86868B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+              </div>
+              <div style="font-weight:600;font-size:15px">No matching work orders</div>
+              <div style="color:#6E6E73;font-size:13px;max-width:320px">Nothing matches the current filters. Try a different status, silo, or writer.</div>
+              <a onClick="{{onClearFilters}}" style="color:#1D4E89;font-weight:600;font-size:13px;cursor:pointer;margin-top:8px;padding:6px 12px;border-radius:10px;transition:background 150ms ease" style-hover="background:rgba(29,78,137,0.08)">Clear all filters</a>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- ---- Detail view ---- -->
+      <sc-if value="{{showDetail}}" hint-placeholder-val="{{false}}">
+        <div data-screen-label="Work Order Detail" style="padding-bottom:16px">
+          <a onClick="{{onBack}}" style="display:inline-flex;align-items:center;gap:5px;color:#1D4E89;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:18px;padding:5px 10px 5px 6px;border-radius:8px;transition:background 150ms ease" style-hover="background:rgba(29,78,137,0.08)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="14 6 8 12 14 18"></polyline></svg>
+            Work Orders
+          </a>
+
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+            <div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="font-size:22px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{detail.wo}}</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;background:{{detail.chipBg}};color:{{detail.chipColor}}"><span style="width:6px;height:6px;border-radius:50%;flex:none;background:{{detail.chipDot}}"></span>{{detail.statusLabel}}</span>
+              </div>
+              <div style="color:#6E6E73;margin-top:5px;font-size:13px">{{detail.cust}} · {{detail.model}}</div>
+            </div>
+            <button style="background:#1D4E89;color:#FFFFFF;border:none;font:inherit;font-weight:600;font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer;white-space:nowrap;transition:opacity 150ms ease,transform 100ms ease" style-hover="opacity:0.9" style-active="transform:scale(0.97)">Edit Work Order</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px 24px;margin:26px 0;padding:20px 22px;background:#F5F5F7;border-radius:12px">
+            <div><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;margin-bottom:4px">Customer</div><div style="font-weight:600">{{detail.cust}}</div></div>
+            <div><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;margin-bottom:4px">Unit</div><div>{{detail.model}}</div><div style="color:#6E6E73;font-size:13px;margin-top:1px">{{detail.unit}}</div></div>
+            <div><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;margin-bottom:4px">Silo</div><div>{{detail.silo}}</div></div>
+            <div><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;margin-bottom:4px">Writer</div><div>{{detail.writer}}</div></div>
+            <div><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;margin-bottom:4px">Created</div><div style="font-variant-numeric:tabular-nums">{{detail.created}}</div></div>
+            <div><div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;margin-bottom:4px">Updated</div><div style="font-variant-numeric:tabular-nums">{{detail.updated}}</div></div>
+          </div>
+
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 2px 4px">Line items</div>
+          <sc-for list="{{detail.lineItems}}" as="li" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:16px;height:52px;border-bottom:1px solid rgba(0,0,0,0.05);padding:0 2px">
+              <span style="flex:1;font-weight:500">{{li.desc}}</span>
+              <span style="color:#86868B;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap">{{li.hours}}</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;background:{{li.chipBg}};color:{{li.chipColor}}"><span style="width:6px;height:6px;border-radius:50%;flex:none;background:{{li.chipDot}}"></span>{{li.label}}</span>
+            </div>
+          </sc-for>
+          <div style="display:flex;justify-content:flex-end;color:#86868B;font-size:13px;padding:12px 2px 0;font-variant-numeric:tabular-nums">Total · {{detail.totalHours}}</div>
+
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:28px 2px 10px">Notes</div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <sc-for list="{{detail.notes}}" as="n" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:baseline;gap:8px"><span style="font-weight:600;font-size:13px">{{n.author}}</span><span style="color:#86868B;font-size:12px;font-variant-numeric:tabular-nums">{{n.time}}</span></div>
+                <div style="color:#6E6E73;font-size:13px;line-height:1.5;max-width:640px">{{n.text}}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <!-- ============ Slide-over rail (narrow) ============ -->
+  <sc-if value="{{railOpen}}" hint-placeholder-val="{{false}}">
+    <div onClick="{{onCloseRail}}" style="position:fixed;inset:0;background:rgba(0,0,0,0.22);z-index:50"></div>
+    <aside style="position:fixed;top:20px;left:20px;bottom:20px;width:280px;z-index:51;background:#FFFFFF;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.18);padding:20px 14px;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;padding:2px 8px 16px">
+        <div style="width:30px;height:30px;border-radius:8px;background:#1D4E89;color:#FFFFFF;font-weight:600;font-size:12px;display:flex;align-items:center;justify-content:center;letter-spacing:0.02em;flex:none">PR</div>
+        <div style="min-width:0;flex:1">
+          <div style="font-weight:600;font-size:15px;letter-spacing:-0.01em;white-space:nowrap">Patriots RV Services</div>
+          <div style="font-size:11px;color:#86868B">RO Dashboard</div>
+        </div>
+        <button onClick="{{onCloseRail}}" style="width:28px;height:28px;border:none;background:#F5F5F7;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#6E6E73;flex:none" style-hover="background:#EBEBED">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div style="position:relative;margin:0 2px 18px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86868B" stroke-width="2" stroke-linecap="round" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+        <input type="text" placeholder="Search work orders…" value="{{query}}" onChange="{{onSearch}}" style="width:100%;box-sizing:border-box;border:none;outline:none;background:#F5F5F7;border-radius:10px;padding:9px 12px 9px 34px;font:inherit;color:#1D1D1F;transition:box-shadow 150ms ease" style-focus="box-shadow:0 0 0 3px rgba(29,78,137,0.18)">
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Filter by status</div>
+        <sc-for list="{{statusItems}}" as="it" hint-placeholder-count="7">
+          <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:10px;cursor:pointer;user-select:none;transition:background 150ms ease;background:{{it.bg}};color:{{it.color}};font-weight:{{it.weight}}" style-hover="background:{{it.hoverBg}}">
+            <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{it.dot}}"></span>
+            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+            <span style="font-size:12px;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;background:{{it.countBg}};color:{{it.countColor}}">{{it.count}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Filter by silo</div>
+        <sc-for list="{{siloItems}}" as="it" hint-placeholder-count="4">
+          <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:10px;cursor:pointer;user-select:none;transition:background 150ms ease;background:{{it.bg}};color:{{it.color}};font-weight:{{it.weight}}" style-hover="background:{{it.hoverBg}}">
+            <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{it.dot}}"></span>
+            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+            <span style="font-size:12px;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;background:{{it.countBg}};color:{{it.countColor}}">{{it.count}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Filter by writer</div>
+        <sc-for list="{{writerItems}}" as="it" hint-placeholder-count="4">
+          <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:10px;cursor:pointer;user-select:none;transition:background 150ms ease;background:{{it.bg}};color:{{it.color}};font-weight:{{it.weight}}" style-hover="background:{{it.hoverBg}}">
+            <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{it.dot}}"></span>
+            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{it.label}}</span>
+            <span style="font-size:12px;border-radius:999px;padding:2px 9px;font-variant-numeric:tabular-nums;background:{{it.countBg}};color:{{it.countColor}}">{{it.count}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="height:1px;background:rgba(0,0,0,0.05);margin:6px 8px 18px"></div>
+
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#86868B;padding:0 10px 8px">Admin</div>
+        <sc-for list="{{adminItems}}" as="it" hint-placeholder-count="5">
+          <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:10px;color:#6E6E73;cursor:pointer;transition:background 150ms ease,color 150ms ease" style-hover="background:#F5F5F7;color:#1D1D1F">{{it.icon}}<span>{{it.label}}</span></div>
+        </sc-for>
+      </div>
+    </aside>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;density&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;comfortable&quot;, &quot;compact&quot;], &quot;default&quot;: &quot;comfortable&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Table&quot; },
+  &quot;railWidth&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;min&quot;: 240, &quot;max&quot;: 320, &quot;step&quot;: 10, &quot;unit&quot;: &quot;px&quot;, &quot;default&quot;: 280, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Layout&quot; },
+  &quot;previewState&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;live&quot;, &quot;empty&quot;, &quot;loading&quot;], &quot;default&quot;: &quot;live&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Demo&quot; }
+}">
+class Component extends DCLogic {
+  state = { status: 'all', silo: 'all', writer: 'all', query: '', selected: null, narrow: false, railOpen: false };
+
+  componentDidMount() {
+    this._onResize = () => {
+      const narrow = window.innerWidth < 1100;
+      if (narrow !== this.state.narrow) this.setState({ narrow, railOpen: false });
+    };
+    window.addEventListener('resize', this._onResize);
+    this._onResize();
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._onResize); }
+
+  statuses() {
+    return {
+      open:     { label: 'Open',             dot: '#0A84FF', chipBg: 'rgba(29,78,137,0.08)',   chipColor: '#1D4E89' },
+      progress: { label: 'In Progress',      dot: '#FF9500', chipBg: 'rgba(255,149,0,0.14)',   chipColor: '#B36B00' },
+      approval: { label: 'Waiting Approval', dot: '#FF3B30', chipBg: 'rgba(255,59,48,0.10)',   chipColor: '#C7362E' },
+      parts:    { label: 'Waiting Parts',    dot: '#BF5AF2', chipBg: 'rgba(191,90,242,0.12)',  chipColor: '#8944AB' },
+      done:     { label: 'Completed',        dot: '#34C759', chipBg: 'rgba(52,199,89,0.12)',   chipColor: '#1F8A3D' },
+      closed:   { label: 'Closed',           dot: '#8E8E93', chipBg: 'rgba(142,142,147,0.14)', chipColor: '#6E6E73' }
+    };
+  }
+
+  data() {
+    const mk = (wo, cust, model, unit, silo, writer, status, updated, created) =>
+      ({ wo, cust, model, unit, silo, writer, status, updated, created });
+    return [
+      mk('WO-4187', 'D. Whitfield',  '2019 Winnebago Vista 29V',        'Class A · 30 ft',        'Roofs',        'Brandon Dillon', 'progress', 'Today, 9:41 AM', 'Jun 12'),
+      mk('WO-4186', 'M. Alvarez',    '2022 Grand Design Reflection',    'Fifth Wheel · 34 ft',    'Repairs',      'Marisol Vega',   'approval', 'Today, 8:15 AM', 'Jun 30'),
+      mk('WO-4185', 'T. Okafor',     '2023 Keystone Montana',           'Fifth Wheel · 36 ft',    'Roofs',        'Tyler Reed',     'open',     'Today, 7:52 AM', 'Jul 5'),
+      mk('WO-4184', 'J. Meyer',      '2018 Forest River Georgetown',    'Class A · 34 ft',        'Paint & Body', 'Brandon Dillon', 'parts',    'Yesterday',      'Jun 27'),
+      mk('WO-4181', 'K. Nguyen',     '2017 Jayco Eagle HT',             'Travel Trailer · 28 ft', 'Solar',        'Tyler Reed',     'open',     'Yesterday',      'Jul 4'),
+      mk('WO-4179', 'R. Castillo',   '2021 Thor Ace 32.3',              'Class A · 33 ft',        'Paint & Body', 'Brandon Dillon', 'progress', 'Yesterday',      'Jun 22'),
+      mk('WO-4178', 'A. Pruitt',     '2016 Coachmen Catalina',          'Travel Trailer · 26 ft', 'Repairs',      'Marisol Vega',   'progress', 'Jul 3',          'Jun 25'),
+      mk('WO-4174', 'S. Patterson',  '2015 Newmar Bay Star',            'Class A · 31 ft',        'Roofs',        'Marisol Vega',   'done',     'Jul 3',          'Jun 10'),
+      mk('WO-4172', 'G. Lindqvist',  '2020 Tiffin Allegro Open Road',   'Class A · 32 ft',        'Solar',        'Brandon Dillon', 'parts',    'Jul 2',          'Jun 20'),
+      mk('WO-4170', 'L. Brooks',     '2020 Airstream Flying Cloud',     'Travel Trailer · 25 ft', 'Repairs',      'Tyler Reed',     'closed',   'Jul 2',          'Jun 8'),
+      mk('WO-4168', 'P. Domingo',    '2014 Fleetwood Bounder',          'Class A · 33 ft',        'Roofs',        'Brandon Dillon', 'open',     'Jul 1',          'Jul 1'),
+      mk('WO-4166', 'C. Whitaker',   '2021 Coleman Lantern LT',         'Travel Trailer · 24 ft', 'Repairs',      'Marisol Vega',   'approval', 'Jul 1',          'Jun 26'),
+      mk('WO-4165', 'B. Hastings',   '2019 Heartland Bighorn',          'Fifth Wheel · 37 ft',    'Roofs',        'Tyler Reed',     'progress', 'Jun 30',         'Jun 18'),
+      mk('WO-4163', 'N. Ferreira',   '2022 Winnebago Micro Minnie',     'Travel Trailer · 22 ft', 'Solar',        'Marisol Vega',   'done',     'Jun 30',         'Jun 15'),
+      mk('WO-4161', 'E. Kowalski',   '2017 Keystone Cougar',            'Fifth Wheel · 32 ft',    'Paint & Body', 'Tyler Reed',     'parts',    'Jun 28',         'Jun 17'),
+      mk('WO-4159', 'H. Bassett',    '2013 Itasca Sunstar',             'Class A · 30 ft',        'Roofs',        'Brandon Dillon', 'done',     'Jun 27',         'Jun 5'),
+      mk('WO-4157', 'V. Marsh',      '2023 Brinkley Model Z',           'Fifth Wheel · 35 ft',    'Repairs',      'Tyler Reed',     'open',     'Jun 27',         'Jun 27'),
+      mk('WO-4155', 'D. Iverson',    '2018 Grand Design Imagine',       'Travel Trailer · 27 ft', 'Solar',        'Brandon Dillon', 'closed',   'Jun 25',         'Jun 2'),
+      mk('WO-4152', 'F. Nakamura',   '2016 Thor Chateau',               'Class C · 29 ft',        'Repairs',      'Marisol Vega',   'done',     'Jun 24',         'Jun 12'),
+      mk('WO-4150', 'W. Granger',    '2015 Forest River Wildwood',      'Travel Trailer · 28 ft', 'Paint & Body', 'Marisol Vega',   'closed',   'Jun 23',         'May 30'),
+      mk('WO-4148', 'O. Petrov',     '2019 Jayco Greyhawk',             'Class C · 31 ft',        'Roofs',        'Tyler Reed',     'done',     'Jun 21',         'Jun 6'),
+      mk('WO-4146', 'M. Callahan',   '2022 Alliance Paradigm',          'Fifth Wheel · 36 ft',    'Solar',        'Tyler Reed',     'progress', 'Jun 20',         'Jun 14'),
+      mk('WO-4144', 'R. Delgado',    '2017 Winnebago Minnie Winnie',    'Class C · 26 ft',        'Repairs',      'Brandon Dillon', 'closed',   'Jun 19',         'May 28'),
+      mk('WO-4142', 'S. Abernathy',  '2021 Newmar Dutch Star',          'Class A · 38 ft',        'Paint & Body', 'Brandon Dillon', 'done',     'Jun 18',         'Jun 3')
+    ];
+  }
+
+  icon(children) {
+    return React.createElement('svg', {
+      viewBox: '0 0 24 24', width: 16, height: 16,
+      style: { flex: 'none' }, fill: 'none', stroke: 'currentColor',
+      strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round'
+    }, ...children);
+  }
+
+  railItem(key, label, dot, count, activeKey, onClick) {
+    const active = key === activeKey;
+    return {
+      label, dot, count, onClick,
+      bg: active ? 'rgba(29,78,137,0.08)' : 'transparent',
+      hoverBg: active ? 'rgba(29,78,137,0.10)' : '#F5F5F7',
+      color: active ? '#1D4E89' : '#1D1D1F',
+      weight: active ? 600 : 400,
+      countBg: active ? 'rgba(29,78,137,0.12)' : '#F5F5F7',
+      countColor: active ? '#1D4E89' : '#6E6E73'
+    };
+  }
+
+  buildDetail(row) {
+    const st = this.statuses();
+    const s = st[row.status];
+    const itemsBySilo = {
+      'Roofs':        [['Strip existing roof membrane', 4.0], ['Install seamless roof system', 8.0], ['Reseal skylights & penetrations', 1.5]],
+      'Repairs':      [['Diagnose slide-out motor fault', 1.0], ['Replace slide-out drive motor', 2.5], ['Test & calibrate travel stops', 0.5]],
+      'Paint & Body': [['Sand & prep damaged panels', 3.0], ['Color-match basecoat & clear', 5.0], ['Wet sand & polish blend panels', 2.0]],
+      'Solar':        [['Mount solar panels & flashing', 3.0], ['Install inverter & wiring run', 4.0], ['Commission & load test system', 1.0]]
+    };
+    const seq = { open: ['open', 'open', 'open'], progress: ['done', 'progress', 'open'], approval: ['done', 'approval', 'open'], parts: ['done', 'parts', 'open'], done: ['done', 'done', 'done'], closed: ['done', 'done', 'done'] }[row.status];
+    const raw = itemsBySilo[row.silo] || itemsBySilo['Repairs'];
+    const lineItems = raw.map((it, i) => {
+      const li = st[seq[i]];
+      return { desc: it[0], hours: it[1].toFixed(1) + ' hrs', label: li.label, chipBg: li.chipBg, chipColor: li.chipColor, chipDot: li.dot };
+    });
+    const total = raw.reduce((a, it) => a + it[1], 0);
+    return {
+      wo: row.wo, cust: row.cust, model: row.model, unit: row.unit, silo: row.silo,
+      writer: row.writer, created: row.created, updated: row.updated,
+      statusLabel: s.label, chipBg: s.chipBg, chipColor: s.chipColor, chipDot: s.dot,
+      lineItems,
+      totalHours: total.toFixed(1) + ' hrs',
+      notes: [
+        { author: row.writer, time: row.updated, text: 'Walked the unit with the customer at drop-off. Scope confirmed against the estimate; photos attached to the file.' },
+        { author: 'System', time: row.created, text: 'Work order created from approved estimate. Customer notified by email.' }
+      ]
+    };
+  }
+
+  renderVals() {
+    const st = this.statuses();
+    const all = this.data();
+    const previewState = this.props.previewState ?? 'live';
+    const density = this.props.density ?? 'comfortable';
+    const railWidth = this.props.railWidth ?? 280;
+    const { status, silo, writer, query, selected, narrow, railOpen } = this.state;
+
+    // ---- filtering ----
+    const q = query.trim().toLowerCase();
+    let rows = all.filter(r =>
+      (status === 'all' || r.status === status) &&
+      (silo === 'all' || r.silo === silo) &&
+      (writer === 'all' || r.writer === writer) &&
+      (!q || (r.wo + ' ' + r.cust + ' ' + r.model + ' ' + r.writer).toLowerCase().includes(q))
+    );
+    if (previewState === 'empty') rows = [];
+    const loading = previewState === 'loading';
+
+    // ---- rail items ----
+    const setF = (patch) => () => this.setState(Object.assign({ selected: null }, patch));
+    const cnt = (fn) => all.filter(fn).length;
+
+    const statusItems = [
+      this.railItem('all', 'All Work Orders', '#1D4E89', all.length, status, setF({ status: 'all' })),
+      ...Object.keys(st).map(k =>
+        this.railItem(k, st[k].label, st[k].dot, cnt(r => r.status === k), status, setF({ status: k })))
+    ];
+    const silos = ['Roofs', 'Repairs', 'Paint & Body', 'Solar'];
+    const siloDots = { 'Roofs': '#1D4E89', 'Repairs': '#0A84FF', 'Paint & Body': '#FF9500', 'Solar': '#34C759' };
+    const siloItems = silos.map(sl =>
+      this.railItem(sl, sl, siloDots[sl], cnt(r => r.silo === sl), silo, setF({ silo: silo === sl ? 'all' : sl })));
+    const writers = ['Brandon Dillon', 'Marisol Vega', 'Tyler Reed'];
+    const writerItems = [
+      this.railItem('all', 'All Writers', '#86868B', all.length, writer, setF({ writer: 'all' })),
+      ...writers.map(w =>
+        this.railItem(w, w, '#8E8E93', cnt(r => r.writer === w), writer, setF({ writer: w })))
+    ];
+
+    const adminItems = [
+      { label: 'New Work Order',   icon: this.icon([React.createElement('line', { key: 1, x1: 12, y1: 5, x2: 12, y2: 19 }), React.createElement('line', { key: 2, x1: 5, y1: 12, x2: 19, y2: 12 })]) },
+      { label: 'Clone Work Order', icon: this.icon([React.createElement('rect', { key: 1, x: 9, y: 9, width: 11, height: 11, rx: 2 }), React.createElement('path', { key: 2, d: 'M5 15V6a2 2 0 0 1 2-2h9' })]) },
+      { label: 'Reports',          icon: this.icon([React.createElement('path', { key: 1, d: 'M3 20h18' }), React.createElement('rect', { key: 2, x: 5, y: 11, width: 3, height: 6 }), React.createElement('rect', { key: 3, x: 10.5, y: 7, width: 3, height: 10 }), React.createElement('rect', { key: 4, x: 16, y: 4, width: 3, height: 13 })]) },
+      { label: 'Make-A-Wish',      icon: this.icon([React.createElement('path', { key: 1, d: 'M12 3l2.1 4.9L19 9l-4 3.4 1.2 5.1L12 14.8 7.8 17.5 9 12.4 5 9l4.9-1.1z' })]) },
+      { label: 'Settings',         icon: this.icon([React.createElement('circle', { key: 1, cx: 12, cy: 12, r: 3 }), React.createElement('path', { key: 2, d: 'M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z' })]) }
+    ].map(it => ({ ...it, onClick: () => {} }));
+
+    // ---- table rows ----
+    const tableRows = rows.map(r => {
+      const s = st[r.status];
+      return {
+        ...r,
+        statusLabel: s.label, chipBg: s.chipBg, chipColor: s.chipColor, chipDot: s.dot,
+        onClick: () => this.setState({ selected: r.wo })
+      };
+    });
+
+    // ---- header text ----
+    const parts = [];
+    if (status !== 'all') parts.push(st[status].label);
+    parts.push(silo === 'all' ? 'All silos' : silo);
+    if (writer !== 'all') parts.push(writer);
+    const subtitle = parts.join(' · ') + ' · sorted by last update';
+
+    const selRow = selected ? all.find(r => r.wo === selected) : null;
+    const detail = selRow ? this.buildDetail(selRow) : {};
+
+    return {
+      gridCols: narrow ? '1fr' : railWidth + 'px 1fr',
+      railDesktop: !narrow,
+      narrow, railOpen, query,
+      onSearch: (e) => this.setState({ query: e.target.value, selected: null }),
+      onToggleRail: () => this.setState({ railOpen: !railOpen }),
+      onCloseRail: () => this.setState({ railOpen: false }),
+      onNew: () => {},
+      onClearFilters: () => this.setState({ status: 'all', silo: 'all', writer: 'all', query: '' }),
+      onBack: () => this.setState({ selected: null }),
+      statusItems, siloItems, writerItems, adminItems,
+      rows: tableRows,
+      rowH: density === 'compact' ? '48px' : '60px',
+      loading,
+      showList: !selRow,
+      showTable: !selRow && !loading && tableRows.length > 0,
+      showEmpty: !selRow && !loading && tableRows.length === 0,
+      showDetail: !!selRow,
+      detail,
+      skeletonRows: [0, 1, 2, 3, 4, 5].map(i => ({ delay: (i * 0.12) + 's' })),
+      subtitle,
+      countText: tableRows.length === all.length ? all.length + ' work orders' : tableRows.length + ' of ' + all.length,
+      footText: 'Showing ' + tableRows.length + ' of ' + all.length + ' work orders'
+    };
+  }
+}
+</script>
+</body>
+</html>
