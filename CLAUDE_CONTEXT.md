@@ -567,11 +567,19 @@ Waiting for QA/QC 1. All currently map; no unmapped rows appear yet.
 Reuses the SAME Supabase session as `index.html` (persisted in localStorage under storageKey
 `prvs_supabase_auth`; sign in on `index.html` on the same origin → v2 inherits it). Config is
 **duplicated** into `dashboard-v2.html` with `// DUP-FROM-INDEX` comments (public anon URL/key +
-SB_AUTH_OPTIONS) — nothing extracted, so index.html stays byte-identical. RLS split: `repair_orders`
-+ `notes` have **anon** read policies, but `service_work_orders` + `service_tasks` are
-**authenticated-only** (`{authenticated} true`). So a **guest (anon) session** sees the RO list + notes
-but **empty line items and only repair_type-derived silos**; a guest banner + "sign in to view line
-items" message make this explicit. Full fidelity requires a signed-in session.
+SB_AUTH_OPTIONS) — nothing extracted, so index.html stays byte-identical.
+**HARD LOGIN GATE (Roland directive, 2026-07-05):** the page is publicly reachable, so pre-auth it
+renders ONLY a centered "Please sign in" card (link to index.html) — the app shell is hidden and
+**zero data queries fire** (verified: no `supabase.co/rest` requests when logged out). An
+`onAuthStateChange` listener auto-reloads into the app if sign-in completes in another tab.
+⚠️ **Production-level exposure (separate issue, NOT fixed by any page UI):** `repair_orders` and
+`notes` carry **anon SELECT RLS policies** (`Anon can read repair_orders` / `Anon can read notes`,
+qual `true`). The anon key is public in the GitHub source, so anyone can read those tables (customer
+names/phones/emails/addresses/VINs, all notes) directly via the REST API without ever loading a page.
+Fixing it means dropping/narrowing the anon policies AFTER auditing what depends on them
+(index.html pre-auth paths, customer-checkin.html, checkin.html, leads.html, guide pages; edge fns
+use service role and are unaffected). Roland-decision item — see Active TODO / spawned task.
+`service_work_orders` + `service_tasks` are already authenticated-only.
 
 ### KPI band (reserved, empty)
 `<div id="kpi-band">` sits between the main-card header and the table, `display:none`, styled to match
@@ -581,12 +589,15 @@ planned_dropoff 20, pickup 8; money dollar_value>0 on 51 (Σ $381,808), SWO Σ $
 $56,121; pct_complete>0 on 51, parts_status 28, urgent_update 3; notes last-7d 130 across 45 ROs
 (stale-update KPI candidate).
 
-### Smoke test (2026-07-05, guest/anon session in headless preview)
-88 ROs load; rail counts correct (status 43+28+2+1+3+11=88; silos Repair 19/Vroom 8/Solar 5/Roof
-14/Paint & Body 5); status/silo/writer filters + search AND-combine; filter change clears open detail;
-empty state + "Clear all filters" work; slide-over rail at <1100px; detail shows real notes with parsed
-authors; line items correctly gated behind sign-in; stub buttons toast; KPI band hidden; zero JS errors
-from the page. Local helper `.claude/launch.json` (static server, port 5599) left untracked.
+### Smoke test (2026-07-05, headless preview)
+Pre-gate run (anon session, before the login gate was added): 88 ROs load; rail counts correct
+(status 43+28+2+1+3+11=88; silos Repair 19/Vroom 8/Solar 5/Roof 14/Paint & Body 5);
+status/silo/writer filters + search AND-combine; filter change clears open detail; empty state +
+"Clear all filters" work; slide-over rail at <1100px; detail shows real notes with parsed authors;
+stub buttons toast; KPI band hidden; zero JS errors from the page. Post-gate run (logged out):
+"Please sign in" card only, shell hidden, **zero `supabase.co/rest` requests**, no customer data in
+the DOM. Logged-IN full-fidelity pass (line items populated) still pending — needs Roland's browser
+session. Local helper `.claude/launch.json` (static server, port 5599) left untracked.
 
 ---
 

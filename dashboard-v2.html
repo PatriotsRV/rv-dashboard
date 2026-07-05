@@ -315,11 +315,19 @@
     background: rgba(255,59,48,0.08); color: #C7362E; font-size: 13px; font-weight: 600;
   }
   .auth-note a { color: var(--navy); }
-  .guest-note {
-    margin: 0 0 16px; padding: 10px 14px; border-radius: 10px;
-    background: var(--navy-08); color: var(--navy); font-size: 12px; font-weight: 600;
+  /* Full-page login gate — shown pre-auth; no data is queried or rendered. */
+  .login-gate {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 20px;
   }
-  .guest-note a { color: var(--navy); }
+  .login-gate-card {
+    background: var(--card); border-radius: 16px; box-shadow: var(--shadow-card);
+    padding: 44px 40px; text-align: center; max-width: 380px;
+  }
+  .login-gate-card .brand-mark { margin: 0 auto 16px; width: 40px; height: 40px; font-size: 15px; border-radius: 10px; }
+  .login-gate-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .login-gate-help { font-size: 13px; color: var(--text-2); margin-top: 6px; line-height: 1.5; }
+  .login-gate-card .btn-primary { margin-top: 18px; text-decoration: none; display: inline-block; }
 
   /* ── Slide-over rail (<1100px) ──────────────────────────────────── */
   .scrim {
@@ -344,8 +352,18 @@
 </style>
 </head>
 <body>
+  <!-- Pre-auth gate: the only thing a logged-out visitor ever sees. -->
+  <div class="login-gate" id="login-gate" style="display:none">
+    <div class="login-gate-card">
+      <div class="brand-mark">PR</div>
+      <div class="login-gate-title">Please sign in</div>
+      <div class="login-gate-help">This dashboard requires a Patriots RV Services login. Sign in on the main dashboard, then return to this page.</div>
+      <a class="btn-primary" href="index.html">Go to sign-in</a>
+    </div>
+  </div>
+
   <div class="scrim" id="scrim"></div>
-  <div class="shell">
+  <div class="shell" id="shell" style="display:none">
 
     <!-- ── Filter rail ──────────────────────────────────────────── -->
     <aside class="card rail" id="rail">
@@ -552,14 +570,22 @@
 
     // ── Load ──
     async function load() {
-      renderSkeleton();
-      // Auth check — reads need the same session as index.html.
-      // Without an authenticated session the anon key can read repair_orders +
-      // notes (anon RLS policies) but NOT service_work_orders / service_tasks
-      // (authenticated-only), so silos fall back to repair_type and line items
-      // are hidden until sign-in.
+      // HARD AUTH GATE — this page is publicly reachable (GitHub Pages), so a
+      // logged-out visitor sees ONLY the sign-in card: no queries are fired
+      // and nothing else renders. Session is shared with index.html via
+      // localStorage storageKey 'prvs_supabase_auth'.
       const { data: { session } } = await sb.auth.getSession();
       state.isAuthed = !!session;
+      if (!session) {
+        el('login-gate').style.display = '';
+        el('shell').style.display = 'none';
+        // If sign-in completes in another tab (same origin), enter automatically.
+        sb.auth.onAuthStateChange((_event, s) => { if (s) location.reload(); });
+        return;
+      }
+      el('login-gate').style.display = 'none';
+      el('shell').style.display = '';
+      renderSkeleton();
 
       const [roRes, staffRes, swoRes] = await Promise.all([
         sb.from('repair_orders')
@@ -571,11 +597,7 @@
       ]);
 
       if (roRes.error) {
-        renderAuthError(roRes.error, session);
-        return;
-      }
-      if (!session && (!roRes.data || roRes.data.length === 0)) {
-        renderAuthError(null, session);
+        renderAuthError(roRes.error);
         return;
       }
 
@@ -798,10 +820,7 @@
         </tr>`;
       }).join('');
 
-      const guestBanner = state.isAuthed ? '' :
-        `<div class="guest-note">Guest view — line items and full silo data require signing in on the <a href="index.html">main dashboard</a>. The work-order list and notes are shown read-only.</div>`;
-
-      el('view').innerHTML = guestBanner + `
+      el('view').innerHTML = `
         <table class="wo-table">
           <thead><tr>
             <th>WO #</th><th>Customer</th><th>Silo</th><th>Writer</th><th>Status</th><th>Updated</th>
@@ -886,10 +905,7 @@
       const liBlock = el('line-items');
       if (liBlock) {
         if (!tasks.length) {
-          const msg = state.isAuthed
-            ? 'No line items on this work order.'
-            : 'Sign in on the main dashboard to view line items.';
-          liBlock.innerHTML = `<p class="section-label">Line Items</p><div class="cell-sub" style="padding:8px 2px">${msg}</div>`;
+          liBlock.innerHTML = `<p class="section-label">Line Items</p><div class="cell-sub" style="padding:8px 2px">No line items on this work order.</div>`;
         } else {
           let total = 0;
           const rowsHtml = tasks.map(t => {
@@ -938,13 +954,11 @@
       el('view').innerHTML = html;
     }
 
-    function renderAuthError(err, session) {
+    function renderAuthError(err) {
       el('view').innerHTML = `
         <div class="auth-note">
-          ${session ? 'Could not load work orders' : 'Not signed in'} —
-          ${session
-            ? esc(err && err.message ? err.message : 'unknown error') + '.'
-            : 'this page shares the login session with the main dashboard. Open <a href="index.html">index.html</a> on this same address, sign in with Google, then reload this page.'}
+          Could not load work orders — ${esc(err && err.message ? err.message : 'unknown error')}.
+          Your session may have expired; sign in again on <a href="index.html">the main dashboard</a>.
         </div>`;
       el('wo-count').textContent = '';
     }
@@ -973,7 +987,7 @@
     // ── Go ──
     load().catch(err => {
       console.error(err);
-      renderAuthError({ message: String(err && err.message || err) }, true);
+      renderAuthError({ message: String(err && err.message || err) });
     });
   })();
   </script>
