@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RO Dashboard v2 · PRVS (mockup)</title>
+<!--
+  ══════════════════════════════════════════════════════════════════════════
+  PRVS RO Dashboard v2 — Floating-Rail Redesign  (READ-ONLY TESTING MOCKUP)
+  ══════════════════════════════════════════════════════════════════════════
+  Parallel view. Does NOT touch index.html or any production code path.
+  Reuses the SAME Supabase project + auth session as index.html (session is
+  persisted in localStorage under storageKey 'prvs_supabase_auth', so signing
+  in on index.html on this origin logs this page in too). No writes.
+
+  Design source of truth: design_handoff_ro_dashboard/README.md
+  Screenshots: design_handoff_ro_dashboard/screenshots/
+
+  ── STATUS_MAP (live repair_orders.status → design status key) ─────────────
+  Documented also in CLAUDE_CONTEXT.md. Any live value NOT in this map renders
+  as a gray "Unmapped: <value>" chip — never hidden, never guessed.
+
+    open     ← Not On Lot, On Lot, Off Lot - Returning, Scheduled, Ready to Work
+    progress ← In progress, In Progress            (both casings)
+    approval ← Awaiting Approval
+    parts    ← Awaiting parts, Awaiting Parts       (both casings)
+    done     ← Repairs Completed, Waiting for QA/QC, Ready for pickup, Ready for Pickup
+    closed   ← Delivered/Cashed Out
+
+  ── DATA MAPPING (design field → live source) ─────────────────────────────
+    wo       ← repair_orders.ro_id
+    cust     ← repair_orders.customer_name
+    model    ← repair_orders.rv            (freeform unit description)
+    unit     ← (no structured class/length column — Unit column omitted)
+    silo     ← derived from child service_work_orders.service_silo
+               (fallback repair_orders.repair_type → SERVICE_SILOS key)
+    writer   ← silo manager(s) (staff.role in manager/sr_manager matched on
+               staff.service_silo) + technician (repair_orders.technician)
+    status   ← repair_orders.status via STATUS_MAP
+    updated  ← repair_orders.updated_at   (relative formatting)
+    created  ← repair_orders.created_at   (detail view)
+    line items ← service_tasks (task_title/description, est_hours, status)
+    notes      ← notes (body, created_at, author via users.name)
+  ══════════════════════════════════════════════════════════════════════════
+-->
+<style>
+  :root {
+    /* ── Design tokens (README "Design Tokens") ─────────────────────── */
+    --page:        #F5F5F7;
+    --card:        #FFFFFF;
+    --text:        #1D1D1F;   /* primary   */
+    --text-2:      #6E6E73;   /* secondary */
+    --text-3:      #86868B;   /* tertiary  */
+    --navy:        #1D4E89;   /* the one accent */
+    --navy-08:     rgba(29,78,137,0.08);
+    --navy-12:     rgba(29,78,137,0.12);
+    --navy-ring:   rgba(29,78,137,0.18);
+    --hairline:    rgba(0,0,0,0.05);
+    --hover-row:   #FAFAFA;
+    --hover-ctrl:  #F5F5F7;
+    --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
+    --shadow-over: 0 12px 40px rgba(0,0,0,0.18);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ── Page grid ──────────────────────────────────────────────────── */
+  .shell {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .card {
+    background: var(--card);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* ── Filter rail ────────────────────────────────────────────────── */
+  .rail {
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    padding: 20px 14px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 6px 18px;
+  }
+  .brand-mark {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: var(--navy);
+    color: #fff;
+    font-weight: 600;
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex: 0 0 auto;
+  }
+  .brand-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+  .brand-sub  { font-size: 11px; color: var(--text-3); }
+
+  .search-wrap { position: relative; margin-bottom: 18px; }
+  .search-wrap svg {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; color: var(--text-3); pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    background: var(--hover-ctrl);
+    border: none;
+    border-radius: 10px;
+    padding: 9px 12px 9px 34px;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: box-shadow 150ms ease;
+  }
+  .search-input::placeholder { color: var(--text-3); }
+  .search-input:focus { box-shadow: 0 0 0 3px var(--navy-ring); }
+
+  .rail-section { margin-bottom: 18px; }
+  .rail-head {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-3);
+    padding: 0 10px 8px;
+  }
+  .frow {
+    display: flex; align-items: center; gap: 10px;
+    height: 40px; border-radius: 10px; padding: 0 10px;
+    cursor: pointer; user-select: none;
+    transition: background 150ms ease;
+  }
+  .frow:hover { background: var(--hover-ctrl); }
+  .frow.active { background: var(--navy-08); }
+  .frow.active .frow-label { color: var(--navy); font-weight: 600; }
+  .frow.active .frow-count { background: var(--navy-12); color: var(--navy); }
+  .frow-dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto; }
+  .frow-label {
+    flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    color: var(--text); font-size: 14px;
+  }
+  .frow-count {
+    font-size: 12px; border-radius: 999px; padding: 2px 9px;
+    background: var(--hover-ctrl); color: var(--text-2);
+    font-variant-numeric: tabular-nums; flex: 0 0 auto;
+  }
+
+  .divider { height: 1px; background: var(--hairline); margin: 4px 10px 14px; }
+
+  /* Admin quiet rows */
+  .arow {
+    display: flex; align-items: center; gap: 10px;
+    height: 38px; border-radius: 10px; padding: 0 10px;
+    cursor: pointer; user-select: none;
+    color: var(--text-2); font-size: 14px;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .arow:hover { background: var(--hover-ctrl); color: var(--text); }
+  .arow svg { width: 16px; height: 16px; flex: 0 0 auto; }
+
+  /* ── Main card ──────────────────────────────────────────────────── */
+  .main { padding: 26px 26px 10px; min-height: 60vh; }
+  .main-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+  .filter-toggle {
+    display: none;
+    width: 36px; height: 36px; flex: 0 0 auto;
+    background: var(--hover-ctrl); border: none; border-radius: 10px;
+    cursor: pointer; align-items: center; justify-content: center;
+    color: var(--text);
+  }
+  .filter-toggle svg { width: 18px; height: 18px; }
+  .head-titles { flex: 1 1 auto; min-width: 0; }
+  .head-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .head-sub { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+  .head-right { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
+  .wo-count { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .btn-primary {
+    background: var(--navy); color: #fff;
+    font-family: var(--font); font-size: 13px; font-weight: 600;
+    border: none; border-radius: 10px; padding: 9px 16px; cursor: pointer;
+    transition: opacity 150ms ease, transform 150ms ease;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:active { transform: scale(0.97); }
+
+  /* KPI band — reserved region for future management KPIs (hidden). */
+  #kpi-band {
+    display: none;
+    background: var(--card);
+    border-radius: 12px;
+    margin: 0 0 18px;
+  }
+
+  /* ── Table ──────────────────────────────────────────────────────── */
+  table.wo-table { width: 100%; border-collapse: collapse; }
+  .wo-table thead th {
+    text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-3);
+    padding: 10px 12px; border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+  .wo-table thead th.right { text-align: right; }
+  .wo-table tbody td { padding: 0 12px; border-bottom: 1px solid var(--hairline); vertical-align: middle; }
+  .wo-table tbody tr { height: 60px; cursor: pointer; transition: background 120ms ease; }
+  .wo-table tbody tr:hover { background: var(--hover-row); }
+  .cell-wo { font-weight: 600; color: var(--navy); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cell-cust { font-weight: 600; color: var(--text); }
+  .cell-sub { font-size: 13px; color: var(--text-2); }
+  .cell-muted { color: var(--text-2); }
+  .cell-updated { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .writer-2 { font-size: 12px; color: var(--text-3); }
+
+  .footer { padding: 14px 12px 12px; font-size: 13px; color: var(--text-3); }
+
+  /* ── Status chips ───────────────────────────────────────────────── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 999px; font-size: 12px; font-weight: 600;
+    padding: 4px 11px; white-space: nowrap;
+  }
+  .chip .chip-dot { width: 6px; height: 6px; border-radius: 999px; flex: 0 0 auto; }
+  .chip.sm { font-size: 11px; padding: 3px 9px; }
+
+  /* ── Detail view ────────────────────────────────────────────────── */
+  .back-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: var(--navy); font-size: 13px; font-weight: 600;
+    padding: 6px 10px 6px 6px; border-radius: 8px; cursor: pointer;
+    transition: background 150ms ease; margin-bottom: 14px;
+  }
+  .back-link:hover { background: var(--navy-08); }
+  .back-link svg { width: 16px; height: 16px; }
+  .detail-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+  .detail-titles { flex: 1 1 auto; min-width: 0; }
+  .detail-wo { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .detail-sub { font-size: 13px; color: var(--text-2); margin-top: 6px; }
+
+  .meta {
+    background: var(--hover-ctrl); border-radius: 12px; padding: 20px 22px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 24px;
+    margin-bottom: 26px;
+  }
+  .meta-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 4px; }
+  .meta-value { font-size: 14px; color: var(--text); }
+  .meta-value.strong { font-weight: 600; }
+  .meta-value .sub2 { font-size: 13px; color: var(--text-2); }
+
+  .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin: 0 0 8px; padding: 0 2px; }
+
+  .li-row {
+    display: flex; align-items: center; gap: 16px;
+    height: 52px; border-bottom: 1px solid var(--hairline); padding: 0 2px;
+  }
+  .li-desc { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+  .li-hours { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .li-total { text-align: right; font-size: 13px; color: var(--text-2); padding: 12px 2px 0; font-variant-numeric: tabular-nums; }
+
+  .note { margin-bottom: 16px; max-width: 640px; }
+  .note-head { display: flex; align-items: baseline; gap: 8px; }
+  .note-author { font-size: 13px; font-weight: 600; }
+  .note-time { font-size: 12px; color: var(--text-3); }
+  .note-body { font-size: 13px; color: var(--text-2); line-height: 1.5; margin-top: 2px; white-space: pre-wrap; }
+
+  /* ── Empty state ────────────────────────────────────────────────── */
+  .empty { text-align: center; padding: 72px 20px; }
+  .empty-circle {
+    width: 44px; height: 44px; border-radius: 999px; background: var(--hover-ctrl);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;
+    color: var(--text-3);
+  }
+  .empty-circle svg { width: 20px; height: 20px; }
+  .empty-title { font-size: 15px; font-weight: 600; }
+  .empty-help { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .empty-clear { display: inline-block; margin-top: 12px; color: var(--navy); font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 999px; }
+  .empty-clear:hover { background: var(--navy-08); }
+
+  /* ── Skeleton loading ───────────────────────────────────────────── */
+  .sk-row { height: 60px; border-bottom: 1px solid var(--hairline); display: flex; align-items: center; gap: 24px; padding: 0 12px; }
+  .sk-bar { height: 12px; border-radius: 6px; background: #F0F0F2; animation: skpulse 1.4s ease-in-out infinite; }
+  @keyframes skpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  /* ── Toast ──────────────────────────────────────────────────────── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #1D1D1F; color: #fff; font-size: 13px; font-weight: 600;
+    padding: 10px 18px; border-radius: 10px; box-shadow: var(--shadow-over);
+    opacity: 0; pointer-events: none; transition: opacity 200ms ease, transform 200ms ease; z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .auth-note {
+    margin: 0 0 18px; padding: 12px 16px; border-radius: 10px;
+    background: rgba(255,59,48,0.08); color: #C7362E; font-size: 13px; font-weight: 600;
+  }
+  .auth-note a { color: var(--navy); }
+  .guest-note {
+    margin: 0 0 16px; padding: 10px 14px; border-radius: 10px;
+    background: var(--navy-08); color: var(--navy); font-size: 12px; font-weight: 600;
+  }
+  .guest-note a { color: var(--navy); }
+
+  /* ── Slide-over rail (<1100px) ──────────────────────────────────── */
+  .scrim {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.22); z-index: 40;
+  }
+  @media (max-width: 1100px) {
+    .shell { grid-template-columns: 1fr; }
+    .filter-toggle { display: flex; }
+    .rail {
+      position: fixed; top: 20px; left: 20px; bottom: 20px; width: 280px;
+      z-index: 50; border-radius: 16px; box-shadow: var(--shadow-over);
+      transform: translateX(calc(-100% - 24px));
+      transition: transform 200ms ease; max-height: none;
+    }
+    body.rail-open .rail { transform: translateX(0); }
+    body.rail-open .scrim { display: block; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="scrim" id="scrim"></div>
+  <div class="shell">
+
+    <!-- ── Filter rail ──────────────────────────────────────────── -->
+    <aside class="card rail" id="rail">
+      <div class="brand">
+        <div class="brand-mark">PR</div>
+        <div>
+          <div class="brand-name">Patriots RV Services</div>
+          <div class="brand-sub">RO Dashboard</div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input class="search-input" id="search" type="text" placeholder="Search work orders…" autocomplete="off">
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-head">Filter by Status</div>
+        <div id="status-filters"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-head">Filter by Silo</div>
+        <div id="silo-filters"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-head">Filter by Writer</div>
+        <div id="writer-filters"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="rail-section" style="margin-bottom:0;">
+        <div class="rail-head">Admin</div>
+        <div class="arow" data-stub="New Work Order">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> New Work Order
+        </div>
+        <div class="arow" data-stub="Clone Work Order">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Clone Work Order
+        </div>
+        <div class="arow" data-stub="Reports">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg> Reports
+        </div>
+        <div class="arow" data-stub="Make-A-Wish">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.6 5.6 6 .8-4.4 4.2 1.1 6L12 16.9 6.7 19.6l1.1-6L3.4 9.4l6-.8L12 3Z"/></svg> Make-A-Wish
+        </div>
+        <div class="arow" data-stub="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg> Settings
+        </div>
+      </div>
+    </aside>
+
+    <!-- ── Main card ────────────────────────────────────────────── -->
+    <main class="card main" id="main">
+      <!-- header -->
+      <div class="main-head" id="list-head">
+        <button class="filter-toggle" id="filter-toggle" aria-label="Show filters">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        </button>
+        <div class="head-titles">
+          <div class="head-title">Work Orders</div>
+          <div class="head-sub" id="head-sub">All silos · sorted by last update</div>
+        </div>
+        <div class="head-right">
+          <span class="wo-count" id="wo-count"></span>
+          <button class="btn-primary" data-stub="New Work Order">New Work Order</button>
+        </div>
+      </div>
+
+      <!-- KPI band: reserved, hidden by default (future management KPIs) -->
+      <div id="kpi-band"></div>
+
+      <!-- list / detail swap in here -->
+      <div id="view"></div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+  "use strict";
+  (function () {
+    // ── Supabase config ──  DUP-FROM-INDEX (index.html ~L4084 + js/config.js
+    //    SB_AUTH_OPTIONS). Public anon config; same storageKey → shared session.
+    const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+    const SB_AUTH_OPTIONS = { auth: {
+      persistSession: true, autoRefreshToken: true,
+      storageKey: 'prvs_supabase_auth', detectSessionInUrl: true,
+    }};
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, SB_AUTH_OPTIONS);
+
+    // ── Constants (DUP-FROM-INDEX SERVICE_SILOS / REPAIR_TYPE_TO_SILO) ──
+    const SERVICE_SILOS = [
+      { key: 'repair',     label: 'Repair' },
+      { key: 'vroom',      label: 'Vroom' },
+      { key: 'solar',      label: 'Solar' },
+      { key: 'roof',       label: 'Roof' },
+      { key: 'paint_body', label: 'Paint & Body' },
+      { key: 'chassis',    label: 'Chassis' },
+      { key: 'detailing',  label: 'Detailing' },
+      { key: 'truetopper', label: 'TrueTopper' },
+    ];
+    const REPAIR_TYPE_TO_SILO = {
+      'repairs':'repair','repair':'repair','vroom':'vroom','solar':'solar','roof':'roof',
+      'paint and body':'paint_body','paint & body':'paint_body','chassis':'chassis',
+      'detailing':'detailing','truetopper':'truetopper',
+    };
+    // Rail dot colors assigned in SERVICE_SILOS order (README gives 4; live has more).
+    const SILO_DOTS = ['#1D4E89','#0A84FF','#34C759','#FF9500','#BF5AF2','#FF3B30','#8E8E93','#5AC8FA'];
+
+    // STATUS_MAP — live repair_orders.status → design key (see header block).
+    const STATUS_MAP = {
+      'not on lot':'open','on lot':'open','off lot - returning':'open',
+      'scheduled':'open','ready to work':'open',
+      'in progress':'progress',
+      'awaiting approval':'approval',
+      'awaiting parts':'parts',
+      'repairs completed':'done','waiting for qa/qc':'done',
+      'ready for pickup':'done',
+      'delivered/cashed out':'closed',
+    };
+    // Design status keys → chip/rail presentation (README status table).
+    const STATUS_DEF = {
+      open:     { label:'Open',             dot:'#0A84FF', fill:'rgba(29,78,137,0.08)', text:'#1D4E89' },
+      progress: { label:'In Progress',      dot:'#FF9500', fill:'rgba(255,149,0,0.14)', text:'#B36B00' },
+      approval: { label:'Waiting Approval', dot:'#FF3B30', fill:'rgba(255,59,48,0.10)', text:'#C7362E' },
+      parts:    { label:'Waiting Parts',    dot:'#BF5AF2', fill:'rgba(191,90,242,0.12)',text:'#8944AB' },
+      done:     { label:'Completed',        dot:'#34C759', fill:'rgba(52,199,89,0.12)', text:'#1F8A3D' },
+      closed:   { label:'Closed',           dot:'#8E8E93', fill:'rgba(142,142,147,0.14)',text:'#6E6E73' },
+    };
+    const STATUS_ORDER = ['open','progress','approval','parts','done','closed'];
+    // service_tasks.status → design key (for small line-item chips)
+    const TASK_STATUS_MAP = {
+      'not_started':'open','in_progress':'progress','awaiting_approval':'approval',
+      'awaiting_parts':'parts','completed':'done',
+    };
+
+    function statusKey(raw) { return STATUS_MAP[(raw||'').trim().toLowerCase()] || null; }
+
+    // ── State ──
+    const state = {
+      statusFilter: 'all', siloFilter: 'all', writerFilter: 'all',
+      searchQuery: '', selectedWO: null, isAuthed: false,
+    };
+    let ROS = [];               // enriched RO objects
+    let STAFF = [];             // active staff
+    let SILO_MGRS = {};         // silo key → [manager names]
+    let counts = { status:{}, silo:{}, writer:{}, writerRole:{} };
+
+    // ── Helpers ──
+    const el = (id) => document.getElementById(id);
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function toast(msg) {
+      const t = el('toast'); t.textContent = msg; t.classList.add('show');
+      clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+    function siloLabel(key) {
+      const d = SERVICE_SILOS.find(s => s.key === key);
+      return d ? d.label : key;
+    }
+    function siloDot(key) {
+      const i = SERVICE_SILOS.findIndex(s => s.key === key);
+      return i >= 0 ? SILO_DOTS[i % SILO_DOTS.length] : '#8E8E93';
+    }
+    // Relative date formatting (README: "Today, 9:41 AM" / "Yesterday" / "Jun 12")
+    function relDate(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts); if (isNaN(d)) return '—';
+      const now = new Date();
+      const sameDay = (a,b) => a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+      const yest = new Date(now); yest.setDate(now.getDate()-1);
+      const time = d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      if (sameDay(d, now)) return 'Today, ' + time;
+      if (sameDay(d, yest)) return 'Yesterday';
+      const opts = { month:'short', day:'numeric' };
+      if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+      return d.toLocaleDateString('en-US', opts);
+    }
+    // Clean a freeform technician string into individual display names.
+    function cleanTechNames(raw) {
+      if (!raw) return [];
+      return String(raw)
+        .split(/\s*(?:&|,|\band\b|\+|\/)\s*/i)
+        .map(s => s.trim().replace(/\s+/g,' '))
+        .filter(s => s && !/^(not assigned|unassigned|n\/a|na|yet\.?|tbd)$/i.test(s))
+        // Normalize shouted full names (RYAN → Ryan) but keep short initials (JT) as-is.
+        .map(s => (s.length >= 4 && s === s.toUpperCase() ? s.charAt(0)+s.slice(1).toLowerCase() : s));
+    }
+    // Notes store author + time inside the body as "[MM/DD/YY, HH:MM AM - Author] text".
+    // (notes.user_id is always NULL in this schema, so we parse the prefix.)
+    function parseNote(n) {
+      const body = n.body || '';
+      const m = body.match(/^\[[^\]]*?\s-\s([^\]]+)\]\s*([\s\S]*)$/);
+      if (m) return { author: m[1].trim(), text: m[2].trim() };
+      const label = n.type === 'customer_comm' ? 'Customer Comm' : 'RO Status';
+      return { author: label, text: body };
+    }
+
+    // ── Load ──
+    async function load() {
+      renderSkeleton();
+      // Auth check — reads need the same session as index.html.
+      // Without an authenticated session the anon key can read repair_orders +
+      // notes (anon RLS policies) but NOT service_work_orders / service_tasks
+      // (authenticated-only), so silos fall back to repair_type and line items
+      // are hidden until sign-in.
+      const { data: { session } } = await sb.auth.getSession();
+      state.isAuthed = !!session;
+
+      const [roRes, staffRes, swoRes] = await Promise.all([
+        sb.from('repair_orders')
+          .select('id, ro_id, customer_name, rv, repair_type, technician, status, dollar_value, urgency, parts_status, created_at, updated_at, requested_by_email')
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false }),
+        sb.from('staff').select('name, email, role, service_silo').eq('active', true).order('name'),
+        sb.from('service_work_orders').select('ro_id, service_silo, status, dollar_value, estimated_hours'),
+      ]);
+
+      if (roRes.error) {
+        renderAuthError(roRes.error, session);
+        return;
+      }
+      if (!session && (!roRes.data || roRes.data.length === 0)) {
+        renderAuthError(null, session);
+        return;
+      }
+
+      STAFF = staffRes.data || [];
+      SILO_MGRS = {};
+      STAFF.forEach(s => {
+        if ((s.role === 'manager' || s.role === 'sr_manager') && s.service_silo) {
+          (SILO_MGRS[s.service_silo] = SILO_MGRS[s.service_silo] || []).push(s.name);
+        }
+      });
+      const emailToName = {};
+      STAFF.forEach(s => { if (s.email) emailToName[s.email.toLowerCase()] = s.name; });
+
+      // silos per RO from service_work_orders
+      const siloByRo = {};
+      (swoRes.data || []).forEach(w => {
+        if (!w.ro_id || !w.service_silo) return;
+        (siloByRo[w.ro_id] = siloByRo[w.ro_id] || new Set()).add(w.service_silo);
+      });
+
+      ROS = (roRes.data || []).map(r => {
+        // silos: from SWOs, else fall back to repair_type
+        let silos = Array.from(siloByRo[r.id] || []);
+        if (!silos.length) {
+          const k = REPAIR_TYPE_TO_SILO[(r.repair_type||'').trim().toLowerCase()];
+          if (k) silos = [k];
+        }
+        // stable order by SERVICE_SILOS
+        silos.sort((a,b) => SERVICE_SILOS.findIndex(s=>s.key===a) - SERVICE_SILOS.findIndex(s=>s.key===b));
+
+        // writer = silo managers + technician(s)
+        const mgrs = [];
+        silos.forEach(k => (SILO_MGRS[k]||[]).forEach(n => { if (!mgrs.includes(n)) mgrs.push(n); }));
+        const techs = cleanTechNames(r.technician);
+        const writers = [];
+        mgrs.forEach(n => writers.push({ name:n, role:'mgr' }));
+        techs.forEach(n => { if (!writers.some(w=>w.name===n)) writers.push({ name:n, role:'tech' }); });
+
+        return {
+          id: r.id, wo: r.ro_id || '', cust: r.customer_name || '',
+          model: r.rv || '', repairType: r.repair_type || '',
+          silos, primarySilo: silos[0] || null,
+          mgrs, techs, writers,
+          sKey: statusKey(r.status), sRaw: r.status || '',
+          dollar: r.dollar_value || 0,
+          created: r.created_at, updated: r.updated_at,
+          requestedBy: emailToName[(r.requested_by_email||'').toLowerCase()] || null,
+        };
+      });
+
+      computeCounts();
+      buildRail();
+      render();
+    }
+
+    function computeCounts() {
+      counts = { status:{}, silo:{}, writer:{}, writerRole:{}, unmapped:{} };
+      ROS.forEach(r => {
+        if (r.sKey) counts.status[r.sKey] = (counts.status[r.sKey]||0)+1;
+        else counts.unmapped[r.sRaw] = (counts.unmapped[r.sRaw]||0)+1;
+        r.silos.forEach(k => counts.silo[k] = (counts.silo[k]||0)+1);
+        // writer counts: unique per RO per name
+        const seen = new Set();
+        r.writers.forEach(w => {
+          if (seen.has(w.name)) return; seen.add(w.name);
+          counts.writer[w.name] = (counts.writer[w.name]||0)+1;
+          if (!counts.writerRole[w.name] || w.role === 'mgr') counts.writerRole[w.name] = w.role;
+        });
+      });
+    }
+
+    // ── Rail rendering ──
+    function frow(dot, label, count, active, onClick) {
+      const row = document.createElement('div');
+      row.className = 'frow' + (active ? ' active' : '');
+      row.innerHTML =
+        (dot ? `<span class="frow-dot" style="background:${dot}"></span>` : `<span class="frow-dot" style="background:transparent"></span>`) +
+        `<span class="frow-label">${esc(label)}</span>` +
+        (count == null ? '' : `<span class="frow-count tnum">${count}</span>`);
+      row.addEventListener('click', onClick);
+      return row;
+    }
+
+    function buildRail() {
+      // Status
+      const sf = el('status-filters'); sf.innerHTML = '';
+      sf.appendChild(frow('#1D4E89', 'All Work Orders', ROS.length, state.statusFilter==='all',
+        () => setFilter('statusFilter','all')));
+      STATUS_ORDER.forEach(k => {
+        sf.appendChild(frow(STATUS_DEF[k].dot, STATUS_DEF[k].label, counts.status[k]||0,
+          state.statusFilter===k, () => setFilter('statusFilter', k)));
+      });
+      // Unmapped statuses — never hidden
+      Object.keys(counts.unmapped).sort().forEach(raw => {
+        sf.appendChild(frow('#C7C7CC', 'Unmapped: '+raw, counts.unmapped[raw],
+          state.statusFilter==='unmapped:'+raw, () => setFilter('statusFilter','unmapped:'+raw)));
+      });
+
+      // Silo — live values only, in SERVICE_SILOS order
+      const silf = el('silo-filters'); silf.innerHTML = '';
+      silf.appendChild(frow('#1D4E89', 'All Silos', ROS.length, state.siloFilter==='all',
+        () => setFilter('siloFilter','all')));
+      SERVICE_SILOS.filter(s => counts.silo[s.key]).forEach(s => {
+        silf.appendChild(frow(siloDot(s.key), s.label, counts.silo[s.key],
+          state.siloFilter===s.key, () => toggleSilo(s.key)));   // toggle: click active → clear
+      });
+
+      // Writer — managers (navy dot) first, then techs (gray dot)
+      const wf = el('writer-filters'); wf.innerHTML = '';
+      wf.appendChild(frow('#86868B', 'All Writers', ROS.length, state.writerFilter==='all',
+        () => setFilter('writerFilter','all')));
+      const names = Object.keys(counts.writer).sort((a,b) => {
+        const ra = counts.writerRole[a]==='mgr'?0:1, rb = counts.writerRole[b]==='mgr'?0:1;
+        return ra-rb || a.localeCompare(b);
+      });
+      names.forEach(n => {
+        const dot = counts.writerRole[n]==='mgr' ? '#1D4E89' : '#8E8E93';
+        wf.appendChild(frow(dot, n, counts.writer[n], state.writerFilter===n,
+          () => setFilter('writerFilter', n)));
+      });
+    }
+
+    function setFilter(key, val) {
+      state[key] = val;
+      state.selectedWO = null;         // any filter change clears open detail
+      closeRail();
+      buildRail(); render();
+    }
+    function toggleSilo(key) {
+      state.siloFilter = (state.siloFilter === key) ? 'all' : key;
+      state.selectedWO = null; closeRail(); buildRail(); render();
+    }
+
+    // ── Filtering ──
+    function filtered() {
+      const q = state.searchQuery.trim().toLowerCase();
+      return ROS.filter(r => {
+        // status
+        if (state.statusFilter !== 'all') {
+          if (state.statusFilter.startsWith('unmapped:')) {
+            if (r.sKey || r.sRaw !== state.statusFilter.slice(9)) return false;
+          } else if (r.sKey !== state.statusFilter) return false;
+        }
+        // silo (AND)
+        if (state.siloFilter !== 'all' && !r.silos.includes(state.siloFilter)) return false;
+        // writer (AND) — matches manager OR technician
+        if (state.writerFilter !== 'all' && !r.writers.some(w => w.name === state.writerFilter)) return false;
+        // search
+        if (q) {
+          const hay = [r.wo, r.cust, r.model, r.writers.map(w=>w.name).join(' ')].join(' ').toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    }
+
+    // ── Chips ──
+    function statusChip(r, small) {
+      if (r.sKey) {
+        const d = STATUS_DEF[r.sKey];
+        return `<span class="chip${small?' sm':''}" style="background:${d.fill};color:${d.text}">
+          <span class="chip-dot" style="background:${d.dot}"></span>${esc(d.label)}</span>`;
+      }
+      return `<span class="chip${small?' sm':''}" style="background:#F0F0F2;color:#6E6E73">
+        <span class="chip-dot" style="background:#C7C7CC"></span>Unmapped: ${esc(r.sRaw)}</span>`;
+    }
+    function taskChip(rawStatus) {
+      const k = TASK_STATUS_MAP[(rawStatus||'').toLowerCase()];
+      if (k && STATUS_DEF[k]) {
+        const d = STATUS_DEF[k];
+        return `<span class="chip sm" style="background:${d.fill};color:${d.text}">
+          <span class="chip-dot" style="background:${d.dot}"></span>${esc(d.label)}</span>`;
+      }
+      return `<span class="chip sm" style="background:#F0F0F2;color:#6E6E73">
+        <span class="chip-dot" style="background:#C7C7CC"></span>${esc(rawStatus||'—')}</span>`;
+    }
+
+    // ── Render router ──
+    function render() {
+      if (state.selectedWO) { renderDetail(); return; }
+      renderList();
+    }
+
+    function subtitleText() {
+      const parts = [];
+      if (state.statusFilter !== 'all') {
+        parts.push(state.statusFilter.startsWith('unmapped:')
+          ? 'Unmapped: '+state.statusFilter.slice(9)
+          : STATUS_DEF[state.statusFilter].label);
+      }
+      if (state.siloFilter !== 'all') parts.push(siloLabel(state.siloFilter));
+      if (state.writerFilter !== 'all') parts.push(state.writerFilter);
+      const lead = parts.length ? parts.join(' · ') : 'All silos';
+      return lead + ' · sorted by last update';
+    }
+
+    function renderList() {
+      el('list-head').style.display = '';
+      el('head-sub').textContent = subtitleText();
+      const rows = filtered();
+      el('wo-count').textContent = rows.length + ' work order' + (rows.length===1?'':'s');
+
+      if (!rows.length) { renderEmpty(); return; }
+
+      const body = rows.map(r => {
+        const writerCell = renderWriterCell(r);
+        const siloCell = r.silos.length
+          ? esc(siloLabel(r.primarySilo)) + (r.silos.length>1 ? ` <span class="cell-sub">+${r.silos.length-1}</span>` : '')
+          : '<span class="cell-sub">—</span>';
+        return `<tr data-id="${esc(r.id)}">
+          <td class="cell-wo tnum">${esc(r.wo)||'—'}</td>
+          <td>
+            <div class="cell-cust">${esc(r.cust)||'Unknown'}</div>
+            ${r.model ? `<div class="cell-sub">${esc(r.model)}</div>` : ''}
+          </td>
+          <td class="cell-muted">${siloCell}</td>
+          <td>${writerCell}</td>
+          <td>${statusChip(r,false)}</td>
+          <td class="cell-updated">${esc(relDate(r.updated))}</td>
+        </tr>`;
+      }).join('');
+
+      const guestBanner = state.isAuthed ? '' :
+        `<div class="guest-note">Guest view — line items and full silo data require signing in on the <a href="index.html">main dashboard</a>. The work-order list and notes are shown read-only.</div>`;
+
+      el('view').innerHTML = guestBanner + `
+        <table class="wo-table">
+          <thead><tr>
+            <th>WO #</th><th>Customer</th><th>Silo</th><th>Writer</th><th>Status</th><th>Updated</th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+        <div class="footer">Showing ${rows.length} of ${ROS.length} work orders</div>`;
+
+      el('view').querySelectorAll('tbody tr').forEach(tr => {
+        tr.addEventListener('click', () => { state.selectedWO = tr.dataset.id; render(); });
+      });
+    }
+
+    function renderWriterCell(r) {
+      if (!r.writers.length) return '<span class="cell-sub">Unassigned</span>';
+      const mgrLine = r.mgrs.join(', ');
+      const techLine = r.techs.join(', ');
+      if (mgrLine && techLine) return `<div>${esc(mgrLine)}</div><div class="writer-2">${esc(techLine)}</div>`;
+      return `<div>${esc(mgrLine || techLine)}</div>`;
+    }
+
+    function renderEmpty() {
+      el('view').innerHTML = `
+        <div class="empty">
+          <div class="empty-circle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </div>
+          <div class="empty-title">No matching work orders</div>
+          <div class="empty-help">Try adjusting your search or filters.</div>
+          <div class="empty-clear" id="clear-filters">Clear all filters</div>
+        </div>`;
+      el('clear-filters').addEventListener('click', clearAllFilters);
+    }
+
+    function clearAllFilters() {
+      state.statusFilter='all'; state.siloFilter='all'; state.writerFilter='all';
+      state.searchQuery=''; state.selectedWO=null;
+      el('search').value=''; buildRail(); render();
+    }
+
+    // ── Detail ──
+    async function renderDetail() {
+      const r = ROS.find(x => x.id === state.selectedWO);
+      if (!r) { state.selectedWO = null; renderList(); return; }
+      el('list-head').style.display = 'none';
+
+      el('view').innerHTML = `
+        <div class="back-link" id="back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Work Orders
+        </div>
+        <div class="detail-head">
+          <div class="detail-titles">
+            <div class="detail-wo"><span class="tnum">${esc(r.wo)||'—'}</span> ${statusChip(r,false)}</div>
+            <div class="detail-sub">${esc(r.cust||'Unknown')}${r.model ? ' · '+esc(r.model) : ''}</div>
+          </div>
+          <button class="btn-primary" data-stub="Edit Work Order">Edit Work Order</button>
+        </div>
+        <div class="meta">
+          <div><div class="meta-label">Customer</div><div class="meta-value strong">${esc(r.cust||'Unknown')}</div></div>
+          <div><div class="meta-label">Unit</div><div class="meta-value">${esc(r.model||'—')}</div></div>
+          <div><div class="meta-label">Silo</div><div class="meta-value">${r.silos.length ? r.silos.map(siloLabel).map(esc).join(', ') : '—'}</div></div>
+          <div><div class="meta-label">Writer</div><div class="meta-value">${r.writers.length ? esc(r.writers.map(w=>w.name).join(', ')) : 'Unassigned'}</div></div>
+          <div><div class="meta-label">Created</div><div class="meta-value">${esc(relDate(r.created))}</div></div>
+          <div><div class="meta-label">Updated</div><div class="meta-value">${esc(relDate(r.updated))}</div></div>
+        </div>
+        <div id="line-items"><p class="section-label">Line Items</p><div class="cell-sub" style="padding:8px 2px">Loading…</div></div>
+        <div id="notes-block" style="margin-top:26px"><p class="section-label">Notes</p><div class="cell-sub" style="padding:8px 2px">Loading…</div></div>`;
+
+      el('back').addEventListener('click', () => { state.selectedWO=null; render(); });
+
+      // lazy-load line items + notes
+      const [taskRes, noteRes] = await Promise.all([
+        sb.from('service_tasks').select('task_title, description, est_hours, status, sort_order')
+          .eq('ro_id', r.id).order('sort_order', { ascending: true }),
+        sb.from('notes').select('body, type, created_at')
+          .eq('ro_id', r.id).order('created_at', { ascending: false }),
+      ]);
+      if (state.selectedWO !== r.id) return; // navigated away
+
+      // line items
+      const tasks = taskRes.data || [];
+      const liBlock = el('line-items');
+      if (liBlock) {
+        if (!tasks.length) {
+          const msg = state.isAuthed
+            ? 'No line items on this work order.'
+            : 'Sign in on the main dashboard to view line items.';
+          liBlock.innerHTML = `<p class="section-label">Line Items</p><div class="cell-sub" style="padding:8px 2px">${msg}</div>`;
+        } else {
+          let total = 0;
+          const rowsHtml = tasks.map(t => {
+            const h = Number(t.est_hours)||0; total += h;
+            const desc = t.task_title || t.description || 'Untitled task';
+            return `<div class="li-row">
+              <span class="li-desc">${esc(desc)}</span>
+              <span class="li-hours">${h.toFixed(1)} hrs</span>
+              ${taskChip(t.status)}
+            </div>`;
+          }).join('');
+          liBlock.innerHTML = `<p class="section-label">Line Items</p>${rowsHtml}
+            <div class="li-total">Total · ${total.toFixed(1)} hrs</div>`;
+        }
+      }
+
+      // notes
+      const notes = noteRes.data || [];
+      const nb = el('notes-block');
+      if (nb) {
+        if (!notes.length) {
+          nb.innerHTML = `<p class="section-label">Notes</p><div class="cell-sub" style="padding:8px 2px">No notes yet.</div>`;
+        } else {
+          const nHtml = notes.map(n => {
+            const p = parseNote(n);
+            return `<div class="note">
+              <div class="note-head"><span class="note-author">${esc(p.author)}</span><span class="note-time">${esc(relDate(n.created_at))}</span></div>
+              <div class="note-body">${esc(p.text)}</div>
+            </div>`;
+          }).join('');
+          nb.innerHTML = `<p class="section-label">Notes</p>${nHtml}`;
+        }
+      }
+    }
+
+    // ── Skeleton / auth error ──
+    function renderSkeleton() {
+      el('wo-count').textContent = '';
+      const widths = [ ['80px','200px','90px','120px','90px','110px'] ];
+      let html = '';
+      for (let i=0;i<6;i++) {
+        const cells = ['64px','180px','70px','110px','86px','96px']
+          .map(w => `<div class="sk-bar" style="width:${w};animation-delay:${i*120}ms"></div>`).join('');
+        html += `<div class="sk-row">${cells}</div>`;
+      }
+      el('view').innerHTML = html;
+    }
+
+    function renderAuthError(err, session) {
+      el('view').innerHTML = `
+        <div class="auth-note">
+          ${session ? 'Could not load work orders' : 'Not signed in'} —
+          ${session
+            ? esc(err && err.message ? err.message : 'unknown error') + '.'
+            : 'this page shares the login session with the main dashboard. Open <a href="index.html">index.html</a> on this same address, sign in with Google, then reload this page.'}
+        </div>`;
+      el('wo-count').textContent = '';
+    }
+
+    // ── Slide-over rail wiring ──
+    function openRail() { document.body.classList.add('rail-open'); }
+    function closeRail() { document.body.classList.remove('rail-open'); }
+    el('filter-toggle').addEventListener('click', openRail);
+    el('scrim').addEventListener('click', closeRail);
+
+    // ── Search ──
+    let searchT;
+    el('search').addEventListener('input', (e) => {
+      state.searchQuery = e.target.value;
+      state.selectedWO = null;
+      clearTimeout(searchT);
+      searchT = setTimeout(render, 120);
+    });
+
+    // ── Stub buttons (read-only mockup) ──
+    document.addEventListener('click', (e) => {
+      const stub = e.target.closest('[data-stub]');
+      if (stub) { toast('Not wired in v2 mockup'); }
+    });
+
+    // ── Go ──
+    load().catch(err => {
+      console.error(err);
+      renderAuthError({ message: String(err && err.message || err) }, true);
+    });
+  })();
+  </script>
+</body>
+</html>

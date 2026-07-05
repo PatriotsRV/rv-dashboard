@@ -516,6 +516,80 @@ A topic branch is cheaper than a regression. If a change feels risky or touches 
 
 ---
 
+## 🧪 RO Dashboard v2 Mockup — `feature/dashboard-v2` branch (2026-07-05)
+
+> **Isolated testing mockup — NOT production.** Lives only on the local `feature/dashboard-v2`
+> branch (cut from `pre-prod`). Parallel view `dashboard-v2.html` in repo root; **`index.html` is
+> byte-identical** (baseline hash `4cc5ee9062e751db020cd04b7c469cd1c323c27e`, re-verified after
+> build). Design source of truth committed at `design_handoff_ro_dashboard/` (README + prototype +
+> screenshots). Floating-rail "Apple-style" redesign: filters move from the top bar into a left
+> filter rail; rail + main table read as two floating white cards. **Read-only** — New/Clone/Edit WO
+> buttons render per spec but only toast "Not wired in v2 mockup". No writes. Do NOT promote to
+> `main`/`pre-prod` without an explicit decision; may be trashed from the dev branch.
+
+### STATUS_MAP (live `repair_orders.status` → design status key)
+Also in the `dashboard-v2.html` header comment block. Any live value **not** in this map renders as
+a gray "Unmapped: `<value>`" chip — never hidden, never guessed.
+
+| Design key | Chip label | Live `repair_orders.status` values |
+|---|---|---|
+| `open` | Open | Not On Lot, On Lot, Off Lot - Returning, Scheduled, Ready to Work |
+| `progress` | In Progress | In progress, **In Progress** (both casings) |
+| `approval` | Waiting Approval | Awaiting Approval |
+| `parts` | Waiting Parts | Awaiting parts, **Awaiting Parts** (both casings) |
+| `done` | Completed | Repairs Completed, Waiting for QA/QC, Ready for pickup, Ready for Pickup |
+| `closed` | Closed | Delivered/Cashed Out |
+
+Live counts at build (88 active ROs, `deleted_at IS NULL`): In progress 28, Scheduled 20, Not On Lot
+13, Delivered/Cashed Out 11, On Lot 10, Awaiting Approval 2, Ready for pickup 2, Awaiting parts 1,
+Waiting for QA/QC 1. All currently map; no unmapped rows appear yet.
+
+### Data mapping (design field → live source)
+- `wo`←`repair_orders.ro_id`, `cust`←`customer_name`, `model`←`rv` (freeform unit string).
+- `unit` (class/length): **no structured column exists** → Unit table column omitted; detail meta
+  "Unit" shows `rv`.
+- `silo`: derived from child `service_work_orders.service_silo` (fallback `repair_type` →
+  `REPAIR_TYPE_TO_SILO`). One RO can span multiple silos → primary shown + "+N"; matches a silo
+  filter if it has any SWO in that silo. Rail uses **live** silos (SERVICE_SILOS order + dot palette),
+  not the design's four.
+- `writer`: **silo manager(s)** (`staff` where role∈manager/sr_manager matched on `service_silo`)
+  **+ technician** (`repair_orders.technician`, cleaned/split). Roland's call: "use both and see how
+  it works out." Column shows manager line + technician second line; writer filter matches either.
+  (No dedicated writer field exists; `requested_by_email` only 20/88 filled. Only 3/8 silos have a
+  staff manager — GH#23 — so roof/paint_body/chassis/detailing ROs fall back to technician/Unassigned.)
+- `status`←STATUS_MAP; `updated`/`created`← real timestamps, relative-formatted.
+- **Line items**←`service_tasks` (`task_title`/`description`, `est_hours`, `status`; total = Σ est_hours).
+- **Notes**←`notes` (`body`, `created_at`). **`notes.user_id` is ALWAYS NULL** — author + time are
+  embedded in the body as `[MM/DD/YY, HH:MM AM - Author] text`; the page parses that prefix (falls
+  back to a type label: Customer Comm / RO Status). Do NOT rely on the `users` FK for note authors.
+
+### Auth / RLS behavior (important)
+Reuses the SAME Supabase session as `index.html` (persisted in localStorage under storageKey
+`prvs_supabase_auth`; sign in on `index.html` on the same origin → v2 inherits it). Config is
+**duplicated** into `dashboard-v2.html` with `// DUP-FROM-INDEX` comments (public anon URL/key +
+SB_AUTH_OPTIONS) — nothing extracted, so index.html stays byte-identical. RLS split: `repair_orders`
++ `notes` have **anon** read policies, but `service_work_orders` + `service_tasks` are
+**authenticated-only** (`{authenticated} true`). So a **guest (anon) session** sees the RO list + notes
+but **empty line items and only repair_type-derived silos**; a guest banner + "sign in to view line
+items" message make this explicit. Full fidelity requires a signed-in session.
+
+### KPI band (reserved, empty)
+`<div id="kpi-band">` sits between the main-card header and the table, `display:none`, styled to match
+the card. Reserved for future management KPIs — do NOT build content yet. Discovery input (fill rates,
+88 active ROs): dates created/updated 88, date_received 59, date_arrived 50, promised 31,
+planned_dropoff 20, pickup 8; money dollar_value>0 on 51 (Σ $381,808), SWO Σ $264,700, parts retail Σ
+$56,121; pct_complete>0 on 51, parts_status 28, urgent_update 3; notes last-7d 130 across 45 ROs
+(stale-update KPI candidate).
+
+### Smoke test (2026-07-05, guest/anon session in headless preview)
+88 ROs load; rail counts correct (status 43+28+2+1+3+11=88; silos Repair 19/Vroom 8/Solar 5/Roof
+14/Paint & Body 5); status/silo/writer filters + search AND-combine; filter change clears open detail;
+empty state + "Clear all filters" work; slide-over rail at <1100px; detail shows real notes with parsed
+authors; line items correctly gated behind sign-in; stub buttons toast; KPI band hidden; zero JS errors
+from the page. Local helper `.claude/launch.json` (static server, port 5599) left untracked.
+
+---
+
 ## ⚠️ Known Issues & Gotchas
 
 ### PB list API + reconciliation gotchas (Session 132, 2026-07-04)
