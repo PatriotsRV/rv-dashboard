@@ -17,6 +17,12 @@ import nodemailer from "npm:nodemailer@6";
 //        Each line now names a person so the right human acts: Order box shows the RO requester
 //        (requested_by_email -> staff name), Call-Supplier + Came-In boxes show who ordered the part
 //        (parts.ordered_by). Lets parts NOT ordered by the parts manager get tracked/received by whoever ordered them.
+// v1.11: (S135) "CAME IN - RECEIVE THEM" now windows on date_received, not updated_at, so an already-Received
+//        part no longer re-surfaces in the box whenever its row is edited (any UPDATE bumps updated_at via the
+//        S115 set_updated_at trigger). Pairs with the trg_stamp_date_received DB trigger
+//        (migration stamp_date_received_on_parts.sql) that stamps date_received=today the moment a part becomes
+//        Received on any path, since the quick Received button never set it. Also fixed the stale box instruction
+//        ("Mark it Received..." -> "Text the tech their part is in..."). Fixes Roland's Todd Lintzen report 2026-07-08.
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
@@ -112,14 +118,24 @@ Deno.serve(async (req: Request) => {
       .order("eta", { ascending: true });
     if (e3) console.error("Error fetching overdue parts:", e3);
 
-    // ── 4. Parts received in last 24 hours ──────────────────────────────
-    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    // ── 4. Parts received in the last day (by RECEIPT date, not updated_at) ──
+    // v1.11: previously windowed on updated_at, but ANY edit bumps updated_at
+    // (and the S115 set_updated_at trigger fires on every UPDATE), so a part
+    // received days ago re-surfaced in "CAME IN" the moment its row was touched
+    // (Todd Lintzen report 2026-07-08: parts received 7/01 + 6/22 reappeared
+    // after a 7/07 edit). Window on the actual receipt date instead.
+    // date_received is stamped at receive-time by the trg_stamp_date_received
+    // DB trigger (migration: stamp_date_received_on_parts.sql) so every receive
+    // path — the quick Received button, the parts form, console check-in —
+    // records a date.
+    const yDate = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10); // YYYY-MM-DD, yesterday
     const { data: receivedParts, error: e4 } = await sb
       .from("parts")
-      .select("id, part_name, part_number, eta, status, ordered_by, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
+      .select("id, part_name, part_number, eta, status, ordered_by, date_received, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
       .eq("status", "Received")
-      .gte("updated_at", yesterday)
-      .order("updated_at", { ascending: false });
+      .gte("date_received", yDate)
+      .lte("date_received", todayStr)   // upper bound: ignore future-dated receipt typos (a part cannot "come in" tomorrow)
+      .order("date_received", { ascending: false });
     if (e4) console.error("Error fetching received parts:", e4);
 
     // ── Get recipient list (managers + sr_managers + parts_managers) ────
@@ -227,7 +243,7 @@ Deno.serve(async (req: Request) => {
 
     const orderBox  = box("&#128722;", "ORDER THESE PARTS", needsOrderingROs.length, orderItems, `Call the supplier, place the order, then tap "Parts Ordered" on the screen.`, "Nothing to order right now.", "#b45309", "#fffbeb");
     const callBox   = box("&#128222;", "CALL THE SUPPLIER", callCount, callItems, "Call the supplier, get a delivery date, and put it on the screen.", "Nobody to chase right now.", "#b91c1c", "#fef2f2");
-    const cameInBox = box("&#128229;", "CAME IN &mdash; RECEIVE THEM", receivedParts?.length || 0, cameInItems, "Mark it Received on the screen and text the tech.", "Nothing came in.", "#15803d", "#f0fdf4");
+    const cameInBox = box("&#128229;", "CAME IN &mdash; RECEIVE THEM", receivedParts?.length || 0, cameInItems, "Text the tech their part is in and ready to install.", "Nothing came in.", "#15803d", "#f0fdf4");
 
     // ── top verdict banner ──
     const verdict = toDoCount === 0
