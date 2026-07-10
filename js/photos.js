@@ -195,6 +195,11 @@
                             <div style="font-size:11px;font-weight:700;color:#475569;word-break:break-all;margin-bottom:4px;">${doc.name || 'Document'}</div>
                             <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${doc.addedDate || ''}</div>
                             <a href="${doc.url}" target="_blank" style="display:block;text-align:center;padding:5px;background:#3b82f6;color:white;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">🔗 Open</a>
+                            ${canManageFiles() ? `<div style="display:flex;gap:4px;margin-top:6px;">
+                                <button onclick="renameLibraryDoc(${index},${i})" title="Rename document" style="flex:1;padding:5px;background:#e0e7ff;color:#3730a3;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">✏️</button>
+                                <button onclick="openMoveFileModal(${index},'doc',${i})" title="Move to another RO" style="flex:1;padding:5px;background:#fef3c7;color:#92400e;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">➡️</button>
+                                <button onclick="deleteLibraryItem(${index},'doc',${i})" title="Delete document" style="flex:1;padding:5px;background:#fee2e2;color:#991b1b;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🗑️</button>
+                            </div>` : ''}
                         </div>`;
                     }).join('');
                 return `
@@ -368,6 +373,8 @@
                 <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;z-index:1;">
                     ${setMainHtml}
                     <a href="${url}" target="_blank" style="background:#3b82f6;color:white;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;">${isVid ? '💾 Download Video' : '💾 Open / Save'}</a>
+                    ${canManageFiles() ? `<button onclick="openMoveFileModal(${libIndex},'photo',${photoIdx})" style="background:#f59e0b;color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">➡️ Move</button>
+                    <button onclick="deleteLibraryItem(${libIndex},'photo',${photoIdx})" style="background:#ef4444;color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🗑️ Delete</button>` : ''}
                     <button onclick="closePhotoLightbox()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✕ Close</button>
                 </div>
                 ${hasMultiple ? `<button onclick="navigateLightbox(-1)" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.15);color:white;border:none;border-radius:50%;width:48px;height:48px;font-size:26px;cursor:pointer;z-index:1;display:flex;align-items:center;justify-content:center;">&#8249;</button>` : ''}
@@ -593,6 +600,251 @@
         }
 
 
+// ─────────────────────────────────────────────────────────────────────
+// [v1.472 S136] RO FILE MANAGEMENT — delete / move / rename photos & docs
+//
+// Added after a data-integrity investigation (James Kirby + Sofia's ER
+// 39b75fab): reused/renamed RO records left the prior customer's uploaded
+// files attached (e.g. Marco DeAlba's PDFs stranded on the Rachel & Junior
+// Ruiz RO), and there was NO UI to remove or relocate a wrongly-uploaded
+// file. Gated to office staff (canManageFiles): Admin / Sr Manager / Manager
+// / Parts Manager / Insurance Manager — techs excluded. Storage-clean MOVE:
+// the file is COPIED into the target RO's rv-media folder and the source
+// object is removed, so folder paths keep matching ro_id (the exact signal
+// the audit scan keys off). All actions write audit_log on the affected RO(s).
+// ─────────────────────────────────────────────────────────────────────
+
+/** Office-staff gate for destructive file actions (delete/move/rename). Techs excluded. */
+function canManageFiles() {
+    try {
+        return isAdmin() || hasRole('Sr Manager') || hasRole('Manager')
+            || hasRole('Parts Manager') || hasRole('Insurance Manager');
+    } catch (e) { return false; }
+}
+
+/** Resolve a currentFilteredData index to its currentData index (mirrors the upload path). */
+function _resolveOrigIndex(filteredIndex) {
+    const ro = currentFilteredData[filteredIndex];
+    if (!ro) return -1;
+    return ro._supabaseId
+        ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+        : currentData.findIndex(item =>
+            item.customerName === ro.customerName && item.dateReceived === ro.dateReceived);
+}
+
+/** Extract the rv-media storage path from a public URL (null for non-Supabase / Drive URLs). */
+function _storagePathFromUrl(url) {
+    if (typeof url !== 'string') return null;
+    const marker = '/object/public/rv-media/';
+    const idx = url.indexOf(marker);
+    if (idx === -1) return null;
+    const raw = url.slice(idx + marker.length).split('?')[0];
+    try { return decodeURIComponent(raw); } catch (e) { return raw; }
+}
+
+/** Delete a photo or document from an RO's library (removes storage object best-effort). */
+async function deleteLibraryItem(filteredIndex, kind, itemIdx) {
+    if (!canManageFiles()) { showToast('You do not have permission to remove files.', 'warning'); return; }
+    if (!getSB() || !supabaseSession) { showToast('Session expired — please refresh and sign in again.', 'warning'); return; }
+    const oi = _resolveOrigIndex(filteredIndex);
+    if (oi === -1) { showToast('Could not find the repair order.', 'error'); return; }
+
+    const roId = currentData[oi].roId;
+    const lib = parseLibrary(currentData[oi].photoLibrary || '');
+    let removedUrl = '', label = '';
+    if (kind === 'photo') {
+        if (itemIdx < 0 || itemIdx >= lib.photos.length) return;
+        removedUrl = lib.photos[itemIdx]; label = 'Photo';
+    } else {
+        if (itemIdx < 0 || itemIdx >= lib.docs.length) return;
+        removedUrl = lib.docs[itemIdx]?.url || ''; label = lib.docs[itemIdx]?.name || 'Document';
+    }
+    if (!confirm(`Delete this ${kind === 'photo' ? 'photo' : 'document'} from ${currentData[oi].customerName}'s RO?\n\n${label}\n\nThis cannot be undone.`)) return;
+
+    let mainReassigned = false, newMain = null;
+    if (kind === 'photo') {
+        lib.photos.splice(itemIdx, 1);
+        if (currentData[oi].rvPhotoUrl && currentData[oi].rvPhotoUrl === removedUrl) {
+            newMain = lib.photos[0] || ''; mainReassigned = true;
+        }
+    } else {
+        lib.docs.splice(itemIdx, 1);
+    }
+    const libJson = serializeLibrary(lib);
+    currentData[oi].photoLibrary = libJson;
+    try {
+        if (mainReassigned) { currentData[oi].rvPhotoUrl = newMain; await updatePhotoInSheet(newMain, oi, libJson); }
+        else { await updatePhotoLibraryInSheet(libJson, oi); }
+    } catch (e) { console.error('Delete DB update failed:', e); showToast('Delete failed: ' + (e.message || e), 'error'); return; }
+
+    const path = _storagePathFromUrl(removedUrl);
+    if (path) {
+        try { const { error } = await getSB().storage.from('rv-media').remove([path]); if (error) console.warn('Storage remove warning:', error.message); }
+        catch (e) { console.warn('Storage remove threw:', e); }
+    }
+    try { writeAuditLog(roId, [{ field: kind === 'photo' ? 'Photo Deleted' : 'Document Deleted', oldValue: label, newValue: '' }]); } catch (e) {}
+
+    if (currentFilteredData[filteredIndex]) currentFilteredData[filteredIndex].photoLibrary = libJson;
+    if (kind === 'photo') closePhotoLightbox();
+    showToast(`${label} removed.`, 'success');
+    closePhotoLibrary();
+    setTimeout(() => openPhotoLibrary(filteredIndex, kind === 'photo' ? 'photos' : 'docs'), 100);
+}
+
+/** Rename a document's display name. */
+async function renameLibraryDoc(filteredIndex, docIdx) {
+    if (!canManageFiles()) { showToast('You do not have permission to edit files.', 'warning'); return; }
+    if (!getSB() || !supabaseSession) { showToast('Session expired — please refresh and sign in again.', 'warning'); return; }
+    const oi = _resolveOrigIndex(filteredIndex);
+    if (oi === -1) return;
+    const lib = parseLibrary(currentData[oi].photoLibrary || '');
+    if (docIdx < 0 || docIdx >= lib.docs.length) return;
+    const current = lib.docs[docIdx].name || 'Document';
+    const next = prompt('Rename document:', current);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === current) return;
+    lib.docs[docIdx].name = trimmed;
+    const libJson = serializeLibrary(lib);
+    currentData[oi].photoLibrary = libJson;
+    try { await updatePhotoLibraryInSheet(libJson, oi); }
+    catch (e) { showToast('Rename failed: ' + (e.message || e), 'error'); return; }
+    try { writeAuditLog(currentData[oi].roId, [{ field: 'Document Renamed', oldValue: current, newValue: trimmed }]); } catch (e) {}
+    if (currentFilteredData[filteredIndex]) currentFilteredData[filteredIndex].photoLibrary = libJson;
+    showToast('Document renamed.', 'success');
+    closePhotoLibrary();
+    setTimeout(() => openPhotoLibrary(filteredIndex, 'docs'), 100);
+}
+
+/** Open the "move to another RO" target picker. */
+function openMoveFileModal(filteredIndex, kind, itemIdx) {
+    if (!canManageFiles()) { showToast('You do not have permission to move files.', 'warning'); return; }
+    const oi = _resolveOrigIndex(filteredIndex);
+    if (oi === -1) return;
+    const srcRoId = currentData[oi].roId;
+    window._moveCtx = { filteredIndex, kind, itemIdx, srcRoId };
+
+    const candidates = currentData
+        .map(d => ({ roId: d.roId, name: d.customerName || '(no name)', rv: d.rv || '', status: d.status || '', deleted: !!d.deletedAt }))
+        .filter(c => c.roId && c.roId !== srcRoId && !c.deleted)
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const rowsHtml = candidates.map(c => {
+        const search = `${c.name} ${c.roId} ${c.rv}`.toLowerCase().replace(/"/g, '');
+        return `<button class="move-ro-row" data-search="${escapeHtml(search)}" onclick="moveLibraryItem('${c.roId}')" style="display:block;width:100%;text-align:left;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;cursor:pointer;">
+            <div style="font-weight:700;color:#1e293b;font-size:13px;">${escapeHtml(c.name)}</div>
+            <div style="font-size:11px;color:#64748b;">${escapeHtml(c.roId)} · ${escapeHtml(c.rv)} · ${escapeHtml(c.status)}</div>
+        </button>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'moveFileModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10012;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+        <div style="background:white;border-radius:16px;padding:24px;max-width:520px;width:100%;max-height:85vh;display:flex;flex-direction:column;" onclick="event.stopPropagation()">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h2 style="color:#1e293b;font-family:'Barlow Condensed',sans-serif;margin:0;font-size:1.3rem;">➡️ Move ${kind === 'photo' ? 'photo' : 'document'} to another RO</h2>
+                <button onclick="document.getElementById('moveFileModal').remove()" style="background:#64748b;color:white;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600;">✕</button>
+            </div>
+            <input id="moveRoSearch" type="text" placeholder="Search customer or RO#..." oninput="_filterMoveList(this.value)" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:12px;">
+            <div id="moveRoList" style="overflow-y:auto;flex:1;">${rowsHtml || '<p style="color:#64748b;text-align:center;padding:20px;">No other ROs available.</p>'}</div>
+        </div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => { const s = document.getElementById('moveRoSearch'); if (s) s.focus(); }, 60);
+}
+
+/** Client-side filter for the move-target list. */
+function _filterMoveList(q) {
+    const query = (q || '').toLowerCase().trim();
+    document.querySelectorAll('#moveRoList .move-ro-row').forEach(row => {
+        const s = row.getAttribute('data-search') || '';
+        row.style.display = (!query || s.includes(query)) ? 'block' : 'none';
+    });
+}
+
+/** Move the file selected in window._moveCtx to the chosen target RO (storage copy + relink). */
+async function moveLibraryItem(targetRoId) {
+    const ctx = window._moveCtx;
+    if (!ctx) return;
+    if (!canManageFiles()) { showToast('You do not have permission to move files.', 'warning'); return; }
+    if (!getSB() || !supabaseSession) { showToast('Session expired — please refresh and sign in again.', 'warning'); return; }
+    const { filteredIndex, kind, itemIdx, srcRoId } = ctx;
+    if (targetRoId === srcRoId) { showToast('That is the same RO.', 'warning'); return; }
+
+    const srcOi = _resolveOrigIndex(filteredIndex);
+    const tgtOi = currentData.findIndex(d => d.roId === targetRoId);
+    if (srcOi === -1 || tgtOi === -1) { showToast('Could not resolve source or target RO.', 'error'); return; }
+
+    const isDoc = kind === 'doc';
+    const srcLib = parseLibrary(currentData[srcOi].photoLibrary || '');
+    let item = null, url = '';
+    if (isDoc) {
+        if (itemIdx < 0 || itemIdx >= srcLib.docs.length) return;
+        item = srcLib.docs[itemIdx]; url = item.url;
+    } else {
+        if (itemIdx < 0 || itemIdx >= srcLib.photos.length) return;
+        url = srcLib.photos[itemIdx];
+    }
+    const label = isDoc ? (item.name || 'Document') : 'Photo';
+    if (!confirm(`Move this ${isDoc ? 'document' : 'photo'} to ${currentData[tgtOi].customerName} (${targetRoId})?\n\n${label}`)) return;
+
+    // 1) Copy the file into the target RO's folder so paths stay clean (rv-media only).
+    let newUrl = url;
+    const srcPath = _storagePathFromUrl(url);
+    if (srcPath) {
+        try {
+            const base = srcPath.split('/').pop();
+            const destPath = isDoc ? `${targetRoId}/docs/${Date.now()}_${base}` : `${targetRoId}/${Date.now()}_${base}`;
+            const { error: copyErr } = await getSB().storage.from('rv-media').copy(srcPath, destPath);
+            if (copyErr) throw new Error('Storage copy failed: ' + copyErr.message);
+            const { data: urlData } = getSB().storage.from('rv-media').getPublicUrl(destPath);
+            newUrl = urlData?.publicUrl || url;
+        } catch (e) { console.error(e); showToast(e.message || 'Move failed during file copy.', 'error'); return; }
+    }
+
+    // 2) Add to target library.
+    const tgtLib = parseLibrary(currentData[tgtOi].photoLibrary || '');
+    if (isDoc) tgtLib.docs.push({ url: newUrl, name: item.name || 'Document', type: item.type || 'doc', addedDate: item.addedDate || new Date().toISOString().slice(0, 10) });
+    else tgtLib.photos.push(newUrl);
+    const tgtJson = serializeLibrary(tgtLib);
+    currentData[tgtOi].photoLibrary = tgtJson;
+
+    // 3) Remove from source library (+ reassign source main photo if needed).
+    let srcMainReassigned = false, srcNewMain = null;
+    if (isDoc) { srcLib.docs.splice(itemIdx, 1); }
+    else {
+        srcLib.photos.splice(itemIdx, 1);
+        if (currentData[srcOi].rvPhotoUrl && currentData[srcOi].rvPhotoUrl === url) { srcNewMain = srcLib.photos[0] || ''; srcMainReassigned = true; }
+    }
+    const srcJson = serializeLibrary(srcLib);
+    currentData[srcOi].photoLibrary = srcJson;
+
+    try {
+        await updatePhotoLibraryInSheet(tgtJson, tgtOi);
+        if (srcMainReassigned) { currentData[srcOi].rvPhotoUrl = srcNewMain; await updatePhotoInSheet(srcNewMain, srcOi, srcJson); }
+        else { await updatePhotoLibraryInSheet(srcJson, srcOi); }
+    } catch (e) { console.error('Move DB update failed:', e); showToast('Move failed while saving: ' + (e.message || e), 'error'); return; }
+
+    // 4) Delete the source storage object now that the copy + relink succeeded (best-effort).
+    if (srcPath) {
+        try { const { error } = await getSB().storage.from('rv-media').remove([srcPath]); if (error) console.warn('Source storage remove warning:', error.message); }
+        catch (e) { console.warn('Source storage remove threw:', e); }
+    }
+    try {
+        writeAuditLog(srcRoId, [{ field: isDoc ? 'Document Moved Out' : 'Photo Moved Out', oldValue: `${label} → ${targetRoId}`, newValue: '' }]);
+        writeAuditLog(targetRoId, [{ field: isDoc ? 'Document Moved In' : 'Photo Moved In', oldValue: '', newValue: `${label} ← ${srcRoId}` }]);
+    } catch (e) {}
+
+    if (currentFilteredData[filteredIndex]) currentFilteredData[filteredIndex].photoLibrary = srcJson;
+    document.getElementById('moveFileModal')?.remove();
+    if (!isDoc) closePhotoLightbox();
+    showToast(`${label} moved to ${currentData[tgtOi].customerName}.`, 'success');
+    closePhotoLibrary();
+    setTimeout(() => openPhotoLibrary(filteredIndex, isDoc ? 'docs' : 'photos'), 100);
+}
+
+
 // ---- Window bridge (Phase 10 additive) ----
 Object.assign(window, {
   uploadPhoto,
@@ -608,4 +860,11 @@ Object.assign(window, {
   sendPhotosToCustomer,
   uploadToSupabaseStorage,
   openPhotoMigrationTool,
+  // [v1.472 S136] RO file management
+  canManageFiles,
+  deleteLibraryItem,
+  renameLibraryDoc,
+  openMoveFileModal,
+  _filterMoveList,
+  moveLibraryItem,
 });

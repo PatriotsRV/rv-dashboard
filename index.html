@@ -1,7 +1,16 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.471
+    PRVS Dashboard v1.472
+    v1.472: [S136] RO File Management — delete / move / rename for photos AND documents.
+    Root cause of Sofia's ER (39b75fab): reused/renamed RO records left the prior customer's
+    uploaded files attached (Marco DeAlba's PDFs stranded on the Rachel & Junior Ruiz RO), and
+    there was NO UI to remove or relocate a wrongly-uploaded file. js/photos.js gains
+    canManageFiles() + deleteLibraryItem / renameLibraryDoc / openMoveFileModal / moveLibraryItem:
+    per-document ✏️/➡️/🗑️ buttons on the Documents tab and ➡️ Move / 🗑️ Delete in the photo
+    lightbox, gated to office staff (Admin / Sr Manager / Manager / Parts Manager / Insurance
+    Manager). MOVE copies the file into the target RO's rv-media folder then removes the source
+    object (folder paths keep matching ro_id); all actions write audit_log. No DB schema change.
     v1.471: [GH#39 S132] Card-level customer messaging. The 💬 Message Customer surface moves
     OUT of the Edit RO form onto the RO card itself: full card gains a "💬 Message Customer"
     secondary-action button (the old Kenect Messages slot), the compact row gains a 💬 icon
@@ -584,7 +593,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.471</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.472</span>
             </div>
         </header>
 
