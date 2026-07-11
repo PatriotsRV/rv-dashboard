@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PRVS — Enhancement Request Triage</title>
+<title>PRVS - Enhancement Request Triage</title>
 <style>
   :root{
     --bg:#0b1220; --panel:#111c30; --panel2:#0e1626; --line:#1e2d45;
@@ -36,8 +36,8 @@
 </style>
 </head>
 <body>
-  <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-06-28 · Session 128 · full pass vs index.html v1.466 · 11 open ERs (all Needed)</div>
+  <h1>PRVS - Enhancement Request Triage</h1>
+  <div class="sub">2026-07-11 | Headless runner (Phase 2a) | vs index.html v1.472 | 10 open ERs (all Needed)</div>
 
   <div class="cards" id="stats"></div>
 
@@ -47,46 +47,43 @@
     <span class="pill" data-f="L">L</span>
     <span class="pill" data-f="M">M</span>
     <span class="pill" data-f="S">S</span>
-    <input id="q" placeholder="Search ERs…">
+    <input id="q" placeholder="Search ERs...">
   </div>
 
   <div id="list"></div>
 
 <script>
 const ERS = [
- {id:"7f2d0d70",by:"Lynn",date:"06-26",cat:"Reporting",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Monday report of the week's drop-offs so each team can confirm the customer is in their work list.",
-  verdict:"No dedicated drop-off-reconciliation report exists. Partially related to the send-manager-report Monday escalation, but that flags promised/part dates, not a roster of the week's arrivals. Build = new weekly edge fn (or section) listing ROs whose planned_dropoff_date fell in the prior week + their target silo/manager. Pairs with cbc70a86."},
- {id:"cbc70a86",by:"Lynn",date:"05-21",cat:"Workflow",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Returning-customer check-in auto-adds the customer to the work list of each involved team lead.",
-  verdict:"Confirmed NOT done: no manager_work_lists insert anywhere in customer-checkin.html. Build = on commit, map the RO's repair_type(s) -> silo(s) -> manager(s) (REPAIR_TYPE_TO_SILO + staff cache) and insert manager_work_lists rows, reusing the dashboard addToWorkList logic. Directly enables 7f2d0d70."},
- {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
-  verdict:"No task-tracker subsystem exists today. Needs a tasks table (per RO), UI to add/complete tasks, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
  {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Notif/Digest",loe:"L",theme:"Notifications & Task-Tracking",
   desc:"Notify the right team on every RO update; daily comprehensive list of all in-progress jobs with to-dos scraped from status notes.",
-  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager Daily Report (per-manager active work + fire watch). Still open: a notification on every RO update + auto-scraping to-dos from status notes into a list. Anchor of the Notifications/Task-Tracking initiative."},
+  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager Daily Report (send-manager-report). Still open: nothing fires on every RO edit, and the report is a rule engine that does NOT scrape to-dos from status-note text. Per-update notify + note-scraping remain. Anchor of the Notifications/Task-Tracking initiative."},
+ {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
+  verdict:"No per-RO free-form task-tracker subsystem exists (service_tasks are structured labor line-items, not to-dos). Needs a per-RO tasks table, add/complete UI, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
  {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
-  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock — listed as available, priced, and searchable.",
-  verdict:"New subsystem. Confirmed nothing in js/parts.js handles stock/inventory. Needs an inventory table, receive/consume/adjust flows, a searchable stock view, and links from the parts-request path. Largest item on the board."},
+  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock - listed as available, priced, and searchable.",
+  verdict:"New subsystem. Confirmed js/parts.js models parts only as per-RO line items (pf_qty is a per-line order qty) - no stock pool. Needs an inventory table, receive/consume/adjust flows, a searchable priced stock view, and links from the parts-request path. Largest item on the board."},
  {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",loe:"L",theme:"Parts & Inventory",
   desc:"Track a part that needs to be returned to the supplier or warrantied by the supplier.",
-  verdict:"No supplier-return/warranty workflow in code. = GH#24 Shop Operations Phase 2 (Parts Returns): reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
+  verdict:"Partial only: a 'Returned' part status (config.js:174) + Return Deadline/Warranty Period fields exist, but no structured supplier return/warranty-claim workflow (return reasons, RMA/credit tracking). = Shop Operations Phase 2 (Parts Returns). Canonical for the declined dup 86bbaf50."},
  {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
   desc:"Rework the field order on the parts-entry / ordering screen (move fields around).",
-  verdict:"Underspecified — a layout tweak with no target layout given. Quick to build once Lynn provides the desired field order / a mockup. BLOCKED on detail, not on effort."},
- {id:"1fe68261",by:"Rod",date:"04-13",cat:"Shop tasks",loe:"M",theme:"Work Orders & Shop tasks",
-  desc:"Track tasks not tied to a customer unit (e.g. swapping poly barrels, prepping roof bays for multiple units).",
-  verdict:"Overlaps the existing Shop Operations RO type but those are single ROs, not a recurring shared-task model. Needs a lightweight non-customer/shop task list (could ride on Shop Operations ROs or a new shop_tasks model)."},
+  verdict:"Underspecified - a layout tweak with no target layout given. Current order (parts.js renderPartForm 175-252) is Supplier / Core / Order / Pricing / Receipt. Quick once Lynn provides the desired field order. BLOCKED on detail, not on effort."},
+ {id:"5fbfa299",by:"Brandon",date:"06-30",cat:"RO fields",loe:"M",theme:"RO fields / status",
+  desc:"Archive customers/units that are only in the system because we quoted them and never moved forward.",
+  verdict:"NEW (06-30). No archive/hide for quote-only leads or units. Only closed-RO -> cashiered archiving (ro-crud.js archiveROInSupabase) and soft-delete exist; leads.html has no archive. Needs an archived flag + a filtered-out view. Most shippable of the mid-size items."},
  {id:"0448de62",by:"Sofia",date:"06-11",cat:"Auth form",loe:"L",theme:"Messaging & e-sign",
   desc:"Send an authorization form remotely for e-signature.",
-  verdict:"No remote-signing flow today (RAF is signed on the in-person check-in kiosk). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with Sendblue messaging Phase 3."},
+  verdict:"No remote-signing flow today (the RAF is signed on the in-person check-in kiosk signature pad). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with Sendblue messaging."},
  {id:"ed1b873e",by:"Roland",date:"06-07",cat:"Auth/Cost",loe:"XL",theme:"Auth & cost",
   desc:"Replace Google-email auth (~$25/mo each, ~$500/mo total; most staff don't use the email) with database-specific auth.",
-  verdict:"Security-critical subsystem swap. Auth today is Google id-token + RBAC keyed on email. Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Roland wants to scope this together. Touches every page's sign-in + RBAC."},
+  verdict:"Security-critical subsystem swap. Confirmed js/auth.js is Google id-token + email-keyed RBAC only (no password / magic-link / DB auth). Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Touches every page's sign-in + RBAC. Roland wants to scope this together."},
  {id:"e06d747e",by:"solar",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock",
   desc:"Tech check-in 'float' for ease of access.",
-  verdict:"Underspecified. Likely a floating/sticky check-in button for quick access, but page + exact behavior unclear (checkin.html is QR/roId-driven today). Needs scoping with the submitter before build."},
+  verdict:"Not done + underspecified. No floating/sticky check-in button in checkin.html or time-tracking.js (check-in is QR/roId-driven). 'Float' meaning unclear; needs scoping with the submitter before build."},
+ {id:"29654af7",by:"Lynn",date:"07-06",cat:"Navigation",loe:"S",theme:"Dashboard UX / Navigation",
+  desc:"Button that takes you to the top of the page after scrolling, or a fast jump to the search bar for the next task.",
+  verdict:"NEW (07-06). No back-to-top / scroll-to-top control on index.html. Small: add a scroll-triggered floating button that scrolls to top and/or focuses the search box."},
 ];
 
 const ORDER={XL:0,L:1,M:2,S:3};
@@ -97,10 +94,10 @@ function renderStats(){
   ERS.forEach(e=>c[e.loe]++);
   document.getElementById('stats').innerHTML=
     `<div class="stat"><div class="n">${ERS.length}</div><div class="l">Open ERs (all Needed)</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--xl)">${c.XL}</div><div class="l">XL — new subsystem</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--l)">${c.L}</div><div class="l">L — multi-session</div></div>`+
-    `<div class="stat"><div class="n" style="color:#7fb0ff">${c.M}</div><div class="l">M — ½–1 session</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--s)">${c.S}</div><div class="l">S — under 2h*</div></div>`;
+    `<div class="stat"><div class="n" style="color:var(--xl)">${c.XL}</div><div class="l">XL - new subsystem</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--l)">${c.L}</div><div class="l">L - multi-session</div></div>`+
+    `<div class="stat"><div class="n" style="color:#7fb0ff">${c.M}</div><div class="l">M - half to 1 session</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--s)">${c.S}</div><div class="l">S - under 2h*</div></div>`;
 }
 function renderList(){
   const list=document.getElementById('list'); list.innerHTML="";
@@ -117,7 +114,7 @@ function renderList(){
       const d=document.createElement('div'); d.className="er b-"+e.loe;
       d.innerHTML=`<div class="top"><p class="desc">${e.desc}</p>
         <span class="tag t-${e.loe}">LOE ${e.loe}</span></div>
-        <div class="meta">${e.id} · ${e.by} · ${e.date} · ${e.cat}</div>
+        <div class="meta">${e.id} | ${e.by} | ${e.date} | ${e.cat}</div>
         <div class="verdict">${e.verdict}</div>`;
       list.appendChild(d);
     });
