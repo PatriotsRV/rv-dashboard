@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.1
+    PRVS Messages — PB Inbox + Conversation Assignment v1.2
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    v1.2 (Session 138, same day): assign-SMS phone lookup is now LIVE (staff.phone_number
+    queried at assign time) instead of the page-load _allStaff cache — Lynn's number was
+    added mid-session and her assignment SMS was silently skipped off the stale cache.
 
     v1.1 (Session 138, same day): iOS Safari composer fix — Lynn couldn't reply from her
     iPhone because 100vh includes Safari's collapsed toolbar, hiding the composer + Send
@@ -308,7 +312,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.1';
+const PAGE_VERSION = 'messages v1.2';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S138)');
 
 // ── State ────────────────────────────────────────────────────────────
@@ -699,8 +703,13 @@ async function assignConversation() {
         if (nErr) throw nErr;
 
         // PB SMS to the new owner (staff.phone_number; silently skipped if NULL).
-        const staffRow = _allStaff.find(s => (s.email || '').toLowerCase() === newOwner.toLowerCase());
-        const ownerPhone = (staffRow?.phone_number || '').trim();
+        // v1.2: look the phone up LIVE — the page-load _allStaff cache went stale
+        // when Lynn's number was added mid-session and her assign SMS was skipped (S138).
+        let ownerPhone = '';
+        const { data: staffRow, error: phoneErr } = await getSB()
+            .from('staff').select('phone_number').eq('email', newOwner).maybeSingle();
+        if (phoneErr) console.error('assign phone lookup error (SMS skipped):', phoneErr);
+        ownerPhone = (staffRow?.phone_number || '').trim();
         if (ownerPhone) {
             try {
                 const res = await fetch(`${SUPABASE_URL}/functions/v1/projectblue-send`, {
