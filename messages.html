@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.2
+    PRVS Messages — PB Inbox + Conversation Assignment v1.3
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    v1.3 (Session 138, same day): (1) assignment SMS body is time-stamped — PB silently
+    dedupes IDENTICAL payloads to the same recipient for ~1 hour, so re-assigning the same
+    conversation to the same person swallowed the notify (Sofia repro; the swallowed send
+    has no pbm_ handle). (2) Visible version badge in the header (id=verBadge).
+    ALSO LEARNED (PB-side, no code): outbound to a number with NO inbound history on the
+    line can sit in PB's queue indefinitely — Sofia's texts released only after she texted
+    the line once. Ask Jordan to confirm the engagement-gate policy.
 
     v1.2 (Session 138, same day): assign-SMS phone lookup is now LIVE (staff.phone_number
     queried at assign time) instead of the page-load _allStaff cache — Lynn's number was
@@ -218,6 +226,7 @@
         <div class="header-right">
             <button class="mini-btn details-toggle" onclick="toggleDetails()">&#8505; Details</button>
             <span id="userBadge" class="badge-role badge-user"></span>
+            <span id="verBadge" style="font-size:0.65rem; color:#64748b; font-family:'JetBrains Mono',monospace;"></span>
         </div>
     </div>
 
@@ -312,8 +321,9 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.2';
+const PAGE_VERSION = 'messages v1.3';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S138)');
+document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
 let _sb = null;
@@ -722,7 +732,9 @@ async function assignConversation() {
                     body: JSON.stringify({
                         action: 'send',
                         to: ownerPhone,
-                        body: `\u{1F4E5} ${currentUser.name || currentUser.email} assigned you the conversation with ${customerLabel}. Open Messages on the PRVS dashboard to respond.`,
+                        // v1.3: time-stamped so repeat assignments aren't swallowed by
+                        // PB's ~1-hour identical-payload dedupe (Sofia repro, S138).
+                        body: `\u{1F4E5} ${currentUser.name || currentUser.email} assigned you the conversation with ${customerLabel}. Open Messages on the PRVS dashboard to respond. (${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})`,
                         context: 'staff_notify',
                         sent_by: currentUser.email,
                     }),
