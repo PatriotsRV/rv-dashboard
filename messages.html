@@ -1,8 +1,12 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.3
+    PRVS Messages — PB Inbox + Conversation Assignment v1.4
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
 
+    v1.4 (Session 139, 2026-07-15): "Open" filter chip, DEFAULT on load (Roland idea,
+    spec locked S138; mirrors the v1.455 ER-board pattern). Open shows only status=open;
+    All keeps everything incl. closed (grey avatar); Unresponded/Unassigned/Mine are now
+    open-scoped.
     v1.3 (Session 138, same day): (1) assignment SMS body is time-stamped — PB silently
     dedupes IDENTICAL payloads to the same recipient for ~1 hour, so re-assigning the same
     conversation to the same person swallowed the notify (Sofia repro; the swallowed send
@@ -236,7 +240,8 @@
             <div class="list-tools">
                 <input id="convoSearch" class="search-input" type="text" placeholder="Search name or phone&hellip;">
                 <div class="filter-row">
-                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn active" data-filter="open">Open</button>
+                    <button class="filter-btn" data-filter="all">All</button>
                     <button class="filter-btn" data-filter="unresponded">Unresponded</button>
                     <button class="filter-btn" data-filter="unassigned">Unassigned</button>
                     <button class="filter-btn" data-filter="mine">Mine</button>
@@ -321,8 +326,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.3';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S138)');
+const PAGE_VERSION = 'messages v1.4';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S139)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
@@ -334,7 +339,7 @@ let _allStaff = [];
 let _conversations = [];
 let _snippets = {};          // phone_key -> last message body
 let _activeConvo = null;
-let _activeFilter = 'all';
+let _activeFilter = 'open';   // v1.4: "Open" is the default filter
 let _pollTimer = null;
 
 function getSB() {
@@ -523,9 +528,10 @@ function filteredConversations() {
     const q = (document.getElementById('convoSearch').value || '').trim().toLowerCase();
     const myEmail = (currentUser?.email || '').toLowerCase();
     return _conversations.filter(c => {
+        if (_activeFilter === 'open' && c.status !== 'open') return false;
         if (_activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
-        if (_activeFilter === 'unassigned' && c.assigned_to) return false;
-        if (_activeFilter === 'mine' && (c.assigned_to || '').toLowerCase() !== myEmail) return false;
+        if (_activeFilter === 'unassigned' && (c.assigned_to || c.status !== 'open')) return false;
+        if (_activeFilter === 'mine' && ((c.assigned_to || '').toLowerCase() !== myEmail || c.status !== 'open')) return false;
         if (q) {
             const hay = ((c.customer_name || '') + ' ' + (c.display_phone || '') + ' ' + c.phone_key).toLowerCase();
             if (!hay.includes(q)) return false;
