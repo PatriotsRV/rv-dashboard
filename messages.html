@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<!--
+    PRVS Messages — PB Inbox + Conversation Assignment v1.0
+    Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    Standalone, login-gated (closed-ros.html pattern; storageKey
+    'prvs_messages_auth'; HARD gate — no anon rendering, S134 posture).
+    Kenect-style three-pane inbox over the `conversations` +
+    `messages` tables:
+      LEFT   conversation list — All / Unresponded / Unassigned / Mine
+             filters, name/phone search, owner chip, unresponded dot
+      CENTER thread — reuses js/messaging.js bubbleHtml renderer +
+             sendCustomerMessage send path (same #msgThread/#msgPhone/
+             #msgBody/#msgSendBtn contract as the dashboard modal)
+      RIGHT  details — customer name (edit, Manager+), linked ROs by
+             phone key, assignment control (Manager+; any active staff),
+             assignment history (conversation_events), Close/Reopen,
+             opt-out banner (STOP gate)
+    Assignment notify (spec §4c): scheduled_notifications row
+    (source 'conversation_assigned') + PB SMS to the new owner's
+    staff.phone_number via projectblue-send (context 'staff_notify').
+    Role visibility v1: all authenticated staff see all conversations;
+    only Manager/Sr Manager/Admin can assign (RLS-enforced too).
+    Refresh: 60s poll + window focus. No realtime dependency (GH#36).
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRVS — Messages</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        :root {
+            --bg-primary: #0b1121; --bg-secondary: #0f172a; --bg-tertiary: #1e293b;
+            --border-color: #1e3a5f; --text-primary: #e2e8f0; --text-secondary: #94a3b8;
+            --accent-info: #60a5fa;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Barlow Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary); color: var(--text-primary); height: 100vh; overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #0f1a2e 0%, #1a2744 100%);
+            border-bottom: 2px solid var(--border-color); padding: 12px 20px;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .header-title { font-size: 1.2rem; font-weight: 700; color: white; letter-spacing: 0.5px; }
+        .header-right { display: flex; align-items: center; gap: 10px; }
+        .badge-role { padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .badge-admin { background: #7c3aed; color: white; }
+        .badge-manager { background: #2563eb; color: white; }
+        .badge-user { background: #334155; color: #94a3b8; }
+        .back-link { color: #60a5fa; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+        .back-link:hover { text-decoration: underline; }
+        .auth-gate { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 20px; }
+        .auth-gate h2 { color: #94a3b8; font-size: 1.1rem; font-weight: 500; }
+
+        .layout { display: grid; grid-template-columns: 320px 1fr 300px; height: calc(100vh - 55px); }
+        .pane { overflow-y: auto; min-height: 0; }
+
+        /* ── Left: conversation list ── */
+        .list-pane { border-right: 1px solid var(--bg-tertiary); background: var(--bg-secondary); display: flex; flex-direction: column; }
+        .list-tools { padding: 10px; border-bottom: 1px solid var(--bg-tertiary); }
+        .search-input {
+            width: 100%; padding: 8px 12px; background: var(--bg-primary); color: white;
+            border: 1px solid #334155; border-radius: 8px; font-size: 0.9rem; font-family: inherit;
+        }
+        .filter-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+        .filter-btn {
+            background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid #334155;
+            border-radius: 14px; padding: 3px 12px; font-size: 0.75rem; cursor: pointer; font-family: inherit;
+        }
+        .filter-btn.active { background: #1d4ed8; color: white; border-color: #3b82f6; }
+        .convo-list { flex: 1; overflow-y: auto; }
+        .convo-row {
+            display: flex; gap: 10px; padding: 10px 12px; cursor: pointer;
+            border-bottom: 1px solid #16213a; align-items: center;
+        }
+        .convo-row:hover { background: #131c33; }
+        .convo-row.selected { background: #16234a; border-left: 3px solid #3b82f6; padding-left: 9px; }
+        .avatar {
+            flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;
+            background: #1d4ed8; color: white; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.85rem;
+        }
+        .avatar.closed { background: #334155; }
+        .convo-main { flex: 1; min-width: 0; }
+        .convo-name { font-weight: 600; font-size: 0.95rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .convo-snippet { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .convo-meta { text-align: right; flex: 0 0 auto; }
+        .convo-time { font-size: 0.68rem; color: #64748b; }
+        .owner-chip {
+            display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 10px;
+            background: #1e3a5f; color: #93c5fd; font-size: 0.62rem; font-weight: 600; max-width: 90px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; margin-left: 5px; }
+
+        /* ── Center: thread ── */
+        .thread-pane { display: flex; flex-direction: column; background: var(--bg-primary); }
+        .thread-header {
+            padding: 10px 16px; border-bottom: 1px solid var(--bg-tertiary);
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+        }
+        .thread-title { font-weight: 700; font-size: 1.05rem; color: white; }
+        #msgThread { flex: 1; overflow-y: auto; padding: 14px 16px; }
+        .composer { padding: 10px 16px 14px; border-top: 1px solid var(--bg-tertiary); }
+        .composer textarea {
+            width: 100%; padding: 10px 12px; background: var(--bg-secondary); color: white;
+            border: 1px solid #334155; border-radius: 8px; font-size: 0.92rem; font-family: inherit; resize: vertical;
+        }
+        .send-btn {
+            margin-top: 8px; width: 100%; padding: 10px; border-radius: 8px;
+            border: 1.5px solid rgba(59,130,246,0.5); background: rgba(59,130,246,0.12);
+            color: #3b82f6; cursor: pointer; font-size: 0.95rem; font-weight: 700; font-family: inherit;
+        }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .optout-banner {
+            margin: 0 16px 8px; padding: 8px 12px; background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; color: #fca5a5; font-size: 0.82rem;
+        }
+        .empty-note { text-align: center; color: var(--text-secondary); font-size: 0.85rem; padding: 40px 12px; }
+
+        /* ── Right: details ── */
+        .details-pane { border-left: 1px solid var(--bg-tertiary); background: var(--bg-secondary); padding: 14px; }
+        .details-section { margin-bottom: 18px; }
+        .details-label {
+            color: #fbbf24; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.6px;
+            margin-bottom: 6px; text-transform: uppercase;
+        }
+        .details-value { font-size: 0.9rem; color: var(--text-primary); }
+        .ro-chip {
+            display: inline-block; margin: 2px 4px 2px 0; padding: 3px 9px; border-radius: 8px;
+            background: #16234a; border: 1px solid #1e3a5f; color: #93c5fd; font-size: 0.75rem;
+            text-decoration: none; font-family: 'JetBrains Mono', monospace;
+        }
+        .assign-select, .assign-input {
+            width: 100%; padding: 8px 10px; background: var(--bg-primary); color: white;
+            border: 1px solid #334155; border-radius: 8px; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px;
+        }
+        .mini-btn {
+            background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid #334155;
+            border-radius: 8px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; font-family: inherit;
+        }
+        .mini-btn:hover { color: white; }
+        .mini-btn.primary { background: #1d4ed8; border-color: #3b82f6; color: white; }
+        .mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .event-row { font-size: 0.75rem; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px solid #16213a; }
+        .event-row strong { color: #cbd5e1; }
+
+        /* ── Toast ── */
+        #toastBox {
+            position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 999;
+            display: flex; flex-direction: column; gap: 8px; align-items: center;
+        }
+        .toast {
+            padding: 10px 18px; border-radius: 10px; font-size: 0.9rem; font-weight: 600;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.5); max-width: 85vw;
+        }
+        .toast.success { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
+        .toast.error   { background: #450a0a; color: #fca5a5; border: 1px solid #ef4444; }
+        .toast.warning { background: #451a03; color: #fcd34d; border: 1px solid #f59e0b; }
+        .toast.info    { background: #172554; color: #93c5fd; border: 1px solid #3b82f6; }
+
+        /* ── Responsive: two-pane under 1100px, single under 760px ── */
+        .mobile-back { display: none; }
+        @media (max-width: 1100px) {
+            .layout { grid-template-columns: 300px 1fr; }
+            .details-pane {
+                position: fixed; right: 0; top: 55px; bottom: 0; width: 300px; z-index: 60;
+                transform: translateX(100%); transition: transform 0.18s ease; box-shadow: -8px 0 22px rgba(0,0,0,0.5);
+            }
+            .details-pane.open { transform: translateX(0); }
+            .details-toggle { display: inline-block !important; }
+        }
+        @media (max-width: 760px) {
+            .layout { grid-template-columns: 1fr; }
+            .thread-pane { display: none; }
+            body.thread-open .list-pane { display: none; }
+            body.thread-open .thread-pane { display: flex; }
+            .mobile-back { display: inline-block; }
+        }
+        .details-toggle { display: none; }
+    </style>
+</head>
+<body>
+
+<!-- ── Auth gate (HARD — no anon rendering) ── -->
+<div id="authGate" class="auth-gate">
+    <div style="font-size:2.2rem;">&#128172;</div>
+    <h2>PRVS Messages — sign in with your PRVS Google account</h2>
+    <div id="g_id_onload"></div>
+</div>
+
+<!-- ── App ── -->
+<div id="app" style="display:none;">
+    <div class="header">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <a class="back-link" href="index.html">&larr; Dashboard</a>
+            <span class="header-title">&#128172; Messages</span>
+            <span id="pbLine" style="font-size:0.72rem; color:#64748b;">PB line +1 (940) 407-4145</span>
+        </div>
+        <div class="header-right">
+            <button class="mini-btn details-toggle" onclick="toggleDetails()">&#8505; Details</button>
+            <span id="userBadge" class="badge-role badge-user"></span>
+        </div>
+    </div>
+
+    <div class="layout">
+        <!-- LEFT -->
+        <div class="pane list-pane">
+            <div class="list-tools">
+                <input id="convoSearch" class="search-input" type="text" placeholder="Search name or phone&hellip;">
+                <div class="filter-row">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="unresponded">Unresponded</button>
+                    <button class="filter-btn" data-filter="unassigned">Unassigned</button>
+                    <button class="filter-btn" data-filter="mine">Mine</button>
+                </div>
+            </div>
+            <div id="convoList" class="convo-list">
+                <div class="empty-note">Loading conversations&hellip;</div>
+            </div>
+        </div>
+
+        <!-- CENTER -->
+        <div class="pane thread-pane">
+            <div class="thread-header">
+                <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                    <button class="mini-btn mobile-back" onclick="backToList()">&larr;</button>
+                    <div style="min-width:0;">
+                        <div id="threadTitle" class="thread-title">Select a conversation</div>
+                        <div id="threadSub" style="font-size:0.72rem; color:#64748b;"></div>
+                    </div>
+                </div>
+                <button class="mini-btn" onclick="refreshAll()" title="Check for new messages">&#128260; Refresh</button>
+            </div>
+            <input type="hidden" id="msgPhone">
+            <div id="msgThread"><div class="empty-note">Pick a conversation on the left to see the thread.</div></div>
+            <div id="optoutBanner" class="optout-banner" style="display:none;">
+                &#128721; This customer replied STOP — outgoing texts are blocked until they reply START.
+            </div>
+            <div class="composer">
+                <textarea id="msgBody" class="form-input" rows="2" placeholder="Type a message to the customer&hellip;"></textarea>
+                <button id="msgSendBtn" class="send-btn" onclick="inboxSend()" disabled>&#128228; Send</button>
+            </div>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="pane details-pane" id="detailsPane">
+            <div class="empty-note" id="detailsEmpty">Conversation details will appear here.</div>
+            <div id="detailsBody" style="display:none;">
+                <div class="details-section">
+                    <div class="details-label">Customer</div>
+                    <div class="details-value" style="display:flex; align-items:center; gap:8px;">
+                        <span id="detailName" style="font-weight:700;"></span>
+                        <button class="mini-btn" id="editNameBtn" onclick="editCustomerName()" title="Edit name" style="padding:2px 8px;">&#9998;</button>
+                    </div>
+                    <div id="detailPhone" style="font-size:0.82rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; margin-top:2px;"></div>
+                    <div id="detailOptout" style="display:none; margin-top:6px; color:#fca5a5; font-size:0.78rem;">&#128721; Opted out (STOP)</div>
+                </div>
+                <div class="details-section">
+                    <div class="details-label">Linked ROs</div>
+                    <div id="detailROs" class="details-value"></div>
+                </div>
+                <div class="details-section">
+                    <div class="details-label">Assignment</div>
+                    <div id="assignCurrent" style="font-size:0.85rem; margin-bottom:6px;"></div>
+                    <div id="assignControls">
+                        <input id="assignFilter" class="assign-input" type="text" placeholder="Filter staff&hellip;">
+                        <select id="assignSelect" class="assign-select"></select>
+                        <div style="display:flex; gap:6px;">
+                            <button class="mini-btn primary" id="assignBtn" onclick="assignConversation()">Assign</button>
+                            <button class="mini-btn" id="unassignBtn" onclick="unassignConversation()">Unassign</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="details-section">
+                    <div class="details-label">Status</div>
+                    <button class="mini-btn" id="closeReopenBtn" onclick="toggleClosed()"></button>
+                </div>
+                <div class="details-section">
+                    <div class="details-label">Assignment history</div>
+                    <div id="eventList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toastBox"></div>
+
+<script type="module">
+import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/config.js';
+
+// ── Constants / gated logging (closed-ros.html conventions) ─────────
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+const DEBUG = false;
+function log(...args) { if (DEBUG) console.log(...args); }
+const PAGE_VERSION = 'messages v1.0';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S138)');
+
+// ── State ────────────────────────────────────────────────────────────
+let _sb = null;
+let supabaseSession = null;
+let currentUser = null;
+let userRoles = [];
+let _allStaff = [];
+let _conversations = [];
+let _snippets = {};          // phone_key -> last message body
+let _activeConvo = null;
+let _activeFilter = 'all';
+let _pollTimer = null;
+
+function getSB() {
+    if (!_sb) {
+        _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_messages_auth' }
+        });
+    }
+    return _sb;
+}
+
+// ── Shared helpers (window bridge for js/messaging.js) ───────────────
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function showToast(msg, type = 'info', opts = {}) {
+    const box = document.getElementById('toastBox');
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), opts.duration || 4000);
+}
+function phoneKeyOf(raw) {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : '';
+}
+function initialsOf(nameOrPhone) {
+    const s = String(nameOrPhone || '').trim();
+    if (!s) return '?';
+    if (/^[+\d(]/.test(s)) return '#';
+    const parts = s.split(/\s+/);
+    return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+}
+function timeAgo(iso) {
+    if (!iso) return '';
+    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (mins < 1) return 'now';
+    if (mins < 60) return mins + 'm';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h';
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return days + 'd';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+}
+function staffNameOf(email) {
+    const s = _allStaff.find(x => (x.email || '').toLowerCase() === String(email || '').toLowerCase());
+    return s?.name || email || '';
+}
+
+// messaging.js reads these as bare globals — attach BEFORE importing it.
+Object.assign(window, { getSB, escapeHtml, showToast, log });
+Object.defineProperty(window, 'supabaseSession', { get: () => supabaseSession });
+Object.defineProperty(window, 'currentUser', { get: () => currentUser });
+
+// Reuse the dashboard's renderer + send path (spec §5.2 — one source).
+const messaging = await import('./js/messaging.js');
+const { loadMessages, bubbleHtml, sendCustomerMessage } = messaging;
+
+// ── RBAC (closed-ros.html pattern) ───────────────────────────────────
+async function loadUserRoles() {
+    userRoles = [];
+    _allStaff = [];
+    const email = (supabaseSession?.user?.email || '').toLowerCase();
+    if (!email) return;
+    const { data: userRow } = await getSB()
+        .from('users').select('id').eq('email', email).maybeSingle();
+    if (userRow?.id) {
+        const { data: roleRows } = await getSB()
+            .from('user_roles').select('roles(name)').eq('user_id', userRow.id);
+        if (roleRows) userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
+    }
+    const { data: staffRows } = await getSB()
+        .from('staff').select('*').eq('active', true).order('name');
+    if (staffRows) _allStaff = staffRows;
+}
+function hasRole(role) { return userRoles.includes(role); }
+function isAdmin() { return hasRole('Admin'); }
+function isManagerOrAdmin() { return isAdmin() || hasRole('Manager') || hasRole('Sr Manager'); }
+
+// ── Auth (closed-ros.html pattern; HARD gate) ────────────────────────
+async function initAuth() {
+    getSB().auth.onAuthStateChange((event, session) => {
+        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            supabaseSession = session;
+        } else if (event === 'SIGNED_OUT') {
+            supabaseSession = null;
+            currentUser = null;
+        }
+    });
+    const { data: { session } } = await getSB().auth.getSession();
+    if (session) {
+        supabaseSession = session;
+        currentUser = {
+            email: session.user.email,
+            name: session.user.user_metadata?.full_name || session.user.email,
+        };
+        await loadUserRoles();
+        showApp();
+        return;
+    }
+    initGoogleSignIn();
+}
+function initGoogleSignIn() {
+    if (typeof google === 'undefined' || !google.accounts) {
+        setTimeout(initGoogleSignIn, 200);
+        return;
+    }
+    const rawBytes = new Uint8Array(16);
+    crypto.getRandomValues(rawBytes);
+    const rawNonce = Array.from(rawBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    window._rawNonce = rawNonce;
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawNonce)).then(hash => {
+        const hashedNonce = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredential,
+            nonce: hashedNonce,
+        });
+        google.accounts.id.renderButton(
+            document.getElementById('g_id_onload'),
+            { theme: 'filled_blue', size: 'large', shape: 'pill', text: 'signin_with' }
+        );
+    });
+}
+async function handleGoogleCredential(response) {
+    try {
+        const { data, error } = await getSB().auth.signInWithIdToken({
+            provider: 'google',
+            token: response.credential,
+            nonce: window._rawNonce,
+        });
+        if (error) throw error;
+        supabaseSession = data.session;
+        currentUser = {
+            email: data.user.email,
+            name: data.user.user_metadata?.full_name || data.user.email,
+        };
+        await loadUserRoles();
+        showApp();
+    } catch (err) {
+        console.error('Auth error:', err);
+        alert('Sign-in failed: ' + (err.message || err));
+    }
+}
+function showApp() {
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    const badge = document.getElementById('userBadge');
+    const name = currentUser?.name || currentUser?.email || '';
+    if (isAdmin()) { badge.className = 'badge-role badge-admin'; badge.textContent = name + ' (Admin)'; }
+    else if (isManagerOrAdmin()) { badge.className = 'badge-role badge-manager'; badge.textContent = name + ' (Manager)'; }
+    else { badge.className = 'badge-role badge-user'; badge.textContent = name; }
+    populateAssignSelect();
+    refreshAll();
+    _pollTimer = setInterval(refreshAll, 60000);
+    window.addEventListener('focus', refreshAll);
+}
+
+// ── Conversation list ────────────────────────────────────────────────
+async function loadConversations() {
+    if (!getSB() || !supabaseSession) return;
+    const { data, error } = await getSB()
+        .from('conversations')
+        .select('*')
+        .order('last_message_at', { ascending: false, nullsFirst: false });
+    if (error) { console.error('loadConversations error:', error); showToast('Error loading conversations: ' + error.message, 'error'); return; }
+    _conversations = data || [];
+
+    // Snippets: newest message body per phone_key (v1 scale — recent 400 rows).
+    const { data: msgs, error: mErr } = await getSB()
+        .from('messages')
+        .select('phone_to, phone_from, direction, body, created_at')
+        .order('created_at', { ascending: false })
+        .limit(400);
+    if (mErr) { console.error('snippet load error:', mErr); }
+    _snippets = {};
+    (msgs || []).forEach(m => {
+        const key = phoneKeyOf(m.direction === 'inbound' ? m.phone_from : m.phone_to);
+        if (key && !(key in _snippets)) _snippets[key] = m.body || '';
+    });
+    renderConvoList();
+}
+function filteredConversations() {
+    const q = (document.getElementById('convoSearch').value || '').trim().toLowerCase();
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    return _conversations.filter(c => {
+        if (_activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
+        if (_activeFilter === 'unassigned' && c.assigned_to) return false;
+        if (_activeFilter === 'mine' && (c.assigned_to || '').toLowerCase() !== myEmail) return false;
+        if (q) {
+            const hay = ((c.customer_name || '') + ' ' + (c.display_phone || '') + ' ' + c.phone_key).toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+}
+function renderConvoList() {
+    const list = document.getElementById('convoList');
+    const rows = filteredConversations();
+    if (!rows.length) {
+        list.innerHTML = '<div class="empty-note">No conversations match.</div>';
+        return;
+    }
+    list.innerHTML = rows.map(c => {
+        const label = c.customer_name || c.display_phone || c.phone_key;
+        const unresponded = c.last_direction === 'inbound' && c.status === 'open';
+        const owner = c.assigned_to ? `<span class="owner-chip" title="${escapeHtml(c.assigned_to)}">${escapeHtml(staffNameOf(c.assigned_to))}</span>` : '';
+        return `
+        <div class="convo-row ${_activeConvo?.id === c.id ? 'selected' : ''}" data-id="${c.id}">
+            <div class="avatar ${c.status === 'closed' ? 'closed' : ''}">${escapeHtml(initialsOf(label))}</div>
+            <div class="convo-main">
+                <div class="convo-name">${escapeHtml(label)}${c.opted_out_at ? ' &#128721;' : ''}${unresponded ? '<span class="unread-dot"></span>' : ''}</div>
+                <div class="convo-snippet">${escapeHtml(_snippets[c.phone_key] || '')}</div>
+            </div>
+            <div class="convo-meta">
+                <div class="convo-time">${escapeHtml(timeAgo(c.last_message_at))}</div>
+                ${owner}
+            </div>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.convo-row').forEach(el => {
+        el.addEventListener('click', () => selectConversation(el.dataset.id));
+    });
+}
+
+// ── Thread + details ─────────────────────────────────────────────────
+async function selectConversation(id) {
+    const c = _conversations.find(x => x.id === id);
+    if (!c) return;
+    _activeConvo = c;
+    document.body.classList.add('thread-open');
+    document.getElementById('threadTitle').textContent = c.customer_name || c.display_phone || c.phone_key;
+    document.getElementById('threadSub').textContent = c.display_phone || '';
+    document.getElementById('msgPhone').value = c.display_phone || ('+1' + c.phone_key);
+    document.getElementById('msgSendBtn').disabled = !!c.opted_out_at;
+    document.getElementById('optoutBanner').style.display = c.opted_out_at ? 'block' : 'none';
+    renderConvoList();
+    await Promise.all([renderThread(), renderDetails()]);
+}
+async function renderThread() {
+    const c = _activeConvo;
+    if (!c) return;
+    const threadEl = document.getElementById('msgThread');
+    const msgs = await loadMessages(null, c.display_phone || ('+1' + c.phone_key));
+    threadEl.innerHTML = msgs.length
+        ? msgs.map(bubbleHtml).join('')
+        : '<div class="empty-note">No messages yet. Send the first one below.</div>';
+    threadEl.scrollTop = threadEl.scrollHeight;
+}
+async function renderDetails() {
+    const c = _activeConvo;
+    if (!c) return;
+    document.getElementById('detailsEmpty').style.display = 'none';
+    document.getElementById('detailsBody').style.display = 'block';
+    document.getElementById('detailName').textContent = c.customer_name || '(no name)';
+    document.getElementById('detailPhone').textContent = c.display_phone || c.phone_key;
+    document.getElementById('detailOptout').style.display = c.opted_out_at ? 'block' : 'none';
+    document.getElementById('editNameBtn').style.display = isManagerOrAdmin() ? '' : 'none';
+    document.getElementById('assignControls').style.display = isManagerOrAdmin() ? '' : 'none';
+    document.getElementById('assignCurrent').innerHTML = c.assigned_to
+        ? `Assigned to <strong>${escapeHtml(staffNameOf(c.assigned_to))}</strong><br><span style="font-size:0.72rem; color:#64748b;">by ${escapeHtml(staffNameOf(c.assigned_by))} &middot; ${escapeHtml(timeAgo(c.assigned_at))} ago</span>`
+        : '<span style="color:#f59e0b;">Unassigned</span>';
+    const crBtn = document.getElementById('closeReopenBtn');
+    crBtn.textContent = c.status === 'closed' ? 'Reopen conversation' : 'Close conversation';
+    crBtn.disabled = !isManagerOrAdmin();
+
+    // Linked ROs by phone key (same match as webhook routing).
+    const roBox = document.getElementById('detailROs');
+    roBox.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
+    const { data: ros, error: roErr } = await getSB()
+        .from('repair_orders')
+        .select('id, ro_id, customer_name, rv, phone, status')
+        .is('deleted_at', null)
+        .not('phone', 'is', null);
+    if (roErr) { roBox.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading ROs</span>'; }
+    else {
+        const linked = (ros || []).filter(r => phoneKeyOf(r.phone) === c.phone_key);
+        roBox.innerHTML = linked.length
+            ? linked.map(r => `<a class="ro-chip" href="index.html?ro=${encodeURIComponent(r.ro_id || '')}" target="_blank" title="${escapeHtml(r.customer_name || '')} — ${escapeHtml(r.status || '')}">${escapeHtml(r.ro_id || '?')}</a>`).join('')
+            : '<span style="color:#64748b; font-size:0.8rem;">No active RO for this number.</span>';
+    }
+
+    // Assignment history.
+    const evBox = document.getElementById('eventList');
+    const { data: events, error: evErr } = await getSB()
+        .from('conversation_events')
+        .select('*')
+        .eq('conversation_id', c.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+    if (evErr) { evBox.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading history</span>'; }
+    else {
+        evBox.innerHTML = (events || []).length
+            ? events.map(e => {
+                const when = new Date(e.created_at).toLocaleString('en-US', { month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' });
+                let text = '';
+                if (e.event === 'assigned') text = `<strong>${escapeHtml(staffNameOf(e.actor_email))}</strong> assigned to <strong>${escapeHtml(staffNameOf(e.new_value))}</strong>`;
+                else if (e.event === 'unassigned') text = `<strong>${escapeHtml(staffNameOf(e.actor_email))}</strong> unassigned <strong>${escapeHtml(staffNameOf(e.old_value))}</strong>`;
+                else if (e.event === 'closed') text = `<strong>${escapeHtml(staffNameOf(e.actor_email))}</strong> closed the conversation`;
+                else if (e.event === 'reopened') text = `<strong>${escapeHtml(staffNameOf(e.actor_email))}</strong> reopened the conversation`;
+                else if (e.event === 'opted_out') text = `Customer opted out (${escapeHtml(e.new_value || 'STOP')})`;
+                else if (e.event === 'opted_in') text = 'Customer opted back in (START)';
+                return `<div class="event-row">${text}<br><span style="color:#64748b;">${escapeHtml(when)}</span></div>`;
+            }).join('')
+            : '<span style="color:#64748b; font-size:0.8rem;">No events yet.</span>';
+    }
+}
+
+// ── Send (reuses messaging.js sendCustomerMessage contract) ─────────
+async function inboxSend() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!_activeConvo) { showToast('Pick a conversation first.', 'warning'); return; }
+    // Sends untagged (no ro_id) — the customer-inbox thread merges by phone,
+    // and inbound RO routing lives server-side in the webhook.
+    await sendCustomerMessage('', '');
+    await loadConversations();
+}
+
+// ── Assignment (spec §4c) ────────────────────────────────────────────
+function populateAssignSelect() {
+    const sel = document.getElementById('assignSelect');
+    const filter = (document.getElementById('assignFilter').value || '').trim().toLowerCase();
+    const staff = _allStaff.filter(s => s.email && (!filter ||
+        (s.name || '').toLowerCase().includes(filter) || s.email.toLowerCase().includes(filter)));
+    sel.innerHTML = staff.map(s =>
+        `<option value="${escapeHtml(s.email)}">${escapeHtml(s.name || s.email)}${s.role ? ' — ' + escapeHtml(s.role) : ''}</option>`).join('');
+}
+async function assignConversation() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can assign conversations.', 'warning'); return; }
+    const newOwner = document.getElementById('assignSelect').value;
+    if (!newOwner) { showToast('Pick a staff member first.', 'warning'); return; }
+    if ((c.assigned_to || '').toLowerCase() === newOwner.toLowerCase()) { showToast('Already assigned to them.', 'info'); return; }
+    const btn = document.getElementById('assignBtn');
+    btn.disabled = true;
+    try {
+        const oldOwner = c.assigned_to || null;
+        const nowIso = new Date().toISOString();
+        const { error: upErr } = await getSB().from('conversations').update({
+            assigned_to: newOwner,
+            assigned_by: currentUser.email,
+            assigned_at: nowIso,
+        }).eq('id', c.id);
+        if (upErr) throw upErr;
+
+        const { error: evErr } = await getSB().from('conversation_events').insert({
+            conversation_id: c.id,
+            event: 'assigned',
+            actor_email: currentUser.email,
+            old_value: oldOwner,
+            new_value: newOwner,
+        });
+        if (evErr) throw evErr;
+
+        // Dashboard notify via the 15-min cron (source widened in P1).
+        const customerLabel = c.customer_name || c.display_phone || c.phone_key;
+        const { error: nErr } = await getSB().from('scheduled_notifications').insert({
+            ro_id: null,
+            scheduled_at: nowIso,
+            recipient_emails: [newOwner],
+            subject: `\u{1F4E5} Conversation assigned to you — ${customerLabel}`,
+            body: [
+                `${currentUser.name || currentUser.email} assigned you the text conversation with ${customerLabel}.`,
+                '',
+                'Open Messages on the dashboard to view the thread and respond:',
+                'https://patriotsrv.github.io/rv-dashboard/messages.html',
+            ].join('\n'),
+            source: 'conversation_assigned',
+            status: 'pending',
+            created_by_email: currentUser.email,
+        });
+        if (nErr) throw nErr;
+
+        // PB SMS to the new owner (staff.phone_number; silently skipped if NULL).
+        const staffRow = _allStaff.find(s => (s.email || '').toLowerCase() === newOwner.toLowerCase());
+        const ownerPhone = (staffRow?.phone_number || '').trim();
+        if (ownerPhone) {
+            try {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/projectblue-send`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${supabaseSession?.access_token || SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                    },
+                    body: JSON.stringify({
+                        action: 'send',
+                        to: ownerPhone,
+                        body: `\u{1F4E5} ${currentUser.name || currentUser.email} assigned you the conversation with ${customerLabel}. Open Messages on the PRVS dashboard to respond.`,
+                        context: 'staff_notify',
+                        sent_by: currentUser.email,
+                    }),
+                });
+                if (!res.ok) log('assignment SMS non-OK: HTTP ' + res.status);
+            } catch (smsErr) {
+                console.error('assignment SMS failed (assignment saved):', smsErr);
+            }
+        }
+
+        showToast(`Assigned to ${staffNameOf(newOwner)}.`, 'success');
+        await refreshAll();
+    } catch (err) {
+        console.error('assignConversation error:', err);
+        showToast('Assign failed: ' + (err.message || err), 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+async function unassignConversation() {
+    const c = _activeConvo;
+    if (!c || !c.assigned_to) { showToast('Not currently assigned.', 'info'); return; }
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can unassign conversations.', 'warning'); return; }
+    try {
+        const oldOwner = c.assigned_to;
+        const { error: upErr } = await getSB().from('conversations').update({
+            assigned_to: null, assigned_by: currentUser.email, assigned_at: new Date().toISOString(),
+        }).eq('id', c.id);
+        if (upErr) throw upErr;
+        const { error: evErr } = await getSB().from('conversation_events').insert({
+            conversation_id: c.id, event: 'unassigned',
+            actor_email: currentUser.email, old_value: oldOwner, new_value: null,
+        });
+        if (evErr) throw evErr;
+        showToast('Unassigned.', 'success');
+        await refreshAll();
+    } catch (err) {
+        console.error('unassignConversation error:', err);
+        showToast('Unassign failed: ' + (err.message || err), 'error');
+    }
+}
+async function toggleClosed() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can close/reopen.', 'warning'); return; }
+    const newStatus = c.status === 'closed' ? 'open' : 'closed';
+    try {
+        const { error: upErr } = await getSB().from('conversations')
+            .update({ status: newStatus }).eq('id', c.id);
+        if (upErr) throw upErr;
+        const { error: evErr } = await getSB().from('conversation_events').insert({
+            conversation_id: c.id,
+            event: newStatus === 'closed' ? 'closed' : 'reopened',
+            actor_email: currentUser.email,
+            old_value: c.status, new_value: newStatus,
+        });
+        if (evErr) throw evErr;
+        showToast(newStatus === 'closed' ? 'Conversation closed.' : 'Conversation reopened.', 'success');
+        await refreshAll();
+    } catch (err) {
+        console.error('toggleClosed error:', err);
+        showToast('Update failed: ' + (err.message || err), 'error');
+    }
+}
+async function editCustomerName() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit the name.', 'warning'); return; }
+    const name = prompt('Customer name for ' + (c.display_phone || c.phone_key) + ':', c.customer_name || '');
+    if (name === null) return;
+    try {
+        const { error } = await getSB().from('conversations')
+            .update({ customer_name: name.trim() || null }).eq('id', c.id);
+        if (error) throw error;
+        showToast('Name updated.', 'success');
+        await refreshAll();
+    } catch (err) {
+        console.error('editCustomerName error:', err);
+        showToast('Name update failed: ' + (err.message || err), 'error');
+    }
+}
+
+// ── Refresh / UI plumbing ────────────────────────────────────────────
+async function refreshAll() {
+    if (!supabaseSession) return;
+    await loadConversations();
+    if (_activeConvo) {
+        _activeConvo = _conversations.find(x => x.id === _activeConvo.id) || _activeConvo;
+        document.getElementById('msgSendBtn').disabled = !!_activeConvo.opted_out_at;
+        document.getElementById('optoutBanner').style.display = _activeConvo.opted_out_at ? 'block' : 'none';
+        await Promise.all([renderThread(), renderDetails()]);
+    }
+}
+function backToList() { document.body.classList.remove('thread-open'); }
+function toggleDetails() { document.getElementById('detailsPane').classList.toggle('open'); }
+
+document.getElementById('convoSearch').addEventListener('input', renderConvoList);
+document.getElementById('assignFilter').addEventListener('input', populateAssignSelect);
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        _activeFilter = btn.dataset.filter;
+        renderConvoList();
+    });
+});
+
+// Inline onclick bridge.
+Object.assign(window, {
+    inboxSend, assignConversation, unassignConversation, toggleClosed,
+    editCustomerName, refreshAll, backToList, toggleDetails,
+});
+
+initAuth();
+</script>
+</body>
+</html>

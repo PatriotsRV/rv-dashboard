@@ -30,3 +30,10 @@ __pycache__/
 index.draft.html
 PRVS_style_extract/
 PRVS_style_extract.zip
+
+# Disposable design artifacts + local tooling config (S138)
+# (.claude/skills/ stays TRACKED — session-protocol skill sources live there)
+Patriots RV Services Dashboard.zip
+prvs_ro_dashboard_mockup.html
+.claude/launch.json
+.claude/settings.local.json

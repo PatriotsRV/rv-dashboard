@@ -1,6 +1,17 @@
 // ============================================================
 // projectblue-send (GH#39 vendor eval, Session 131, 2026-07-04) - outbound only
 // ============================================================
+// v1.1 (Session 138, 2026-07-15): PB INBOX P2 — STOP GATE + CONVERSATION UPSERT.
+//   (1) STOP/HELP hard gate (TCPA, server-side): before calling Project Blue,
+//       the target phone is checked against conversations.opted_out_at (by
+//       phone_key). Opted-out => 403 { ok:false, error, opted_out:true } and
+//       NO send. Contexts 'staff_notify' and 'auto_reply' bypass the gate
+//       (staff phones aren't customers; the STOP confirmation itself must
+//       still go out — sent by projectblue-webhook via direct API anyway).
+//   (2) After a successful send, upserts `conversations` on phone_key
+//       (last_message_at, last_direction='outbound', display_phone).
+//       Non-fatal; the send result is already committed.
+//
 // Sends an iMessage/SMS to a customer (or test recipient) through Project Blue
 // and logs the attempt to the `messages` table. API-compatible drop-in for
 // sendblue-send: SAME request/response contract, so js/messaging.js (POC
@@ -56,6 +67,17 @@ function getCorsHeaders(req: Request) {
 
 const PB_SEND_ENDPOINT = "https://api.tryprojectblue.com/send-api-message";
 const PB_LIST_ENDPOINT = "https://api.tryprojectblue.com/get-messages-api";
+
+// Digits-only last-10 phone key. MIRRORS projectblue-webhook phoneKey() —
+// same normalization algorithm; keep the two in sync (spec §3a).
+function phoneKey(raw: unknown): string {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : "";
+}
+
+// Contexts that bypass the opt-out gate: staff phones aren't customers, and
+// the STOP confirmation auto-reply must be deliverable.
+const SUPPRESSION_EXEMPT_CONTEXTS = new Set(["staff_notify", "auto_reply"]);
 
 // Poll /get-messages-api to capture the message_handle for a just-queued send.
 // Two attempts with a short delay; returns null if PB's queue hasn't surfaced
@@ -136,6 +158,37 @@ Deno.serve(async (req: Request) => {
   if (!to) return json({ error: "Missing 'to' phone number (E.164, e.g. +12145551234)" }, 400);
   if (!content) return json({ error: "Missing message body" }, 400);
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  // ── STOP gate (v1.1): refuse sends to opted-out customers ──────────
+  // Fail-open on lookup errors (a DB blip must not block urgent sends);
+  // the gate is best-effort defense-in-depth on top of the UI indicator.
+  const requestContext = (payload.context as string) || (action === "test" ? "test" : "ro_customer");
+  if (!SUPPRESSION_EXEMPT_CONTEXTS.has(requestContext)) {
+    try {
+      const key = phoneKey(to);
+      if (key) {
+        const { data: convo, error: convoErr } = await supabase
+          .from("conversations")
+          .select("opted_out_at, opt_out_keyword")
+          .eq("phone_key", key)
+          .maybeSingle();
+        if (!convoErr && convo?.opted_out_at) {
+          return json({
+            ok: false,
+            opted_out: true,
+            error: `This customer opted out of texts (replied ${convo.opt_out_keyword || "STOP"} on ${String(convo.opted_out_at).slice(0, 10)}). Sends are blocked until they reply START.`,
+          }, 403);
+        }
+      }
+    } catch (e) {
+      console.error("opt-out gate lookup failed (failing open):", e);
+    }
+  }
+
   // Optional line pin. Omitted => PB load-balances across the account's lines.
   const lineId = (Deno.env.get("PROJECTBLUE_LINE_ID") || "").trim();
 
@@ -179,10 +232,6 @@ Deno.serve(async (req: Request) => {
 
   // ── Log to messages (service role bypasses RLS) ────────────────────
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
     const { error: insErr } = await supabase.from("messages").insert({
       ro_id: payload.ro_id || null,
       ro_code: payload.ro_code || null,
@@ -209,6 +258,26 @@ Deno.serve(async (req: Request) => {
   if (!ok) {
     return json({ ok: false, projectblue_status: pbResp.status, projectblue: pbData }, 502);
   }
+
+  // ── Conversation upsert (v1.1) — non-fatal, send already succeeded ─
+  // Staff notifies / auto-replies don't create customer conversations.
+  if (!SUPPRESSION_EXEMPT_CONTEXTS.has(requestContext)) {
+    try {
+      const key = phoneKey(to);
+      if (key) {
+        const { error: upErr } = await supabase.from("conversations").upsert({
+          phone_key: key,
+          display_phone: to,
+          last_message_at: new Date().toISOString(),
+          last_direction: "outbound",
+        }, { onConflict: "phone_key" });
+        if (upErr) console.error("conversations upsert error:", upErr.message);
+      }
+    } catch (e) {
+      console.error("conversations upsert failed (send already logged):", e);
+    }
+  }
+
   return json({
     ok: true,
     status,

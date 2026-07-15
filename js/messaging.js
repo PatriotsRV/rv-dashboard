@@ -56,10 +56,17 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
             const err = m.error_message ? `<div style="font-size:0.62rem; color:#ef4444; margin-top:3px;">${escapeHtml(m.error_message)}</div>` : '';
             const roTag = (!outbound || m.ro_code) && m.ro_code
                 ? `<span style="font-size:0.6rem; font-family:'JetBrains Mono',monospace; color:var(--accent-info);">${escapeHtml(m.ro_code)}</span>` : '';
+            // Inbound MMS render (S138, spec P3): media_url is text[] — the
+            // reconciliation poll backfills PB's media_attachment_url.
+            const mediaList = Array.isArray(m.media_url) ? m.media_url : (m.media_url ? [m.media_url] : []);
+            const media = mediaList.filter(Boolean).map(u =>
+                `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img src="${escapeHtml(u)}" alt="attachment" loading="lazy" style="max-width:200px; max-height:200px; border-radius:8px; display:block; margin-top:6px;"></a>`
+            ).join('');
             return `
                 <div style="display:flex; justify-content:${align}; margin-bottom:8px;">
                     <div style="max-width:78%; background:${bg}; border:1px solid ${border}; border-radius:12px; padding:8px 11px;">
                         <div style="font-size:0.85rem; color:var(--text-primary); white-space:pre-wrap; word-break:break-word;">${escapeHtml(m.body || '')}</div>
+                        ${media}
                         <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:4px;">
                             ${roTag}
                             <span style="font-size:0.62rem; color:var(--text-secondary);">${escapeHtml(when)}</span>
@@ -69,6 +76,9 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
                     </div>
                 </div>`;
         }
+
+        // Exported for messages.html (S138 PB inbox) — same renderer, one source.
+        export function bubbleHtml(m) { return _bubble(m); }
 
         // Customer-inbox thread (spec §3): rows tagged to this RO OR involving
         // this customer's phone, both directions, oldest first.
@@ -187,6 +197,11 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
 
                 if (res.status === 503) {
                     showToast('Project Blue is not configured yet (PROJECTBLUE_API_KEY not set on the project).', 'warning', { duration: 9000 });
+                    return;
+                }
+                if (res.status === 403 && data.opted_out) {
+                    // STOP gate (S138): customer texted STOP; server refuses sends.
+                    showToast('\u{1F6D1} ' + (data.error || 'This customer opted out of texts (STOP). Sends are blocked until they reply START.'), 'error', { duration: 10000 });
                     return;
                 }
                 if (!res.ok || data.ok === false) {

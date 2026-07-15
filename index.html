@@ -1,8 +1,20 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.472
-    v1.472: [S136] RO File Management — delete / move / rename for photos AND documents.
+    PRVS Dashboard v1.473
+    v1.473: [GH#39 S138] PB Inbox + Conversation Assignment + STOP/HELP hard gate.
+    NEW standalone messages.html v1.0 (login-gated Kenect-style three-pane inbox: conversation
+    list w/ All/Unresponded/Unassigned/Mine filters + search; thread pane reusing js/messaging.js
+    bubbleHtml + sendCustomerMessage; details pane w/ linked ROs, Manager+ assignment control,
+    conversation_events history, Close/Reopen, opt-out banner). NEW conversations +
+    conversation_events tables (migration pb_inbox_conversations.sql; backfill; RLS
+    authenticated-only, writes Manager+ via NEW is_manager_or_above(); staff.phone_number REUSED
+    for SMS notifies — spec §3c mobile_phone superseded). projectblue-webhook v1.2 (conversation
+    upserts; STOP/START/HELP TCPA keywords -> suppression + auto-replies; assigned conversations
+    notify the OWNER [email + PB SMS, 60-min dedupe] instead of the silo blast). projectblue-send
+    v1.1 (server-side STOP gate 403 + conversation upsert). js/messaging.js: bubbleHtml export +
+    inbound MMS render + opted-out send toast.
+    Prior v1.472: [S136] RO File Management — delete / move / rename for photos AND documents.
     Root cause of Sofia's ER (39b75fab): reused/renamed RO records left the prior customer's
     uploaded files attached (Marco DeAlba's PDFs stranded on the Rachel & Junior Ruiz RO), and
     there was NO UI to remove or relocate a wrongly-uploaded file. js/photos.js gains
@@ -593,7 +605,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.472</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.473</span>
             </div>
         </header>
 
