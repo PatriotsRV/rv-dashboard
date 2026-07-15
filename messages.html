@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.0
+    PRVS Messages — PB Inbox + Conversation Assignment v1.1
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    v1.1 (Session 138, same day): iOS Safari composer fix — Lynn couldn't reply from her
+    iPhone because 100vh includes Safari's collapsed toolbar, hiding the composer + Send
+    behind it (Roland repro'd). body + .layout now use 100dvh with 100vh fallback, and the
+    composer gains env(safe-area-inset-bottom) padding. No functional change.
 
     Standalone, login-gated (closed-ros.html pattern; storageKey
     'prvs_messages_auth'; HARD gate — no anon rendering, S134 posture).
@@ -40,7 +45,10 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Barlow Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary); color: var(--text-primary); height: 100vh; overflow: hidden;
+            background: var(--bg-primary); color: var(--text-primary);
+            /* v1.1: 100dvh (with 100vh fallback) — iOS Safari counts its collapsed
+               toolbar inside 100vh, which hid the composer + Send behind it (S138 Lynn repro) */
+            height: 100vh; height: 100dvh; overflow: hidden;
         }
         .header {
             background: linear-gradient(135deg, #0f1a2e 0%, #1a2744 100%);
@@ -58,7 +66,7 @@
         .auth-gate { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 20px; }
         .auth-gate h2 { color: #94a3b8; font-size: 1.1rem; font-weight: 500; }
 
-        .layout { display: grid; grid-template-columns: 320px 1fr 300px; height: calc(100vh - 55px); }
+        .layout { display: grid; grid-template-columns: 320px 1fr 300px; height: calc(100vh - 55px); height: calc(100dvh - 55px); }
         .pane { overflow-y: auto; min-height: 0; }
 
         /* ── Left: conversation list ── */
@@ -107,7 +115,7 @@
         }
         .thread-title { font-weight: 700; font-size: 1.05rem; color: white; }
         #msgThread { flex: 1; overflow-y: auto; padding: 14px 16px; }
-        .composer { padding: 10px 16px 14px; border-top: 1px solid var(--bg-tertiary); }
+        .composer { padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bg-tertiary); }
         .composer textarea {
             width: 100%; padding: 10px 12px; background: var(--bg-secondary); color: white;
             border: 1px solid #334155; border-radius: 8px; font-size: 0.92rem; font-family: inherit; resize: vertical;
@@ -300,7 +308,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.0';
+const PAGE_VERSION = 'messages v1.1';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S138)');
 
 // ── State ────────────────────────────────────────────────────────────
