@@ -7,6 +7,8 @@
 
 ## ⚡ SESSION PROTOCOL — READ THIS FIRST
 
+> 🔷 **THIS IS THE CANONICAL SESSION CHECKLIST — single source of truth (S143).** The `prvs-start-session` skill is a **bootstrap only**: it mounts the folder and reads the two context files, then hands off to the checklist below. It deliberately does **not** restate these steps. If a skill and this section ever disagree, **this section wins** — and the skill is the thing to fix. Do not re-create the checklist anywhere else; `SESSION_STARTER.md` was deleted S143 for exactly that reason.
+
 > **Storage strategy:** CLAUDE_CONTEXT.md lives **locally** in the `PRVS RO Dashboard` Cowork workspace folder (primary). GitHub is a **backup only**, pushed at end of session. Always read from local. Always write to local first.
 >
 > 🔴 **NO SILENT GITHUB FALLBACK.** GitHub is a write-backup, NOT a read source. If the local `rv-dashboard` workspace folder is not mounted/accessible, Claude must **STOP and tell Roland immediately** and must **NOT** proceed by reading from GitHub (or anywhere else). See the 🔴 MOUNT GATE (Step 0) below — it is a hard stop, not a fallback.
@@ -16,7 +18,7 @@
 
 Claude must complete all of these before doing any work:
 
-- [ ] **0. 🔴 MOUNT GATE (HARD STOP — do this FIRST).** Confirm the local `rv-dashboard` workspace folder is actually mounted and accessible before reading anything else — e.g. `git -C <workspace> rev-parse --show-toplevel` succeeds and `index.html` + `CLAUDE_CONTEXT.md` are present. **If the folder is NOT mounted: STOP. Tell Roland immediately** ("the rv-dashboard folder isn't connected to this session") **and request it** (folder picker via `request_cowork_directory`). **Do NOT proceed, do NOT read from GitHub, do NOT start any work until the local folder is mounted and confirmed.** A session's env may claim a folder was selected while the actual mount is missing — trust the filesystem check, not the flag. *(Rule added 2026-07-10, Session 136, after a session silently fell back to GitHub `main` and reported a stale state because the mount didn't attach at boot.)*
+- [ ] **0. 🔴 MOUNT GATE (do this FIRST).** Confirm the live `rv-dashboard` git repo is mounted: `RV=$(ls -d /sessions/*/mnt/rv-dashboard 2>/dev/null | head -1)`. **If not mounted, just mount it** — call `request_cowork_directory` with path `~/rv-dashboard` (one call, no picker, no user action). Only if THAT fails do you STOP and tell Roland. **Never hardcode `/mnt/rv-dashboard`** — it does not exist; the real path is `/sessions/<session-name>/mnt/rv-dashboard` and `<session-name>` is regenerated every session. **NO SUBSTITUTE SOURCES — EVER:** never read context from GitHub (write-backup only) or from `.projects/<id>/docs/` (the project Context panel's stale read-only snapshot — it holds a copy of this file and reading it is the exact silent stale-read this gate exists to prevent). *(Rule added 2026-07-10 S136 after a session silently fell back to GitHub `main` and reported stale state; root cause corrected 2026-07-16 S143 — the S140 "boot race" theory was wrong, see Known Issues.)*
 - [ ] 1. Read this file from the local workspace folder (not GitHub)
 - [ ] 2. **Confirm workspace is on `pre-prod`** (default working branch). If on `main` or another branch, switch via `git checkout pre-prod`. See 🌿 BRANCH MODEL section below for the full model.
 - [ ] 3. **Run the drift check** — `git log main..pre-prod --oneline` AND `git log pre-prod..main --oneline`. **The hard invariant: `git log pre-prod..main` MUST be empty** — `main` must never contain a commit `pre-prod` lacks. If it returns ANYTHING, that is the Session-83-class drift (`main` ahead of `pre-prod`) — surface it and resolve via a fast-forward back-merge (`git checkout pre-prod && git merge main && git push origin pre-prod`) before any other work. `git log main..pre-prod` returning commits is OK — that is just unreleased work soaking on `pre-prod`; note what's pending promotion but do not treat it as an error (see 🌿 BRANCH MODEL → Drift Prevention Rules and the 🔒 END-SESSION BRANCH SYNC GATE).
@@ -278,7 +280,7 @@ A topic branch is cheaper than a regression. If a change feels risky or touches 
 | 🟢 | GH#39 | **✅ ANSWERED S142 — Office-number port questions (superseded by the 🟠 "port IN FLIGHT" row above)** | Jordan answered all 5 on 2026-07-16; answers + decisions captured in the S142 port row at the top of this table. | ✅ Done S142 |
 | 🟢 | — | **✅ DONE S136 — v1.472 RO File Management SHIPPED (delete/move/rename photos & documents)** | Root cause of Sofia ER 39b75fab: reused/renamed RO records stranded the prior customer's uploaded files (Marco De Alba PDFs on the Ruiz RO) with no removal UI. js/photos.js: `canManageFiles` (Admin/Sr Manager/Manager/Parts Manager/Insurance Manager) + `deleteLibraryItem`/`renameLibraryDoc`/`openMoveFileModal`/`moveLibraryItem`; per-doc ✏️/➡️/🗑️ on the Documents tab + ➡️ Move / 🗑️ Delete in the photo lightbox. MOVE storage-copies into the target rv-media folder then removes the source (paths keep matching ro_id); audit-logged; no DB schema change. Verified live — the 2 Marco PDFs moved off Ruiz onto his reactivated RO. | ✅ Done Session 136 |
 | 🟡 | — | **GitHub Release v1.472 (Roland action, NEW S136)** | Tag `v1.472` at prod cutover — RO File Management. Batch with the release backlog. | ⏳ Roland — batch with backlog |
-| 🟡 | Roland | **MOUNT GATE retry — ⚠️ STILL UNPROVEN after S141 (first live test was inconclusive)** | S140 applied a 3x/~5s wait-and-retry to `prvs-start-session` to fix a suspected boot race that had tripped the gate 5 straight sessions (S136-S140). **S141 = first live test: INCONCLUSIVE.** The gate tripped again, but the 3 retries all failed because **no folder was selected at all** — not a boot race, so the retry logic never had a chance to help; the folder picker resolved it immediately and the session proceeded normally (NO GitHub fallback was used — the rule held). ⇒ The retry fix is still **unproven**; watch S142. If the gate trips again WITH a folder already selected and the retry rescues it, mark this ✅ DONE. | ⏳ Watch at S142 |
+| 🟢 | — | **✅ DONE S143 — MOUNT GATE fixed for real (S140 boot-race hypothesis was WRONG)** | The S140 3x/~5s retry never had a chance: S141 AND S143 both tripped with NO folder attached (`User selected a folder: no`, `mnt/` = outputs+uploads only) — nothing to wait for. THREE real bugs found: (1) not a race; (2) the project **Context panel is not a session mount** — it mounts a stale read-only snapshot at `.projects/<id>/docs/` containing a copy of CLAUDE_CONTEXT.md, which is a live stale-read trap; (3) the skill hardcoded `/mnt/rv-dashboard`, which **does not exist** (real path is `/sessions/<name>/mnt/...`, regenerated per session) — the gate would have tripped even when correctly mounted. **Fix:** STEP 0 now calls `request_cowork_directory` path `~/rv-dashboard` — mounted in ONE call, no picker. Skill STEP 0+1 replaced + both reference tables purged (`docs/PASTE_ME_start-session-mount-fix-v2.md`); Known Issue rewritten; `SESSION_STARTER.md` cleaned — it still carried the **GitHub read-fallback** S140 thought it had removed. If the gate trips again the cause is NEW — do not re-add waiting. | ✅ Done S143 |
 | 🟢 | — | **✅ DONE S136 — MOUNT GATE rule added to CLAUDE_CONTEXT.md** | Start-of-Session Step 0 hard-stop: if the `rv-dashboard` folder isn't mounted, tell Roland immediately and do NOT proceed / do NOT read from GitHub. Added after this session silently fell back to GitHub `main` (stale) because the folder didn't attach at boot. Committed pre-prod `4bc58f6`. | ✅ Done Session 136 |
 | 🟠 | — | **Archived-RO document support (NEW S136)** | `cashiered` has NO photo_library column and closed-ros.html has no doc UI, so files can't be moved onto a closed/archived RO. Add `photo_library jsonb` to `cashiered` + a photos/documents viewer+manager on the Closed ROs page, and let `moveLibraryItem` target cashiered ROs (write to the right table). Interim workaround = reactivate the RO, move, then re-close (docs drop on re-archive until this is built). | ⏳ Open — enhancement |
 | 🟡 | — | **RO hygiene: never rename/reuse an RO for a different customer (NEW S136)** | Brandon renamed Marco De Alba's RO to Rachel & Junior Ruiz (S136 investigation) — carries the prior customer's files + audit history. Create a NEW RO per customer instead. Roland briefed Brandon 2026-07-10. Consider a future guard/warning when a customer-name change targets a different person. | ⏳ Open — process + future guard |
@@ -544,7 +546,6 @@ A topic branch is cheaper than a regression. If a change feels risky or touches 
 | `docs/specs/MODULARIZATION_ROADMAP.md` | **v1.0** | 19-phase plan to split index.html into ES modules — no bundler, GitHub Pages compatible |
 | `CLAUDE_CONTEXT.md` | — | This file — session continuity |
 | `ROLLBACK.md` | — | Emergency rollback guide — step-by-step restore instructions, version table, rollback commands |
-| `SESSION_STARTER.md` | — | Copyable session kickoff prompt for Roland to paste into Claude |
 | `RELEASE_NOTES_v1.265.md` | — | Release notes for v1.265 |
 | `RELEASE_NOTES_v1.266.md` | — | Release notes for v1.266 |
 | `.github/workflows/backup.yml` | — | Daily Supabase backup → private backup repo. **Updated 2026-04-10:** +4 tables (enhancement_requests, manager_work_lists, wo_task_templates, wo_template_tasks) |
@@ -677,22 +678,38 @@ Files over the multipart threshold (~17 MB observed) get an eTag of the form `<m
 
 Phase 0 extrapolated **2-7 GB** of Kenect media from a **single 576 KB PDF**. Reality: ~3 MB average ⇒ **~50-100 GB**, with just **78 video files at ~27 MB each ≈ half of all volume**. Roland's approval had been given on the wrong number, so the decision was re-opened → **skip video** (608 files / 8 GB), turning a ~50-hr job into ~1 hr. Related: the deepest thread was **2,087 messages** (spec assumed 327) — always page to exhaustion. Also: **CDP `Runtime.evaluate` times out at 45s but the page KEEPS RUNNING** — never retry on that timeout (it double-processes); fire-and-forget a background loop that writes progress to a global and poll it with tiny calls. And concurrency is decisive for latency-bound media pulls: 4 workers = 0.26 MB/s vs 16 workers = ~11 MB/s (3 sequential round trips per file).
 
-### MOUNT GATE: it's a boot RACE, not a permissions fault — retry before failing (Session 140, 2026-07-15)
+### MOUNT GATE: NOT a boot race — the folder isn't attached, and the skill's path was dead (Session 143, 2026-07-16)
 
-The gate tripped **5 consecutive sessions (S136–S140)**. Diagnosis: the env flag `User selected a folder: yes`
-means Roland **has a folder selected** — it does **NOT** mean the mount is ready. The Linux workspace boots
-asynchronously, so checking for `/mnt/rv-dashboard/` immediately **races the mount and loses**. Tells that it's
-a race, not permissions: re-picking the folder fixes it instantly every time, and local files have been
-byte-identical to GitHub on all 5 trips (so no damage yet). **Fix applied S140:** `prvs-start-session` STEP 0
-now retries **3× at ~5s** before declaring failure (`docs/PASTE_ME_start-session-mount-fix.md`; Roland applied
-it — **S141 is the first live test**). If it still trips: either the window is too short, or it's a genuine
-app-side bug → **thumbs-down the session and report it**.
+**This SUPERSEDES the S140 "boot RACE" diagnosis. That hypothesis was WRONG** and has now failed to help
+twice (S141, S143). Three separate bugs were in play:
 
-> ⚠️ **The trap that was hiding here:** the skill's STEP 1 *still said* "If the workspace is unavailable, fetch
-> both from GitHub" — **the exact silent fallback the S136 MOUNT GATE exists to forbid.** The skill and
-> `CLAUDE_CONTEXT.md` contradicted each other, and only the context file was holding the line. Had a session
-> followed the skill's wording instead, it would have read **stale context from GitHub** and could have
-> clobbered newer local work — precisely the failure the gate was written to prevent. Removed S140.
+**1. Not a race.** S141 and S143 both tripped with the env flag reading `User selected a folder: no` and
+`mnt/` holding only `outputs` + `uploads`. All 3 retries failed because there was nothing to wait *for*.
+Waiting longer cannot fix "no folder attached." **Do NOT re-add waiting.**
+
+**2. The project Context panel is NOT a session mount.** The `rv-dashboard` entry on the project page mounts
+a **read-only knowledge snapshot** at `.projects/<id>/docs/` holding a STALE copy of `CLAUDE_CONTEXT.md`. It
+is not the git repo. This is why the gate trips while the project page looks correct — and it is a live trap:
+reading that copy IS the silent stale-read the gate exists to prevent. **Never read context from `.projects/`.**
+
+**3. The skill hardcoded a path that does not exist.** `/mnt/rv-dashboard/` — the real bash path is
+`/sessions/<session-name>/mnt/rv-dashboard/`, and `<session-name>` is regenerated every session. `/mnt/` holds
+only `.virtiofs-root`. **The gate would have tripped even with the folder correctly mounted**; bug #2 was
+masking this one. Resolve it dynamically, never hardcode:
+`RV=$(ls -d /sessions/*/mnt/rv-dashboard 2>/dev/null | head -1)`
+
+**Fix applied S143** (`docs/PASTE_ME_start-session-mount-fix-v2.md`): STEP 0 no longer hard-stops — it calls
+`request_cowork_directory` with path `~/rv-dashboard`, which mounted in ONE call, no picker, no user action.
+Stale `/mnt/rv-dashboard` paths were also purged from the skill's two reference tables and from
+`SESSION_STARTER.md`. **If the gate trips again, the cause is something NEW — do not assume a race.**
+
+> ⚠️ **The trap that was hiding here (S140, and it had a twin):** the skill's STEP 1 *still said* "If the
+> workspace is unavailable, fetch both from GitHub" — **the exact silent fallback the S136 MOUNT GATE exists
+> to forbid.** The skill and `CLAUDE_CONTEXT.md` contradicted each other, and only the context file was
+> holding the line. Had a session followed the skill's wording, it would have read **stale context from
+> GitHub** and could have clobbered newer local work. Removed from the skill S140 — but the identical
+> fallback survived in `SESSION_STARTER.md` until **S143** found and removed it. Lesson: when a rule is
+> retired, grep the whole repo for its twins.
 > **Lesson: when a rule is added to `CLAUDE_CONTEXT.md`, check the SKILLS for contradicting text too.**
 > 🔴 GitHub is a **write-backup, NOT a read source.** Retrying the mount is fine; substituting a source is not.
 
@@ -1237,7 +1254,7 @@ After an additive extraction + window bridge, the MODULE copy is the runtime own
 
 ### Git & Deployment
 - `gh` CLI not available in sandbox — use `git` directly.
-- Workspace folder IS the git repo — `git push origin main` works.
+- Workspace folder IS the git repo. **But NEVER `git push origin main` directly** — that predates the S79 pre-prod branch model and re-creates the Session 83 drift. Doc/checkpoint commits go to `pre-prod`; `main` only ever moves by fast-forward via the 🔒 Sync Gate. (Stale line caught by Class K, fixed S143.)
 - Never push directly to GitHub during an active Claude session (causes branch divergence requiring `git reset --hard`).
 - Always run `bash scripts/backup.sh` before `git push`.
 

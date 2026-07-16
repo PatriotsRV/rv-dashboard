@@ -49,6 +49,7 @@ Pattern follows docs/qa/SESSION_72_STATUS_CASING_SCAN.md.
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import re
 import sys
@@ -590,6 +591,116 @@ SQL_SCANNERS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Scanner: (K) Retired-rule / protocol drift  (added S143)
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS
+# ---------------
+# Every protocol bug in this project's history had the SAME shape: a rule was
+# retired, fixed in ONE copy, recorded as DONE -- and its twins lived on.
+#
+#   * S136/S140 removed the GitHub read-fallback from the start skill. The
+#     identical line survived in SESSION_STARTER.md for 3 more sessions, and in
+#     prvs-end-session's completion checklist until S143.
+#   * S79 made `git push origin main` illegal. prvs-pause-session kept it for
+#     ~64 sessions -- the exact Session 83 drift end-session warns about.
+#   * `/mnt/rv-dashboard` was written 2026-03-20 and silently stopped resolving.
+#     A wrong path never throws (Claude adapts), so it hid for 137 sessions.
+#
+# Nothing ever compared the copies. THIS SENSOR IS THAT COMPARISON.
+#
+# TO RETIRE A RULE: add one row to RETIRED_RULES. It is then enforced forever,
+# across every doc AND every skill, without anyone having to remember.
+
+# NOTE: every allow/near token MUST be \b-anchored. S143 shipped this with a bare
+# "never", which matched inside "wheNEVER" -- present in every skill trigger phrase --
+# and silently whitelisted a real violation. A sensor with a false negative is worse
+# than no sensor: it launders the bug as "verified clean".
+RETIRED_RULES = [
+    dict(
+        id="K1", severity="HIGH",
+        pattern=re.compile(r"/mnt/rv-dashboard"),
+        message=("Dead path `/mnt/rv-dashboard` (retired S143). It does not exist -- the real path is "
+                 "/sessions/<session-name>/mnt/rv-dashboard and <session-name> is regenerated every "
+                 "session. Resolve $RV dynamically."),
+        allow=re.compile(r"\bnever\s+hardcode\b|\bdoes\s+not\s+exist\b|\bnot\s+exist\b|/sessions/|\bretired\b|\bdead\s+path\b|\bwrong\b|\bpurged\b|\bsuperseded\b|\bremoved\b|\bstale\b", re.I),
+    ),
+    dict(
+        id="K2", severity="BLOCKING",
+        pattern=re.compile(r"GitHub\s+fallback|workspace\s+or\s+GitHub|fetch\s+(?:both\s+)?(?:via|from)\s+GitHub|\(or\s+GitHub", re.I),
+        message=("GitHub read-fallback (retired S136; re-removed S140 and again S143). GitHub is a "
+                 "write-backup, NOT a read source. Reading it risks acting on stale state and silently "
+                 "clobbering newer local work."),
+        allow=re.compile(r"\bnever\b|\bno\s+silent\b|\bsilent\b|\bnot\s+a\s+read\s+source\b|\bretired\b|\bforbid\w*\b|\bNO SUBSTITUTE\b|\bwrite-backup\b|\bcontradict\w*\b|\bremoved\b|\bquietly\b|\bexact\b|\bharbored\b|\blived\b|\bsurvived\b|\bpurged\b|\bsuperseded\b", re.I),
+    ),
+    dict(
+        id="K3", severity="BLOCKING",
+        pattern=re.compile(r"^git\s+push\s+origin\s+main\b"),
+        match_stripped=True,
+        message=("`git push origin main` outside a Case B fast-forward promotion. Violates the pre-prod "
+                 "branch model (codified S79) and re-creates the Session 83 drift. Doc and checkpoint "
+                 "commits ALWAYS go to pre-prod; main only ever moves by fast-forward."),
+        near=re.compile(r"\bCASE B\b|\bff-only\b|\bfast-forward\b|\bREPLACES\b|\bviolates\b|\billegal\b|\bWRONG\b", re.I),
+        near_lines=14,
+    ),
+    dict(
+        id="K4", severity="HIGH",
+        pattern=re.compile(r"\.projects/[^\s`]*/docs"),
+        message=("Reference to the project Context snapshot (.projects/<id>/docs/). That is a STALE "
+                 "read-only copy of the context files, never the git repo. Never read context from it."),
+        allow=re.compile(r"\bnever\b|\bstale\b|\bdo\s+not\b|\bforbid\w*\b|\bNO SUBSTITUTE\b|\btrap\b|\bread-only\b", re.I),
+    ),
+]
+
+DOC_SKIP_RE = re.compile(r"(^|/)(\.git|\.backups|node_modules|docs/qa|docs/releases)(/|$)|(^|/)PASTE_ME_[^/]*$")
+DOC_SKIP_NAMES = {"CLAUDE_CONTEXT_ARCHIVE.md"}   # pure history; do not police the past
+
+
+def _collect_doc_files(repo_root: Path) -> list[Path]:
+    out: list[Path] = []
+    for pat in ("**/*.md", "**/*.sh"):
+        for p in repo_root.glob(pat):
+            rel = str(p.relative_to(repo_root))
+            if DOC_SKIP_RE.search(rel) or p.name in DOC_SKIP_NAMES:
+                continue
+            out.append(p)
+    return sorted(out)
+
+
+def _collect_skill_files() -> list[Path]:
+    """The prvs-* skills are NOT in the repo -- they live in the plugin cache."""
+    return sorted(Path(x) for x in glob.glob("/sessions/*/mnt/.claude/skills/prvs-*/SKILL.md"))
+
+
+def scan_retired_rules(label: str, text: str) -> list[Finding]:
+    findings: list[Finding] = []
+    lines = text.split("\n")
+    for rule in RETIRED_RULES:
+        for i, line in enumerate(lines):
+            subject = line.strip() if rule.get("match_stripped") else line
+            if not rule["pattern"].search(subject):
+                continue
+            # Prose wraps. Check the allow-phrase across the adjacent lines too,
+            # or a rule explained across a line break reads as a violation.
+            allow = rule.get("allow")
+            if allow:
+                lo, hi = max(0, i - 1), min(len(lines), i + 2)
+                if any(allow.search(l) for l in lines[lo:hi]):
+                    continue
+            near = rule.get("near")
+            if near:
+                lo = max(0, i - rule.get("near_lines", 10))
+                hi = min(len(lines), i + rule.get("near_lines", 10) + 1)
+                if any(near.search(l) for l in lines[lo:hi]):
+                    continue
+            findings.append(Finding(
+                rule["severity"], "K", label, i + 1,
+                f'[{rule["id"]}] {rule["message"]}', line.strip()[:160],
+            ))
+    return findings
+
+
 def run_audit(repo_root: Path) -> list[Finding]:
     findings: list[Finding] = []
     for path in collect_files(repo_root):
@@ -607,6 +718,29 @@ def run_audit(repo_root: Path) -> list[Finding]:
             for s in SQL_SCANNERS:
                 for fi in s(rel, text):
                     findings.append(fi)
+
+    # --- Class K: retired-rule / protocol drift (docs + skills) ---
+    for path in _collect_doc_files(repo_root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        findings.extend(scan_retired_rules(str(path.relative_to(repo_root)), text))
+
+    skill_files = _collect_skill_files()
+    if not skill_files:
+        findings.append(Finding(
+            "LOW", "K", "(skills)", 0,
+            "[K0] Could not locate the prvs-* skills at /sessions/*/mnt/.claude/skills/ -- "
+            "Class K did NOT check them. Skills are the most drift-prone copy; verify manually.",
+        ))
+    for path in skill_files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        findings.extend(scan_retired_rules(f"SKILL:{path.parent.name}", text))
+
     return findings
 
 
@@ -642,6 +776,7 @@ def render_md(findings: list[Finding]) -> str:
         "G": "SQL ON CONFLICT without UNIQUE constraint",
         "H": "SQL ::jsonb cast without EXCEPTION wrapper",
         "I": "Redundant manual updated_at write (trigger owns it, S115)",
+        "K": "Retired-rule / protocol drift in docs + skills (S143)",
     }
     for c, desc in descriptions.items():
         out.append(f"| {c} — {desc} | {by_class.get(c, 0)} |")
