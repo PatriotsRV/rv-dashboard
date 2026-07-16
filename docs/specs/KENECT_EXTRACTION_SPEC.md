@@ -1,6 +1,7 @@
 # Kenect Data Extraction Spec (Kenect → Supabase)
 
-**Status:** DRAFT — game plan locked Session 139, 2026-07-15. Recon complete against the live logged-in app. Build is a separate session.
+**Status:** PHASE 0 COMPLETE — Session 140, 2026-07-15. Live counts + auth model validated against the real API.
+See §0b for Phase 0 RESULTS and the four corrections to the S139 recon. Build (Phases 1–4) still pending.
 **Branch plan:** build on `feature/kenect-extract` off `pre-prod` (new tables + edge/import tooling; no index.html risk).
 **Supersedes nothing.** Data-rescue only. Kenect UI/code was torn out v1.445 (S92) — this is NOT a re-integration.
 
@@ -13,6 +14,71 @@ stops refreshing, and every Kenect-hosted MMS media URL goes dead. Extraction mu
 Kenect **refused to issue an API key** (the reason Roland is leaving), so the official
 Integrations API (`integrations-api.kenect.com`, Bearer key) is **not available**. Extraction runs
 through Roland's **logged-in browser session** instead.
+
+---
+
+## 0b. PHASE 0 RESULTS + spec corrections (Session 140, 2026-07-15) — VALIDATED LIVE
+
+### Verified scope (real numbers, paged to exhaustion)
+
+| Metric | Value | How |
+|---|---|---|
+| Locations | **ONE** — `10631` only | `location.kenect.com/api/v1/user/130333/locations?excludeInactive=true` → single entry. Resolves S139 open item. |
+| Contacts | **3,093** (all unique) | Body-offset paged to a short page; 3,093 distinct `contactId`s. |
+| Conversations — open | **2,073** | `v2/conversations` `archived=false`, offset-paged to empty. |
+| Conversations — archived | **1,127** | same, `archived=true`. |
+| **Conversations — TOTAL** | **3,200** | |
+| Messages (sampled) | 12 threads → **433 msgs**, avg **36.1**, median ~5 | Per-thread: `[2,34,3,327,5,3,3,16,2,5,9,24]` — heavy right skew, one 327-msg thread. |
+| **Est. total messages** | **~30k–115k** | Mean-based ≈115k; median-based ≈30k. Size the run for ~5k–8k API calls. |
+| Attachments (sampled) | 51 across 12 threads | Extrapolates to **~13,600 attachments**. Sample file was 576 KB → **plausibly 2–7 GB** of media. ⚠️ Storage budget item — confirm before Phase 3. |
+
+### 🔴 FOUR corrections to the S139 recon (S139 assumptions were wrong)
+
+1. **`X-Kenect-Calling-Service` value is `Web:1.2710.0`**, NOT `web`. (Version-stamped.)
+2. **Contacts pagination is `offset`/`limit` in the POST BODY**, NOT `page`/`pageSize` query params.
+   Query params are **silently ignored** — `?page=0`, `?page=5`, `?page=199`, `?page=250` all return the
+   *identical* first 100 rows (Heather Abbott `137586049`), HTTP 200. A naive `page` loop produces
+   **garbage counts** (it "counted" 20,000 contacts = the same 100 rows × 200 pages). Correct call:
+   `POST contact-search.kenect.com/api/v1/contact-search/names` body `{locationIds:[10631], offset:N, limit:100}`.
+3. **There is no `totalRecords`.** The `names` endpoint returns a **plain JSON array**. Page until a short page.
+4. **`attachments[]` carries NO URL.** Real shape:
+   `{id, name, md5, contentType, size, createdAt, updatedAt}` — e.g.
+   `{"id":44263837,"name":"RO-1_ESTOLL.pdf","md5":"…","contentType":"application/pdf","size":576042,…}`.
+   The S139 assumption of "a hosted URL + content-type" is **wrong**. 🔴 **OPEN: find the attachment
+   download endpoint** (likely `…/attachments/{id}` or a signed-URL mint) before Phase 3 can run.
+
+### Auth model — CORRECTED + SOLVED
+
+- `credentials:'include'` **breaks every call** (CORS: wildcard ACAO + credentials → browser blocks →
+  `TypeError: Failed to fetch`). **Send NO credentials.** This was the single blocker that made S139's
+  "naive replay fails" conclusion look like a header problem. Headers needed are just:
+  `accept`, `authorization: Bearer <jwt>`, `x-kenect-calling-service: Web:1.2710.0`.
+- The token **cannot be lifted by in-page JS interception**: the app fires authenticated HTTP only during
+  initial page load (before any injectable hook), then serves the UI from cache/websocket, so no live
+  main-thread `fetch`/XHR ever carries the token again. Patching `fetch`/XHR/`Headers`/`Request`
+  post-load captures **nothing**. Do not retry this path.
+- Direct top-level navigation to an API URL → **401** (no cookie auth).
+- ✅ **SOLVED — self-refreshing tokens.** Kenect auth is **Firebase** (`securetoken.google.com/kenect-ui`);
+  the JWT lives **1 hour** (`iat`→`exp` = 3600s). The refresh token + apiKey sit in **IndexedDB**:
+  db `firebaseLocalStorageDb` → store `firebaseLocalStorage` → key
+  `firebase:authUser:<apiKey>:[DEFAULT]` → `value.stsTokenManager.{refreshToken, expirationTime}`
+  (apiKey `AIzaSyBg_fQbY56_USy3VpGWOWDGrY5qhTPFJ_k`, userId `130333`). Mint a fresh token with:
+  `POST https://securetoken.googleapis.com/v1/token?key=<apiKey>`
+  body `grant_type=refresh_token&refresh_token=<refreshToken>` → `{id_token, refresh_token, expires_in:3600}`.
+  **Verified working S140.** So the extractor can self-renew and run unattended — no hourly DevTools ask.
+  Bootstrap only: token must be seeded once (DevTools → Network → any api row → Copy as cURL), OR
+  read the refresh token straight from IndexedDB at run start (preferred — fully self-service).
+- 🔒 The token/refresh token are **credentials — never commit them to the repo.** Keep in page memory only.
+
+### Endpoint corrections / additions
+
+| Purpose | Reality |
+|---|---|
+| Conversation list | `v2/conversations` returns `{conversations:[{group:"0:YYYY-MM-DD", conversations:[{id,updatedAt}]}], contacts:{contactId:ts}}` — **grouped by date, id+updatedAt only**, no bodies, no totals. `offset`/`limit` query params **do** work here (unlike contacts). |
+| Conversation ids by contact | `GET inbox.kenect.com/api/v1/conversations?contactIds={id}&limit=25` → `[{id, updatedAt}]` |
+| Batch detail (NEW) | `GET inbox.kenect.com/api/v1/conversations/{comma,separated,ids}` — the app batches ~25 ids/call. Use this instead of N single calls. |
+| Batch contacts (NEW) | `GET location.kenect.com/api/v1/contact/list/{comma,separated,ids}` — app batches ~25 ids/call. |
+| Messages | `GET inbox.kenect.com/api/v1/conversations/{id}/messages?limit=25&offset=N` — confirmed working, 25/page. |
 
 ---
 
@@ -127,8 +193,27 @@ transform is verified.
 
 ## 7. Open items for build-session start
 
-- Confirm the complete `locationIds` set (single vs. multi-location).
-- Confirm real `attachments[]` shape on an actual MMS thread.
-- Get the true contact + conversation + message counts (Phase 0) to size the run and the Storage budget.
-- Decide checkpoint cadence + whether to run the whole pull in one browser sitting (JWT longevity) or in
-  resumable chunks.
+**CLOSED by Phase 0 (S140) — see §0b:**
+- ~~Confirm the complete `locationIds` set~~ → **ONE location, `10631`.**
+- ~~Confirm real `attachments[]` shape~~ → **`{id,name,md5,contentType,size,createdAt,updatedAt}` — NO URL.**
+- ~~Get the true counts~~ → **3,093 contacts · 3,200 conversations (2,073 open + 1,127 archived) · ~30k–115k messages.**
+- ~~JWT longevity / one sitting vs. chunks~~ → **Self-refresh via Firebase refresh token works; run unattended.**
+
+**STILL OPEN — resolve at Phase 1/3 start:**
+- 🔴 **Attachment download endpoint** — `attachments[]` has no URL, only an `id`. Must discover how the
+  app fetches attachment bytes (watch DevTools Network while opening an MMS/PDF thread; look for
+  `…/attachments/{id}` or a signed-URL mint). **Phase 3 is blocked until this is known.**
+- ⚠️ **Media storage budget** — ~13,600 attachments extrapolated; sample was 576 KB → possibly **2–7 GB**
+  into Supabase Storage. Roland to confirm appetite, or scope media to text-only + high-value threads.
+- Concurrency/rate limits unknown — no 429s seen at ~31 sequential contact pages, but ramp carefully.
+- The one 327-message thread proves deep threads exist — messages pagination must page to exhaustion.
+
+---
+
+## 8. Delta pull before cutover (Roland directive, S140)
+
+New Kenect leads/messages will keep landing until the PB cutover. The S140 pull is a **point-in-time
+snapshot**; a **second delta pull is required within a few days of cutover** (and before the 🔴 2026-07-24
+access end). Roland already has a **contacts CSV current to 3:00 PM 2026-07-15** as the roster baseline.
+Delta strategy: re-run the extractor and reconcile on `conversations.updatedAt` / message `sentAt` newer
+than the last run, or diff a fresh contacts CSV for new leads.
