@@ -44,8 +44,12 @@ through Roland's **logged-in browser session** instead.
 4. **`attachments[]` carries NO URL.** Real shape:
    `{id, name, md5, contentType, size, createdAt, updatedAt}` — e.g.
    `{"id":44263837,"name":"RO-1_ESTOLL.pdf","md5":"…","contentType":"application/pdf","size":576042,…}`.
-   The S139 assumption of "a hosted URL + content-type" is **wrong**. 🔴 **OPEN: find the attachment
-   download endpoint** (likely `…/attachments/{id}` or a signed-URL mint) before Phase 3 can run.
+   The S139 assumption of "a hosted URL + content-type" is **wrong**. ✅ **RESOLVED S141 — attachment
+   download endpoint found:** `GET inbox.kenect.com/api/v1/messages/{messageId}/attachments/{attachmentId}`
+   returns the **raw file bytes** (not JSON, not a signed URL) with the correct `Content-Type` and
+   `Content-Length`. Verified S141: msg `379000675` / att `44263837` → 200, `application/pdf`, 576042 bytes,
+   magic `%PDF-`. Same Bearer + `x-kenect-calling-service: Web:1.2710.0` headers, `accept: */*`, NO credentials.
+   Note the id in the path is the **messageId**, not the conversationId. Phase 3 is UNBLOCKED.
 
 ### Auth model — CORRECTED + SOLVED
 
@@ -82,13 +86,108 @@ through Roland's **logged-in browser session** instead.
 
 ---
 
+## 0c. SESSION 141 — BUILD RESULTS + corrections to Phase 0
+
+**Status:** Phases 1 + 2 RUN LIVE. Auth, endpoints, and write path all validated against production.
+
+### Write-path architecture (NEW S141 — the load-bearing design decision)
+
+The extractor runs **in the app.kenect.com tab** and writes **directly to Supabase** with the public
+anon key, so tens of GB of media + ~127k messages never route through Claude's context.
+This required TEMPORARY anon ingest grants (`supabase/migrations/kenect_staging_s141.sql`;
+revoked by `kenect_staging_teardown_s141.sql`). Supabase MCP is **read-only** — Roland runs migrations.
+
+🔴 **PostgREST upsert is UNUSABLE for anon here — use plain INSERT.** `Prefer: resolution=merge-duplicates`
+**and** `ignore-duplicates` BOTH fail with `42501 new row violates row-level security policy`, because
+PostgREST's upsert path issues `ON CONFLICT DO UPDATE`, which requires **SELECT** on the target table to
+read the conflicting row. We deliberately grant anon **no SELECT** (staging holds message bodies + phone
+numbers — granting anon read would recreate the exact leak S134 closed). Same trap in Storage:
+**`x-upsert: true` fails**; a plain POST succeeds. Verified: anon SELECT returns `200 []` (RLS filters all
+rows) — the security invariant holds while ingest works.
+**Idempotency/checkpointing therefore comes from the Supabase MCP read side** (count/diff loaded ids and
+skip them), NOT from upsert. Anon UPDATE *does* work (204) — used for Phase 3 `downloaded`/`storage_path`.
+
+### Corrections to the Phase 0 (S140) estimates
+
+| Metric | S140 estimate | S141 ACTUAL |
+|---|---|---|
+| Contacts | 3,093 | ✅ **3,093 confirmed** (all 3,093 have a phone → phone_key dedupe viable; 1,319 carry a Lightspeed `externalId`) |
+| Conversations | 3,200 | ✅ **3,200 confirmed** (2,073 open + 1,127 archived) |
+| Messages | ~30k–115k | **~127k projected** (~40/convo measured over the first 472 threads) |
+| Deepest thread | 327 msgs | **426 msgs** — page to exhaustion, never assume a cap |
+| Attachments | ~13,600 | **~21,800 projected** |
+| Attachment avg size | 576 KB (single sample) | **~3 MB** — the single-PDF sample was badly unrepresentative |
+| **Total media** | **2–7 GB** | 🔴 **~50–100 GB** — an order of magnitude over the estimate |
+
+**Media breakdown (measured, projected to 3,200 threads):** video ~78 files @ ~27 MB avg → **~50 GB**;
+images ~1,318 @ ~1.5 MB → **~48 GB**; PDFs ~48 @ ~536 KB → **~0.6 GB**.
+⇒ **~78 video files are ~half of all media volume.** Roland's revised S141 decision: **PDFs + images, SKIP VIDEO.**
+(Supabase Pro includes 100 GB; full media would sit at/over the limit and likely not finish before 7/24.)
+
+### Endpoint additions confirmed S141
+
+- **Attachment bytes:** `GET inbox.kenect.com/api/v1/messages/{messageId}/attachments/{attachmentId}`
+  → raw bytes + correct `Content-Type`/`Content-Length`. Path id is the **messageId**, not conversationId.
+- **Batch contact detail:** `GET location.kenect.com/api/v1/contact/list/{ids}` (25/call) already returns
+  `phoneNumbers`, `externalId`, `source`, `optInStatus`, `groups`, `primaryEmail` — so the separate
+  per-contact `?enrichContact=true` call and the `hub.kenect.com/fetch-external-id-list` call are
+  **both unnecessary**. Phase 1 = names paging + this batch endpoint only.
+- **Batch conversation detail:** `GET inbox.kenect.com/api/v1/conversations/{ids}` → object **keyed by
+  conversationId** (not an array).
+- No rate limiting observed at ~2 conversations/sec sustained; 0 errors across contacts + conversations.
+
+### Runtime gotchas that cost real time (S141)
+
+1. **CDP `Runtime.evaluate` times out at 45s — but the page keeps running.** A long `await`ed loop
+   returns a timeout ERROR while the work actually completes. Do **not** retry on that error (it
+   double-processes). Correct pattern: **fire-and-forget a background loop** that writes progress to a
+   global (`window.__K.p2b` / `.p3`), then poll it with tiny, fast calls.
+2. **Storage reports duplicates as HTTP 400 with `{"statusCode":"409","error":"Duplicate"}` in the BODY**,
+   *not* an HTTP 409. A `r.status === 409` check silently never fires, so already-uploaded files error
+   forever and never get marked `downloaded` ⇒ infinite worklist. Parse the **body**, treat as success.
+   (Occurs whenever a run is interrupted between the upload and the `downloaded=true` PATCH.)
+3. **Media concurrency matters enormously.** 4 workers = **0.26 MB/s** (~50 hrs for 48 GB — would have
+   missed the 7/24 deadline). 16 workers = **~8 MB/s** (~2 hrs). Each file costs 3 sequential round trips
+   (Kenect GET → Storage POST → PATCH), so it is latency-bound, not bandwidth-bound. No 429s at 16.
+4. **Phase 2 and Phase 3 run concurrently and safely** — different hosts; Phase 3 polls the worklist view
+   and idles 4s when it is empty but Phase 2 is still adding rows.
+5. 🔴🔴 **THE BIG ONE — `UPDATE ... WHERE` silently affects ZERO rows for anon, and returns HTTP 204.**
+   PostgreSQL needs SELECT to *locate* rows for an UPDATE with a WHERE clause, so the **SELECT policies
+   apply** — and anon has none. PostgREST reports this as a cheerful `204 No Content`. **A 204 does NOT
+   mean rows changed.** Symptom: uploads succeeded, `filesDone` climbed to 1,486, throughput looked like
+   a healthy 7–8 MB/s… while Storage held only **200 objects**. Because nothing was ever marked
+   `downloaded`, the worklist returned **the same 200 rows on every fetch** and the pool re-downloaded
+   them forever. The in-memory counter was measuring its own treadmill.
+   - **Tell:** `Object.keys(attempts).length` pinned at exactly the worklist page size (200).
+   - **Diagnosis:** re-issue the PATCH with `Prefer: count=exact` and read `Content-Range` → `*/0`.
+   - **Fix:** `public.kenect_mark_downloaded(items jsonb)` — SECURITY DEFINER RPC, runs as owner,
+     bypasses base-table RLS, can only set `downloaded`/`storage_path`. It **returns the row count**, and
+     the extractor throws if it isn't 1. Never trust a bare 204 again.
+   - **Generalisation:** with no SELECT for anon, *anything that must read a row first* (upsert,
+     `UPDATE ... WHERE`, Storage `x-upsert`) is a silent no-op or an error. Writes are blind: they must be
+     plain INSERTs, or go through a SECURITY DEFINER RPC.
+6. **Always verify progress against the DB, not in-memory counters.** Every real bug in this build was
+   invisible in the extractor's own numbers and obvious in one `count(*)`. The invariant that matters:
+   `count(*) where downloaded=true` == `count(*) from storage.objects`.
+7. **`DELETE FROM storage.objects` is BLOCKED** — Supabase's `storage.protect_delete()` trigger raises
+   *"Direct deletion from storage tables is not allowed. Use the Storage API instead."* Because the SQL
+   editor runs a script as **one transaction**, a single such line **rolls back the entire migration** (this
+   silently no-op'd the whole teardown on the first attempt). Never put a storage-row delete in a migration;
+   delete objects via the Storage API/UI. Corollary: the all-or-nothing behaviour is also a safety net —
+   verify with a follow-up query whether a failed script applied *anything*.
+8. **Storage eTags are NOT md5 for multipart uploads.** Files above the multipart threshold (~17 MB here)
+   get an eTag of the form `<md5-of-md5s>-<partcount>` (note the `-2` suffix). An md5 integrity check will
+   report these as false mismatches — fall back to comparing byte size.
+
+---
+
 ## 1. Locked decisions (Roland, Session 139)
 
 | Decision | Choice |
 |---|---|
 | Kenect status | Active but **cancelling soon** — time-critical |
 | Destination | **Merge into live inbox** — `conversations` / `conversation_events`, `source='kenect_import'`, imported threads `status='closed'` (hidden by the messages.html v1.4 default "Open" filter, visible under "All" + per-customer history) |
-| Media | **Text + media** — download MMS attachments to Supabase Storage during the pull (Kenect URLs die at closure) |
+| Media | **Text + PDFs + images; SKIP VIDEO** (REVISED S141 on real data — see §0c). Originally "text + media" when media was thought to be 2–7 GB; the true volume is ~50–100 GB, with ~78 video files alone accounting for ~50 GB. Roland's S141 call: keep photos + paperwork, drop video. |
 | Dedupe | By `phone_key` against existing customers/conversations |
 | Primary path | **A** — app.kenect.com internal API via the logged-in session |
 | Cross-checks | **B** Lightspeed (see §6), **C** contacts CSV, **D** written offboarding export request |
@@ -158,13 +257,58 @@ transform is verified.
   `kenect_conversations_raw(conversation_id pk, payload jsonb, archived bool, pulled_at)`,
   `kenect_messages_raw(message_id pk, conversation_id, payload jsonb, pulled_at)`. Raw JSON = zero data loss,
   re-transformable.
-- **Transform → live inbox:** for each Kenect conversation, upsert a `conversations` row keyed by
-  `phone_key` (normalize the contact's primary phone the same way the PB webhook does), `source='kenect_import'`,
-  `status='closed'`, `customer_name` from `displayName`. Insert each message as a `conversation_events` row
-  (direction from `outbound`, body, `sentAt` as the event timestamp, media pointing at the re-hosted Supabase URL).
+- 🔴 **TRANSFORM TARGET CORRECTED (S141) — the plan below was written against a schema that does not exist.**
+  Verified against the live DB:
+  - **`conversation_events` is an AUDIT table, NOT a message store.** Columns: `conversation_id, event,
+    actor_email, old_value, new_value, created_at`. It has **no body / direction / media columns**, so
+    "insert each message as a conversation_events row" is impossible. Use it only for import provenance
+    events if desired.
+  - **Messages belong in `public.messages`**: `direction ('inbound'|'outbound'), phone_to, phone_from, body,
+    media_url (text[]), context, sent_by, created_at, ro_id/ro_code, message_handle, status`.
+  - **`conversations` has NO `source` column** — so the locked `source='kenect_import'` decision needs either
+    a new column (`alter table conversations add column source text default 'projectblue'`) or a different
+    marker. `messages.context` (text, already present) is the natural per-message marker: `context='kenect_import'`.
+  - **Messages are linked to a thread BY PHONE, not by FK.** `js/messaging.js` matches
+    `phone_to.eq.<phone>` / `phone_from.eq.<phone>`; `messages.html` derives `phone_key` from
+    `direction==='inbound' ? phone_from : phone_to`. `phone_key` = **digits-only last-10**.
+    So the transform must write correct `phone_to`/`phone_from` — nothing else wires a message to a thread.
+  - ⚠️ **`messages` has no external-id unique constraint**, so a re-run (or the 7/21 delta) would create
+    DUPLICATES. Before Phase 4: add a nullable `kenect_message_id bigint unique` (or reuse `message_handle`
+    with a `kenect:` prefix + unique index) and insert with conflict-do-nothing.
+- **Transform → live inbox (revised):** for each Kenect conversation, resolve the contact's primary phone →
+  `phone_key`; upsert the `conversations` row (`status='closed'`, `customer_name` from `displayName`,
+  `last_message_at`/`last_direction` from the newest message); insert each Kenect message into `messages`
+  with `direction` from `outbound`, `body`, `created_at = sentAt`, `context='kenect_import'`, and
+  `media_url` = the re-hosted `kenect-media` paths for that message.
 - **Dedupe:** if a `phone_key` already exists (PB-era conversation), attach the Kenect events to that thread
   rather than creating a duplicate — Kenect history slots in *before* the PB history chronologically.
 - Verify counts against the Kenect UI on a handful of known customers before declaring done.
+
+---
+
+## 5b. ✅ VERIFICATION RESULTS — Session 141 (the rescue is COMPLETE and verified)
+
+| Check | Kenect (live) | Staged | Result |
+|---|---|---|---|
+| Contacts | 3,093 | 3,093 | ✅ |
+| Conversations | 3,200 (2,073 open + 1,127 archived) | 3,200 (2,073 + 1,127) | ✅ |
+| Messages | — | **56,279** across all 3,200 threads (every thread has ≥1) | ✅ |
+| Media in scope (PDF+image) | 7,756 | 7,756 downloaded · **0 pending · 0 failed** | ✅ |
+| Storage objects / bytes | — | 7,756 · **9,827 MB** — byte-for-byte equal to the sum of Kenect-reported sizes | ✅ |
+| Video (deliberately skipped) | 608 files / 8,033 MB | not pulled | per S141 decision |
+
+- **md5 integrity: 7,754 / 7,756 exact matches** (Kenect `attachments[].md5` vs the md5 Storage computed on the
+  stored bytes). The **2 "mismatches" are NOT corruption** — the stored eTag ends `-2`, the S3 **multipart**
+  eTag format (md5-of-md5s + part count), which is not a content md5. Both are the same 17.4 MB image sent to
+  two conversations; sizes match exactly (17,429,703 B). ⇒ **zero corrupt files.**
+- **Live message-count spot-check: 12/12 MATCH** — re-queried straight from Kenect and compared to staging,
+  covering the six deepest threads (2087, 619, 475, 426, 426, 413) and six random threads (12, 5, 5, 5, 3, 1).
+- **Real totals vs S140 projections:** messages came in at **56,279**, well under the ~127k extrapolated from
+  the first (busiest) threads — the early sample skewed high. In-scope media was **9.8 GB**, far below the
+  ~48 GB feared, because excluding video removed the bulk of the volume.
+
+⚠️ **Still exposed until Phase 4:** the raw pull is safe in staging, but the **7/21 delta pull is still required**
+(new leads/messages keep landing until PB cutover; access dies **2026-07-24**).
 
 ---
 
