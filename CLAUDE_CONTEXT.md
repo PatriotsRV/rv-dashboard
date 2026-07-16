@@ -207,6 +207,7 @@ A topic branch is cheaper than a regression. If a change feels risky or touches 
 | **Branch** | main |
 | **Deployment** | GitHub Pages — https://patriotsrv.github.io/rv-dashboard/ |
 | **Supabase Project Ref** | axfejhudchdejoiwaetq |
+| **Localhost dev server** | 🔴 **PORT 8765** — `http://localhost:8765/` (Roland's standing local test server, confirmed S142). NEVER guess another port; 5599 was a one-off for the dashboard-v2 mockup only. |
 
 ---
 

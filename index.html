@@ -1,7 +1,12 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.474
+    PRVS Dashboard v1.475
+    v1.475: [KENECT S142] Kenect history import support — js/messaging.js signs
+    private-bucket media_url paths (kenect-media) at render + thread loads the
+    NEWEST 200 messages (was oldest-200; imported threads reach 2,087 msgs).
+    Pairs with migration kenect_phase4_transform_s142.sql (56,279 messages +
+    3,189 closed conversations imported, context='kenect_import').
     v1.474: [GH#39 S138] 💬 Messages header button — opens messages.html, visible to all
     authenticated users (matches the inbox's v1 all-staff visibility; Roland reversed the S137
     "standalone only" call after the v1.473 prod verify). Button HTML in the header tile bar
@@ -609,7 +614,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.474</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.475</span>
             </div>
         </header>
 

@@ -1,8 +1,14 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.4
+    PRVS Messages — PB Inbox + Conversation Assignment v1.5
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
 
+    v1.5 (Session 142, 2026-07-16): Kenect history import support. 3,189 imported
+    closed conversations + 56,279 messages (context='kenect_import') via
+    kenect_phase4_transform_s142.sql. Rendering rides js/messaging.js v1.475:
+    private-bucket media paths (kenect-media) signed at render; thread shows the
+    NEWEST 200 messages (imported threads reach 2,087). No markup change here —
+    version bump + this note only.
     v1.4 (Session 139, 2026-07-15): "Open" filter chip, DEFAULT on load (Roland idea,
     spec locked S138; mirrors the v1.455 ER-board pattern). Open shows only status=open;
     All keeps everything incl. closed (grey avatar); Unresponded/Unassigned/Mine are now
@@ -326,8 +332,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.4';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S139)');
+const PAGE_VERSION = 'messages v1.5';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────

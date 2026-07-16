@@ -80,6 +80,37 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
         // Exported for messages.html (S138 PB inbox) — same renderer, one source.
         export function bubbleHtml(m) { return _bubble(m); }
 
+        // S142 (Kenect import): media_url entries that aren't http(s) are bare
+        // PRIVATE-bucket storage paths ('kenect-media/<convId>/<msgId>-<attId>.ext').
+        // Resolve them to short-lived signed URLs before render, batched per
+        // bucket. PB-hosted entries (https) pass through untouched.
+        async function _resolveMediaUrls(rows) {
+            const byBucket = {};
+            rows.forEach(m => {
+                const list = Array.isArray(m.media_url) ? m.media_url : (m.media_url ? [m.media_url] : []);
+                list.forEach(u => {
+                    if (u && !/^https?:/i.test(u)) {
+                        const i = u.indexOf('/');
+                        if (i > 0) (byBucket[u.slice(0, i)] = byBucket[u.slice(0, i)] || new Set()).add(u.slice(i + 1));
+                    }
+                });
+            });
+            const signed = {}; // 'bucket/path' -> signed URL
+            for (const [bucket, paths] of Object.entries(byBucket)) {
+                try {
+                    const { data, error } = await getSB().storage.from(bucket).createSignedUrls([...paths], 3600);
+                    if (error) { console.error('media signed-URL error:', error); continue; }
+                    (data || []).forEach(d => { if (d.signedUrl && d.path) signed[bucket + '/' + d.path] = d.signedUrl; });
+                } catch (e) { console.error('media signed-URL error:', e); }
+            }
+            rows.forEach(m => {
+                if (!m.media_url) return;
+                const list = Array.isArray(m.media_url) ? m.media_url : [m.media_url];
+                m.media_url = list.map(u => signed[u] || u);
+            });
+            return rows;
+        }
+
         // Customer-inbox thread (spec §3): rows tagged to this RO OR involving
         // this customer's phone, both directions, oldest first.
         export async function loadMessages(roSupabaseId, phoneE164) {
@@ -93,12 +124,17 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
                 ors.push(`phone_from.eq.${phone}`);
             }
             if (!ors.length) return [];
+            // S142: fetch NEWEST 200 then reverse to chronological. Was
+            // ascending+limit — which returned the OLDEST 200, so imported
+            // Kenect threads (deepest = 2,087 msgs) would have hidden all
+            // recent messages.
             const { data, error } = await query
                 .or(ors.join(','))
-                .order('created_at', { ascending: true })
+                .order('created_at', { ascending: false })
                 .limit(200);
             if (error) { console.error('loadMessages error:', error); return []; }
-            return data || [];
+            const rows = (data || []).reverse();
+            return _resolveMediaUrls(rows);
         }
 
         async function _refreshThread(roSupabaseId, phoneE164) {
