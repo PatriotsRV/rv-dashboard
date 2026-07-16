@@ -12,9 +12,19 @@ queue indefinitely (status stuck `pending`/queued, e.g. handle
 `pbm_c0Wh0t0yBcMYER4-sejuxfAGpj5zeWCd5wCaOa3GVRJGsMO8aGwjWNLik9bNVJRZXGqPc2_xEA`).
 The moment the recipient texted the line once, new outbound delivered instantly.
 - Confirm this reply-first / engagement policy: intended? iMessage-specific? per-line?
-- Will the 3 stuck queued messages ever release or expire? Can PB flush them?
+- Will stuck queued messages ever release or expire? Can PB flush them?
 - **Business impact question:** how are we supposed to initiate FIRST-contact texts
   to customers who have never texted us (appointment reminders, key-date notices)?
+- **NEW S142 (2026-07-16) — stalls happen on ENGAGED numbers too.** On 7/15,
+  4 outbound to +19405773777 (staff test number with plenty of inbound history on
+  the line) stuck in queue 18+ hrs: 3 accepted by PB (handles issued, never
+  delivered, no failure event) + 1 silently dedupe-dropped (no handle). Meanwhile
+  2 LATER sends to the SAME number delivered fine (17:45 + 17:54 UTC) — so this
+  is NOT the engagement gate; PB's queue stalls selectively even on engaged
+  numbers, with newer messages overtaking older stuck ones. We marked the 4
+  failed on our side (releasing 18-hr-late duplicates would be worse). Ask
+  Jordan: what stalls an accepted message on an engaged number, why do newer
+  sends jump the queue, and can PB purge stuck items / emit failure webhooks?
 
 ## 2. Engagement history across the port
 When 940-488-5047 ports in as a (2nd) line: does inbound/engagement history carry
