@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-06-28 · Session 128 · full pass vs index.html v1.466 · 11 open ERs (all Needed)</div>
+  <div class="sub">2026-07-17 | Phase 2a nightly runner | incremental pass vs index.html v1.475 | 14 open ERs (all Needed)</div>
 
   <div class="cards" id="stats"></div>
 
@@ -54,39 +54,48 @@
 
 <script>
 const ERS = [
- {id:"7f2d0d70",by:"Lynn",date:"06-26",cat:"Reporting",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Monday report of the week's drop-offs so each team can confirm the customer is in their work list.",
-  verdict:"No dedicated drop-off-reconciliation report exists. Partially related to the send-manager-report Monday escalation, but that flags promised/part dates, not a roster of the week's arrivals. Build = new weekly edge fn (or section) listing ROs whose planned_dropoff_date fell in the prior week + their target silo/manager. Pairs with cbc70a86."},
- {id:"cbc70a86",by:"Lynn",date:"05-21",cat:"Workflow",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Returning-customer check-in auto-adds the customer to the work list of each involved team lead.",
-  verdict:"Confirmed NOT done: no manager_work_lists insert anywhere in customer-checkin.html. Build = on commit, map the RO's repair_type(s) -> silo(s) -> manager(s) (REPAIR_TYPE_TO_SILO + staff cache) and insert manager_work_lists rows, reusing the dashboard addToWorkList logic. Directly enables 7f2d0d70."},
- {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
-  verdict:"No task-tracker subsystem exists today. Needs a tasks table (per RO), UI to add/complete tasks, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
  {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Notif/Digest",loe:"L",theme:"Notifications & Task-Tracking",
   desc:"Notify the right team on every RO update; daily comprehensive list of all in-progress jobs with to-dos scraped from status notes.",
-  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager Daily Report (per-manager active work + fire watch). Still open: a notification on every RO update + auto-scraping to-dos from status notes into a list. Anchor of the Notifications/Task-Tracking initiative."},
+  verdict:"PARTIAL. The daily-digest half is largely served by the Manager Daily Report. Still missing: a notification on every generic RO update (only urgent-update/service-add/key-date events fire today) and to-dos scraped from status notes. Anchor of this cluster."},
+ {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
+  verdict:"No per-customer tracker exists (js/shop-tasks.js is deliberately non-customer, no reminder). Needs a per-RO tasks table + add/complete UI + a daily open-task reminder. Pairs with 5925fc01."},
  {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
-  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock — listed as available, priced, and searchable.",
-  verdict:"New subsystem. Confirmed nothing in js/parts.js handles stock/inventory. Needs an inventory table, receive/consume/adjust flows, a searchable stock view, and links from the parts-request path. Largest item on the board."},
+  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock - listed as available, priced, and searchable.",
+  verdict:"New subsystem. Nothing in js/parts.js handles stock/inventory (only per-RO receipt). Needs an inventory table, receive/consume/adjust flows, a searchable priced stock view, and links from the parts-request path. Largest item on the board."},
  {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",loe:"L",theme:"Parts & Inventory",
   desc:"Track a part that needs to be returned to the supplier or warrantied by the supplier.",
-  verdict:"No supplier-return/warranty workflow in code. = GH#24 Shop Operations Phase 2 (Parts Returns): reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
+  verdict:"No structured supplier-return/warranty workflow - only a static 'Returned' part status + free-text return_deadline/warranty_period fields. = GH#24 Shop Ops Phase 2: reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
  {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
   desc:"Rework the field order on the parts-entry / ordering screen (move fields around).",
-  verdict:"Underspecified — a layout tweak with no target layout given. Quick to build once Lynn provides the desired field order / a mockup. BLOCKED on detail, not on effort."},
- {id:"1fe68261",by:"Rod",date:"04-13",cat:"Shop tasks",loe:"M",theme:"Work Orders & Shop tasks",
-  desc:"Track tasks not tied to a customer unit (e.g. swapping poly barrels, prepping roof bays for multiple units).",
-  verdict:"Overlaps the existing Shop Operations RO type but those are single ROs, not a recurring shared-task model. Needs a lightweight non-customer/shop task list (could ride on Shop Operations ROs or a new shop_tasks model)."},
+  verdict:"BLOCKED on detail, not effort. The Add/Edit Part form has 5 sections today (Supplier, Core, Order, Pricing, Receipt); no target layout given. Quick once Lynn provides the desired order / a mockup."},
  {id:"0448de62",by:"Sofia",date:"06-11",cat:"Auth form",loe:"L",theme:"Messaging & e-sign",
   desc:"Send an authorization form remotely for e-signature.",
-  verdict:"No remote-signing flow today (RAF is signed on the in-person check-in kiosk). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with Sendblue messaging Phase 3."},
+  verdict:"No remote-signing flow today (RAF is signed on the in-person check-in kiosk). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with the ProjectBlue/messaging phase."},
+ {id:"1c7f1410",by:"Andrew",date:"07-16",cat:"Messaging",loe:"M",theme:"Messaging & e-sign",
+  desc:"On messaging, there is no ability to attach media, such as photos or videos.",
+  verdict:"Outbound messaging is text-only: js/messaging.js sendCustomerMessage posts body only (no file input); inbound MMS media is render-only and modal MMS-send is deferred. Needs a file/photo input + upload + media field to projectblue-send."},
  {id:"ed1b873e",by:"Roland",date:"06-07",cat:"Auth/Cost",loe:"XL",theme:"Auth & cost",
   desc:"Replace Google-email auth (~$25/mo each, ~$500/mo total; most staff don't use the email) with database-specific auth.",
-  verdict:"Security-critical subsystem swap. Auth today is Google id-token + RBAC keyed on email. Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Roland wants to scope this together. Touches every page's sign-in + RBAC."},
- {id:"e06d747e",by:"solar",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock",
+  verdict:"Security-critical subsystem swap. Auth today is still Google id-token + RBAC keyed on email (auth.js signInWithIdToken; no password/OTP). Alternatives: Supabase email/password or magic-link, or shared role accounts. Roland wants to scope this together. Touches every page's sign-in + RBAC."},
+ {id:"0e172b2c",by:"Sofia",date:"07-16",cat:"Data quality",loe:"L",theme:"RO fields/status & data quality",
+  desc:"Merge duplicate customer accounts (misspelled name created a second RO); ask customer to verify which is correct, then delete the wrong one.",
+  verdict:"js/duplicates.js merges only by shared base RO-id - no fuzzy customer-name match (will not catch Hubert vs Huebert) and no verify step. Needs name-based dedup detection + a verify-which-is-correct merge/delete flow. The specific Hubert cleanup is tracked as a data item (3f254929)."},
+ {id:"5fbfa299",by:"Brandon",date:"06-30",cat:"RO Mgmt",loe:"M",theme:"RO fields/status & data quality",
+  desc:"A way to archive quote-only customers/units that never moved forward with work.",
+  verdict:"No archive concept for quotes (the only 'archive' is the unrelated cashiered flow). Needs an archived status/flag + a filter to hide quoted-but-never-progressed customers."},
+ {id:"5fec3eca",by:"Sofia",date:"07-15",cat:"RO fields",loe:"S",theme:"RO fields/status & data quality",
+  desc:"Show the customer's address on the emailed copy of the authorization form.",
+  verdict:"Address is NOT on the RAF copy: send-quote-email raf_copy renders Phone/Email/Vehicle/etc. but no address row (address is only on the separate staff-notify email). Small: add address to the raf_copy payload + template."},
+ {id:"d1844e46",by:"Lynn",date:"07-16",cat:"Dashboard",loe:"S",theme:"Dashboard UX / sorting",
+  desc:"Sort the dashboard by promised date then oldest-on-lot, keeping PRVS Shop Operations pinned to the top.",
+  verdict:"Shop-ops pinning already exists (render.js), but there is no strict promise-then-oldest sort or user-facing control - the board uses a single blended calculatePriority score. Small: add a strict promised-then-days-on-lot sort (option) keeping shop-ops pinned."},
+ {id:"29654af7",by:"Lynn",date:"07-06",cat:"Dashboard",loe:"S",theme:"Dashboard UX / sorting",
+  desc:"A button that jumps back to the top of the page (or to the search bar) after scrolling to the bottom.",
+  verdict:"No back-to-top or jump-to-search control on the dashboard (index.html has none; scrollTo top exists only as post-action resets elsewhere). Small: a scroll-triggered back-to-top / to-search button."},
+ {id:"e06d747e",by:"Riley",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock / Check-In",
   desc:"Tech check-in 'float' for ease of access.",
-  verdict:"Underspecified. Likely a floating/sticky check-in button for quick access, but page + exact behavior unclear (checkin.html is QR/roId-driven today). Needs scoping with the submitter before build."},
+  verdict:"UNDERSPECIFIED. No floating/sticky check-in exists (check-in is per-tile/QR; checkin.html requires ?ro=). Likely a floating check-in button, but exact behavior unclear. Needs scoping with the submitter before build."},
 ];
 
 const ORDER={XL:0,L:1,M:2,S:3};
