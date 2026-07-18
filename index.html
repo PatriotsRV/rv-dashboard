@@ -1,7 +1,19 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.475
+    PRVS Dashboard v1.476
+    v1.476: [GH#39 S144] PB engagement warning in the message composer. Project
+    Blue silently swallows outbound to any number that has never texted OUR PB
+    line (+1 940-407-4145): it returns success, issues a pbm_ handle, then queues
+    forever with NO failure event. The S142 Kenect import made this invisible —
+    every customer now shows a deep, warm-looking thread, but that history landed
+    on the OLD line (940-488-5047) and PB has never seen it. 99.3% of
+    conversations (3,190/3,211) read as engaged to a human and are cold to PB.
+    js/config.js gains PB_LINE_E164 + KENECT_LINE_E164; js/messaging.js gains
+    pbEngagement() + pbEngagementBannerHtml() (computed from already-loaded rows,
+    no extra round trip), rendered above the composer on BOTH surfaces (RO card
+    modal + messages.html v1.6). Warns, never blocks — outbound-first may still
+    be viable over SMS (untested). No DB change.
     v1.475: [KENECT S142] Kenect history import support — js/messaging.js signs
     private-bucket media_url paths (kenect-media) at render + thread loads the
     NEWEST 200 messages (was oldest-200; imported threads reach 2,087 msgs).
@@ -614,7 +626,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.475</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.476</span>
             </div>
         </header>
 

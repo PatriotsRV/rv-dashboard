@@ -52,20 +52,26 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Files to back up
-FILES=(
-  "index.html"
-  "checkin.html"
-  "customer-checkin.html"
-  "solar.html"
-  "analytics.html"
-  "closed-ros.html"
-  "worklist-report.html"
-  "supabase/functions/send-quote-email/index.ts"
-  "supabase/functions/roof-lookup/index.ts"
-  "supabase/functions/send-er-report/index.ts"
-  "supabase/functions/send-parts-report/index.ts"
-  "supabase/functions/claude-vision-proxy/index.ts"
+# S144: was a hardcoded 12-path list that predated modularization. It snapshotted
+# index.html but ZERO of the 20 js/ modules, no css/, and 5 of 15 edge functions —
+# so every session ran this before every push and got a reassuring "📦 PRVS Backup"
+# while the bulk of the codebase was never in a single snapshot. A hardcoded list
+# WILL drift (S138 spotted a piece of this and the list still wasn't fixed).
+# Globs are self-maintaining: a new module is covered the moment it exists.
+cd "$REPO_ROOT"
+FILES=()
+while IFS= read -r f; do FILES+=("$f"); done < <(
+  {
+    ls -1 *.html 2>/dev/null
+    ls -1 js/*.js 2>/dev/null
+    ls -1 css/*.css 2>/dev/null
+    ls -1 supabase/functions/*/index.ts 2>/dev/null
+  } | grep -vE '^(index\.draft\.html|prvs_ro_dashboard_mockup\.html)$' | sort
 )
+if [ ${#FILES[@]} -eq 0 ]; then
+  echo "🔴 backup.sh: matched ZERO files — refusing to write an empty snapshot."
+  exit 1
+fi
 
 echo "📦 PRVS Backup — $TIMESTAMP"
 echo "========================================"
@@ -75,24 +81,22 @@ echo ""
 echo "📁 Step 1: File Snapshot"
 echo "----------------------------------------"
 
-# Create snapshot directory
-mkdir -p "$SNAPSHOT_DIR/supabase/functions/send-quote-email"
-mkdir -p "$SNAPSHOT_DIR/supabase/functions/roof-lookup"
-mkdir -p "$SNAPSHOT_DIR/supabase/functions/send-er-report"
-mkdir -p "$SNAPSHOT_DIR/supabase/functions/send-parts-report"
-mkdir -p "$SNAPSHOT_DIR/supabase/functions/claude-vision-proxy"
-
-# Copy each file
+# Copy each file. S144: mkdir per-file from the path itself, so new edge fns and
+# new directories need no script edit (the old script hardcoded 5 mkdir lines).
+COPIED=0
 for FILE in "${FILES[@]}"; do
   SRC="$REPO_ROOT/$FILE"
   DEST="$SNAPSHOT_DIR/$FILE"
   if [ -f "$SRC" ]; then
+    mkdir -p "$(dirname "$DEST")"
     cp "$SRC" "$DEST"
+    COPIED=$((COPIED + 1))
     echo "  ✅ $FILE"
   else
     echo "  ⚠️  Skipped (not found): $FILE"
   fi
 done
+echo "  📊 $COPIED file(s) snapshotted"
 
 # Trim to MAX_BACKUPS — delete oldest snapshots beyond the limit.
 # Only timestamped snapshot directories (YYYY-MM-DD_HH-MM-SS) count toward

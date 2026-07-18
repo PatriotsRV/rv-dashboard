@@ -49,6 +49,23 @@ export const SB_AUTH_OPTIONS = {
 // but raises the bar against casual abuse of the public function URL.
 export const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07d8c64d064a389e80d66e5';
 
+// ── Messaging lines (S144) ─────────────────────────────────────────
+// PB_LINE_E164 — the Project Blue line every outbound customer text leaves
+// from. It matters far beyond cosmetics: Project Blue will not deliver
+// outbound to a number that has never texted THIS EXACT LINE (the S138
+// engagement gate). PB still accepts the send and issues a pbm_ handle, then
+// queues it forever with no failure event — the failure is completely silent.
+//
+// KENECT_LINE_E164 — the legacy line. All 56k imported messages (S142) landed
+// here, so imported threads LOOK like established conversations while Project
+// Blue has never seen the customer. Engagement must be computed against
+// PB_LINE_E164 only; inbound on the Kenect line does NOT count.
+//
+// ⚠️ CHANGE PB_LINE_E164 AT PORT CUTOVER, when 940-488-5047 moves to Project
+// Blue. Getting this wrong silently inverts every engagement warning.
+export const PB_LINE_E164 = '+19404074145';
+export const KENECT_LINE_E164 = '+19404885047';
+
 // ── Google APIs (Sheets / Drive / Calendar / Auth) ──────────────────
 export const GOOGLE_CONFIG = {
     CLIENT_ID: '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com',

@@ -18,7 +18,55 @@
 // modules; reads bare globals getSB / currentUser / showToast / escapeHtml /
 // log / supabaseSession that app.js + the inline bootstrap attach to window.
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KENECT_LINE_E164 } from './config.js';
+
+        // ── PB engagement (S144) ────────────────────────────────────
+        // Project Blue silently swallows outbound to any number that has never
+        // texted OUR PB line: it returns success, issues a pbm_ handle, and
+        // queues the message forever with no failure event. Evidence S144:
+        // every PB send to a never-engaged number stuck (3/3); 52/56 to engaged
+        // numbers moved. Not an iMessage artifact — 44/44 iMessages to engaged
+        // numbers delivered fine.
+        //
+        // The trap this guards: the S142 Kenect import gave every customer a
+        // deep, warm-looking thread — but that history arrived on the KENECT
+        // line, which PB has never seen. 3,190 of 3,211 conversations (99.3%)
+        // read as engaged to a human and are cold to Project Blue. Before the
+        // import an empty thread was an honest signal; now nothing is.
+        //
+        // Computed from rows already loaded, so it costs no extra round trip.
+        // Safe against loadMessages' newest-200 window: any PB-era inbound is
+        // by definition among the newest rows.
+        function _last10(v) { return String(v || '').replace(/\D/g, '').slice(-10); }
+
+        export function pbEngagement(rows) {
+            const pbLine = _last10(PB_LINE_E164);
+            const kenectLine = _last10(KENECT_LINE_E164);
+            const inbound = (rows || []).filter(m => (m.direction || '') === 'inbound');
+            const onPb = inbound.filter(m => _last10(m.phone_to) === pbLine);
+            const onKenect = inbound.filter(m => _last10(m.phone_to) === kenectLine);
+            return {
+                engaged: onPb.length > 0,
+                lastPbInboundAt: onPb.length ? onPb[onPb.length - 1].created_at : null,
+                // The dangerous case: looks warm, is cold.
+                kenectOnly: onPb.length === 0 && onKenect.length > 0,
+                kenectInboundCount: onKenect.length,
+            };
+        }
+
+        // Returns '' when engaged — render unconditionally, it self-suppresses.
+        export function pbEngagementBannerHtml(state) {
+            if (!state || state.engaged) return '';
+            const why = state.kenectOnly
+                ? `The conversation above is <strong>imported Kenect history</strong> — it arrived on our old line (940-488-5047), and Project Blue has never seen it.`
+                : `Project Blue has no inbound from this number on our line.`;
+            return `
+                <div style="border:1px solid rgba(245,158,11,0.5); background:rgba(245,158,11,0.12); border-radius:8px; padding:9px 11px; margin-bottom:10px; font-size:0.76rem; color:var(--text-primary); line-height:1.45;">
+                    \u{26A0}\u{FE0F} <strong>This customer has never texted our Project Blue line.</strong><br>
+                    ${why} Project Blue will accept this message and hold it until they reply first — with no failure notice. <strong>It may never arrive.</strong>
+                    <br><span style="color:var(--text-secondary);">If it's time-sensitive, call them instead.</span>
+                </div>`;
+        }
 
         // Best-effort E.164 normalization for US numbers. The modal lets the
         // user correct it, so this only has to be a sensible default.
@@ -147,6 +195,9 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
                 ? msgs.map(_bubble).join('')
                 : '<div style="text-align:center; color:var(--text-secondary); font-size:0.82rem; padding:24px 0;">No messages yet. Send the first one below.</div>';
             threadEl.scrollTop = threadEl.scrollHeight;
+            // S144: warn BEFORE they type, not after they send.
+            const warnEl = document.getElementById('msgPbWarn');
+            if (warnEl) warnEl.innerHTML = pbEngagementBannerHtml(pbEngagement(msgs));
         }
 
         export async function openMessagesModal(ro) {
@@ -181,6 +232,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './config.
                     <div id="msgThread" style="max-height:240px; overflow-y:auto; padding:6px 2px; margin-bottom:12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-secondary);">
                         <div style="text-align:center; color:var(--text-secondary); font-size:0.82rem; padding:24px 0;">Loading…</div>
                     </div>
+                    <div id="msgPbWarn"></div>
                     <textarea id="msgBody" class="form-input" rows="3" placeholder="Type a message to the customer…" style="resize:vertical; margin-bottom:10px;"></textarea>
                     <div style="display:flex; gap:10px;">
                         <button onclick="closeMessagesModal()" style="flex:0 0 auto; padding:10px 16px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">Cancel</button>

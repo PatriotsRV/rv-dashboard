@@ -1,7 +1,16 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.5
+    PRVS Messages — PB Inbox + Conversation Assignment v1.6
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    v1.6 (Session 144, 2026-07-16): PB engagement warning above the composer.
+    This inbox is where the S142 import is most dangerous: staff read a long
+    imported thread and reasonably conclude the customer is reachable. That
+    history is on the OLD Kenect line (940-488-5047); Project Blue has never seen
+    it and will hold any outbound until the customer replies on the PB line —
+    silently, with no failure event. New #msgPbWarn banner beside #optoutBanner,
+    populated in renderThread() from js/messaging.js pbEngagement() +
+    pbEngagementBannerHtml() (shared with the RO card modal — one source).
 
     v1.5 (Session 142, 2026-07-16): Kenect history import support. 3,189 imported
     closed conversations + 56,279 messages (context='kenect_import') via
@@ -275,6 +284,7 @@
             <div id="optoutBanner" class="optout-banner" style="display:none;">
                 &#128721; This customer replied STOP — outgoing texts are blocked until they reply START.
             </div>
+            <div id="msgPbWarn"></div>
             <div class="composer">
                 <textarea id="msgBody" class="form-input" rows="2" placeholder="Type a message to the customer&hellip;"></textarea>
                 <button id="msgSendBtn" class="send-btn" onclick="inboxSend()" disabled>&#128228; Send</button>
@@ -332,7 +342,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.5';
+const PAGE_VERSION = 'messages v1.6';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -404,7 +414,7 @@ Object.defineProperty(window, 'currentUser', { get: () => currentUser });
 
 // Reuse the dashboard's renderer + send path (spec §5.2 — one source).
 const messaging = await import('./js/messaging.js');
-const { loadMessages, bubbleHtml, sendCustomerMessage } = messaging;
+const { loadMessages, bubbleHtml, sendCustomerMessage, pbEngagement, pbEngagementBannerHtml } = messaging;
 
 // ── RBAC (closed-ros.html pattern) ───────────────────────────────────
 async function loadUserRoles() {
@@ -597,6 +607,10 @@ async function renderThread() {
         ? msgs.map(bubbleHtml).join('')
         : '<div class="empty-note">No messages yet. Send the first one below.</div>';
     threadEl.scrollTop = threadEl.scrollHeight;
+    // S144: imported Kenect threads look warm but are cold to PB — warn here,
+    // where staff read the history and draw exactly the wrong conclusion.
+    const warnEl = document.getElementById('msgPbWarn');
+    if (warnEl) warnEl.innerHTML = pbEngagementBannerHtml(pbEngagement(msgs));
 }
 async function renderDetails() {
     const c = _activeConvo;
