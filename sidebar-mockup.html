@@ -23,7 +23,9 @@
      Always visible: alerts, name/unit/RO ID, status+days+urgency+thin progress, RO SERVICE.
      Collapsed headers carry compact hints. RO Functions toggle replaced by the groups.
      v0.5.1: WO summary chips moved TECH -> RO MANAGEMENT (Roland: not tech-related);
-     WO count moved to the Management header hint; Tech hint = progress % only. -->
+     WO count moved to the Management header hint; Tech hint = progress % only.
+     v0.5.2: TECH section renamed WORK; NEW 🔔 NOTIFICATIONS & REMINDERS section
+     (between Management and Work) holding the Schedule Tasks/Notifications button. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -562,11 +564,12 @@ function applyFilters(){
        ${woChips(r)}
        <button class="fbtn f-status" style="margin-top:7px"><span>${esc(r.status.toUpperCase())}</span><span>▾</span></button>
        <div class="fbox"><div class="t">🔧 RO STATUS</div>${r.roNote?esc(trunc(r.roNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
-       <button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800">🔔 SCHEDULE TASKS / NOTIFICATIONS</button>
        <button class="fbtn a-amber">✏️ EDIT RO</button>
        <button class="fbtn a-green">📅 SCHEDULE</button>
        <button class="fbtn a-gray">📋 ADD TO MY LIST</button>`)}
-    ${csec(i,'tech','🧰 TECH',
+    ${csec(i,'notif','🔔 NOTIFICATIONS & REMINDERS','',
+      `<button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800;margin-bottom:0">🔔 SCHEDULE TASKS / NOTIFICATIONS</button>`)}
+    ${csec(i,'tech','🧰 WORK',
       r.prog+'%',
       `<div class="fmeta"><b>TECH:</b> ${esc(r.tech||'Unassigned')}</div>
        <button class="fbtn f-solid">🧰 TECH CHECK IN</button>
