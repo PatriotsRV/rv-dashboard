@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.6.2 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.7 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
      Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
@@ -36,7 +36,14 @@
      List + Shop Tasks at the top of Quick Links. Role-gating ignored (visual-only).
      v0.6.2: MOBILE ONLY — My Work List + Shop Tasks move out of Quick Links to a
      button bar above the RO tiles (#mQuick); desktop keeps them in Quick Links;
-     + NEW RO stays in the sheet (admin-leaning, desktop-primary per Roland). -->
+     + NEW RO stays in the sheet (admin-leaning, desktop-primary per Roland).
+     v0.7 (LOCAL-ONLY until Roland approves): remaining unmigrated dashboard items —
+     slim header strip (title + blinking LIVE + clock + on-lot count + connection dot +
+     🌐 ES pill + version), collapsible 📊 Stats section above the grid (Total RVs in
+     Queue / On Lot / In Progress / Awaiting Parts / Total Value / Filtered Value when
+     filters active; shop ROs excluded like index updateStats), 🗐 Manage Duplicates in
+     Quick Links, 🍗 Make-A-Wish floating button (bottom-left; above mobile bar <900px).
+     Still deliberately unbuilt: Compact/Standard tile view variants (selector visual). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -224,6 +231,25 @@ select.urg option{background:var(--panel);color:var(--text)}
 .prog input{width:48px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:2px 5px;font-size:11px}
 .prog .bar{height:6px;border-radius:3px;background:var(--panel2);border:1px solid var(--border);overflow:hidden}
 .prog .fill{height:100%;background:linear-gradient(90deg,var(--blue),#4ade80)}
+/* ── v0.7: header strip + stats bar + wish button ── */
+#hdr{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;padding:10px 14px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;font-size:12.5px}
+#hdr .ttl{font-weight:800;letter-spacing:.5px}
+#hdr .live{color:var(--red);font-weight:800;display:flex;align-items:center;gap:5px}
+#hdr .live .ldot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.25}}
+#hdr .muted{color:var(--muted)}
+#hdr .sp{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.espill{border:1px solid var(--border);border-radius:8px;padding:3px 9px;cursor:pointer;color:var(--text);background:var(--panel2);font-weight:700}
+#statsSec{margin:0 0 12px}
+#statsSec.open .sec-b{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;padding:10px}
+.kpi{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px;text-align:center}
+.kpi .v{font-size:20px;font-weight:800}
+.kpi .l{font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:.4px;margin-top:3px}
+#wishBtn{position:fixed;left:14px;bottom:14px;z-index:65;width:52px;height:52px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fbbf24,#d97706);border:2px solid #fde68a;
+  font-size:24px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+@media (max-width:900px){#wishBtn{bottom:82px}}
 #empty{display:none;color:var(--muted);text-align:center;padding:60px 0;font-size:15px}
 .mock-note{background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.4);color:var(--green);
   border-radius:9px;padding:8px 12px;font-size:12px;margin-bottom:14px}
@@ -306,6 +332,7 @@ select.urg option{background:var(--panel);color:var(--text)}
         <div class="ql-item">📝 Customer Check-In</div>
         <div class="ql-item">🏖️ Time Off</div>
         <div class="ql-item">🍗 Wishes</div>
+        <div class="ql-item">🗐 Manage Duplicates</div>
         <div class="ql-item">👤 Leads</div>
         <div class="ql-item">💬 Messages</div>
       </div>
@@ -382,6 +409,21 @@ select.urg option{background:var(--panel);color:var(--text)}
 
 <!-- ================= MAIN ================= -->
 <main id="main" style="visibility:hidden">
+  <div id="hdr">
+    <span class="ttl">🚐 PRVS RO DASHBOARD</span>
+    <span class="live"><span class="ldot"></span>LIVE</span>
+    <span class="muted" id="hdrClock">—</span>
+    <span class="muted" id="hdrOnLot">— RVs on lot</span>
+    <span class="sp">
+      <span style="color:#4ade80;font-weight:800">● Connected</span>
+      <span class="espill" title="Language toggle (visual-only in mockup)">🌐 ES</span>
+      <span class="muted">mockup v0.7 · app v1.476</span>
+    </span>
+  </div>
+  <div class="sec open" id="statsSec">
+    <div class="sec-h" onclick="toggleSec('statsSec')">📊 Stats <span class="chev">▼</span></div>
+    <div class="sec-b" id="statsB"></div>
+  </div>
   <div class="mock-note" id="liveNote">🟢 LIVE PREVIEW — read-only, real data. Buttons are visual-only; no writes possible from this page.</div>
   <div id="mQuick">
     <button class="mq">📋 My Work List</button>
@@ -392,6 +434,7 @@ select.urg option{background:var(--panel);color:var(--text)}
 </main>
 
 <!-- ================= MOBILE BAR + SHEET ================= -->
+<button id="wishBtn" title="🍗 Make-A-Wish — submit an enhancement request (visual-only)">🍗</button>
 <div id="mbar">
   <div class="msearch">🔍<input id="qm" placeholder="Search ROs…" oninput="q.value=this.value;applyFilters()"></div>
   <button id="mFiltBtn" onclick="openSheet()">🎛️ Filters <span class="n" id="mCount">0</span></button>
@@ -445,7 +488,7 @@ document.querySelectorAll(".pills").forEach(g=>{
 
 function toggleSec(id){const s=document.getElementById(id);s.classList.toggle("open");
   try{localStorage.setItem("sbm_"+id,s.classList.contains("open")?"1":"0")}catch(e){}}
-["sec-ql","sec-parts","sec-rotype","sec-repair","sec-status"].forEach(id=>{
+["sec-ql","sec-parts","sec-rotype","sec-repair","sec-status","statsSec"].forEach(id=>{
   try{const v=localStorage.getItem("sbm_"+id);
   if(v==="1")document.getElementById(id).classList.add("open");
   if(v==="0")document.getElementById(id).classList.remove("open")}catch(e){}});
@@ -589,6 +632,27 @@ function urgSelect(r){ // urgency selector badge (visual-only)
     ['Critical','High','Medium','Low'].map(v=>`<option value="${v}"${v===u?' selected':''}>${v.toUpperCase()}</option>`).join('')+`</select>`;
 }
 
+/* ── [v0.7] header clock + stats bar (mirrors index.html statsBar, simplified) ── */
+const ON_LOT=['on lot','awaiting approval','awaiting parts','ready to work','in progress','repairs completed','waiting for qa/qc','ready for pickup'];
+function tickClock(){const el=document.getElementById('hdrClock');
+  if(el)el.textContent=new Date().toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+setInterval(tickClock,1000);tickClock();
+function renderStats(rows){
+  const nonShop=ROS.filter(r=>r.rotype!=='shop');
+  const onLot=nonShop.filter(r=>ON_LOT.includes(r.status.toLowerCase())).length;
+  const inProg=nonShop.filter(r=>r.status.toLowerCase()==='in progress').length;
+  const awaitingP=nonShop.filter(r=>r.status.toLowerCase()==='awaiting parts').length;
+  const tv=nonShop.reduce((s,r)=>s+(r.dollar||0),0);
+  const fv=rows.filter(r=>r.rotype!=='shop').reduce((s,r)=>s+(r.dollar||0),0);
+  const k=(v,l,c)=>`<div class="kpi"><div class="v"${c?` style="color:${c}"`:''}>${v}</div><div class="l">${l}</div></div>`;
+  const el=document.getElementById('statsB');
+  if(el)el.innerHTML=k(nonShop.length,'TOTAL RVS IN QUEUE')+k(onLot,'ON LOT','#34c759')
+    +k(inProg,'IN PROGRESS','#0a84ff')+k(awaitingP,'AWAITING PARTS','#f59e0b')
+    +k('$'+tv.toLocaleString(),'TOTAL VALUE','#4ade80')
+    +(activeFilterCount()>0?k('$'+fv.toLocaleString(),'FILTERED VALUE','#38bdf8'):'');
+  const ol=document.getElementById('hdrOnLot');if(ol)ol.textContent=onLot+' RVs on lot';
+}
+
 function applyFilters(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   const dol=parseInt(document.getElementById("dol").value)||0;
@@ -655,6 +719,7 @@ function applyFilters(){
        <button class="fbtn a-gray">📱 QR CODE</button>`)}
     </div></div>`}).join("");
   document.getElementById("empty").style.display=rows.length?"none":"block";
+  renderStats(rows);
   const n=activeFilterCount();
   document.getElementById("activeCount").textContent=n+" filter"+(n===1?"":"s")+" active";
   ["parts","rotype","repair","status"].forEach(k=>{
