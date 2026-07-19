@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.6 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.6.1 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
      Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
@@ -30,7 +30,10 @@
      moved out of Management) + live scheduled_notifications feed (⏳ UPCOMING pending rows,
      ✅ RECENT sent/failed, header hint = next date + pending count) + NEW always-visible
      date-trip alert banners in the triage layer: red "PROMISED DATE PASSED", amber
-     "DROP-OFF/PICKUP/PROMISED TODAY", amber "N NOTIFICATIONS SENT TODAY" (fired <24h). -->
+     "DROP-OFF/PICKUP/PROMISED TODAY", amber "N NOTIFICATIONS SENT TODAY" (fired <24h).
+     v0.6.1: 3 header buttons that missed the S145 migration added — + NEW RO as a pinned
+     solid-blue primary button under Search (also rides into the mobile sheet), My Work
+     List + Shop Tasks at the top of Quick Links. Role-gating ignored (visual-only). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -66,6 +69,9 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,B
   border-radius:6px;padding:3px 7px;font-size:13px;flex-shrink:0}
 #railBtn:hover{color:var(--text);border-color:var(--blue)}
 
+#newRoBtn{width:100%;background:var(--blue);border:none;color:#fff;border-radius:9px;padding:10px;
+  font-size:13.5px;font-weight:800;letter-spacing:.4px;cursor:pointer;margin-bottom:10px}
+#newRoBtn:hover{background:var(--blue-deep)}
 .sb-search{display:flex;align-items:center;gap:6px;background:#fff;border-radius:8px;padding:7px 9px;margin-bottom:10px}
 .sb-search input{border:none;outline:none;flex:1;font-size:13px;background:transparent;min-width:0}
 .sb-search .clr{color:var(--red);cursor:pointer;font-weight:700;font-size:13px}
@@ -270,6 +276,7 @@ select.urg option{background:var(--panel);color:var(--text)}
   </div>
   <div id="sbScroll">
     <div class="sb-search">🔍<input id="q" placeholder="Search ROs…" oninput="applyFilters()"><span class="clr" onclick="q.value='';applyFilters()">✕</span></div>
+    <button id="newRoBtn">+ NEW RO</button>
 
     <div class="sec" id="sec-ql">
       <div class="sec-h" onclick="toggleSec('sec-ql')">🧩 Quick Links<span class="chev">▼</span></div>
@@ -278,6 +285,8 @@ select.urg option{background:var(--panel);color:var(--text)}
           <label>👁️ TILE VIEW</label>
           <select><option>Expanded (Admin)</option><option>Compact</option><option>Standard</option></select>
         </div>
+        <div class="ql-item">📋 My Work List</div>
+        <div class="ql-item">🏭 Shop Tasks</div>
         <div class="ql-item">⚙️ Admin Settings</div>
         <div class="ql-item">☀️ Solar</div>
         <div class="ql-item">📊 Analytics</div>
@@ -743,7 +752,7 @@ let sheetHomes=null;
 function openSheet(){
   const body=document.getElementById("sheetBody");
   if(!sheetHomes){
-    sheetHomes=[document.getElementById("sec-ql"),document.querySelector(".dol"),
+    sheetHomes=[document.getElementById("newRoBtn"),document.getElementById("sec-ql"),document.querySelector(".dol"),
       document.getElementById("sec-rotype"),document.getElementById("sec-parts"),
       document.getElementById("sec-repair"),document.getElementById("sec-status")];
   }
