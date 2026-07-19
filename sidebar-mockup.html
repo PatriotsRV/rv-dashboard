@@ -554,9 +554,10 @@ function applyFilters(){
     <div class="svc" style="border-left-color:${SILO_COLOR[r.silos[0]]||'#5c6b85'}"><span class="lbl">RO SERVICE</span>
       ${siloChips(r)}${esc(trunc(r.svc,120))||'<i style="color:var(--muted)">No description</i>'}</div>
     ${csec(i,'mgmt','📋 RO MANAGEMENT',
-      (r.promised?'⏰ '+fmtD(r.promised)+' · ':r.dropoff?'📅 '+fmtD(r.dropoff)+' · ':'')+(r.dollar!==null?'$'+(+r.dollar).toLocaleString():''),
+      (r.promised?'⏰ '+fmtD(r.promised)+' · ':r.dropoff?'📅 '+fmtD(r.dropoff)+' · ':'')+(r.woSum?r.woSum.total_wos+' WO · ':'')+(r.dollar!==null?'$'+(+r.dollar).toLocaleString():''),
       `${kdChips(r)}
        <div>${typeBadges(r)}<span class="badge b-type">${esc(r.rotype)}</span>${r.dollar!==null?`<span class="dv" style="margin-left:4px">$${(+r.dollar).toLocaleString()}</span>`:''}</div>
+       ${woChips(r)}
        <button class="fbtn f-status" style="margin-top:7px"><span>${esc(r.status.toUpperCase())}</span><span>▾</span></button>
        <div class="fbox"><div class="t">🔧 RO STATUS</div>${r.roNote?esc(trunc(r.roNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
        <button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800">🔔 SCHEDULE TASKS / NOTIFICATIONS</button>
@@ -564,10 +565,9 @@ function applyFilters(){
        <button class="fbtn a-green">📅 SCHEDULE</button>
        <button class="fbtn a-gray">📋 ADD TO MY LIST</button>`)}
     ${csec(i,'tech','🧰 TECH',
-      (r.woSum?r.woSum.total_wos+' WO · ':'')+r.prog+'%',
+      r.prog+'%',
       `<div class="fmeta"><b>TECH:</b> ${esc(r.tech||'Unassigned')}</div>
        <button class="fbtn f-solid">🧰 TECH CHECK IN</button>
-       ${woChips(r)}
        <button class="fbtn a-blue" style="margin-top:7px">🔧 WORK ORDERS</button>
        ${keysChips(r)}
        ${r.spot?`<span class="spot" title="Parking spot — change via Edit RO">📍 ${esc(r.spot)}</span>`:''}
