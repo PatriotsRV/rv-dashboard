@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.6.1 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.6.2 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
      Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
@@ -33,7 +33,10 @@
      "DROP-OFF/PICKUP/PROMISED TODAY", amber "N NOTIFICATIONS SENT TODAY" (fired <24h).
      v0.6.1: 3 header buttons that missed the S145 migration added — + NEW RO as a pinned
      solid-blue primary button under Search (also rides into the mobile sheet), My Work
-     List + Shop Tasks at the top of Quick Links. Role-gating ignored (visual-only). -->
+     List + Shop Tasks at the top of Quick Links. Role-gating ignored (visual-only).
+     v0.6.2: MOBILE ONLY — My Work List + Shop Tasks move out of Quick Links to a
+     button bar above the RO tiles (#mQuick); desktop keeps them in Quick Links;
+     + NEW RO stays in the sheet (admin-leaning, desktop-primary per Roland). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -226,10 +229,16 @@ select.urg option{background:var(--panel);color:var(--text)}
   border-radius:9px;padding:8px 12px;font-size:12px;margin-bottom:14px}
 
 /* ============ MOBILE ============ */
-#mbar,#sheet,#scrim{display:none}
+#mbar,#sheet,#scrim,#mQuick{display:none}
 @media (max-width:900px){
   #sidebar{display:none}
   #main{margin-left:0;padding:12px 12px 76px}
+  /* v0.6.2: My Work List + Shop Tasks surface above the tiles on mobile (moved out of Quick Links) */
+  #mQuick{display:flex;gap:8px;margin:0 0 12px}
+  .mq{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);
+    border-radius:9px;padding:11px 8px;font-size:13px;font-weight:700;cursor:pointer}
+  .mq:active{background:#3d4a66}
+  .ql-desk{display:none}
   #mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--panel);
     border-top:1px solid var(--border);padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     align-items:center;gap:10px}
@@ -285,8 +294,8 @@ select.urg option{background:var(--panel);color:var(--text)}
           <label>👁️ TILE VIEW</label>
           <select><option>Expanded (Admin)</option><option>Compact</option><option>Standard</option></select>
         </div>
-        <div class="ql-item">📋 My Work List</div>
-        <div class="ql-item">🏭 Shop Tasks</div>
+        <div class="ql-item ql-desk">📋 My Work List</div>
+        <div class="ql-item ql-desk">🏭 Shop Tasks</div>
         <div class="ql-item">⚙️ Admin Settings</div>
         <div class="ql-item">☀️ Solar</div>
         <div class="ql-item">📊 Analytics</div>
@@ -374,6 +383,10 @@ select.urg option{background:var(--panel);color:var(--text)}
 <!-- ================= MAIN ================= -->
 <main id="main" style="visibility:hidden">
   <div class="mock-note" id="liveNote">🟢 LIVE PREVIEW — read-only, real data. Buttons are visual-only; no writes possible from this page.</div>
+  <div id="mQuick">
+    <button class="mq">📋 My Work List</button>
+    <button class="mq">🏭 Shop Tasks</button>
+  </div>
   <div id="grid"></div>
   <div id="empty">No ROs match the current filters.</div>
 </main>
