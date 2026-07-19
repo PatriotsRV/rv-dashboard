@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.4 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.5 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
      Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
@@ -14,7 +14,14 @@
      v0.4 (S146 Roland feedback): ALL badges/chips (upper badge row, type badges, parts badge,
      key-dates, keys/power, WO summary chips, Missing-WO, parking spot) unified to the
      silo-chip shape — rectangular 4px radius, solid fill, dark text — "same size and shape,
-     see how busy it gets" experiment. Missing-WO badge now solid (was too faint). -->
+     see how busy it gets" experiment. Missing-WO badge now solid (was too faint).
+     v0.5 (S146 Roland feedback: "too many colors / too busy"): card content grouped into
+     5 chevron-collapsed sections — 📋 RO MANAGEMENT (key dates, type badges, $, status
+     dropdown, RO Status note, notif, Edit/Schedule/My List) · 🧰 TECH (check-in, WO chips,
+     Work Orders, keys/power, spot, progress input) · 🔩 PARTS (badges, Request/Manage) ·
+     💬 CUSTOMER (phone/email, comm + Thread) · ⚙️ ADMIN (RV/VIN, Photos&Docs, QR).
+     Always visible: alerts, name/unit/RO ID, status+days+urgency+thin progress, RO SERVICE.
+     Collapsed headers carry compact hints. RO Functions toggle replaced by the groups. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -175,6 +182,19 @@ select.urg option{background:var(--panel);color:var(--text)}
 .wochip{position:relative;display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:3px 8px 5px;
   font-size:11px;font-weight:700;letter-spacing:.2px;border:none;color:#0d1117;overflow:hidden;cursor:pointer}
 .wochip .bar{position:absolute;left:0;bottom:0;height:3px;background:rgba(13,17,23,.55)}
+/* v0.5: per-card chevron groups */
+.csec{border:1px solid var(--border);border-radius:8px;background:var(--panel2);margin-top:7px}
+.csec-h{display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;user-select:none;font-size:11.5px;font-weight:800;letter-spacing:.5px}
+.csec-h:hover{background:rgba(47,129,247,.08)}
+.csec-h .hint{margin-left:auto;font-weight:600;font-size:10.5px;color:var(--muted);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.csec-h .chev{color:var(--muted);font-size:10px;transition:transform .15s;margin-left:6px}
+.csec.open .csec-h .chev{transform:rotate(180deg)}
+.csec-b{display:none;padding:8px 10px 10px;border-top:1px solid var(--border)}
+.csec.open .csec-b{display:block}
+.pdot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.sumrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.sumrow .sbar{flex:1 1 60px;min-width:60px;height:6px;border-radius:3px;background:var(--panel2);border:1px solid var(--border);overflow:hidden}
+.sumrow .sbar .fill{height:100%;background:linear-gradient(90deg,var(--blue),#4ade80)}
 .prog{margin:8px 0 0}
 .prog .top{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
 .prog input{width:48px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:2px 5px;font-size:11px}
@@ -364,9 +384,15 @@ const norm=s=>(s||'').toLowerCase().replace(/&/g,'and').replace(/[^a-z]/g,'');
 
 let ROS=[];
 const sel={parts:"all",rotype:"all",repair:"all",status:"all"};
-const expanded=new Set();
-function toggleTile(i){expanded.has(i)?expanded.delete(i):expanded.add(i);
-  document.querySelector(`.tile[data-i="${i}"]`)?.classList.toggle("exp");}
+/* v0.5: per-card chevron group state — key "idx:group", survives filter re-renders */
+const openSecs=new Set();
+function toggleCsec(el,id){el.parentElement.classList.toggle('open');
+  openSecs.has(id)?openSecs.delete(id):openSecs.add(id);}
+function csec(i,key,title,hint,body){
+  if(!String(body).trim())return'';
+  const open=openSecs.has(i+':'+key);
+  return `<div class="csec${open?' open':''}"><div class="csec-h" onclick="toggleCsec(this,'${i}:${key}')">${title}<span class="hint">${hint||''}</span><span class="chev">▼</span></div><div class="csec-b">${body}</div></div>`;
+}
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function trunc(s,n){s=String(s||'');return s.length>n?s.slice(0,n)+'…':s;}
@@ -513,51 +539,54 @@ function applyFilters(){
     const img=r.photo
       ?`<img class="rv-img" src="${esc(r.photo)}" alt="RV photo" loading="lazy" onerror="this.outerHTML='<div class=&quot;rv-img&quot;>🚐</div>'">`
       :`<div class="rv-img">🚐</div>`;
-    return `<div class="tile${expanded.has(i)?" exp":""}" data-i="${i}">
+    return `<div class="tile" data-i="${i}">
     ${img}
     <div class="body">
     ${r.urgent?`<div class="uub" title="Urgent update — change it via Edit RO">🚨 URGENT: ${esc(trunc(r.urgent,140))}</div>`:''}
     ${woMissing(r)}
     <h3>${esc(r.n)}${kdPopover(r)}</h3><div class="sub">${esc(r.unit||'—')} · ${esc(r.roId)}</div>
-    <div class="hdr2">
-      ${r.dollar!==null?`<span class="dv">$${(+r.dollar).toLocaleString()}</span>`:''}
-      ${r.spot?`<span class="spot" title="Parking spot — change via Edit RO">📍 ${esc(r.spot)}</span>`:''}
+    <div class="sumrow">
+      <span class="badge b-status" style="margin:0">${esc(r.status)}</span>
+      <span class="badge ${r.days>=30?"b-days":"b-type"}" style="margin:0">📅 ${r.days}d</span>
       ${urgSelect(r)}
+      <div class="sbar" title="Progress ${r.prog}%"><div class="fill" style="width:${r.prog}%"></div></div>
     </div>
-    <span class="badge b-status">${esc(r.status)}</span>
-    ${r.parts?`<span class="badge b-parts">🔩 ${esc(r.parts)}</span>`:""}
-    <span class="badge b-type">${esc(r.rotype)}</span>
-    <span class="badge ${r.days>=30?"b-days":"b-type"}">📅 ${r.days}d on lot</span>
-    ${partsBadge(r)}
-    <div>${typeBadges(r)}</div>
-    ${kdChips(r)}
-    ${keysChips(r)}
     <div class="svc" style="border-left-color:${SILO_COLOR[r.silos[0]]||'#5c6b85'}"><span class="lbl">RO SERVICE</span>
       ${siloChips(r)}${esc(trunc(r.svc,120))||'<i style="color:var(--muted)">No description</i>'}</div>
-    ${woChips(r)}
-    ${progBlock(r)}
-    <button class="fn-toggle" onclick="toggleTile(${i})"><span>🛠️ RO Functions <span style="font-weight:500;font-size:11.5px;color:#666;font-style:italic">— click to expand</span></span><span class="chev">▼</span></button>
-    <div class="fns">
-      <button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800">🔔 SCHEDULE IMPORTANT TASKS OR UPDATE NOTIFICATIONS</button>
-      <div class="fgrp">STATUS & CHECK-IN</div>
-      <button class="fbtn f-status"><span>${esc(r.status.toUpperCase())}</span><span>▾</span></button>
-      <button class="fbtn f-solid">🧰 TECH CHECK IN</button>
-      <div class="fgrp">DETAILS</div>
-      <div class="fmeta"><b>TYPE:</b> ${esc(r.silos.join(', ')||'—')} &nbsp;·&nbsp; <b>RV:</b> ${esc(r.unit||'—')}${r.vin?`<br><b>VIN:</b> <span style="font-family:monospace;letter-spacing:.04em">${esc(r.vin)}</span>`:''}<br><b>TECH:</b> ${esc(r.tech||'Unassigned')} &nbsp;·&nbsp; <b>PHONE:</b> ${esc(r.phone||'—')}${r.email?`<br><b>EMAIL:</b> ${esc(r.email)}`:''}</div>
-      <div class="fbox"><div class="t">🔧 RO STATUS</div>${r.roNote?esc(trunc(r.roNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
-      <div class="fbox"><div class="t" style="display:flex;justify-content:space-between;align-items:center">💬 CUSTOMER COMM
-        <span style="background:var(--blue);color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;cursor:pointer">💬 Thread</span></div>
-        ${r.commNote?esc(trunc(r.commNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
-      <div class="fgrp">ACTIONS</div>
-      <button class="fbtn a-amber">✏️ EDIT RO</button>
-      <button class="fbtn a-blue">🔧 WORK ORDERS</button>
-      <button class="fbtn a-blue">📷 MANAGE PHOTOS & DOCS</button>
-      <button class="fbtn a-pink">🔩 REQUEST PARTS</button>
-      <button class="fbtn a-orange">🔩 MANAGE PARTS</button>
-      <button class="fbtn a-gray">📋 ADD TO MY LIST</button>
-      <button class="fbtn a-green">📅 SCHEDULE</button>
-      <button class="fbtn a-gray">📱 QR CODE</button>
-    </div>
+    ${csec(i,'mgmt','📋 RO MANAGEMENT',
+      (r.promised?'⏰ '+fmtD(r.promised)+' · ':r.dropoff?'📅 '+fmtD(r.dropoff)+' · ':'')+(r.dollar!==null?'$'+(+r.dollar).toLocaleString():''),
+      `${kdChips(r)}
+       <div>${typeBadges(r)}<span class="badge b-type">${esc(r.rotype)}</span>${r.dollar!==null?`<span class="dv" style="margin-left:4px">$${(+r.dollar).toLocaleString()}</span>`:''}</div>
+       <button class="fbtn f-status" style="margin-top:7px"><span>${esc(r.status.toUpperCase())}</span><span>▾</span></button>
+       <div class="fbox"><div class="t">🔧 RO STATUS</div>${r.roNote?esc(trunc(r.roNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
+       <button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800">🔔 SCHEDULE TASKS / NOTIFICATIONS</button>
+       <button class="fbtn a-amber">✏️ EDIT RO</button>
+       <button class="fbtn a-green">📅 SCHEDULE</button>
+       <button class="fbtn a-gray">📋 ADD TO MY LIST</button>`)}
+    ${csec(i,'tech','🧰 TECH',
+      (r.woSum?r.woSum.total_wos+' WO · ':'')+r.prog+'%',
+      `<div class="fmeta"><b>TECH:</b> ${esc(r.tech||'Unassigned')}</div>
+       <button class="fbtn f-solid">🧰 TECH CHECK IN</button>
+       ${woChips(r)}
+       <button class="fbtn a-blue" style="margin-top:7px">🔧 WORK ORDERS</button>
+       ${keysChips(r)}
+       ${r.spot?`<span class="spot" title="Parking spot — change via Edit RO">📍 ${esc(r.spot)}</span>`:''}
+       ${progBlock(r)}`)}
+    ${csec(i,'parts','🔩 PARTS',
+      r.partsList.length?`<span class="pdot" style="background:${partsBadge(r).includes('red')?'#ef4444':partsBadge(r).includes('yellow')?'#f59e0b':'#22c55e'}"></span>${r.partsList.length}`:(r.parts||''),
+      `<div>${r.parts?`<span class="badge b-parts">🔩 ${esc(r.parts)}</span>`:''}${partsBadge(r)}</div>
+       <button class="fbtn a-pink" style="margin-top:7px">🔩 REQUEST PARTS</button>
+       <button class="fbtn a-orange">🔩 MANAGE PARTS</button>`)}
+    ${csec(i,'cust','💬 CUSTOMER',
+      r.commNote?'💬':'',
+      `<div class="fmeta"><b>PHONE:</b> ${esc(r.phone||'—')}${r.email?`<br><b>EMAIL:</b> ${esc(r.email)}`:''}</div>
+       <div class="fbox"><div class="t" style="display:flex;justify-content:space-between;align-items:center">💬 CUSTOMER COMM
+         <span style="background:var(--blue);color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;cursor:pointer">💬 Thread</span></div>
+         ${r.commNote?esc(trunc(r.commNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>`)}
+    ${csec(i,'admin','⚙️ ADMIN','',
+      `<div class="fmeta"><b>RV:</b> ${esc(r.unit||'—')}${r.vin?`<br><b>VIN:</b> <span style="font-family:monospace;letter-spacing:.04em">${esc(r.vin)}</span>`:''}</div>
+       <button class="fbtn a-blue">📷 MANAGE PHOTOS & DOCS</button>
+       <button class="fbtn a-gray">📱 QR CODE</button>`)}
     </div></div>`}).join("");
   document.getElementById("empty").style.display=rows.length?"none":"block";
   const n=activeFilterCount();
