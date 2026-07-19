@@ -3,10 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.2 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.3 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
-     Pre-auth: zero data queries fire. No writes anywhere. For layout approval only. -->
+     Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
+     v0.3 (S146): the 12 card elements missing vs js/render.js added — urgency selector,
+     urgent-update banner, Missing-WO badge, per-silo WO summary chips, key-dates chips +
+     name popover, keys/power chips, dollar value, parking spot, detailed parts badge,
+     special type badges, email+VIN rows, progress bar/input. All read-only/visual-only. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -128,6 +132,52 @@ body.rail #main{margin-left:var(--railw)}
 .b-parts{background:rgba(245,158,11,.18);color:var(--amber)}
 .b-type{background:rgba(139,150,168,.18);color:var(--muted)}
 .b-days{background:rgba(239,68,68,.18);color:var(--red)}
+/* ── S146: the 12 ported card elements ── */
+.uub{background:rgba(220,38,38,.14);border:1px solid var(--red);color:#f87171;border-radius:8px;
+  padding:7px 10px;margin:0 0 8px;font-size:12px;font-weight:700;line-height:1.4}
+.hdr2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 7px}
+.dv{font-weight:800;color:#4ade80;font-size:13px}
+.spot{background:rgba(47,129,247,.15);color:var(--blue);border:1px solid rgba(47,129,247,.4);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700}
+.urg{margin-left:auto;border-radius:10px;padding:3px 6px;font-size:10.5px;font-weight:800;letter-spacing:.4px;cursor:pointer;border:1px solid}
+.urg.u-critical{background:rgba(239,68,68,.16);color:#f87171;border-color:rgba(239,68,68,.5)}
+.urg.u-high{background:rgba(255,106,0,.16);color:#fb923c;border-color:rgba(255,106,0,.5)}
+.urg.u-medium{background:rgba(245,158,11,.16);color:#fbbf24;border-color:rgba(245,158,11,.5)}
+.urg.u-low{background:rgba(34,197,94,.16);color:#4ade80;border-color:rgba(34,197,94,.5)}
+select.urg option{background:var(--panel);color:var(--text)}
+.kd-cal{cursor:pointer;position:relative;font-size:13px;margin-left:6px;display:inline-block}
+.kd-pop{display:none;position:absolute;left:-8px;top:20px;z-index:30;background:var(--panel2);border:1px solid var(--border);
+  border-radius:9px;padding:9px 11px;min-width:195px;box-shadow:0 8px 22px rgba(0,0,0,.5);font-size:11.5px;font-weight:500}
+.kd-cal:hover .kd-pop,.kd-cal:focus .kd-pop{display:block}
+.kd-pop .h{font-weight:800;font-size:10.5px;color:var(--muted);letter-spacing:.5px;margin-bottom:5px}
+.kd-pop .r{display:flex;justify-content:space-between;gap:12px;padding:2px 0;white-space:nowrap}
+.tbadge{display:inline-block;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 5px 4px 0}
+.tb-ins{background:rgba(47,129,247,.18);color:var(--blue)}
+.tb-pay{background:rgba(34,197,94,.18);color:#4ade80}
+.tb-warr{background:rgba(139,92,246,.18);color:#a78bfa}
+.tb-shop{background:rgba(245,158,11,.18);color:var(--amber)}
+.tb-train{background:rgba(34,211,238,.18);color:#22d3ee}
+.pbadge{display:inline-block;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 5px 4px 0;border:1px solid;cursor:pointer}
+.pbadge.red{background:rgba(239,68,68,.15);color:#f87171;border-color:rgba(239,68,68,.5)}
+.pbadge.yellow{background:rgba(245,158,11,.15);color:#fbbf24;border-color:rgba(245,158,11,.5)}
+.pbadge.green{background:rgba(34,197,94,.15);color:#4ade80;border-color:rgba(34,197,94,.5)}
+.wo-miss{display:block;width:100%;text-align:center;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:800;margin:0 0 7px;cursor:pointer;border:1px dashed}
+.wo-miss.soft{background:rgba(139,150,168,.10);color:var(--muted);border-color:#46536e}
+.wo-miss.hot{background:rgba(245,158,11,.12);color:var(--amber);border-color:rgba(245,158,11,.55)}
+.wo-miss.critical{background:rgba(239,68,68,.12);color:#f87171;border-color:rgba(239,68,68,.6)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;border:1px solid}
+.wochips{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}
+.wochip{position:relative;display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:3px 8px 5px;
+  font-size:10.5px;font-weight:700;border:1px solid var(--border);background:var(--panel2);color:var(--text);overflow:hidden;cursor:pointer}
+.wochip .bar{position:absolute;left:0;bottom:0;height:2.5px;background:var(--blue)}
+.wochip.done{border-color:rgba(34,197,94,.5);color:#4ade80}.wochip.done .bar{background:var(--green)}
+.wochip.mid{border-color:rgba(47,129,247,.5)}
+.wochip.zero{color:var(--muted)}
+.prog{margin:8px 0 0}
+.prog .top{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
+.prog input{width:48px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:2px 5px;font-size:11px}
+.prog .bar{height:6px;border-radius:3px;background:var(--panel2);border:1px solid var(--border);overflow:hidden}
+.prog .fill{height:100%;background:linear-gradient(90deg,var(--blue),#4ade80)}
 #empty{display:none;color:var(--muted);text-align:center;padding:60px 0;font-size:15px}
 .mock-note{background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.4);color:var(--green);
   border-radius:9px;padding:8px 12px;font-size:12px;margin-bottom:14px}
@@ -358,6 +408,93 @@ function siloChips(r){
   return list.map(s=>`<span class="silo" style="background:${SILO_COLOR[s]||'#5c6b85'}">${esc(s)}</span>`).join('');
 }
 
+/* ── [S146] helpers for the 12 ported card elements ── */
+const fmtD=d=>{if(!d)return'';const p=String(d).slice(0,10).split('-');return p.length===3?(+p[1])+'/'+(+p[2]):d;};
+const fullD=d=>{if(!d)return'';const dt=new Date(String(d).slice(0,10)+'T00:00:00');
+  return isNaN(dt)?String(d).slice(0,10):dt.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});};
+
+function kdPopover(r){ // 🗓 beside the name — full key dates on hover (ER b06a285f)
+  const rows=[];
+  if(r.dropoff)rows.push(`<span class="r"><span style="color:#2f81f7">📅 Drop-off</span><b>${fullD(r.dropoff)}</b></span>`);
+  if(r.promised)rows.push(`<span class="r"><span style="color:#f59e0b">⏰ Promised</span><b>${fullD(r.promised)}</b></span>`);
+  if(r.pickup)rows.push(`<span class="r"><span style="color:#22c55e">🚚 Pickup</span><b>${fullD(r.pickup)}</b></span>`);
+  return rows.length?`<span class="kd-cal" tabindex="0">🗓<span class="kd-pop"><span class="h">KEY DATES</span>${rows.join('')}</span></span>`:'';
+}
+function kdChips(r){ // colored key-date chips (Key Dates P1 S117)
+  const today=new Date().toLocaleDateString('en-CA');
+  const doneish=r.status==='Delivered/Cashed Out'||r.status.toLowerCase()==='ready for pickup';
+  const c=[];
+  if(r.dropoff)c.push(`<span class="chip" style="background:#2f81f71a;color:#2f81f7;border-color:#2f81f744">📅 Drop ${fmtD(r.dropoff)}</span>`);
+  if(r.promised){const od=!doneish&&String(r.promised).slice(0,10)<today;const cl=od?'#ef4444':'#f59e0b';
+    c.push(`<span class="chip" title="Promised date" style="background:${cl}1a;color:${cl};border-color:${cl}55;font-weight:800">⏰ Promised ${fmtD(r.promised)}${od?' !':''}</span>`);}
+  if(r.pickup)c.push(`<span class="chip" style="background:#22c55e1a;color:#4ade80;border-color:#22c55e44">🚚 Pickup ${fmtD(r.pickup)}</span>`);
+  return c.length?`<div class="chips">${c.join('')}</div>`:'';
+}
+function keysChips(r){ // keys + power chips (v1.458 S118)
+  const c=[];
+  if(r.keyStatus==='keys')c.push(`<span class="chip" style="background:#a855f71a;color:#c084fc;border-color:#a855f744">🔑 Keys</span>`);
+  else if(r.keyStatus==='no_keys')c.push(`<span class="chip" style="background:#6b72801a;color:#9ca3af;border-color:#6b728044">🚫 No keys</span>`);
+  else if(r.keyStatus==='keypad')c.push(`<span class="chip" style="background:#a855f71a;color:#c084fc;border-color:#a855f744">🔢 Keypad${r.keypad?': '+esc(r.keypad):''}</span>`);
+  if(r.plug)c.push(`<span class="chip" title="Keep plugged in (shore power)" style="background:#eab3081a;color:#eab308;border-color:#eab30844">⚡ Keep plugged in</span>`);
+  return c.length?`<div class="chips">${c.join('')}</div>`:'';
+}
+function typeBadges(r){ // special RO-type badges (insurance/warranty/hybrid/shop/training)
+  let h='';
+  if(r.ins&&r.ins.isInsuranceClaim){h+=`<span class="tbadge tb-ins">🛡️ Insurance Claim</span>`;
+    if(r.ins.roType==='hybrid')h+=`<span class="tbadge tb-pay">💵 Customer Pay</span>`;}
+  if(r.rotype==='warranty')h+=`<span class="tbadge tb-warr">🔄 Warranty</span><span class="tbadge" style="background:rgba(139,150,168,.15);color:var(--muted)">$0 — No Charge</span>`;
+  if(r.rotype==='warranty_repair')h+=`<span class="tbadge tb-warr">🔄🔧 Warranty + Repair</span>`;
+  if(r.rotype==='hybrid')h+=`<span class="tbadge tb-warr">🔧🛡️ New + Warranty</span>`;
+  if(r.rotype==='shop')h+=`<span class="tbadge tb-shop">🏪 Shop Operations</span>`;
+  if(r.training)h+=`<span class="tbadge tb-train">🎓 Training</span>`;
+  return h;
+}
+function partsBadge(r){ // detailed parts badge from parts rows (n Parts • worst-state)
+  const p=r.partsList; if(!p.length)return'';
+  const ct=st=>p.filter(s=>st.includes(s)).length;
+  const back=ct(['Backordered','Lost']), out=ct(['Ordered','In Transit']), src=ct(['Sourcing']);
+  const color=back?'red':(out||src)?'yellow':'green';
+  const label=back?back+' Backordered':out?out+' Outstanding':src?src+' Requested':'All Received';
+  return `<span class="pbadge ${color}">🔩 ${p.length} Parts • ${label}</span>`;
+}
+function woMissing(r){ // Missing-WO nudge badge (v1.414 A1+A2)
+  if(r.rotype==='shop'||r.training)return'';
+  if(['Not On Lot','Delivered/Cashed Out'].includes(r.status)||r.status.toLowerCase()==='ready for pickup')return'';
+  const sum=r.woSum;
+  let label='';
+  if(!sum||sum.total_wos===0)label='🔧 No WO yet';
+  else if(sum.total_tasks===0)label='🔧 WO exists — no tasks';
+  else return'';
+  const tier=r.days>=6?'critical':r.days>=3?'hot':'soft';
+  return `<button class="wo-miss ${tier}">${tier==='critical'?'🔥 ':''}${label}${r.days>=3?' · '+r.days+'d':''}</button>`;
+}
+function woChips(r){ // per-silo WO summary chips w/ mini progress bar
+  const sum=r.woSum; if(!sum||!sum.silos.length)return'';
+  return `<div class="wochips">`+sum.silos.map(s=>{
+    const pct=s.task_count?Math.round(s.completed/s.task_count*100):0;
+    let cls=s.task_count===0?'zero':pct===100?'done':pct>0?'mid':'zero';
+    let meta=s.task_count===0?'empty':s.completed+'/'+s.task_count+' done';
+    if(s.wo_completed){cls='done';meta='✓ done';}
+    else if(s.tech_done){cls='mid';meta='🔵 tech done';}
+    const est=(s.task_count>0&&s.est_hours>0)?' · ⏱️ '+(+s.est_hours.toFixed(1))+'h':'';
+    const bar=s.task_count>0?`<span class="bar" style="width:${pct}%"></span>`:'';
+    return `<span class="wochip ${cls}" title="${esc(s.silo)} — ${s.completed}/${s.task_count} tasks">`+
+      `<span class="silo" style="background:${SILO_COLOR[s.silo]||'#5c6b85'};margin:0;padding:1px 6px;font-size:10px">${esc(s.silo)}</span> ${meta}${est}${bar}</span>`;
+  }).join('')+`</div>`;
+}
+function progBlock(r){ // progress bar + manual % input (visual-only)
+  return `<div class="prog"><div class="top"><span>PROGRESS</span>`+
+    `<input type="number" value="${r.prog}" min="0" max="100" step="5" title="Manual adjustment (visual-only in mockup)">`+
+    `<span style="color:var(--text)">${r.prog}%</span></div>`+
+    `<div class="bar"><div class="fill" style="width:${r.prog}%"></div></div></div>`;
+}
+function urgSelect(r){ // urgency selector badge (visual-only)
+  if(r.rotype==='shop')return'';
+  const u=r.urgency, lc=u.toLowerCase();
+  return `<select class="urg u-${lc}" title="Urgency (visual-only in mockup)" onchange="this.className='urg u-'+this.value.toLowerCase()">`+
+    ['Critical','High','Medium','Low'].map(v=>`<option value="${v}"${v===u?' selected':''}>${v.toUpperCase()}</option>`).join('')+`</select>`;
+}
+
 function applyFilters(){
   const q=document.getElementById("q").value.trim().toLowerCase();
   const dol=parseInt(document.getElementById("dol").value)||0;
@@ -377,13 +514,26 @@ function applyFilters(){
     return `<div class="tile${expanded.has(i)?" exp":""}" data-i="${i}">
     ${img}
     <div class="body">
-    <h3>${esc(r.n)}</h3><div class="sub">${esc(r.unit||'—')} · ${esc(r.roId)}</div>
+    ${r.urgent?`<div class="uub" title="Urgent update — change it via Edit RO">🚨 URGENT: ${esc(trunc(r.urgent,140))}</div>`:''}
+    ${woMissing(r)}
+    <h3>${esc(r.n)}${kdPopover(r)}</h3><div class="sub">${esc(r.unit||'—')} · ${esc(r.roId)}</div>
+    <div class="hdr2">
+      ${r.dollar!==null?`<span class="dv">$${(+r.dollar).toLocaleString()}</span>`:''}
+      ${r.spot?`<span class="spot" title="Parking spot — change via Edit RO">📍 ${esc(r.spot)}</span>`:''}
+      ${urgSelect(r)}
+    </div>
     <span class="badge b-status">${esc(r.status)}</span>
     ${r.parts?`<span class="badge b-parts">🔩 ${esc(r.parts)}</span>`:""}
     <span class="badge b-type">${esc(r.rotype)}</span>
     <span class="badge ${r.days>=30?"b-days":"b-type"}">📅 ${r.days}d on lot</span>
+    ${partsBadge(r)}
+    <div>${typeBadges(r)}</div>
+    ${kdChips(r)}
+    ${keysChips(r)}
     <div class="svc" style="border-left-color:${SILO_COLOR[r.silos[0]]||'#5c6b85'}"><span class="lbl">RO SERVICE</span>
-      ${siloChips(r)}${esc(trunc(r.svc,120))||'<i style="color:var(--muted)">No description</i>'} · <b>Progress ${r.prog}%</b></div>
+      ${siloChips(r)}${esc(trunc(r.svc,120))||'<i style="color:var(--muted)">No description</i>'}</div>
+    ${woChips(r)}
+    ${progBlock(r)}
     <button class="fn-toggle" onclick="toggleTile(${i})"><span>🛠️ RO Functions <span style="font-weight:500;font-size:11.5px;color:#666;font-style:italic">— click to expand</span></span><span class="chev">▼</span></button>
     <div class="fns">
       <button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800">🔔 SCHEDULE IMPORTANT TASKS OR UPDATE NOTIFICATIONS</button>
@@ -391,7 +541,7 @@ function applyFilters(){
       <button class="fbtn f-status"><span>${esc(r.status.toUpperCase())}</span><span>▾</span></button>
       <button class="fbtn f-solid">🧰 TECH CHECK IN</button>
       <div class="fgrp">DETAILS</div>
-      <div class="fmeta"><b>TYPE:</b> ${esc(r.silos.join(', ')||'—')} &nbsp;·&nbsp; <b>RV:</b> ${esc(r.unit||'—')}<br><b>TECH:</b> ${esc(r.tech||'Unassigned')} &nbsp;·&nbsp; <b>PHONE:</b> ${esc(r.phone||'—')}</div>
+      <div class="fmeta"><b>TYPE:</b> ${esc(r.silos.join(', ')||'—')} &nbsp;·&nbsp; <b>RV:</b> ${esc(r.unit||'—')}${r.vin?`<br><b>VIN:</b> <span style="font-family:monospace;letter-spacing:.04em">${esc(r.vin)}</span>`:''}<br><b>TECH:</b> ${esc(r.tech||'Unassigned')} &nbsp;·&nbsp; <b>PHONE:</b> ${esc(r.phone||'—')}${r.email?`<br><b>EMAIL:</b> ${esc(r.email)}`:''}</div>
       <div class="fbox"><div class="t">🔧 RO STATUS</div>${r.roNote?esc(trunc(r.roNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
       <div class="fbox"><div class="t" style="display:flex;justify-content:space-between;align-items:center">💬 CUSTOMER COMM
         <span style="background:var(--blue);color:#fff;border-radius:10px;padding:2px 10px;font-size:11px;cursor:pointer">💬 Thread</span></div>
@@ -420,20 +570,42 @@ function applyFilters(){
 /* ── Live load (READ-ONLY — three selects, zero writes) ── */
 async function loadLive(){
   const { data: ros, error } = await sb.from('repair_orders')
-    .select('id, ro_id, customer_name, rv, status, urgency, ro_type, repair_type, technician, phone, description, pct_complete, parts_status, photo_url, date_received')
+    .select('id, ro_id, customer_name, rv, status, urgency, ro_type, repair_type, technician, phone, description, pct_complete, parts_status, photo_url, date_received, urgent_update, dollar_value, parking_spot, key_status, keypad_code, keep_plugged_in, planned_dropoff_date, promised_date, pickup_date, email, vin, is_training, insurance_data')
     .is('deleted_at', null)
     .order('date_received', { ascending: false });
   if(error){document.getElementById('liveNote').textContent='⚠️ Load failed: '+error.message;return;}
   const ids=ros.map(r=>r.id);
-  let silosByRo={}, notesByRo={};
+  let silosByRo={}, notesByRo={}, woSumByRo={}, partsByRo={};
   try{
-    const { data: wos } = await sb.from('service_work_orders').select('ro_id, service_silo').in('ro_id', ids);
+    const { data: wos } = await sb.from('service_work_orders').select('id, ro_id, service_silo, tech_done_at, completed_at').in('ro_id', ids);
     (wos||[]).forEach(w=>{
       if(!w.service_silo)return;
       const lbl=SILO_LABEL[w.service_silo]||w.service_silo;
       (silosByRo[w.ro_id]=silosByRo[w.ro_id]||new Set()).add(lbl);
     });
+    // [S146] Per-silo WO task summary (mirrors ro-crud.js _wo_summary)
+    const woIds=(wos||[]).map(w=>w.id);
+    let tasksByWo={};
+    if(woIds.length){
+      const { data: tasks } = await sb.from('service_tasks').select('work_order_id, status, est_hours').in('work_order_id', woIds);
+      (tasks||[]).forEach(tk=>{(tasksByWo[tk.work_order_id]=tasksByWo[tk.work_order_id]||[]).push(tk)});
+    }
+    (wos||[]).forEach(w=>{
+      const sm=(woSumByRo[w.ro_id]=woSumByRo[w.ro_id]||{total_wos:0,total_tasks:0,silos:[]});
+      const wt=tasksByWo[w.id]||[];
+      sm.total_wos+=1; sm.total_tasks+=wt.length;
+      sm.silos.push({silo:SILO_LABEL[w.service_silo]||w.service_silo||'—',
+        task_count:wt.length,
+        completed:wt.filter(t=>t.status==='completed').length,
+        est_hours:wt.reduce((s,t)=>s+(parseFloat(t.est_hours)||0),0),
+        wo_completed:!!w.completed_at, tech_done:!!w.tech_done_at});
+    });
   }catch(e){console.warn('SWO load failed',e);}
+  try{
+    // [S146] Parts rows for the detailed parts badge
+    const { data: parts } = await sb.from('parts').select('ro_id, status').in('ro_id', ids);
+    (parts||[]).forEach(p=>{(partsByRo[p.ro_id]=partsByRo[p.ro_id]||[]).push(p.status)});
+  }catch(e){console.warn('parts load failed',e);}
   try{
     const { data: notes } = await sb.from('notes').select('ro_id, type, body, created_at')
       .in('ro_id', ids).order('created_at',{ascending:false});
@@ -449,12 +621,21 @@ async function loadLive(){
       :(r.repair_type?[SILO_LABEL[norm(r.repair_type)]||r.repair_type]:[]);
     const days=r.date_received?Math.max(0,Math.floor((now-new Date(r.date_received).getTime())/864e5)):0;
     const nts=notesByRo[r.id]||{};
+    const ins=(r.insurance_data&&typeof r.insurance_data==='object')?r.insurance_data:null;
     return {idx, roId:r.ro_id||'', n:r.customer_name||'—', unit:r.rv||'',
       status:r.status||'Not On Lot', rotype:r.ro_type||'standard',
       parts:(r.parts_status||'').toLowerCase(), silos, days,
       svc:r.description||'', prog:r.pct_complete||0, tech:r.technician||'',
       phone:r.phone||'', photo:r.photo_url||'', commNote:nts.comm||'', roNote:nts.ro||'',
-      hay:((r.customer_name||'')+' '+(r.rv||'')+' '+(r.ro_id||'')).toLowerCase()};
+      // [S146] the 12 ported elements
+      urgency:r.urgency||'Medium', urgent:r.urgent_update||'',
+      dollar:(r.dollar_value!==undefined&&r.dollar_value!==null)?r.dollar_value:null,
+      spot:r.parking_spot||'', keyStatus:r.key_status||null, keypad:r.keypad_code||'',
+      plug:!!r.keep_plugged_in, dropoff:r.planned_dropoff_date||null,
+      promised:r.promised_date||null, pickup:r.pickup_date||null,
+      email:r.email||'', vin:r.vin||'', training:!!r.is_training, ins,
+      woSum:woSumByRo[r.id]||null, partsList:partsByRo[r.id]||[],
+      hay:((r.customer_name||'')+' '+(r.rv||'')+' '+(r.ro_id||'')+' '+(r.vin||'')).toLowerCase()};
   });
   document.getElementById('liveNote').innerHTML='🟢 LIVE PREVIEW — read-only. <b>'+ROS.length+' active ROs</b> loaded. Buttons are visual-only; no writes possible from this page.';
   applyFilters();
