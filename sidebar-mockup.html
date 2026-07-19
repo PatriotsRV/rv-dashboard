@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.5 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.6 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
      Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
@@ -25,7 +25,12 @@
      v0.5.1: WO summary chips moved TECH -> RO MANAGEMENT (Roland: not tech-related);
      WO count moved to the Management header hint; Tech hint = progress % only.
      v0.5.2: TECH section renamed WORK; NEW 🔔 NOTIFICATIONS & REMINDERS section
-     (between Management and Work) holding the Schedule Tasks/Notifications button. -->
+     (between Management and Work) holding the Schedule Tasks/Notifications button.
+     v0.6: ALL date fields consolidated under 🔔 NOTIFICATIONS & REMINDERS (key-date chips
+     moved out of Management) + live scheduled_notifications feed (⏳ UPCOMING pending rows,
+     ✅ RECENT sent/failed, header hint = next date + pending count) + NEW always-visible
+     date-trip alert banners in the triage layer: red "PROMISED DATE PASSED", amber
+     "DROP-OFF/PICKUP/PROMISED TODAY", amber "N NOTIFICATIONS SENT TODAY" (fired <24h). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -151,6 +156,12 @@ body.rail #main{margin-left:var(--railw)}
 /* ── S146: the 12 ported card elements ── */
 .uub{background:rgba(220,38,38,.14);border:1px solid var(--red);color:#f87171;border-radius:8px;
   padding:7px 10px;margin:0 0 8px;font-size:12px;font-weight:700;line-height:1.4}
+/* v0.6: date-trip / notification-fired alert banners (always-visible triage layer) */
+.dalert{border-radius:6px;padding:6px 10px;margin:0 0 6px;font-size:11.5px;font-weight:800;letter-spacing:.3px;text-align:center}
+.dalert.red{background:var(--red);color:#fff}
+.dalert.amber{background:var(--amber);color:#0d1117}
+.nrow{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:11.5px}
+.nrow .d{color:var(--muted);white-space:nowrap;font-weight:700}
 .hdr2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 7px}
 .dv{font-weight:800;color:#4ade80;font-size:13px}
 .spot{background:#2f81f7;color:#0d1117;border:none;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;letter-spacing:.2px}
@@ -514,6 +525,35 @@ function woChips(r){ // per-silo WO summary chips w/ mini progress bar
       `${esc(s.silo)} · ${meta}${est}${bar}</span>`;
   }).join('')+`</div>`;
 }
+function dateAlert(r){ // [v0.6] date-trip + notification-fired banners (always visible)
+  const today=new Date().toLocaleDateString('en-CA');
+  const doneish=r.status==='Delivered/Cashed Out'||r.status.toLowerCase()==='ready for pickup';
+  const d=x=>String(x||'').slice(0,10);
+  const msgs=[];
+  if(!doneish){
+    if(r.promised&&d(r.promised)<today)msgs.push({cls:'red',txt:'⏰ PROMISED DATE PASSED — '+fmtD(r.promised)});
+    else if(r.promised&&d(r.promised)===today)msgs.push({cls:'amber',txt:'⏰ PROMISED TODAY'});
+    if(r.dropoff&&d(r.dropoff)===today)msgs.push({cls:'amber',txt:'📅 DROP-OFF TODAY'});
+    if(r.pickup&&d(r.pickup)===today)msgs.push({cls:'amber',txt:'🚚 PICKUP TODAY'});
+  }
+  const fired=(r.notifs||[]).filter(n=>n.status==='sent'&&n.fired_at&&(Date.now()-new Date(n.fired_at).getTime())<864e5);
+  if(fired.length)msgs.push({cls:'amber',txt:'🔔 '+fired.length+' NOTIFICATION'+(fired.length>1?'S':'')+' SENT TODAY'});
+  return msgs.map(m=>`<div class="dalert ${m.cls}">${m.txt}</div>`).join('');
+}
+function notifBody(r){ // [v0.6] 🔔 section: key dates + pending/recent scheduled notifications
+  const pend=(r.notifs||[]).filter(n=>n.status==='pending');
+  const sent=(r.notifs||[]).filter(n=>n.status!=='pending').slice(-3).reverse();
+  const row=n=>`<div class="nrow"><span>${n.status==='failed'?'❌ ':''}${esc(trunc(n.subject,52))}</span><span class="d">${fmtD(n.scheduled_at)}</span></div>`;
+  return `${kdChips(r)}
+    ${pend.length?`<div class="fbox"><div class="t">⏳ UPCOMING (${pend.length})</div>${pend.map(row).join('')}</div>`:''}
+    ${sent.length?`<div class="fbox"><div class="t">✅ RECENT</div>${sent.map(row).join('')}</div>`:''}
+    <button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800;margin-bottom:0">🔔 SCHEDULE TASKS / NOTIFICATIONS</button>`;
+}
+function notifHint(r){
+  const pend=(r.notifs||[]).filter(n=>n.status==='pending').length;
+  const nd=r.promised?'⏰ '+fmtD(r.promised):r.dropoff?'📅 '+fmtD(r.dropoff):r.pickup?'🚚 '+fmtD(r.pickup):'';
+  return nd+(pend?(nd?' · ':'')+pend+' pending':'');
+}
 function progBlock(r){ // progress bar + manual % input (visual-only)
   return `<div class="prog"><div class="top"><span>PROGRESS</span>`+
     `<input type="number" value="${r.prog}" min="0" max="100" step="5" title="Manual adjustment (visual-only in mockup)">`+
@@ -547,6 +587,7 @@ function applyFilters(){
     ${img}
     <div class="body">
     ${r.urgent?`<div class="uub" title="Urgent update — change it via Edit RO">🚨 URGENT: ${esc(trunc(r.urgent,140))}</div>`:''}
+    ${dateAlert(r)}
     ${woMissing(r)}
     <h3>${esc(r.n)}${kdPopover(r)}</h3><div class="sub">${esc(r.unit||'—')} · ${esc(r.roId)}</div>
     <div class="sumrow">
@@ -558,17 +599,15 @@ function applyFilters(){
     <div class="svc" style="border-left-color:${SILO_COLOR[r.silos[0]]||'#5c6b85'}"><span class="lbl">RO SERVICE</span>
       ${siloChips(r)}${esc(trunc(r.svc,120))||'<i style="color:var(--muted)">No description</i>'}</div>
     ${csec(i,'mgmt','📋 RO MANAGEMENT',
-      (r.promised?'⏰ '+fmtD(r.promised)+' · ':r.dropoff?'📅 '+fmtD(r.dropoff)+' · ':'')+(r.woSum?r.woSum.total_wos+' WO · ':'')+(r.dollar!==null?'$'+(+r.dollar).toLocaleString():''),
-      `${kdChips(r)}
-       <div>${typeBadges(r)}<span class="badge b-type">${esc(r.rotype)}</span>${r.dollar!==null?`<span class="dv" style="margin-left:4px">$${(+r.dollar).toLocaleString()}</span>`:''}</div>
+      (r.woSum?r.woSum.total_wos+' WO · ':'')+(r.dollar!==null?'$'+(+r.dollar).toLocaleString():''),
+      `<div>${typeBadges(r)}<span class="badge b-type">${esc(r.rotype)}</span>${r.dollar!==null?`<span class="dv" style="margin-left:4px">$${(+r.dollar).toLocaleString()}</span>`:''}</div>
        ${woChips(r)}
        <button class="fbtn f-status" style="margin-top:7px"><span>${esc(r.status.toUpperCase())}</span><span>▾</span></button>
        <div class="fbox"><div class="t">🔧 RO STATUS</div>${r.roNote?esc(trunc(r.roNote,110)):'<a href="#" onclick="return false">Click Here To Update</a>'}</div>
        <button class="fbtn a-amber">✏️ EDIT RO</button>
        <button class="fbtn a-green">📅 SCHEDULE</button>
        <button class="fbtn a-gray">📋 ADD TO MY LIST</button>`)}
-    ${csec(i,'notif','🔔 NOTIFICATIONS & REMINDERS','',
-      `<button class="fbtn" style="background:rgba(239,68,68,.12);border:1px solid var(--red);border-left:4px solid var(--red);color:#f87171;font-weight:800;margin-bottom:0">🔔 SCHEDULE TASKS / NOTIFICATIONS</button>`)}
+    ${csec(i,'notif','🔔 NOTIFICATIONS & REMINDERS',notifHint(r),notifBody(r))}
     ${csec(i,'tech','🧰 WORK',
       r.prog+'%',
       `<div class="fmeta"><b>TECH:</b> ${esc(r.tech||'Unassigned')}</div>
@@ -642,6 +681,16 @@ async function loadLive(){
     const { data: parts } = await sb.from('parts').select('ro_id, status').in('ro_id', ids);
     (parts||[]).forEach(p=>{(partsByRo[p.ro_id]=partsByRo[p.ro_id]||[]).push(p.status)});
   }catch(e){console.warn('parts load failed',e);}
+  let notifsByRo={};
+  try{
+    // [S146 v0.6] Scheduled notifications (pending + recent) for the 🔔 section
+    const { data: nots } = await sb.from('scheduled_notifications')
+      .select('ro_id, subject, scheduled_at, status, fired_at')
+      .in('ro_id', ids).in('status',['pending','sent','failed'])
+      .gte('scheduled_at', new Date(Date.now()-30*864e5).toISOString())
+      .order('scheduled_at',{ascending:true});
+    (nots||[]).forEach(n=>{(notifsByRo[n.ro_id]=notifsByRo[n.ro_id]||[]).push(n)});
+  }catch(e){console.warn('notifs load failed',e);}
   try{
     const { data: notes } = await sb.from('notes').select('ro_id, type, body, created_at')
       .in('ro_id', ids).order('created_at',{ascending:false});
@@ -670,7 +719,7 @@ async function loadLive(){
       plug:!!r.keep_plugged_in, dropoff:r.planned_dropoff_date||null,
       promised:r.promised_date||null, pickup:r.pickup_date||null,
       email:r.email||'', vin:r.vin||'', training:!!r.is_training, ins,
-      woSum:woSumByRo[r.id]||null, partsList:partsByRo[r.id]||[],
+      woSum:woSumByRo[r.id]||null, partsList:partsByRo[r.id]||[], notifs:notifsByRo[r.id]||[],
       hay:((r.customer_name||'')+' '+(r.rv||'')+' '+(r.ro_id||'')+' '+(r.vin||'')).toLowerCase()};
   });
   document.getElementById('liveNote').innerHTML='🟢 LIVE PREVIEW — read-only. <b>'+ROS.length+' active ROs</b> loaded. Buttons are visual-only; no writes possible from this page.';
