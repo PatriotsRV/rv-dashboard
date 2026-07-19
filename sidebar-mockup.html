@@ -3,14 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PRVS Sidebar Mockup — v0.3 LIVE (disposable design artifact)</title>
+<title>PRVS Sidebar Mockup — v0.4 LIVE (disposable design artifact)</title>
 <!-- STANDALONE MOCKUP — READ-ONLY live Supabase data behind a hard login gate.
      Reuses the index.html session (storageKey prvs_supabase_auth, same origin).
      Pre-auth: zero data queries fire. No writes anywhere. For layout approval only.
      v0.3 (S146): the 12 card elements missing vs js/render.js added — urgency selector,
      urgent-update banner, Missing-WO badge, per-silo WO summary chips, key-dates chips +
      name popover, keys/power chips, dollar value, parking spot, detailed parts badge,
-     special type badges, email+VIN rows, progress bar/input. All read-only/visual-only. -->
+     special type badges, email+VIN rows, progress bar/input. All read-only/visual-only.
+     v0.4 (S146 Roland feedback): ALL badges/chips (upper badge row, type badges, parts badge,
+     key-dates, keys/power, WO summary chips, Missing-WO, parking spot) unified to the
+     silo-chip shape — rectangular 4px radius, solid fill, dark text — "same size and shape,
+     see how busy it gets" experiment. Missing-WO badge now solid (was too faint). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -127,17 +131,18 @@ body.rail #main{margin-left:var(--railw)}
 .fbox{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:7px;font-size:12px}
 .fbox .t{font-weight:700;font-size:11.5px;margin-bottom:3px}
 .fbox a{color:var(--blue);font-style:italic;font-size:12px}
-.badge{display:inline-block;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:600;margin-right:5px;margin-bottom:4px}
-.b-status{background:rgba(47,129,247,.18);color:var(--blue)}
-.b-parts{background:rgba(245,158,11,.18);color:var(--amber)}
-.b-type{background:rgba(139,150,168,.18);color:var(--muted)}
-.b-days{background:rgba(239,68,68,.18);color:var(--red)}
+/* v0.4: all card badges/chips unified to the silo-chip shape — rect 4px, solid fill, dark text */
+.badge{display:inline-block;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;letter-spacing:.2px;margin:0 4px 4px 0;color:#0d1117}
+.b-status{background:#3b82f6}
+.b-parts{background:#f59e0b}
+.b-type{background:#94a3b8}
+.b-days{background:#ef4444}
 /* ── S146: the 12 ported card elements ── */
 .uub{background:rgba(220,38,38,.14);border:1px solid var(--red);color:#f87171;border-radius:8px;
   padding:7px 10px;margin:0 0 8px;font-size:12px;font-weight:700;line-height:1.4}
 .hdr2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 7px}
 .dv{font-weight:800;color:#4ade80;font-size:13px}
-.spot{background:rgba(47,129,247,.15);color:var(--blue);border:1px solid rgba(47,129,247,.4);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700}
+.spot{background:#2f81f7;color:#0d1117;border:none;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;letter-spacing:.2px}
 .urg{margin-left:auto;border-radius:10px;padding:3px 6px;font-size:10.5px;font-weight:800;letter-spacing:.4px;cursor:pointer;border:1px solid}
 .urg.u-critical{background:rgba(239,68,68,.16);color:#f87171;border-color:rgba(239,68,68,.5)}
 .urg.u-high{background:rgba(255,106,0,.16);color:#fb923c;border-color:rgba(255,106,0,.5)}
@@ -150,29 +155,26 @@ select.urg option{background:var(--panel);color:var(--text)}
 .kd-cal:hover .kd-pop,.kd-cal:focus .kd-pop{display:block}
 .kd-pop .h{font-weight:800;font-size:10.5px;color:var(--muted);letter-spacing:.5px;margin-bottom:5px}
 .kd-pop .r{display:flex;justify-content:space-between;gap:12px;padding:2px 0;white-space:nowrap}
-.tbadge{display:inline-block;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 5px 4px 0}
-.tb-ins{background:rgba(47,129,247,.18);color:var(--blue)}
-.tb-pay{background:rgba(34,197,94,.18);color:#4ade80}
-.tb-warr{background:rgba(139,92,246,.18);color:#a78bfa}
-.tb-shop{background:rgba(245,158,11,.18);color:var(--amber)}
-.tb-train{background:rgba(34,211,238,.18);color:#22d3ee}
-.pbadge{display:inline-block;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 5px 4px 0;border:1px solid;cursor:pointer}
-.pbadge.red{background:rgba(239,68,68,.15);color:#f87171;border-color:rgba(239,68,68,.5)}
-.pbadge.yellow{background:rgba(245,158,11,.15);color:#fbbf24;border-color:rgba(245,158,11,.5)}
-.pbadge.green{background:rgba(34,197,94,.15);color:#4ade80;border-color:rgba(34,197,94,.5)}
-.wo-miss{display:block;width:100%;text-align:center;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:800;margin:0 0 7px;cursor:pointer;border:1px dashed}
-.wo-miss.soft{background:rgba(139,150,168,.10);color:var(--muted);border-color:#46536e}
-.wo-miss.hot{background:rgba(245,158,11,.12);color:var(--amber);border-color:rgba(245,158,11,.55)}
-.wo-miss.critical{background:rgba(239,68,68,.12);color:#f87171;border-color:rgba(239,68,68,.6)}
-.chips{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
-.chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;border:1px solid}
-.wochips{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 0}
-.wochip{position:relative;display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:3px 8px 5px;
-  font-size:10.5px;font-weight:700;border:1px solid var(--border);background:var(--panel2);color:var(--text);overflow:hidden;cursor:pointer}
-.wochip .bar{position:absolute;left:0;bottom:0;height:2.5px;background:var(--blue)}
-.wochip.done{border-color:rgba(34,197,94,.5);color:#4ade80}.wochip.done .bar{background:var(--green)}
-.wochip.mid{border-color:rgba(47,129,247,.5)}
-.wochip.zero{color:var(--muted)}
+.tbadge{display:inline-block;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;letter-spacing:.2px;margin:0 4px 4px 0;color:#0d1117}
+.tb-ins{background:#38bdf8}
+.tb-pay{background:#22c55e}
+.tb-warr{background:#a78bfa}
+.tb-shop{background:#f59e0b}
+.tb-train{background:#22d3ee}
+.pbadge{display:inline-block;border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;letter-spacing:.2px;margin:0 4px 4px 0;border:none;color:#0d1117;cursor:pointer}
+.pbadge.red{background:#ef4444}
+.pbadge.yellow{background:#f59e0b}
+.pbadge.green{background:#22c55e}
+.wo-miss{display:block;width:100%;text-align:center;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:800;letter-spacing:.3px;margin:0 0 7px;cursor:pointer;border:none;color:#0d1117}
+.wo-miss.soft{background:#94a3b8}
+.wo-miss.hot{background:#f59e0b}
+.wo-miss.critical{background:#ef4444}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.2px;border:none;color:#0d1117}
+.wochips{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 0}
+.wochip{position:relative;display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:3px 8px 5px;
+  font-size:11px;font-weight:700;letter-spacing:.2px;border:none;color:#0d1117;overflow:hidden;cursor:pointer}
+.wochip .bar{position:absolute;left:0;bottom:0;height:3px;background:rgba(13,17,23,.55)}
 .prog{margin:8px 0 0}
 .prog .top{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px}
 .prog input{width:48px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:2px 5px;font-size:11px}
@@ -424,18 +426,18 @@ function kdChips(r){ // colored key-date chips (Key Dates P1 S117)
   const today=new Date().toLocaleDateString('en-CA');
   const doneish=r.status==='Delivered/Cashed Out'||r.status.toLowerCase()==='ready for pickup';
   const c=[];
-  if(r.dropoff)c.push(`<span class="chip" style="background:#2f81f71a;color:#2f81f7;border-color:#2f81f744">📅 Drop ${fmtD(r.dropoff)}</span>`);
+  if(r.dropoff)c.push(`<span class="chip" style="background:#60a5fa">📅 Drop ${fmtD(r.dropoff)}</span>`);
   if(r.promised){const od=!doneish&&String(r.promised).slice(0,10)<today;const cl=od?'#ef4444':'#f59e0b';
-    c.push(`<span class="chip" title="Promised date" style="background:${cl}1a;color:${cl};border-color:${cl}55;font-weight:800">⏰ Promised ${fmtD(r.promised)}${od?' !':''}</span>`);}
-  if(r.pickup)c.push(`<span class="chip" style="background:#22c55e1a;color:#4ade80;border-color:#22c55e44">🚚 Pickup ${fmtD(r.pickup)}</span>`);
+    c.push(`<span class="chip" title="Promised date" style="background:${cl};font-weight:800">⏰ Promised ${fmtD(r.promised)}${od?' !':''}</span>`);}
+  if(r.pickup)c.push(`<span class="chip" style="background:#22c55e">🚚 Pickup ${fmtD(r.pickup)}</span>`);
   return c.length?`<div class="chips">${c.join('')}</div>`:'';
 }
 function keysChips(r){ // keys + power chips (v1.458 S118)
   const c=[];
-  if(r.keyStatus==='keys')c.push(`<span class="chip" style="background:#a855f71a;color:#c084fc;border-color:#a855f744">🔑 Keys</span>`);
-  else if(r.keyStatus==='no_keys')c.push(`<span class="chip" style="background:#6b72801a;color:#9ca3af;border-color:#6b728044">🚫 No keys</span>`);
-  else if(r.keyStatus==='keypad')c.push(`<span class="chip" style="background:#a855f71a;color:#c084fc;border-color:#a855f744">🔢 Keypad${r.keypad?': '+esc(r.keypad):''}</span>`);
-  if(r.plug)c.push(`<span class="chip" title="Keep plugged in (shore power)" style="background:#eab3081a;color:#eab308;border-color:#eab30844">⚡ Keep plugged in</span>`);
+  if(r.keyStatus==='keys')c.push(`<span class="chip" style="background:#c084fc">🔑 Keys</span>`);
+  else if(r.keyStatus==='no_keys')c.push(`<span class="chip" style="background:#9ca3af">🚫 No keys</span>`);
+  else if(r.keyStatus==='keypad')c.push(`<span class="chip" style="background:#c084fc">🔢 Keypad${r.keypad?': '+esc(r.keypad):''}</span>`);
+  if(r.plug)c.push(`<span class="chip" title="Keep plugged in (shore power)" style="background:#eab308">⚡ Keep plugged in</span>`);
   return c.length?`<div class="chips">${c.join('')}</div>`:'';
 }
 function typeBadges(r){ // special RO-type badges (insurance/warranty/hybrid/shop/training)
@@ -478,8 +480,8 @@ function woChips(r){ // per-silo WO summary chips w/ mini progress bar
     else if(s.tech_done){cls='mid';meta='🔵 tech done';}
     const est=(s.task_count>0&&s.est_hours>0)?' · ⏱️ '+(+s.est_hours.toFixed(1))+'h':'';
     const bar=s.task_count>0?`<span class="bar" style="width:${pct}%"></span>`:'';
-    return `<span class="wochip ${cls}" title="${esc(s.silo)} — ${s.completed}/${s.task_count} tasks">`+
-      `<span class="silo" style="background:${SILO_COLOR[s.silo]||'#5c6b85'};margin:0;padding:1px 6px;font-size:10px">${esc(s.silo)}</span> ${meta}${est}${bar}</span>`;
+    return `<span class="wochip ${cls}" style="background:${SILO_COLOR[s.silo]||'#94a3b8'}" title="${esc(s.silo)} — ${s.completed}/${s.task_count} tasks">`+
+      `${esc(s.silo)} · ${meta}${est}${bar}</span>`;
   }).join('')+`</div>`;
 }
 function progBlock(r){ // progress bar + manual % input (visual-only)
