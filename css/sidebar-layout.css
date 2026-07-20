@@ -373,6 +373,105 @@ html.layout-sidebar #sbScrollWrap .filter-btn.active {
   color: #fff !important;
 }
 
+/* ── Tile header anatomy (mockup: photo → name → sub → chip row → bar) ── */
+html.layout-sidebar .ro-card .rv-photo { margin: 0; }
+html.layout-sidebar .ro-card .rv-photo img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  display: block;
+  border-radius: 0;
+}
+html.layout-sidebar .sb-nophoto {
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  background: #222b3d;
+}
+html.layout-sidebar .ro-card .customer-name {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 10px 14px 2px;
+}
+html.layout-sidebar .sb-sub {
+  color: var(--sb-muted);
+  font-size: 12px;
+  margin: 0 14px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+html.layout-sidebar .sb-sub .card-ro-id { margin: 0; }
+html.layout-sidebar .sb-hdr2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 14px 6px;
+}
+html.layout-sidebar .sb-status-chip {
+  background: var(--sb-blue);
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  text-transform: capitalize;
+}
+/* relocated classic elements, re-dressed as chips */
+html.layout-sidebar .sb-hdr2 .days-on-lot {
+  font-size: 12px !important;
+  font-weight: 800;
+  background: var(--sb-panel2);
+  border: 1px solid var(--sb-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  margin: 0 !important;
+}
+html.layout-sidebar .sb-hdr2 .days-on-lot .days-label { font-size: 10px; }
+html.layout-sidebar .sb-hdr2 .urgency-selector-badge {
+  position: static !important;
+  margin-left: auto !important;
+  transform: none !important;
+  top: auto !important;
+  right: auto !important;
+}
+html.layout-sidebar .sb-hdr2 .urgency-selector-badge .urgency-dropdown {
+  border-radius: 10px !important;
+  font-size: 10.5px !important;
+  padding: 3px 6px !important;
+}
+html.layout-sidebar .sb-thinprog {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sb-panel2);
+  border: 1px solid var(--sb-border);
+  overflow: hidden;
+  margin: 0 14px 8px;
+}
+html.layout-sidebar .sb-thinprog .fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--sb-blue), #4ade80);
+}
+/* $ chip inside RO Management */
+html.layout-sidebar .sb-csec-b .dollar-value {
+  font-weight: 800;
+  color: #4ade80;
+  font-size: 14px;
+  margin: 0 0 7px;
+}
+/* the amber-left RO SERVICE look for the repair description */
+html.layout-sidebar .ro-card .note-item[data-field="repairDescription"] {
+  border-left: 4px solid #f59e0b;
+  background: var(--sb-panel2);
+  border-radius: 8px;
+  margin: 0 10px 8px;
+}
+
 /* ── Date-trip + notification alert banners (mockup v0.6 triage layer) ──
    Rendered by render.js on every card but hidden in classic mode. */
 .sb-dalert { display: none; }

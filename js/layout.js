@@ -147,6 +147,7 @@
     ['.note-item[data-field="roStatusNotes"]', 'mgmt'],
     ['.edit-ro-btn', 'mgmt'], ['.card-secondary-btn[data-action="add-to-list"]', 'mgmt'],
     ['.schedule-ro-btn', 'mgmt'],
+    ['.schedule-notif-banner-btn', 'notif'],   // mockup v0.5.2: Schedule button lives IN the 🔔 group
     ['.key-dates-row', 'notif'],
     ['.checkin-btn', 'work'], ['.keys-power-row', 'work'],
     ['.card-parking-badge', 'work'], ['.progress-section', 'work'],
@@ -207,11 +208,113 @@
       if (w && !w.querySelector('button, .note-item')) w.remove();
     });
 
+    // ── Mockup tile-header anatomy ─────────────────────────────────────────
+    // name → sub (unit · RO-ID) → chip row (status · days · urgency) → thin
+    // progress bar. $ moves into RO Management. No-photo placeholder.
+    var name = card.querySelector('.customer-name');
+    if (name) {
+      if (!card.querySelector('.rv-photo')) {
+        var ph = document.createElement('div');
+        ph.className = 'sb-nophoto';
+        ph.textContent = '🚐';
+        card.insertBefore(ph, name);
+      }
+      // sub-line: RV unit (text from the Admin rv-info) · RO-ID element
+      var sub = document.createElement('div');
+      sub.className = 'sb-sub';
+      var unitText = '';
+      if (bodies.admin) {
+        var rows = bodies.admin.querySelectorAll('.rv-info .info-row');
+        for (var r = 0; r < rows.length; r++) {
+          var lbl = rows[r].querySelector('.info-label');
+          if (lbl && /^RV\b/i.test(lbl.textContent.trim())) {
+            var v = rows[r].querySelector('.info-value');
+            if (v) unitText = v.textContent.trim();
+            break;
+          }
+        }
+      }
+      if (unitText && !/not specified/i.test(unitText) && unitText.toUpperCase() !== 'ALL') {
+        var us = document.createElement('span');
+        us.textContent = unitText;
+        sub.appendChild(us);
+      }
+      var roid = card.querySelector('.card-ro-id');
+      if (roid) sub.appendChild(roid);
+      if (sub.childNodes.length) name.insertAdjacentElement('afterend', sub);
+
+      // chip row
+      var hdr2 = document.createElement('div');
+      hdr2.className = 'sb-hdr2';
+      var statusSel = bodies.mgmt && bodies.mgmt.querySelector('.status-dropdown');
+      var statusTxt = statusSel ? statusSel.options[statusSel.selectedIndex].text
+        : (card.querySelector('.compact-stage') ? card.querySelector('.compact-stage').textContent : '');
+      if (!statusTxt) { // shop ROs render no dropdown — derive from card class
+        var m = card.className.match(/ro-card-status-([a-z-]+)/);
+        if (m) statusTxt = m[1].replace(/-/g, ' ');
+      }
+      if (statusTxt) {
+        var sc = document.createElement('span');
+        sc.className = 'sb-status-chip';
+        sc.textContent = statusTxt;
+        hdr2.appendChild(sc);
+      }
+      var days = card.querySelector('.days-on-lot');
+      if (days) {
+        // "Not On Lot" (no digit) duplicates the status chip — hide it
+        if (/\d/.test(days.textContent)) hdr2.appendChild(days);
+        else days.style.display = 'none';
+      }
+      var urg = card.querySelector('.urgency-selector-badge');
+      if (urg) hdr2.appendChild(urg);
+      (sub.parentNode ? sub : name).insertAdjacentElement('afterend', hdr2);
+
+      // always-visible thin progress bar (input stays in 🧰 Work)
+      var pin = bodies.work && bodies.work.querySelector('.progress-input');
+      if (pin && pin.value !== '') {
+        var tp = document.createElement('div');
+        tp.className = 'sb-thinprog';
+        tp.innerHTML = '<div class="fill" style="width:' + Math.max(0, Math.min(100, +pin.value || 0)) + '%"></div>';
+        hdr2.insertAdjacentElement('afterend', tp);
+      }
+    }
+    // $ → RO Management (mockup shows it only there + in the header hint)
+    var dv = card.querySelector('.dollar-value');
+    if (dv && bodies.mgmt) bodies.mgmt.insertBefore(dv, bodies.mgmt.firstChild);
+    var chr = card.querySelector('.card-header-row');
+    if (chr && !chr.children.length) chr.remove();
+
     // Append populated groups in canonical order
     GROUPS.forEach(function (g) {
       if (!bodies[g.key]) return;
       card.appendChild(buildSec(g, bodies[g.key]));
     });
+
+    // ── Collapsed-header hints (mockup compact info layer) ────────────────
+    setHint(card, 'mgmt', (function () {
+      var woN = card.querySelectorAll('.sb-csec[data-sbg="mgmt"] .wo-summary-chip:not(.wo-summary-chip-empty)').length;
+      var d = card.querySelector('.sb-csec[data-sbg="mgmt"] .dollar-value');
+      var parts = [];
+      if (woN) parts.push(woN + ' WO');
+      if (d) parts.push(d.textContent.trim());
+      return parts.join(' · ');
+    })());
+    setHint(card, 'work', (function () {
+      var pv = card.querySelector('.sb-csec[data-sbg="work"] .progress-value');
+      return pv ? pv.textContent.trim() : '';
+    })());
+    setHint(card, 'parts', (function () {
+      var pb = card.querySelector('.sb-csec[data-sbg="parts"] .parts-badge');
+      if (pb) { var m2 = pb.textContent.match(/(\d+)\s/); if (m2) return m2[1] + ' parts'; }
+      return card.querySelector('.sb-csec[data-sbg="parts"] .parts-status-chip') ? '!' : '';
+    })());
+    setHint(card, 'cust', '💬');
+  }
+
+  function setHint(card, key, text) {
+    if (!text) return;
+    var h = card.querySelector('.sb-csec[data-sbg="' + key + '"] .sb-hint');
+    if (h && !h.textContent) h.textContent = text;
   }
 
   function buildSec(g, body) {
