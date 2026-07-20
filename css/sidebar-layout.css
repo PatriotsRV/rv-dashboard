@@ -373,6 +373,49 @@ html.layout-sidebar #sbScrollWrap .filter-btn.active {
   color: #fff !important;
 }
 
+/* ── Date-trip + notification alert banners (mockup v0.6 triage layer) ──
+   Rendered by render.js on every card but hidden in classic mode. */
+.sb-dalert { display: none; }
+html.layout-sidebar .sb-dalert {
+  display: block;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 8px 10px 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  text-align: center;
+}
+html.layout-sidebar .sb-dalert.red   { background: #ef4444; color: #fff; }
+html.layout-sidebar .sb-dalert.amber { background: #f59e0b; color: #0d1117; }
+
+/* 🔔 group: feed rows + header hint */
+html.layout-sidebar .sb-hint {
+  margin-left: auto;
+  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--sb-muted);
+  white-space: nowrap;
+}
+html.layout-sidebar .sb-csec-h .chev { margin-left: 6px; }
+html.layout-sidebar .sb-ngrp {
+  font-weight: 800;
+  font-size: 10.5px;
+  color: var(--sb-muted);
+  letter-spacing: .5px;
+  margin: 6px 0 2px;
+}
+html.layout-sidebar .sb-nrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 11.5px;
+  color: var(--sb-text);
+}
+html.layout-sidebar .sb-nrow .d { color: var(--sb-muted); white-space: nowrap; font-weight: 700; }
+html.layout-sidebar .sb-nrow.fail { color: #f87171; }
+
 /* ── Wish floating button: clear the sidebar (classic keeps bottom-left) ── */
 html.layout-sidebar #erFloatingBtn { left: calc(var(--sbw) + 14px) !important; }
 html.layout-sidebar.sb-rail #erFloatingBtn { left: calc(var(--sb-railw) + 14px) !important; }

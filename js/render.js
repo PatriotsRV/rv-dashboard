@@ -298,7 +298,23 @@
                 // v1.414 Phase A1+A2: stash index on ro for woMissingBadge fallback
                 ro._idx = index;
                 return `
-                    <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}">
+                    <div class="ro-card ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}" data-ro-sid="${ro._supabaseId || ''}">
+                        ${(() => {
+                            // [v1.477 S147] Date-trip alert banners — sidebar-mockup v0.6 triage layer.
+                            // Rendered ALWAYS but display-gated to html.layout-sidebar in
+                            // css/sidebar-layout.css (.sb-dalert) — zero classic-mode impact.
+                            const todayStr = new Date().toLocaleDateString('en-CA');
+                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Ready for pickup';
+                            const d = (v) => v ? String(v).slice(0, 10) : '';
+                            const banners = [];
+                            if (!doneish && d(ro.promisedDate) && d(ro.promisedDate) < todayStr) banners.push('<div class="sb-dalert red">🚨 ' + t('PROMISED DATE PASSED') + '</div>');
+                            const todays = [];
+                            if (d(ro.plannedDropoffDate) === todayStr) todays.push(t('DROP-OFF'));
+                            if (d(ro.promisedDate) === todayStr) todays.push(t('PROMISED'));
+                            if (d(ro.pickupDate) === todayStr) todays.push(t('PICKUP'));
+                            if (todays.length && !doneish) banners.push('<div class="sb-dalert amber">📅 ' + todays.join(' + ') + ' ' + t('TODAY') + '</div>');
+                            return banners.join('');
+                        })()}
                         <button class="schedule-notif-banner-btn" data-action="schedule-notification" data-idx="${index}"
                                 title="Schedule a future email reminder for this RO"
                                 style="display:block;width:calc(100% - 20px);margin:8px 10px 14px 10px;padding:10px 12px;border:2px solid #dc2626;background:rgba(220,38,38,0.08);color:#dc2626;font-weight:700;font-size:0.82rem;line-height:1.25;border-radius:8px;cursor:pointer;text-align:center;letter-spacing:0.02em;text-transform:uppercase;">

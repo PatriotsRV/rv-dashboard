@@ -164,6 +164,8 @@
     el.parentElement.classList.toggle('open');
   };
 
+  function tr(s) { return (typeof window.t === 'function') ? window.t(s) : s; }
+
   function regroupCard(card) {
     if (card.hasAttribute('data-sb-grouped')) return;
     card.setAttribute('data-sb-grouped', '1');
@@ -208,16 +210,131 @@
     // Append populated groups in canonical order
     GROUPS.forEach(function (g) {
       if (!bodies[g.key]) return;
-      var sec = document.createElement('div');
-      sec.className = 'sb-csec';
-      var h = document.createElement('div');
-      h.className = 'sb-csec-h';
-      h.setAttribute('onclick', 'sbToggleCsec(this)');
-      h.innerHTML = g.title + '<span class="chev">▼</span>';
-      sec.appendChild(h);
-      sec.appendChild(bodies[g.key]);
-      card.appendChild(sec);
+      card.appendChild(buildSec(g, bodies[g.key]));
     });
+  }
+
+  function buildSec(g, body) {
+    var sec = document.createElement('div');
+    sec.className = 'sb-csec';
+    sec.setAttribute('data-sbg', g.key);
+    var h = document.createElement('div');
+    h.className = 'sb-csec-h';
+    h.setAttribute('onclick', 'sbToggleCsec(this)');
+    h.innerHTML = g.title + '<span class="sb-hint"></span><span class="chev">▼</span>';
+    sec.appendChild(h);
+    sec.appendChild(body);
+    return sec;
+  }
+
+  // Get (or create, in canonical position) a group section on a card
+  function ensureSec(card, key) {
+    var sec = card.querySelector('.sb-csec[data-sbg="' + key + '"]');
+    if (sec) return sec;
+    var g = null, after = [];
+    for (var i = 0; i < GROUPS.length; i++) {
+      if (GROUPS[i].key === key) { g = GROUPS[i]; after = GROUPS.slice(i + 1).map(function (x) { return x.key; }); break; }
+    }
+    var body = document.createElement('div');
+    body.className = 'sb-csec-b';
+    sec = buildSec(g, body);
+    var anchor = null;
+    for (var j = 0; j < after.length && !anchor; j++) {
+      anchor = card.querySelector('.sb-csec[data-sbg="' + after[j] + '"]');
+    }
+    card.insertBefore(sec, anchor);
+    return sec;
+  }
+
+  /* ── Live scheduled_notifications feed (🔔 group) ────────────────────────
+     Sidebar-mockup v0.6 feature on the real dashboard. READ-ONLY batch query
+     via the module bridge (getSB), canonical auth guard, 60s cache. Decorates
+     each card: amber "N SENT TODAY" banner, ⏳ upcoming / ✅ recent rows in
+     the 🔔 group, and a next-date hint on the group header. */
+  var _notifCache = {};          // sid → rows
+  var _notifCacheAt = 0;
+  var _notifBusy = false;
+
+  function fmtShort(d) {
+    if (!d) return '';
+    var dt = new Date(d);
+    if (isNaN(dt)) return String(d).slice(5, 10);
+    return (dt.getMonth() + 1) + '/' + dt.getDate();
+  }
+
+  function decorateNotifs() {
+    if (!isSidebar() || _notifBusy) return;
+    if (typeof window.getSB !== 'function' || !window.getSB() || !window.supabaseSession) return;
+    var cards = document.querySelectorAll('#boardGrid .ro-card[data-sb-grouped]:not([data-sb-notif])');
+    if (!cards.length) return;
+
+    var sids = [];
+    for (var i = 0; i < cards.length; i++) {
+      var sid = cards[i].getAttribute('data-ro-sid');
+      if (sid) sids.push(sid);
+    }
+    if (!sids.length) return;
+
+    var fresh = (Date.now() - _notifCacheAt) < 60000;
+    var missing = fresh ? sids.filter(function (s) { return !(s in _notifCache); }) : sids;
+
+    var apply = function () {
+      var now = Date.now();
+      for (var k = 0; k < cards.length; k++) {
+        var card = cards[k];
+        card.setAttribute('data-sb-notif', '1');
+        var rows = _notifCache[card.getAttribute('data-ro-sid')] || [];
+        if (!rows.length) continue;
+        var pending = rows.filter(function (r) { return r.status === 'pending'; });
+        var fired = rows.filter(function (r) { return r.fired_at; })
+          .sort(function (a, b) { return new Date(b.fired_at) - new Date(a.fired_at); });
+        var firedToday = fired.filter(function (r) { return (now - new Date(r.fired_at)) < 86400000; }).length;
+
+        if (firedToday) {
+          var b = document.createElement('div');
+          b.className = 'sb-dalert amber';
+          b.style.display = '';
+          b.textContent = '🔔 ' + firedToday + ' ' + tr(firedToday === 1 ? 'NOTIFICATION SENT TODAY' : 'NOTIFICATIONS SENT TODAY');
+          card.insertBefore(b, card.firstChild);
+        }
+
+        var sec = ensureSec(card, 'notif');
+        var body = sec.querySelector('.sb-csec-b');
+        var html = '';
+        if (pending.length) {
+          html += '<div class="sb-ngrp">⏳ ' + tr('UPCOMING') + '</div>' + pending.slice(0, 4).map(function (r) {
+            return '<div class="sb-nrow"><span>' + String(r.subject || '').replace(/</g, '&lt;') + '</span><span class="d">' + fmtShort(r.scheduled_at) + '</span></div>';
+          }).join('');
+        }
+        if (fired.length) {
+          html += '<div class="sb-ngrp">✅ ' + tr('RECENT') + '</div>' + fired.slice(0, 3).map(function (r) {
+            return '<div class="sb-nrow' + (r.status === 'failed' ? ' fail' : '') + '"><span>' + String(r.subject || '').replace(/</g, '&lt;') + '</span><span class="d">' + fmtShort(r.fired_at) + '</span></div>';
+          }).join('');
+        }
+        if (html) body.insertAdjacentHTML('beforeend', html);
+        var hint = sec.querySelector('.sb-hint');
+        if (hint && pending.length) hint.textContent = tr('next') + ' ' + fmtShort(pending[0].scheduled_at) + ' · ' + pending.length + ' ' + tr('pending');
+      }
+    };
+
+    if (!missing.length) { apply(); return; }
+    _notifBusy = true;
+    window.getSB().from('scheduled_notifications')
+      .select('ro_id, subject, scheduled_at, status, fired_at')
+      .in('ro_id', missing.slice(0, 300))
+      .order('scheduled_at', { ascending: true })
+      .limit(600)
+      .then(function (res) {
+        _notifBusy = false;
+        if (res.error) { console.warn('[layout] notif feed query failed:', res.error.message); return; }
+        if (!fresh) { _notifCache = {}; }
+        _notifCacheAt = Date.now();
+        missing.forEach(function (s) { if (!(s in _notifCache)) _notifCache[s] = []; });
+        (res.data || []).forEach(function (r) {
+          (_notifCache[r.ro_id] = _notifCache[r.ro_id] || []).push(r);
+        });
+        apply();
+      });
   }
 
   function regroupAll() {
@@ -234,6 +351,7 @@
     setTimeout(function () {
       _regroupQueued = false;
       regroupAll();
+      decorateNotifs();
     }, 0);
   }
 
@@ -241,9 +359,13 @@
     var grid = document.getElementById('boardGrid');
     if (!grid) return;
     regroupAll();
+    decorateNotifs();
     // childList only (no subtree): fires on board re-render; our own
     // within-card reparenting never re-triggers it.
     new MutationObserver(queueRegroup).observe(grid, { childList: true });
+    // Straggler sweep: cards rendered before auth was ready get their
+    // notification feed once the session lands (guard-gated, no-op otherwise).
+    setInterval(decorateNotifs, 20000);
   }
 
   if (isSidebar()) {
