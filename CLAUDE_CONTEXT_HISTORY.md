@@ -9,6 +9,7 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 148 — PB→Textly PIVOT captured (docs only; NO code, NO release; Sync Gate Case A).** Project Blue ruled out — it requires porting the entire phone number to PB. New plan: Textly (Vested Networks' white-label of Textable); Textable API reviewed (JWT tokens, POST /api/send, relayWebhook copy of every message both directions, contacts/drip/canned). Vested submitted the Textly account request 7/20; API creds expected AM 7/21. S149 sequencing set: Textly kickoff #1, Kenect delta pull #2 (wall 7/24), sidebar v1.477 regression + promote #3.
 - ✅ **Session 147 — SIDEBAR LAYOUT TOGGLE v1.477 built to full mockup parity + live alerts (feature/sidebar-layout only; NO release; Sync Gate Case A).**
   - Architecture decision (Roland-approved): sidebar design ships as a per-user layout TOGGLE inside index.html via DOM RELOCATION — not a second page, no duplicated business logic. New js/layout.js + css/sidebar-layout.css (scoped html.layout-sidebar); index.html +~65 lines; classic layout untouched by default.
   - Phase 1: sidebar shell (search, +NEW RO, Quick Links w/ all 15 role-gated nav buttons, Days-on-Lot, 4 filter groups), rail collapse, mobile off-canvas drawer, header strip, collapsible stats; localStorage prvs_layout; 26/26 jsdom relocation + classic-regression checks.
