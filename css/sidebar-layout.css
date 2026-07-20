@@ -258,6 +258,10 @@ html.layout-sidebar #sbStatsSec { margin: 0 0 12px; }
 html.layout-sidebar #sbStatsSec .sb-sec-b { padding: 10px; }
 html.layout-sidebar #sbStatsSec .stats-bar { margin: 0; }
 
+/* ── Wish floating button: clear the sidebar (classic keeps bottom-left) ── */
+html.layout-sidebar #erFloatingBtn { left: calc(var(--sbw) + 14px) !important; }
+html.layout-sidebar.sb-rail #erFloatingBtn { left: calc(var(--sb-railw) + 14px) !important; }
+
 /* ── Mobile: sidebar becomes an off-canvas drawer ── */
 @media (max-width: 900px) {
   html.layout-sidebar #sbShell {
