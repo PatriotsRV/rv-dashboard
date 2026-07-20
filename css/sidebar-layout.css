@@ -258,6 +258,121 @@ html.layout-sidebar #sbStatsSec { margin: 0 0 12px; }
 html.layout-sidebar #sbStatsSec .sb-sec-b { padding: 10px; }
 html.layout-sidebar #sbStatsSec .stats-bar { margin: 0; }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CARD VISUAL PARITY with sidebar-mockup v0.7 (sidebar mode only)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Board grid density + dark tile look */
+html.layout-sidebar .board-grid {
+  grid-template-columns: repeat(auto-fill, minmax(285px, 1fr));
+  gap: 14px;
+}
+html.layout-sidebar .ro-card {
+  background: var(--sb-panel);
+  border: 1px solid var(--sb-border);
+  border-radius: 12px;
+}
+
+/* Per-card chevron groups (mockup .csec) */
+html.layout-sidebar .sb-csec {
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  background: var(--sb-panel2);
+  margin: 7px 10px 0;
+}
+html.layout-sidebar .ro-card .sb-csec:last-child { margin-bottom: 10px; }
+html.layout-sidebar .sb-csec-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .5px;
+  color: var(--sb-text);
+}
+html.layout-sidebar .sb-csec-h:hover { background: rgba(47,129,247,.08); }
+html.layout-sidebar .sb-csec-h .chev {
+  margin-left: auto;
+  color: var(--sb-muted);
+  font-size: 10px;
+  transition: transform .15s;
+}
+html.layout-sidebar .sb-csec.open .sb-csec-h .chev { transform: rotate(180deg); }
+html.layout-sidebar .sb-csec-b { display: none; padding: 8px 10px 10px; border-top: 1px solid var(--sb-border); }
+html.layout-sidebar .sb-csec.open .sb-csec-b { display: block; }
+
+/* Card action buttons → mockup .fbtn look (slate fill + colored left accent) */
+html.layout-sidebar .ro-card .sb-csec-b button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: .3px;
+  cursor: pointer;
+  margin: 0 0 7px !important;
+  background: #333f58 !important;
+  border: 1px solid #46536e !important;
+  border-left: 4px solid #46536e !important;
+  color: #f2f6fc !important;
+  text-transform: none !important;
+}
+html.layout-sidebar .ro-card .sb-csec-b button:hover { background: #3d4a66 !important; border-color: #5a6a8c !important; }
+/* accents per action */
+html.layout-sidebar .ro-card .edit-ro-btn        { border-left-color: var(--sb-blue) !important; }
+html.layout-sidebar .ro-card .schedule-ro-btn    { border-left-color: #f59e0b !important; }
+html.layout-sidebar .ro-card .work-order-btn     { border-left-color: #ff6a00 !important; }
+html.layout-sidebar .ro-card .parts-btn          { border-left-color: #f59e0b !important; }
+html.layout-sidebar .ro-card .request-parts-btn  { border-left-color: #FF1493 !important; }
+html.layout-sidebar .ro-card .mark-ordered-btn   { border-left-color: #FF1493 !important; }
+html.layout-sidebar .ro-card .message-customer-btn { border-left-color: #22c55e !important; }
+html.layout-sidebar .ro-card .photo-upload-btn   { border-left-color: var(--sb-blue) !important; }
+html.layout-sidebar .ro-card .archive-ro-btn     { border-left-color: #5c6b85 !important; }
+html.layout-sidebar .ro-card .qr-toggle-btn      { border-left-color: #5c6b85 !important; }
+/* Tech Check In stays the solid-green primary (mockup .f-solid) */
+html.layout-sidebar .ro-card .sb-csec-b button.checkin-btn {
+  background: #22c55e !important;
+  border: none !important;
+  border-left: none !important;
+  color: #06281a !important;
+  font-weight: 800 !important;
+}
+html.layout-sidebar .ro-card .sb-csec-b button.checkin-btn:hover { background: #3fd66f !important; }
+
+/* Stats: keep the "on lot" sub-line from wrapping huge */
+html.layout-sidebar #statTotalOnLot { font-size: 1rem !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SIDEBAR SECTION visual parity (kill the classic blue ALL-CAPS labels)
+   ════════════════════════════════════════════════════════════════════════ */
+html.layout-sidebar #sbScrollWrap .filter-label,
+html.layout-sidebar #sbScrollWrap .view-mode-label {
+  color: var(--sb-text) !important;
+  text-transform: none !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: normal !important;
+}
+html.layout-sidebar #sbScrollWrap .filter-active-indicator { background: var(--sb-blue); }
+html.layout-sidebar #sbScrollWrap .filter-chevron { color: var(--sb-muted); }
+html.layout-sidebar #sbScrollWrap .filter-btn {
+  background: #333f58 !important;
+  border: 1px solid #46536e !important;
+  color: #f2f6fc !important;
+}
+html.layout-sidebar #sbScrollWrap .filter-btn.active {
+  background: var(--sb-blue) !important;
+  border-color: var(--sb-blue) !important;
+  color: #fff !important;
+}
+
 /* ── Wish floating button: clear the sidebar (classic keeps bottom-left) ── */
 html.layout-sidebar #erFloatingBtn { left: calc(var(--sbw) + 14px) !important; }
 html.layout-sidebar.sb-rail #erFloatingBtn { left: calc(var(--sb-railw) + 14px) !important; }

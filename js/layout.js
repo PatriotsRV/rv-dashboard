@@ -122,11 +122,136 @@
     } catch (e) {}
   }
 
+  /* ── Card chevron-group regrouping (sidebar mode only) ──────────────────
+     Ports the sidebar-mockup v0.5–0.7 card organization onto the REAL cards:
+     always-visible triage layer stays put; everything else is relocated into
+     6 collapsible chevron groups appended at the card end. Pure reparenting —
+     ids, data-action delegation, and listeners survive. render.js untouched;
+     a MutationObserver re-runs the pass after every board re-render. */
+
+  var GROUPS = [
+    { key: 'mgmt',  title: '📋 RO MANAGEMENT' },
+    { key: 'notif', title: '🔔 NOTIFICATIONS & REMINDERS' },
+    { key: 'work',  title: '🧰 WORK' },
+    { key: 'parts', title: '🔩 PARTS' },
+    { key: 'cust',  title: '💬 CUSTOMER' },
+    { key: 'admin', title: '⚙️ ADMIN' }
+  ];
+
+  // selector → group key. Matched in card DOM order per group, moved in order.
+  var GROUP_MAP = [
+    ['.insurance-badge', 'mgmt'], ['.customer-pay-badge', 'mgmt'],
+    ['.warranty-badge', 'mgmt'], ['.hybrid-badge', 'mgmt'],
+    ['.shop-badge', 'mgmt'], ['.training-badge', 'mgmt'],
+    ['.status-selector-container', 'mgmt'], ['.wo-summary-chips', 'mgmt'],
+    ['.note-item[data-field="roStatusNotes"]', 'mgmt'],
+    ['.edit-ro-btn', 'mgmt'], ['.card-secondary-btn[data-action="add-to-list"]', 'mgmt'],
+    ['.schedule-ro-btn', 'mgmt'],
+    ['.key-dates-row', 'notif'],
+    ['.checkin-btn', 'work'], ['.keys-power-row', 'work'],
+    ['.card-parking-badge', 'work'], ['.progress-section', 'work'],
+    ['.time-logs-section', 'work'], ['.work-order-btn', 'work'],
+    ['.parts-badge', 'parts'], ['.parts-status-chip', 'parts'],
+    ['.request-parts-btn', 'parts'], ['.parts-btn', 'parts'],
+    ['.mark-ordered-btn', 'parts'],
+    ['.note-item[data-field="customerCommunicationNotes"]', 'cust'],
+    ['.message-customer-btn', 'cust'],
+    ['.rv-info', 'admin'], ['.photo-upload-btn', 'admin'],
+    ['.qr-collapsible-wrapper', 'admin'], ['.archive-ro-btn', 'admin']
+  ];
+
+  window.sbToggleCsec = function (el) {
+    el.parentElement.classList.toggle('open');
+  };
+
+  function regroupCard(card) {
+    if (card.hasAttribute('data-sb-grouped')) return;
+    card.setAttribute('data-sb-grouped', '1');
+
+    // Build group bodies (detached)
+    var bodies = {};
+    GROUP_MAP.forEach(function (pair) {
+      var els = card.querySelectorAll(pair[0]);
+      for (var i = 0; i < els.length; i++) {
+        // phone/email rows are pulled from .rv-info separately below, and
+        // .rv-info itself moves to admin — skip descendants already captured
+        if (!bodies[pair[1]]) {
+          bodies[pair[1]] = document.createElement('div');
+          bodies[pair[1]].className = 'sb-csec-b';
+        }
+        bodies[pair[1]].appendChild(els[i]);
+      }
+    });
+
+    // Customer group: pull phone/email rows out of the (now-moved) rv-info
+    var rvInfo = bodies.admin && bodies.admin.querySelector('.rv-info');
+    if (rvInfo) {
+      var links = rvInfo.querySelectorAll('a[href^="tel:"], a[href^="mailto:"]');
+      for (var j = 0; j < links.length; j++) {
+        var row = links[j].closest('.info-row');
+        if (row) {
+          if (!bodies.cust) { bodies.cust = document.createElement('div'); bodies.cust.className = 'sb-csec-b'; }
+          // keep phone above email above comm notes
+          bodies.cust.insertBefore(row, bodies.cust.querySelector('.note-item, .message-customer-btn'));
+        }
+      }
+      if (!rvInfo.querySelector('.info-row')) rvInfo.remove();
+      if (bodies.admin && !bodies.admin.childNodes.length) delete bodies.admin;
+    }
+
+    // Drop now-empty original wrappers
+    ['.card-actions-primary', '.card-actions-secondary', '.notes-section'].forEach(function (sel) {
+      var w = card.querySelector(sel);
+      if (w && !w.querySelector('button, .note-item')) w.remove();
+    });
+
+    // Append populated groups in canonical order
+    GROUPS.forEach(function (g) {
+      if (!bodies[g.key]) return;
+      var sec = document.createElement('div');
+      sec.className = 'sb-csec';
+      var h = document.createElement('div');
+      h.className = 'sb-csec-h';
+      h.setAttribute('onclick', 'sbToggleCsec(this)');
+      h.innerHTML = g.title + '<span class="chev">▼</span>';
+      sec.appendChild(h);
+      sec.appendChild(bodies[g.key]);
+      card.appendChild(sec);
+    });
+  }
+
+  function regroupAll() {
+    var cards = document.querySelectorAll('#boardGrid .ro-card:not([data-sb-grouped])');
+    for (var i = 0; i < cards.length; i++) regroupCard(cards[i]);
+  }
+
+  var _regroupQueued = false;
+  function queueRegroup() {
+    if (_regroupQueued) return;
+    _regroupQueued = true;
+    // setTimeout, NOT requestAnimationFrame: rAF is paused in background
+    // tabs, which left freshly-rendered boards ungrouped until refocus.
+    setTimeout(function () {
+      _regroupQueued = false;
+      regroupAll();
+    }, 0);
+  }
+
+  function startCardObserver() {
+    var grid = document.getElementById('boardGrid');
+    if (!grid) return;
+    regroupAll();
+    // childList only (no subtree): fires on board re-render; our own
+    // within-card reparenting never re-triggers it.
+    new MutationObserver(queueRegroup).observe(grid, { childList: true });
+  }
+
   if (isSidebar()) {
+    var boot = function () { relocate(); startCardObserver(); };
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', relocate);
+      document.addEventListener('DOMContentLoaded', boot);
     } else {
-      relocate();
+      boot();
     }
   }
 })();
