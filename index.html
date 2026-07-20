@@ -1,7 +1,22 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.476
+    PRVS Dashboard v1.477
+    v1.477: [S147] SIDEBAR LAYOUT TOGGLE — the team-approved sidebar-mockup.html
+    v0.7 design becomes a fully-functional per-user layout on the REAL dashboard.
+    Classic ⇄ Sidebar switch: 🧭 Sidebar View button (classic header) / ↩ Classic
+    View (sidebar footer); persisted in localStorage prvs_layout. Implementation
+    is DOM RELOCATION, not duplication: an early <head> script sets
+    html.layout-sidebar before paint; js/layout.js (new, plain script) then moves
+    the existing header/search/filter/stats nodes into the #sbShell slots — ids,
+    inline handlers, and listeners survive the move, so every module (render,
+    parts, work-list, i18n, auth gating …) works unchanged in both layouts, and
+    ALL writes/modals/audit flows are fully functional in the sidebar view.
+    css/sidebar-layout.css (new) is scoped entirely under html.layout-sidebar —
+    zero effect on classic. Desktop: fixed 260px sidebar + collapsible rail;
+    Mobile (<900px): off-canvas drawer + 🎛️ Filters button. Stats bar gains a
+    collapsible 📊 Stats wrapper (sidebar mode only). sidebar-mockup.html stays
+    untouched as the design reference. No DB change.
     v1.476: [GH#39 S144] PB engagement warning in the message composer. Project
     Blue silently swallows outbound to any number that has never texted OUR PB
     line (+1 940-407-4145): it returns success, issues a pbm_ handle, then queues
@@ -596,11 +611,57 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <!-- Phase 19 (v1.444 S91): embedded CSS moved VERBATIM to css/dashboard.css -->
     <link rel="stylesheet" href="css/dashboard.css">
+    <!-- v1.477 (S147): Sidebar layout toggle. Class applied BEFORE first paint to
+         avoid layout flash; all sidebar CSS is scoped under html.layout-sidebar so
+         the classic layout is untouched when the toggle is off. -->
+    <script>
+      try {
+        if (localStorage.getItem('prvs_layout') === 'sidebar') {
+          document.documentElement.classList.add('layout-sidebar');
+        }
+      } catch (e) {}
+    </script>
+    <link rel="stylesheet" href="css/sidebar-layout.css">
 </head>
 <body>
     <div class="noise-overlay"></div>
-    
+
+    <!-- ================= SIDEBAR SHELL (v1.477 S147) =================
+         Empty slots only — js/layout.js relocates the classic DOM nodes in
+         here at boot when html.layout-sidebar is set. Hidden in classic mode
+         (css/sidebar-layout.css). Design from sidebar-mockup.html v0.7. -->
+    <aside id="sbShell">
+      <div id="sbScrollWrap">
+        <div id="sbSlotSearch"></div>
+        <div id="sbSlotPrimary"></div>
+        <div class="sb-sec open" id="sbSecQL">
+          <div class="sb-sec-h" onclick="sbToggleSec('sbSecQL')">🧩 Quick Links<span class="chev">▼</span></div>
+          <div class="sb-sec-b" id="sbSlotQL"></div>
+        </div>
+        <div id="sbSlotDays"></div>
+        <div class="sb-filter-slot" id="sbSlotParts"></div>
+        <div class="sb-filter-slot" id="sbSlotROType"></div>
+        <div class="sb-filter-slot" id="sbSlotRepair"></div>
+        <div class="sb-filter-slot" id="sbSlotStatus"></div>
+      </div>
+      <div id="sbFoot">
+        <span class="sb-foot-label">
+          <button onclick="localStorage.setItem('prvs_layout','classic');location.reload()" title="Switch back to the classic layout">↩ Classic View</button>
+        </span>
+        <button id="sbRailBtn" title="Collapse sidebar" onclick="sbToggleRail()">⏪</button>
+      </div>
+    </aside>
+    <button id="sbDrawerBtn" onclick="sbOpenDrawer()" title="Open filters">🎛️ Filters</button>
+    <div id="sbScrim" onclick="sbCloseDrawer()"></div>
+
     <div class="container">
+        <!-- Sidebar-mode header strip — live meta relocated here by js/layout.js -->
+        <div id="sbHdrStrip">
+          <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
+          <span class="sb-hdr-right">
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.477</span>
+          </span>
+        </div>
         <header>
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
                 <div style="display: flex; align-items: center; gap: 20px;">
@@ -626,7 +687,8 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.476</span>
+                <button id="layoutToggleBtn" onclick="localStorage.setItem('prvs_layout','sidebar');location.reload()" title="Try the new sidebar layout" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer;">🧭 Sidebar View</button>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.477</span>
             </div>
         </header>
 
@@ -3366,7 +3428,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.451 - Released 2026-06-14 - WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.477 - 2026-07-20 - Sidebar Layout Toggle (Session 147): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -7242,6 +7304,10 @@ function toggleWOTasks(tasksId, chevId) {
 
     <!-- Phase 0: module entry point (currently a no-op; modules will be populated phase by phase per docs/specs/MODULARIZATION_ROADMAP.md) -->
     <script type="module" src="js/app.js"></script>
+    <!-- v1.477 (S147): sidebar layout switcher — relocates classic DOM into the
+         #sbShell slots when html.layout-sidebar is set; no-op in classic mode.
+         Plain script (not a module): defines the window.sb* inline handlers. -->
+    <script src="js/layout.js"></script>
 
     <!-- Phase 4.5-E (v1.429): `defer` added to both Google CDN tags so the
          module's window bridge (js/app.js, loaded above as type="module" — also
