@@ -472,6 +472,12 @@ html.layout-sidebar .ro-card .note-item[data-field="repairDescription"] {
   margin: 0 10px 8px;
 }
 
+/* ── Boot flash fix: the pre-auth sampleData placeholder cards have no
+   Supabase id (data-ro-sid="") — hide them in sidebar mode so demo ROs
+   (with fake overdue dates) never flash alert banners before the live
+   board lands. Real ROs always carry a uuid. Classic mode unchanged. ── */
+html.layout-sidebar .ro-card[data-ro-sid=""] { display: none; }
+
 /* ── Date-trip + notification alert banners (mockup v0.6 triage layer) ──
    Rendered by render.js on every card but hidden in classic mode. */
 .sb-dalert { display: none; }
