@@ -1,7 +1,14 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.479
+    PRVS Dashboard v1.480
+    v1.480: [GH#39 S151e] Messages board round 3 (rides with messages-v1.11):
+    details pane gains customer EMAIL + ADDRESS with one-tap copy (newest live
+    repair_orders row for the number, cashiered archive fallback); page-wide
+    readability bump on messages.html (root 16 -> 17.5px + darker 1.5px input
+    borders #4E7CA8); mobile fixes (one-row header, slim composer, Send always
+    on-screen); js/messaging.js composer-extras row spacing fix (affects the
+    RO card modal too - the ONLY index.html-side change in this bump).
     v1.479: [GH#39 S151b] MMS attach + emoji picker + per-user SMS signatures.
     Composer (RO card modal + messages.html v1.8 — ONE implementation in
     js/messaging.js composerExtrasHtml()/initComposerExtras()) gains: 📎 photo
@@ -654,7 +661,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.479</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.480</span>
             </div>
         </header>
 

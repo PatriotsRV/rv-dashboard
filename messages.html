@@ -2,6 +2,14 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.11 (Session 151, 2026-07-21): CONTACT INFO + READABILITY (Roland).
+    (1) Details pane shows the customer's EMAIL and ADDRESS with one-tap
+    copy buttons — sourced from the newest live repair_orders row for the
+    number, falling back to the newest cashiered (archived) row; renders
+    "No email or address on file." when neither exists. (2) Readability:
+    root font-size 16 -> 17.5px (+9% on every rem-based size, shared bubble
+    renderer included) and input borders darkened + thickened
+    (--input-border #7FA6CB, 1.5px) for older eyes.
     v1.10b (same session): SEARCH ALL HISTORY (Roland directive). The list
     window is still the newest 1000, but typing 3+ chars in search now also
     runs a debounced (350ms) server-side sweep of the FULL conversations
@@ -139,7 +147,12 @@
             --celeste-deep: #4E8FC7;
             --celeste-mist: #EAF4FB;
             --gold: #C9A544;            /* the third star                    */
+            --input-border: #4E7CA8;    /* v1.11a: darker still per Roland */
         }
+        /* v1.11: one-step readability bump — every rem-based size on the page
+           (bubbles included, they come from the shared renderer in rem) scales
+           off this root. 16px -> 17.5px ≈ +9%, per Roland for older eyes. */
+        html { font-size: 17.5px; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Barlow Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -172,7 +185,7 @@
         .list-tools { padding: 10px; border-bottom: 1px solid var(--bg-tertiary); }
         .search-input {
             width: 100%; padding: 8px 12px; background: var(--bg-secondary); color: var(--text-primary);
-            border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; font-family: inherit;
+            border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.9rem; font-family: inherit;
         }
         .search-input::placeholder { color: #8FA9C2; }
         .filter-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
@@ -218,7 +231,7 @@
         .composer { padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bg-tertiary); background: var(--bg-secondary); }
         .composer textarea {
             width: 100%; padding: 10px 12px; background: var(--bg-secondary); color: var(--text-primary);
-            border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.92rem; font-family: inherit; resize: vertical;
+            border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.92rem; font-family: inherit; resize: vertical;
         }
         .composer textarea::placeholder { color: #8FA9C2; }
         .send-btn {
@@ -249,7 +262,7 @@
         }
         .assign-select, .assign-input {
             width: 100%; padding: 8px 10px; background: var(--bg-secondary); color: var(--text-primary);
-            border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px;
+            border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px;
         }
         .mini-btn {
             background: var(--celeste-mist); color: #3E5C79; border: 1px solid var(--border-color);
@@ -293,6 +306,18 @@
             body.thread-open .list-pane { display: none; }
             body.thread-open .thread-pane { display: flex; }
             .mobile-back { display: inline-block; }
+            /* v1.11a MOBILE: the line label + badges wrapped the header to
+               ~3 rows while .layout still assumed 55px — everything below
+               shifted down and Send fell off-screen. Keep the header ONE
+               row and slim the composer so Send always stays visible. */
+            #pbLine, #verBadge { display: none; }
+            .header { padding: 8px 12px; }
+            .badge-role { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            #msgSigPreview { display: none !important; } /* sig still sends; preview costs space */
+            #msgExtrasRow { margin: 6px 0 !important; }
+            .composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
+            .composer textarea { rows: 2; }
+            .send-btn { margin-top: 6px; padding: 9px; }
         }
         .details-toggle { display: none; }
     </style>
@@ -379,6 +404,7 @@
                     </div>
                     <div id="detailPhone" style="font-size:0.82rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; margin-top:2px;"></div>
                     <div id="detailOptout" style="display:none; margin-top:6px; color:#fca5a5; font-size:0.78rem;">&#128721; Opted out (STOP)</div>
+                    <div id="detailContact" style="margin-top:8px;"></div><!-- v1.11: email + address from RO / archive -->
                 </div>
                 <div class="details-section">
                     <div class="details-label">Linked ROs</div>
@@ -433,7 +459,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.10b';
+const PAGE_VERSION = 'messages v1.11';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -800,6 +826,53 @@ async function renderThread() {
     const warnEl = document.getElementById('msgPbWarn');
     if (warnEl) warnEl.innerHTML = pbEngagementBannerHtml(pbEngagement(msgs));
 }
+// v1.11: contact info (email/address) with one-tap copy.
+function _contactRowHtml(label, value) {
+    return `<div style="display:flex; align-items:flex-start; gap:6px; margin-top:4px;">
+        <span style="flex:0 0 auto; font-size:0.68rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; padding-top:2px;">${label}</span>
+        <span style="flex:1; font-size:0.8rem; color:var(--text-primary); word-break:break-word; user-select:all;">${escapeHtml(value)}</span>
+        <button class="mini-btn" style="flex:0 0 auto; padding:1px 7px; font-size:0.72rem;" title="Copy ${label.toLowerCase()}" onclick="copyContactValue(this)" data-copy="${escapeHtml(value)}">&#128203;</button>
+    </div>`;
+}
+async function copyContactValue(btn) {
+    try {
+        await navigator.clipboard.writeText(btn.dataset.copy || '');
+        showToast('Copied.', 'success');
+    } catch (e) { showToast('Copy failed - select the text and copy manually.', 'warning'); }
+}
+async function renderContactInfo(c, linkedROs) {
+    const box = document.getElementById('detailContact');
+    if (!box) return;
+    box.innerHTML = '';
+    // Newest-first live ROs that carry contact fields.
+    const sorted = [...(linkedROs || [])].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    let email = sorted.find(r => (r.email || '').trim())?.email?.trim() || '';
+    let address = sorted.find(r => (r.address || '').trim())?.address?.trim() || '';
+    // Archive fallback: cashiered keeps email/address for past customers.
+    if (!email || !address) {
+        try {
+            const last4 = c.phone_key.slice(-4);
+            const { data: arch, error: archErr } = await getSB()
+                .from('cashiered')
+                .select('phone, email, address, date_received')
+                .ilike('phone', '%' + last4 + '%')
+                .order('date_received', { ascending: false })
+                .limit(20);
+            if (!archErr && arch) {
+                const mine = arch.filter(r => phoneKeyOf(r.phone) === c.phone_key);
+                if (!email) email = (mine.find(r => (r.email || '').trim())?.email || '').trim();
+                if (!address) address = (mine.find(r => (r.address || '').trim())?.address || '').trim();
+            }
+        } catch (e) { console.error('cashiered contact lookup failed:', e); }
+    }
+    // Still selected? (async race guard)
+    if (_activeConvo?.id !== c.id) return;
+    let html = '';
+    if (email) html += _contactRowHtml('Email', email);
+    if (address) html += _contactRowHtml('Addr', address);
+    box.innerHTML = html || '<div style="font-size:0.72rem; color:#8FA9C2; margin-top:2px;">No email or address on file.</div>';
+}
+
 async function renderDetails() {
     const c = _activeConvo;
     if (!c) return;
@@ -822,16 +895,23 @@ async function renderDetails() {
     roBox.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
     const { data: ros, error: roErr } = await getSB()
         .from('repair_orders')
-        .select('id, ro_id, customer_name, rv, phone, status')
+        .select('id, ro_id, customer_name, rv, phone, status, email, address, updated_at')
         .is('deleted_at', null)
         .not('phone', 'is', null);
+    let linked = [];
     if (roErr) { roBox.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading ROs</span>'; }
     else {
-        const linked = (ros || []).filter(r => phoneKeyOf(r.phone) === c.phone_key);
+        linked = (ros || []).filter(r => phoneKeyOf(r.phone) === c.phone_key);
         roBox.innerHTML = linked.length
             ? linked.map(r => `<a class="ro-chip" href="index.html?ro=${encodeURIComponent(r.ro_id || '')}" target="_blank" title="${escapeHtml(r.customer_name || '')} — ${escapeHtml(r.status || '')}">${escapeHtml(r.ro_id || '?')}</a>`).join('')
             : '<span style="color:#64748b; font-size:0.8rem;">No active RO for this number.</span>';
     }
+
+    // ── v1.11: email + address (Roland directive: easy to see + copy) ──
+    // Source of truth order: newest live RO that has the field, else the
+    // newest cashiered (archived) RO for this number. Render nothing when
+    // we simply don't have it.
+    renderContactInfo(c, linked);
 
     // Assignment history.
     const evBox = document.getElementById('eventList');
@@ -1096,6 +1176,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 // Inline onclick bridge.
 Object.assign(window, {
     openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
+    copyContactValue, // v1.11
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });

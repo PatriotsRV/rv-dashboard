@@ -201,7 +201,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         // messages.html carries the same block statically).
         export function composerExtrasHtml() {
             return `
-                <div id="msgExtrasRow" style="position:relative; display:flex; align-items:center; gap:8px; margin:-4px 0 8px;">
+                <div id="msgExtrasRow" style="position:relative; display:flex; align-items:center; gap:10px; margin:8px 0 10px;">
                     <button type="button" id="msgAttachBtn" title="Attach a photo (MMS)" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
                     <button type="button" id="msgEmojiBtn" title="Insert emoji" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F60A}</button>
                     <span id="msgAttachChip" style="display:none; align-items:center; gap:6px; font-size:0.72rem; color:var(--accent-info); border:1px solid rgba(96,165,250,0.4); border-radius:6px; padding:2px 8px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
