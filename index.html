@@ -4,8 +4,13 @@
     PRVS Dashboard v1.477
     v1.477: [S147] SIDEBAR LAYOUT TOGGLE — the team-approved sidebar-mockup.html
     v0.7 design becomes a fully-functional per-user layout on the REAL dashboard.
-    Classic ⇄ Sidebar switch: 🧭 Sidebar View button (classic header) / ↩ Classic
-    View (sidebar footer); persisted in localStorage prvs_layout. Implementation
+    Classic ⇄ Sidebar switch (S152 deploy plan, Roland 7/21): "🧪 New RO DB
+    Tester" header link -> sidebar-mockup.html, now a tiny LAUNCHER page that
+    sets prvs_layout=sidebar and opens index.html (one codebase, no duplicated
+    copy; the team-reviewed v0.7 mockup is preserved at tag sidebar-mockup-v0.7).
+    Return path: ↩ Classic View (sidebar footer). The header 🧭 Sidebar View
+    toggle button was REMOVED S152 — the tester page is the single entry point;
+    persisted in localStorage prvs_layout. Implementation
     is DOM RELOCATION, not duplication: an early <head> script sets
     html.layout-sidebar before paint; js/layout.js (new, plain script) then moves
     the existing header/search/filter/stats nodes into the #sbShell slots — ids,
@@ -15,8 +20,7 @@
     css/sidebar-layout.css (new) is scoped entirely under html.layout-sidebar —
     zero effect on classic. Desktop: fixed 260px sidebar + collapsible rail;
     Mobile (<900px): off-canvas drawer + 🎛️ Filters button. Stats bar gains a
-    collapsible 📊 Stats wrapper (sidebar mode only). sidebar-mockup.html stays
-    untouched as the design reference. No DB change.
+    collapsible 📊 Stats wrapper (sidebar mode only). No DB change.
     v1.476: [GH#39 S144] PB engagement warning in the message composer. Project
     Blue silently swallows outbound to any number that has never texted OUR PB
     line (+1 940-407-4145): it returns success, issues a pbm_ handle, then queues
@@ -687,7 +691,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <button id="layoutToggleBtn" onclick="localStorage.setItem('prvs_layout','sidebar');location.reload()" title="Try the new sidebar layout" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer;">🧭 Sidebar View</button>
+                <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
                 <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.477</span>
             </div>
         </header>
