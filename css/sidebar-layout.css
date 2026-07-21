@@ -333,7 +333,11 @@ html.layout-sidebar .ro-card .work-order-btn     { border-left-color: #ff6a00 !i
 html.layout-sidebar .ro-card .parts-btn          { border-left-color: #f59e0b !important; }
 html.layout-sidebar .ro-card .request-parts-btn  { border-left-color: #FF1493 !important; }
 html.layout-sidebar .ro-card .mark-ordered-btn   { border-left-color: #FF1493 !important; }
-html.layout-sidebar .ro-card .message-customer-btn { border-left-color: #22c55e !important; }
+/* [S152] Sidebar CUSTOMER-group design (approved S146, missed at S147 build,
+   caught in the S152 live regression): the 💬 Thread pill inside the CUSTOMER
+   group is the single messaging entry — the full-card "Message Customer"
+   secondary button is HIDDEN in sidebar mode. Classic keeps it (v1.471). */
+html.layout-sidebar .ro-card .message-customer-btn { display: none !important; }
 html.layout-sidebar .ro-card .photo-upload-btn   { border-left-color: var(--sb-blue) !important; }
 html.layout-sidebar .ro-card .archive-ro-btn     { border-left-color: #5c6b85 !important; }
 html.layout-sidebar .ro-card .qr-toggle-btn      { border-left-color: #5c6b85 !important; }
