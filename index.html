@@ -1,7 +1,17 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.478
+    PRVS Dashboard v1.479
+    v1.479: [GH#39 S151b] MMS attach + emoji picker + per-user SMS signatures.
+    Composer (RO card modal + messages.html v1.8 — ONE implementation in
+    js/messaging.js composerExtrasHtml()/initComposerExtras()) gains: 📎 photo
+    attach (client-side downscale toward MMS size, upload to NEW public bucket
+    message-media, sent via textly-send v1.1 media[]; photo-only sends allowed),
+    😊 emoji picker (40 common, cursor-insert), ✍️ auto-appended signature from
+    NEW staff.sms_signature with a preview under the composer (photo-only sends
+    still sign). Migration message_media_signatures_s151.sql (bucket + policy +
+    column + initial signatures). textly-send v1.1: media_url accepts string OR
+    array; body optional when media present.
     v1.478: [GH#39 S151] TEXTLY PIVOT — outbound texting swings from Project
     Blue to Textly (Vested Networks' white-label of Textable). Kenect died
     7/20 when Vested activated Textly, so the shop was hard down on texting;
@@ -644,7 +654,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.478</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.479</span>
             </div>
         </header>
 

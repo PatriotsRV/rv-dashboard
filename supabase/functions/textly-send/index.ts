@@ -1,6 +1,10 @@
 // ============================================================
 // textly-send (GH#39 Textly pivot, Session 151, 2026-07-21) - outbound only
 // ============================================================
+// v1.1 (Session 151, same day): MMS + photo-only sends. media_url accepts a
+//   string OR an array (Textable media[] takes multiple public URLs), and a
+//   send with media but no text is valid (message goes up as ''). Pairs with
+//   the S151b composer attach (public bucket message-media).
 // v1.0: Textly (Vested Networks' white-label of Textable) replaces Project
 // Blue as the outbound SMS/MMS transport. API-compatible DROP-IN for
 // projectblue-send: SAME request/response contract, so js/messaging.js and
@@ -119,10 +123,14 @@ Deno.serve(async (req: Request) => {
   const content = action === "test"
     ? (String(payload.body || "").trim() || "PRVS Textly test - if you got this, the RO dashboard can text you.")
     : String(payload.body || "").trim();
-  const mediaUrl = payload.media_url ? String(payload.media_url).trim() : "";
+  // v1.1: media_url may be a single URL or an array of URLs.
+  const mediaList: string[] = (Array.isArray(payload.media_url)
+    ? payload.media_url.map((u) => String(u).trim())
+    : payload.media_url ? [String(payload.media_url).trim()] : []
+  ).filter((u) => /^https?:/i.test(u));
 
   if (!to) return json({ error: "Missing 'to' phone number (E.164, e.g. +12145551234)" }, 400);
-  if (!content) return json({ error: "Missing message body" }, 400);
+  if (!content && mediaList.length === 0) return json({ error: "Missing message body (or media)" }, 400);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -158,9 +166,9 @@ Deno.serve(async (req: Request) => {
   const txBody: Record<string, unknown> = {
     to,
     from: fromE164,
-    message: content,
+    message: content, // may be '' on a photo-only MMS (v1.1)
   };
-  if (mediaUrl) txBody.media = [mediaUrl];
+  if (mediaList.length) txBody.media = mediaList;
 
   // ── Call Textly ────────────────────────────────────────────────────
   let txResp: Response;
@@ -207,7 +215,7 @@ Deno.serve(async (req: Request) => {
       phone_to: to,
       phone_from: fromE164,
       body: content,
-      media_url: mediaUrl ? [mediaUrl] : null,
+      media_url: mediaList.length ? mediaList : null,
       message_handle: messageHandle,
       status,
       is_imessage: null, // Textable is SMS/MMS only

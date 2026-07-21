@@ -184,6 +184,165 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             if (warnEl) warnEl.innerHTML = pbEngagementBannerHtml(pbEngagement(msgs));
         }
 
+        // ── S151b: composer extras — 📎 MMS attach, 😊 emoji, ✍️ signature ──
+        // Shared by BOTH send surfaces (RO modal below + messages.html): the
+        // markup uses fixed element ids, initComposerExtras() wires whichever
+        // instance is currently in the DOM, and sendCustomerMessage() reads
+        // the module-level state. One implementation, two composers.
+        let _msgAttachment = null;   // { url, name } after a successful upload
+        let _mySig;                  // undefined = not loaded · null = none · string = signature
+
+        const MSG_MEDIA_BUCKET = 'message-media';
+        const MSG_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // MMS carrier ceiling; we compress toward ~1MB
+
+        const COMPOSER_EMOJIS = ['\u{1F44D}','\u{1F44C}','\u{1F64F}','\u{1F44F}','\u{1F4AA}','\u{1F91D}','\u{1F44B}','✅','\u{1F389}','⭐','\u{1F525}','❤️','\u{1F600}','\u{1F601}','\u{1F602}','\u{1F605}','\u{1F642}','\u{1F609}','\u{1F60E}','\u{1F914}','\u{1F62E}','\u{1F622}','⚠️','❗','❓','\u{1F4C5}','⏰','\u{1F4DE}','\u{1F4AC}','\u{1F4B0}','\u{1F9FE}','\u{1F527}','\u{1F529}','\u{1F6E0}️','\u{1F690}','\u{1F3D5}️','☀️','\u{1F327}️','\u{1F4F7}','\u{1F4CE}'];
+
+        // Markup injected under the textarea (modal builds it inline;
+        // messages.html carries the same block statically).
+        export function composerExtrasHtml() {
+            return `
+                <div id="msgExtrasRow" style="position:relative; display:flex; align-items:center; gap:8px; margin:-4px 0 8px;">
+                    <button type="button" id="msgAttachBtn" title="Attach a photo (MMS)" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
+                    <button type="button" id="msgEmojiBtn" title="Insert emoji" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F60A}</button>
+                    <span id="msgAttachChip" style="display:none; align-items:center; gap:6px; font-size:0.72rem; color:var(--accent-info); border:1px solid rgba(96,165,250,0.4); border-radius:6px; padding:2px 8px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+                    <input type="file" id="msgAttach" accept="image/*" style="display:none;">
+                    <div id="msgEmojiPop" style="display:none; position:absolute; bottom:34px; left:0; z-index:50; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:8px; width:266px; box-shadow:0 8px 24px rgba(0,0,0,0.45);"></div>
+                </div>
+                <div id="msgSigPreview" style="display:none; font-size:0.7rem; color:var(--text-secondary); border-left:2px solid var(--border-color); padding:2px 0 2px 8px; margin:-2px 0 8px; white-space:pre-wrap;"></div>`;
+        }
+
+        async function _loadMySignature() {
+            if (_mySig !== undefined) return _mySig;
+            _mySig = null;
+            try {
+                const email = (typeof currentUser !== 'undefined' && currentUser?.email) || null;
+                if (email && getSB()) {
+                    const { data, error } = await getSB().from('staff')
+                        .select('sms_signature').eq('email', email).maybeSingle();
+                    if (!error && data?.sms_signature && String(data.sms_signature).trim()) {
+                        _mySig = String(data.sms_signature).replace(/\r\n/g, '\n').trim();
+                    }
+                }
+            } catch (e) { console.error('signature load failed (sending without):', e); }
+            return _mySig;
+        }
+
+        export async function refreshSignaturePreview() {
+            const el = document.getElementById('msgSigPreview');
+            if (!el) return;
+            const sig = await _loadMySignature();
+            if (sig) {
+                el.textContent = '✍️ Added to every send:\n' + sig;
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+
+        function _renderAttachChip() {
+            const chip = document.getElementById('msgAttachChip');
+            if (!chip) return;
+            if (_msgAttachment) {
+                chip.style.display = 'inline-flex';
+                chip.innerHTML = `\u{1F5BC}️ ${escapeHtml(_msgAttachment.name)} <a href="#" id="msgAttachClear" title="Remove attachment" style="color:#ef4444; text-decoration:none; font-weight:700;">&times;</a>`;
+                document.getElementById('msgAttachClear')?.addEventListener('click', (e) => {
+                    e.preventDefault(); _msgAttachment = null; _renderAttachChip();
+                });
+            } else {
+                chip.style.display = 'none';
+                chip.innerHTML = '';
+            }
+        }
+
+        // Downscale big images toward MMS-friendly size (max edge 1600px, JPEG).
+        async function _compressImage(file) {
+            if (!/^image\//.test(file.type) || file.type === 'image/gif' || file.size < 1.5 * 1024 * 1024) return file;
+            try {
+                const bmp = await createImageBitmap(file);
+                const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(bmp.width * scale);
+                canvas.height = Math.round(bmp.height * scale);
+                canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.82));
+                if (blob && blob.size < file.size) {
+                    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+                }
+            } catch (e) { console.error('image compress failed (using original):', e); }
+            return file;
+        }
+
+        async function _handleAttachPick(ev) {
+            const file = ev.target.files && ev.target.files[0];
+            ev.target.value = '';
+            if (!file) return;
+            if (!getSB() || (typeof supabaseSession === 'undefined' || !supabaseSession)) {
+                showToast('Sign in first to attach photos.', 'warning'); return;
+            }
+            const btn = document.getElementById('msgAttachBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+            try {
+                const upload = await _compressImage(file);
+                if (upload.size > MSG_MEDIA_MAX_BYTES) {
+                    showToast('That photo is over 5MB even after compression - MMS carriers will reject it. Pick a smaller one.', 'warning', { duration: 8000 });
+                    return;
+                }
+                const safe = (upload.name || 'photo.jpg').replace(/[^A-Za-z0-9._-]/g, '_').slice(-60);
+                const path = `mms/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+                const { error: upErr } = await getSB().storage.from(MSG_MEDIA_BUCKET)
+                    .upload(path, upload, { contentType: upload.type, upsert: false });
+                if (upErr) { showToast('Photo upload failed: ' + upErr.message, 'error', { duration: 8000 }); return; }
+                const { data: pub } = getSB().storage.from(MSG_MEDIA_BUCKET).getPublicUrl(path);
+                if (!pub?.publicUrl) { showToast('Photo uploaded but no public URL came back.', 'error'); return; }
+                _msgAttachment = { url: pub.publicUrl, name: upload.name || 'photo' };
+                _renderAttachChip();
+            } catch (e) {
+                console.error('attach failed:', e);
+                showToast('Attach failed: ' + e.message, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '\u{1F4CE}'; }
+            }
+        }
+
+        function _buildEmojiPop() {
+            const pop = document.getElementById('msgEmojiPop');
+            if (!pop) return;
+            pop.innerHTML = COMPOSER_EMOJIS.map(e =>
+                `<button type="button" class="msg-emoji-opt" data-e="${e}" style="background:transparent; border:none; font-size:1.25rem; padding:3px; cursor:pointer; line-height:1;">${e}</button>`).join('');
+            pop.querySelectorAll('.msg-emoji-opt').forEach(b => b.addEventListener('click', () => {
+                const ta = document.getElementById('msgBody');
+                if (ta) {
+                    const s = ta.selectionStart ?? ta.value.length;
+                    ta.value = ta.value.slice(0, s) + b.dataset.e + ta.value.slice(ta.selectionEnd ?? s);
+                    ta.focus();
+                    ta.selectionStart = ta.selectionEnd = s + b.dataset.e.length;
+                }
+                pop.style.display = 'none';
+            }));
+        }
+
+        // Wire the composer-extras instance currently in the DOM. Safe to call
+        // repeatedly (modal re-opens); it re-binds the fresh elements.
+        export function initComposerExtras() {
+            _msgAttachment = null;
+            document.getElementById('msgAttachBtn')?.addEventListener('click', () => document.getElementById('msgAttach')?.click());
+            document.getElementById('msgAttach')?.addEventListener('change', _handleAttachPick);
+            const emojiBtn = document.getElementById('msgEmojiBtn');
+            const pop = document.getElementById('msgEmojiPop');
+            if (emojiBtn && pop) {
+                _buildEmojiPop();
+                emojiBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
+                });
+                document.addEventListener('click', (e) => {
+                    if (pop.style.display !== 'none' && !pop.contains(e.target) && e.target !== emojiBtn) pop.style.display = 'none';
+                });
+            }
+            _renderAttachChip();
+            refreshSignaturePreview();
+        }
+
         export async function openMessagesModal(ro) {
             if (!ro) { showToast('Open a repair order first, then click Message Customer.', 'warning'); return; }
             if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
@@ -218,12 +377,14 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                     </div>
                     <div id="msgPbWarn"></div>
                     <textarea id="msgBody" class="form-input" rows="3" placeholder="Type a message to the customer…" style="resize:vertical; margin-bottom:10px;"></textarea>
+                    ${composerExtrasHtml()}
                     <div style="display:flex; gap:10px;">
                         <button onclick="closeMessagesModal()" style="flex:0 0 auto; padding:10px 16px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">Cancel</button>
                         <button id="msgSendBtn" onclick="sendCustomerMessage('${roSupabaseId || ''}', '${roCode}')" style="flex:1; padding:10px; border-radius:8px; border:1.5px solid rgba(59,130,246,0.5); background:rgba(59,130,246,0.12); color:#3b82f6; cursor:pointer; font-size:0.9rem; font-weight:700;">\u{1F4E4} Send</button>
                     </div>
                 </div>`;
             document.body.appendChild(modal);
+            initComposerExtras(); // S151b: wire attach/emoji/signature for this instance
             _refreshThread(roSupabaseId, defaultPhone);
         }
 
@@ -242,9 +403,16 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             if (!phoneEl || !bodyEl) return;
 
             const phone = _toE164(phoneEl.value);
-            const body = (bodyEl.value || '').trim();
+            let body = (bodyEl.value || '').trim();
             if (!phone || phone.length < 11) { showToast('Enter a valid phone number in +1XXXXXXXXXX format.', 'warning'); return; }
-            if (!body) { showToast('Type a message first.', 'warning'); return; }
+            // S151b: a photo with no text is a valid MMS.
+            if (!body && !_msgAttachment) { showToast('Type a message (or attach a photo) first.', 'warning'); return; }
+
+            // S151b: per-user signature (staff.sms_signature) auto-appends —
+            // the preview under the composer shows exactly what will be added.
+            const sig = await _loadMySignature();
+            if (sig && body && !body.endsWith(sig)) body = body + '\n\n' + sig;
+            if (sig && !body) body = sig; // photo-only send still signs
 
             if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
             try {
@@ -263,6 +431,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                         ro_code: roCode || null,
                         sent_by: (currentUser && currentUser.email) || null,
                         context: 'ro_customer',
+                        media_url: _msgAttachment ? _msgAttachment.url : null, // S151b MMS
                     }),
                 });
                 const data = await res.json().catch(() => ({}));
@@ -284,6 +453,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                 }
 
                 bodyEl.value = '';
+                _msgAttachment = null; _renderAttachChip(); // S151b: clear after send
                 showToast(`Message sent${data.is_imessage === true ? ' (iMessage)' : data.is_imessage === false ? ' (SMS)' : ''}.`, 'success');
                 log('✅ Textly send ok: ' + (data.message_handle || data.status || ''));
                 _refreshThread(roSupabaseId, phone);
@@ -301,4 +471,6 @@ Object.assign(window, {
   closeMessagesModal,
   refreshMessagesThread,
   sendCustomerMessage,
+  initComposerExtras,      // S151b
+  refreshSignaturePreview, // S151b
 });
