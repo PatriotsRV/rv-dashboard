@@ -1,6 +1,28 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — Inbox + Conversation Assignment v1.9
+    PRVS Messages — Inbox + Conversation Assignment v1.10
+
+    v1.10b (same session): SEARCH ALL HISTORY (Roland directive). The list
+    window is still the newest 1000, but typing 3+ chars in search now also
+    runs a debounced (350ms) server-side sweep of the FULL conversations
+    table — digits-heavy queries match phone_key, otherwise customer_name
+    ilike — merging up to 50 hits into the local cache. Old imported Kenect
+    contacts are now reachable from the search box.
+    v1.10a (same session): existing-number path REWORKED after live test —
+    Roland added a lead whose number carried a closed 2023 Kenect thread under
+    another name; the old behavior kept the stale name + closed status, so the
+    "new" contact was invisible under the Open filter and the name search.
+    Now: rename to the typed name (manager is the authority), reopen, float to
+    top, clear the search box, and the select-after-create is fault-isolated.
+    v1.10 (Session 151, 2026-07-21): NEW CONTACT for leads (Roland directive —
+    early-sales-cycle texting for people with no RO and no message history).
+    "+ New" button beside search (managers+ only, mirroring the S138
+    conversations_insert_manager RLS policy so the UI never offers what the
+    DB would refuse). Modal takes name + mobile; duplicate phone_key opens
+    the existing conversation (with name backfill if empty) instead of
+    duplicating; new rows get status open + last_message_at now so they float
+    to the top. First outbound then flows the normal textly-send path (its
+    phone_key upsert is conflict-safe with the pre-created row).
 
     v1.9 (Session 151, 2026-07-21): ARGENTINA CELESTE THEME (Roland directive —
     "happy and calm"). Full light restyle scoped to this page via the :root
@@ -303,7 +325,10 @@
         <!-- LEFT -->
         <div class="pane list-pane">
             <div class="list-tools">
-                <input id="convoSearch" class="search-input" type="text" placeholder="Search name or phone&hellip;">
+                <div style="display:flex; gap:6px;">
+                    <input id="convoSearch" class="search-input" type="text" placeholder="Search name or phone&hellip;" style="flex:1;">
+                    <button id="newConvoBtn" class="mini-btn primary" style="display:none; flex:0 0 auto; white-space:nowrap;" onclick="openNewConvoModal()" title="Start a conversation with a new lead or customer">&#10133; New</button>
+                </div>
                 <div class="filter-row">
                     <button class="filter-btn active" data-filter="open">Open</button>
                     <button class="filter-btn" data-filter="all">All</button>
@@ -384,6 +409,21 @@
     </div>
 </div>
 
+<!-- S151d (v1.10): New Contact modal — start a conversation with a lead -->
+<div id="newConvoModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(92vw, 380px); box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:12px;">&#10133; New Contact</div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Name (lead / customer)</label>
+        <input id="ncName" class="assign-input" type="text" placeholder="e.g. Dale Brisby" style="margin-bottom:10px;">
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Mobile number</label>
+        <input id="ncPhone" class="assign-input" type="tel" placeholder="+1 or 10 digits" style="margin-bottom:14px;">
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="mini-btn" onclick="closeNewConvoModal()">Cancel</button>
+            <button id="ncCreateBtn" class="mini-btn primary" onclick="createNewConversation()">Create &amp; open</button>
+        </div>
+    </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script type="module">
@@ -393,7 +433,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.9';
+const PAGE_VERSION = 'messages v1.10b';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -562,6 +602,8 @@ function showApp() {
     else if (isManagerOrAdmin()) { badge.className = 'badge-role badge-manager'; badge.textContent = name + ' (Manager)'; }
     else { badge.className = 'badge-role badge-user'; badge.textContent = name; }
     populateAssignSelect();
+    // S151d: New Contact button (managers+, matches the RLS insert policy).
+    if (isManagerOrAdmin()) document.getElementById('newConvoBtn').style.display = '';
     // S151b: attach/emoji/signature composer extras (shared with the RO modal).
     const slot = document.getElementById('composerExtrasSlot');
     if (slot && !slot.innerHTML) { slot.innerHTML = composerExtrasHtml(); initComposerExtras(); }
@@ -571,6 +613,84 @@ function showApp() {
 }
 
 // ── Conversation list ────────────────────────────────────────────────
+// ── S151d (v1.10): New Contact — start a conversation with a lead ────
+// Managers+ only: matches the S138 conversations_insert_manager RLS policy,
+// so the UI never offers a button the DB would 403.
+function openNewConvoModal() {
+    document.getElementById('ncName').value = '';
+    document.getElementById('ncPhone').value = '';
+    document.getElementById('newConvoModal').style.display = 'flex';
+    document.getElementById('ncName').focus();
+}
+function closeNewConvoModal() {
+    document.getElementById('newConvoModal').style.display = 'none';
+}
+function _ncToE164(raw) {
+    const t = String(raw || '').trim();
+    if (t.startsWith('+')) return '+' + t.slice(1).replace(/\D/g, '');
+    const d = t.replace(/\D/g, '');
+    if (d.length === 10) return '+1' + d;
+    if (d.length === 11 && d.startsWith('1')) return '+' + d;
+    return '';
+}
+async function createNewConversation() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can add contacts.', 'warning'); return; }
+    const name = (document.getElementById('ncName').value || '').trim();
+    const phone = _ncToE164(document.getElementById('ncPhone').value);
+    if (!phone || phone.length < 12) { showToast('Enter a valid US mobile number (10 digits or +1XXXXXXXXXX).', 'warning'); return; }
+    const key = phoneKeyOf(phone);
+    const btn = document.getElementById('ncCreateBtn');
+    btn.disabled = true;
+    try {
+        // Already have this number? Open it instead of duplicating.
+        const { data: existing, error: exErr } = await getSB()
+            .from('conversations').select('id, customer_name').eq('phone_key', key).maybeSingle();
+        if (exErr) throw exErr;
+        if (existing) {
+            // v1.10a: this number already has a conversation (often imported
+            // Kenect history under an old/closed name). The manager typing a
+            // name is the authority on who we're talking to NOW: rename it,
+            // REOPEN it, and float it to the top so it behaves like new.
+            const upd = { status: 'open', last_message_at: new Date().toISOString() };
+            if (name) upd.customer_name = name;
+            const { error: nmErr } = await getSB().from('conversations')
+                .update(upd).eq('id', existing.id);
+            if (nmErr) console.error('existing-convo reopen error:', nmErr);
+            closeNewConvoModal();
+            document.getElementById('convoSearch').value = '';
+            await loadConversations();
+            try { await selectConversation(existing.id); }
+            catch (selErr) { console.error('select after reuse failed:', selErr); }
+            showToast(existing.customer_name && name && existing.customer_name !== name
+                ? `That number had prior history as "${existing.customer_name}" - reopened it as ${name}.`
+                : 'That number already had a conversation - reopened it.', 'info');
+            return;
+        }
+        const { data: created, error: insErr } = await getSB().from('conversations').insert({
+            phone_key: key,
+            display_phone: phone,
+            customer_name: name || null,
+            status: 'open',
+            last_message_at: new Date().toISOString(), // floats to top of the list
+        }).select('id').maybeSingle();
+        if (insErr) throw insErr;
+        closeNewConvoModal();
+        document.getElementById('convoSearch').value = '';
+        await loadConversations();
+        if (created?.id) {
+            try { await selectConversation(created.id); }
+            catch (selErr) { console.error('select after create failed:', selErr); }
+        }
+        showToast('Contact added - send the first text below.', 'success');
+    } catch (e) {
+        console.error('createNewConversation error:', e);
+        showToast('Could not add contact: ' + (e.message || e), 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 async function loadConversations() {
     if (!getSB() || !supabaseSession) return;
     const { data, error } = await getSB()
@@ -597,11 +717,16 @@ async function loadConversations() {
 function filteredConversations() {
     const q = (document.getElementById('convoSearch').value || '').trim().toLowerCase();
     const myEmail = (currentUser?.email || '').toLowerCase();
+    // v1.10b: an active SEARCH overrides the status/assignment filters —
+    // "find this person" beats "show me open work". Every imported Kenect
+    // conversation is closed, so filtering search hits by Open hid exactly
+    // the contacts the global search exists to surface.
+    const searching = q.length > 0;
     return _conversations.filter(c => {
-        if (_activeFilter === 'open' && c.status !== 'open') return false;
-        if (_activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
-        if (_activeFilter === 'unassigned' && (c.assigned_to || c.status !== 'open')) return false;
-        if (_activeFilter === 'mine' && ((c.assigned_to || '').toLowerCase() !== myEmail || c.status !== 'open')) return false;
+        if (!searching && _activeFilter === 'open' && c.status !== 'open') return false;
+        if (!searching && _activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
+        if (!searching && _activeFilter === 'unassigned' && (c.assigned_to || c.status !== 'open')) return false;
+        if (!searching && _activeFilter === 'mine' && ((c.assigned_to || '').toLowerCase() !== myEmail || c.status !== 'open')) return false;
         if (q) {
             const hay = ((c.customer_name || '') + ' ' + (c.display_phone || '') + ' ' + c.phone_key).toLowerCase();
             if (!hay.includes(q)) return false;
@@ -640,7 +765,16 @@ function renderConvoList() {
 
 // ── Thread + details ─────────────────────────────────────────────────
 async function selectConversation(id) {
-    const c = _conversations.find(x => x.id === id);
+    let c = _conversations.find(x => x.id === id);
+    // v1.10a: the list holds only the NEWEST 1000 conversations (supabase
+    // default cap; the 3,225-convo Kenect import blew past it). A convo
+    // outside that window (old imported thread reached via New Contact)
+    // is fetched on demand and joined to the local cache.
+    if (!c && getSB()) {
+        const { data, error } = await getSB().from('conversations').select('*').eq('id', id).maybeSingle();
+        if (error) console.error('selectConversation on-demand fetch error:', error);
+        if (data) { c = data; _conversations.push(c); }
+    }
     if (!c) return;
     _activeConvo = c;
     document.body.classList.add('thread-open');
@@ -914,7 +1048,41 @@ async function refreshAll() {
 function backToList() { document.body.classList.remove('thread-open'); }
 function toggleDetails() { document.getElementById('detailsPane').classList.toggle('open'); }
 
-document.getElementById('convoSearch').addEventListener('input', renderConvoList);
+// v1.10b: search covers ALL conversations, not just the newest-1000 window.
+// Local render fires instantly; a debounced server search sweeps the full
+// table and merges any hits the window is missing (Roland directive S151).
+let _searchTimer = null;
+document.getElementById('convoSearch').addEventListener('input', () => {
+    renderConvoList();
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(searchAllConversations, 350);
+});
+async function searchAllConversations() {
+    const q = (document.getElementById('convoSearch').value || '').trim();
+    if (q.length < 3 || !getSB() || !supabaseSession) return;
+    try {
+        const digits = q.replace(/\D/g, '');
+        let query = getSB().from('conversations').select('*');
+        if (digits.length >= 4 && digits.length >= (q.replace(/[\s()+.-]/g, '').length - 1)) {
+            // Phone-ish query: match digits against the phone key.
+            query = query.ilike('phone_key', '%' + digits + '%');
+        } else {
+            // Name query: escape ilike wildcards + PostgREST syntax chars.
+            const safe = q.replace(/[%_,().\\]/g, ' ').trim();
+            if (!safe) return;
+            query = query.ilike('customer_name', '%' + safe + '%');
+        }
+        const { data, error } = await query
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .limit(50);
+        if (error) { console.error('searchAllConversations error:', error); return; }
+        let added = 0;
+        (data || []).forEach(row => {
+            if (!_conversations.some(c => c.id === row.id)) { _conversations.push(row); added++; }
+        });
+        if (added > 0) renderConvoList();
+    } catch (e) { console.error('searchAllConversations failed:', e); }
+}
 document.getElementById('assignFilter').addEventListener('input', populateAssignSelect);
 document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -927,6 +1095,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 
 // Inline onclick bridge.
 Object.assign(window, {
+    openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
