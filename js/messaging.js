@@ -1,18 +1,21 @@
-// js/messaging.js — PRVS Dashboard customer messaging (GH#39, Project Blue)
-// Session 131, 2026-07-04. Supersedes the Sendblue Phase 2 POC module
-// (feature/sendblue-poc, v1.448) — same window-bridge surface, new provider.
+// js/messaging.js — PRVS Dashboard customer messaging (GH#39, Textly)
+// Session 131, 2026-07-04 (Project Blue). S151, 2026-07-21: TEXTLY PIVOT —
+// sends now go through the `textly-send` edge function (Textly = Vested
+// Networks' white-label of Textable), from 940-488-5047, the same line all
+// the imported Kenect history lives on. Same request/response contract as
+// projectblue-send, so this swap is endpoint-name + provider-copy only.
+// Inbound is captured by the `textly-webhook` edge fn (relayWebhook ingest).
 //
-// Sends iMessage/SMS through the `projectblue-send` edge function (dedicated
-// PB line +1 940 407-4145) and renders the conversation for the RO's customer.
-// Inbound replies are captured by the `projectblue-webhook` edge fn into the
-// `messages` table WITHOUT an ro_id (RO routing is a later phase), so the
-// thread query follows the LOCKED threading decision from
+// Thread model unchanged — LOCKED threading decision from
 // docs/specs/MESSAGING_AUTOMATION_SPEC.md §3: **customer-inbox, RO-tagged** —
 // one conversation per customer phone. loadMessages pulls rows matching the
 // RO id OR the customer's phone (both directions), merged chronologically.
 //
-// DEFERRED (spec P3-P6): automated sends, MMS from the modal, delivery-status
-// reconciliation, STOP/HELP handling, per-RO inbound routing.
+// RETIRED S151: the PB engagement warning (S144). Textly sends from the line
+// the customers have been texting for years, so the "may never arrive" trap
+// is gone. pbEngagement()/pbEngagementBannerHtml() are kept as no-op exports
+// so both render surfaces (modal + messages.html) drop the banner without a
+// coordinated markup change; delete them in a later cleanup pass.
 //
 // Conventions: window-bridge pattern (Object.assign at bottom) like the other
 // modules; reads bare globals getSB / currentUser / showToast / escapeHtml /
@@ -20,52 +23,33 @@
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KENECT_LINE_E164 } from './config.js';
 
-        // ── PB engagement (S144) ────────────────────────────────────
-        // Project Blue silently swallows outbound to any number that has never
-        // texted OUR PB line: it returns success, issues a pbm_ handle, and
-        // queues the message forever with no failure event. Evidence S144:
-        // every PB send to a never-engaged number stuck (3/3); 52/56 to engaged
-        // numbers moved. Not an iMessage artifact — 44/44 iMessages to engaged
-        // numbers delivered fine.
-        //
-        // The trap this guards: the S142 Kenect import gave every customer a
-        // deep, warm-looking thread — but that history arrived on the KENECT
-        // line, which PB has never seen. 3,190 of 3,211 conversations (99.3%)
-        // read as engaged to a human and are cold to Project Blue. Before the
-        // import an empty thread was an honest signal; now nothing is.
-        //
-        // Computed from rows already loaded, so it costs no extra round trip.
-        // Safe against loadMessages' newest-200 window: any PB-era inbound is
-        // by definition among the newest rows.
+        // ── PB engagement (S144) — RETIRED S151 (Textly pivot) ──────
+        // The S144 warning existed because Project Blue silently swallowed
+        // outbound to any number that had never texted the PB line (evidence
+        // S144: 3/3 never-engaged sends stuck; the S142 Kenect import made
+        // 99.3% of threads look warm while cold to PB). Textly sends from
+        // 940-488-5047 — the very line all that history arrived on — so the
+        // trap no longer exists. Kept as no-op exports so the two render
+        // surfaces (RO modal + messages.html) drop the banner without a
+        // coordinated markup change. Delete both in a later cleanup pass.
         function _last10(v) { return String(v || '').replace(/\D/g, '').slice(-10); }
 
         export function pbEngagement(rows) {
-            const pbLine = _last10(PB_LINE_E164);
+            // Historical shape preserved; always reads as engaged now.
             const kenectLine = _last10(KENECT_LINE_E164);
             const inbound = (rows || []).filter(m => (m.direction || '') === 'inbound');
-            const onPb = inbound.filter(m => _last10(m.phone_to) === pbLine);
             const onKenect = inbound.filter(m => _last10(m.phone_to) === kenectLine);
             return {
-                engaged: onPb.length > 0,
-                lastPbInboundAt: onPb.length ? onPb[onPb.length - 1].created_at : null,
-                // The dangerous case: looks warm, is cold.
-                kenectOnly: onPb.length === 0 && onKenect.length > 0,
+                engaged: true, // Textly = same line as the history; everyone is reachable
+                lastPbInboundAt: null,
+                kenectOnly: false,
                 kenectInboundCount: onKenect.length,
             };
         }
 
-        // Returns '' when engaged — render unconditionally, it self-suppresses.
-        export function pbEngagementBannerHtml(state) {
-            if (!state || state.engaged) return '';
-            const why = state.kenectOnly
-                ? `The conversation above is <strong>imported Kenect history</strong> — it arrived on our old line (940-488-5047), and Project Blue has never seen it.`
-                : `Project Blue has no inbound from this number on our line.`;
-            return `
-                <div style="border:1px solid rgba(245,158,11,0.5); background:rgba(245,158,11,0.12); border-radius:8px; padding:9px 11px; margin-bottom:10px; font-size:0.76rem; color:var(--text-primary); line-height:1.45;">
-                    \u{26A0}\u{FE0F} <strong>This customer has never texted our Project Blue line.</strong><br>
-                    ${why} Project Blue will accept this message and hold it until they reply first — with no failure notice. <strong>It may never arrive.</strong>
-                    <br><span style="color:var(--text-secondary);">If it's time-sensitive, call them instead.</span>
-                </div>`;
+        // RETIRED S151: always '' — Textly has no engagement gate.
+        export function pbEngagementBannerHtml(_state) {
+            return '';
         }
 
         // Best-effort E.164 normalization for US numbers. The modal lets the
@@ -264,7 +248,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
 
             if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
             try {
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/projectblue-send`, {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${(typeof supabaseSession !== 'undefined' && supabaseSession?.access_token) ? supabaseSession.access_token : SUPABASE_ANON_KEY}`,
@@ -284,7 +268,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                 const data = await res.json().catch(() => ({}));
 
                 if (res.status === 503) {
-                    showToast('Project Blue is not configured yet (PROJECTBLUE_API_KEY not set on the project).', 'warning', { duration: 9000 });
+                    showToast('Textly is not configured yet (TEXTLY_API_TOKEN not set on the project).', 'warning', { duration: 9000 });
                     return;
                 }
                 if (res.status === 403 && data.opted_out) {
@@ -293,15 +277,15 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                     return;
                 }
                 if (!res.ok || data.ok === false) {
-                    const detail = data.error || data.projectblue?.error || `HTTP ${res.status}`;
+                    const detail = data.error || data.textly?.error || `HTTP ${res.status}`;
                     showToast('Send failed: ' + detail, 'error', { duration: 9000 });
-                    log('❌ Project Blue send failed: ' + JSON.stringify(data));
+                    log('❌ Textly send failed: ' + JSON.stringify(data));
                     return;
                 }
 
                 bodyEl.value = '';
                 showToast(`Message sent${data.is_imessage === true ? ' (iMessage)' : data.is_imessage === false ? ' (SMS)' : ''}.`, 'success');
-                log('✅ Project Blue send ok: ' + (data.message_handle || data.status || ''));
+                log('✅ Textly send ok: ' + (data.message_handle || data.status || ''));
                 _refreshThread(roSupabaseId, phone);
             } catch (err) {
                 console.error('sendCustomerMessage error:', err);

@@ -1,7 +1,17 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.6
+    PRVS Messages — Inbox + Conversation Assignment v1.7
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    v1.7 (Session 151, 2026-07-21): TEXTLY PIVOT. Outbound now goes through the
+    textly-send edge fn (Textly = Vested Networks' white-label of Textable),
+    sending from 940-488-5047 — the SAME line all the imported Kenect history
+    lives on. The v1.6 PB engagement banner self-retires (js/messaging.js
+    pbEngagementBannerHtml() now always returns ''); the #msgPbWarn slot and
+    renderThread() call are unchanged. The assignment staff-SMS below also
+    swaps projectblue-send -> textly-send. Inbound is captured by the NEW
+    textly-webhook edge fn (relay ingest; same conversations/messages
+    semantics as projectblue-webhook, which stays deployed but dormant).
 
     v1.6 (Session 144, 2026-07-16): PB engagement warning above the composer.
     This inbox is where the S142 import is most dangerous: staff read a long
@@ -342,7 +352,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.6';
+const PAGE_VERSION = 'messages v1.7';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -748,7 +758,7 @@ async function assignConversation() {
         ownerPhone = (staffRow?.phone_number || '').trim();
         if (ownerPhone) {
             try {
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/projectblue-send`, {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${supabaseSession?.access_token || SUPABASE_ANON_KEY}`,

@@ -1,7 +1,25 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.476
+    PRVS Dashboard v1.478
+    v1.478: [GH#39 S151] TEXTLY PIVOT — outbound texting swings from Project
+    Blue to Textly (Vested Networks' white-label of Textable). Kenect died
+    7/20 when Vested activated Textly, so the shop was hard down on texting;
+    this restores it WITHOUT any number movement: Textly sends from
+    940-488-5047, the SAME VoIP line (hosted at Vested) that all 56k imported
+    Kenect messages arrived on. NEW edge fns textly-send (drop-in
+    request/response contract of projectblue-send; STOP gate + conversations
+    upsert preserved; is_imessage always null — SMS/MMS only) + textly-webhook
+    (relayWebhook ingest; ports ALL projectblue-webhook v1.2 behavior:
+    echo-dedupe [+MessageID relay dedupe + handle backfill], inbound RO
+    routing, conversation upserts, STOP/HELP TCPA gate + auto-replies,
+    assigned-owner notify fork + silo blast). js/messaging.js + messages.html
+    v1.7 point at textly-send; the S144 PB engagement banner SELF-RETIRES
+    (pbEngagementBannerHtml() always '' — the engagement trap was PB-specific
+    and the history line IS the sending line now). js/config.js gains
+    TEXTLY_LINE_E164. PB fns stay deployed but dormant; the
+    projectblue-reconcile cron should be unscheduled (TODO). NOTE v1.477 is
+    reserved by feature/sidebar-layout (unmerged), same precedent as v1.448.
     v1.476: [GH#39 S144] PB engagement warning in the message composer. Project
     Blue silently swallows outbound to any number that has never texted OUR PB
     line (+1 940-407-4145): it returns success, issues a pbm_ handle, then queues
@@ -626,7 +644,7 @@
             </div>
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.476</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.478</span>
             </div>
         </header>
 
