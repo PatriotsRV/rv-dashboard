@@ -9,6 +9,13 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 149 — KENECT DELTA PULL COMPLETE + VERIFIED + IMPORTED (1 new migration + docs; NO code, NO release; Sync Gate Case A).** The only hard 7/24 deadline is CLEARED.
+  - Context: Vested activated Textly late 7/20 → Kenect send/receive died (~4:37 PM CDT last successful send). Roland pulled the delta immediately; Textly kickoff deferred to S150 (after sidebar regression, per Roland).
+  - NEW `supabase/migrations/kenect_delta_setup_s149.sql` — idempotent re-open of the S141 anon ingest path (staging_s141 itself is NOT re-runnable: permanent authenticated CREATE POLICYs duplicate-error + roll back).
+  - Delta driver in the app.kenect.com tab on top of the S141 extractor: Firebase token bootstrap per spec; injected id-Sets for existing 3,200 convos / 3,093 contacts; convo filter updatedAt>=7/15 OR new; msg filter sentAt > S141 max minus 1h; conflict-safe plain INSERT + per-row 23505 fallback.
+  - DB-verified: +355 messages (56,634 raw), +13 convos (3,213), +14 contacts (3,107), +74 attachments, 74/74 image/PDF media (~113 MB), worklist drained, downloaded==storage PASS, 0 errors. Page counters lied (159) — `+= await` race, NEW Known Issue; `count(*)` was right.
+  - Teardown re-run (anon fully re-closed, MCP-verified) + Phase 4 transform re-run unchanged: import 56,634 (+355), 0 orphans, 3,225 conversations, newest imported 7/20 5:39 PM CDT.
+  - 9 undelivered outbound in the delta: 6 expected (Kenect-Team admin x2, Janine one-way x4); 3 real shutdown casualties (Terry Tedford x2-dup, Tony Forchione) → 🟠 TODO: first sends through Textly.
 - ✅ **Session 148 — PB→Textly PIVOT captured (docs only; NO code, NO release; Sync Gate Case A).** Project Blue ruled out — it requires porting the entire phone number to PB. New plan: Textly (Vested Networks' white-label of Textable); Textable API reviewed (JWT tokens, POST /api/send, relayWebhook copy of every message both directions, contacts/drip/canned). Vested submitted the Textly account request 7/20; API creds expected AM 7/21. S149 sequencing set: Textly kickoff #1, Kenect delta pull #2 (wall 7/24), sidebar v1.477 regression + promote #3.
 - ✅ **Session 147 — SIDEBAR LAYOUT TOGGLE v1.477 built to full mockup parity + live alerts (feature/sidebar-layout only; NO release; Sync Gate Case A).**
   - Architecture decision (Roland-approved): sidebar design ships as a per-user layout TOGGLE inside index.html via DOM RELOCATION — not a second page, no duplicated business logic. New js/layout.js + css/sidebar-layout.css (scoped html.layout-sidebar); index.html +~65 lines; classic layout untouched by default.
