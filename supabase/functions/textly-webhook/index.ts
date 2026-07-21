@@ -1,6 +1,21 @@
 // ============================================================
 // textly-webhook (GH#39 Textly pivot, Session 151, 2026-07-21) - capture + routing
 // ============================================================
+// v1.1 (Session 152, 2026-07-21): AFTER-HOURS AUTO-REPLY — replaces the
+//   Kenect "Auto Response" feature (Kenect dies COB 7/24). Inbound,
+//   non-keyword messages arriving outside business hours get ONE reply
+//   per conversation per closed period. Config via app_config (all
+//   optional — hard defaults ship in code):
+//     business_hours            JSON: {"tz":"America/Chicago",
+//                               "mon":"08:00-17:00",..., "sat":null,"sun":null}
+//                               (null/missing day = closed all day)
+//     after_hours_reply_text    the reply body
+//     after_hours_reply_enabled "false" = kill switch (default on)
+//   Dedupe: one outbound messages row with context
+//   'after_hours_auto_reply' per number since the closed period began
+//   (period start = the most recent open instant, walked back in 30-min
+//   steps; 24h fallback if the schedule is closed 8+ days). Opted-out
+//   conversations are never auto-replied (TCPA).
 // v1.0: Textly (Textable) relayWebhook ingest. Direct port of
 // projectblue-webhook v1.2 — ALL of its behavior is preserved:
 //   (1) capture every relayed message to `messages`
@@ -74,6 +89,68 @@ const AUTO_REPLIES = {
 
 const DEFAULT_API_BASE = "https://vestednetworks-txb.textable.app";
 const DEFAULT_FROM_E164 = "+19404885047";
+
+// ── After-hours auto-reply (v1.1, S152) ────────────────────────────
+// Defaults mirror the Kenect Auto Response config captured S151
+// (docs/specs/REVIEW_REQUEST_SPEC.md). app_config overrides all three.
+const DEFAULT_AFTER_HOURS_TEXT =
+  "Thank you for texting Patriots RV Services. We are currently closed. We will respond to you as soon as we become available.";
+type BusinessHours = { tz?: string; [day: string]: string | null | undefined };
+const DEFAULT_BUSINESS_HOURS: BusinessHours = {
+  tz: "America/Chicago",
+  mon: "08:00-17:00", tue: "08:00-17:00", wed: "08:00-17:00",
+  thu: "08:00-17:00", fri: "08:00-17:00",
+  sat: null, sun: null,
+};
+
+// Cached per-tz formatter (closedPeriodStart walks up to ~384 instants).
+const _tzFmtCache = new Map<string, Intl.DateTimeFormat>();
+function localParts(d: Date, tz: string): { dow: string; minutes: number } {
+  let fmt = _tzFmtCache.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+    _tzFmtCache.set(tz, fmt);
+  }
+  const parts: Record<string, string> = {};
+  for (const p of fmt.formatToParts(d)) if (p.type !== "literal") parts[p.type] = p.value;
+  const dow = String(parts.weekday || "").toLowerCase().slice(0, 3);
+  // hour12:false can yield "24" for midnight in some ICU builds — normalize.
+  const minutes = (parseInt(parts.hour || "0", 10) % 24) * 60 + parseInt(parts.minute || "0", 10);
+  return { dow, minutes };
+}
+
+// "08:00-17:00" -> [480, 1020]; null/invalid -> null (closed all day).
+function parseWindow(s: string | null | undefined): [number, number] | null {
+  if (!s) return null;
+  const m = String(s).match(/^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$/);
+  if (!m) return null;
+  const open = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  const close = parseInt(m[3], 10) * 60 + parseInt(m[4], 10);
+  return close > open ? [open, close] : null;
+}
+
+function isOpenAt(d: Date, hours: BusinessHours): boolean {
+  const tz = hours.tz || "America/Chicago";
+  const { dow, minutes } = localParts(d, tz);
+  const w = parseWindow(hours[dow]);
+  return !!w && minutes >= w[0] && minutes < w[1];
+}
+
+// Start of the CURRENT closed period = the most recent instant we were
+// open (30-min granularity — the walk can only overshoot INTO the open
+// window, never miss part of the closed period, and no auto-reply can
+// exist from open time anyway). Fallback 24h if closed 8+ straight days.
+function closedPeriodStartISO(now: Date, hours: BusinessHours): string {
+  const STEP = 30 * 60 * 1000;
+  let t = now.getTime();
+  for (let i = 0; i < 8 * 48; i++) {
+    t -= STEP;
+    if (isOpenAt(new Date(t), hours)) return new Date(t).toISOString();
+  }
+  return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+}
 
 // Digits-only last-10 phone key (US numbers). '+1 (940) 372-6085' -> '9403726085'.
 function phoneKey(raw: unknown): string {
@@ -407,6 +484,57 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // ── After-hours auto-reply (v1.1, S152 — Kenect Auto Response port) ─
+  // Inbound, non-keyword, not opted out. One reply per conversation per
+  // closed period. Non-fatal; never blocks the notify fork below.
+  let afterHoursReplied = false;
+  if (direction === "inbound" && !keywordAction && contactNumber && !convo?.opted_out_at) {
+    try {
+      const { data: cfgRows, error: cfgErr } = await supabase
+        .from("app_config")
+        .select("key, value")
+        .in("key", ["after_hours_reply_enabled", "business_hours", "after_hours_reply_text"]);
+      if (cfgErr) console.error("after-hours config read error (using defaults):", cfgErr.message);
+      const cfg: Record<string, string> = {};
+      for (const r of cfgRows || []) cfg[String(r.key)] = String(r.value ?? "");
+      const enabled = (cfg["after_hours_reply_enabled"] || "true").trim().toLowerCase() !== "false";
+      if (enabled) {
+        let hours: BusinessHours = DEFAULT_BUSINESS_HOURS;
+        if (cfg["business_hours"]) {
+          try {
+            hours = { ...DEFAULT_BUSINESS_HOURS, ...JSON.parse(cfg["business_hours"]) };
+          } catch {
+            console.error("business_hours config is not valid JSON — using defaults");
+          }
+        }
+        const now = new Date();
+        if (!isOpenAt(now, hours)) {
+          const periodStart = closedPeriodStartISO(now, hours);
+          const { data: prior, error: priorErr } = await supabase
+            .from("messages")
+            .select("id")
+            .eq("direction", "outbound")
+            .eq("context", "after_hours_auto_reply")
+            .eq("phone_to", contactNumber)
+            .gte("created_at", periodStart)
+            .limit(1);
+          if (priorErr) {
+            // Can't verify dedupe — DON'T send (better a missed auto-reply
+            // than spamming a customer on every text all night).
+            console.error("after-hours dedupe check error (skipping send):", priorErr.message);
+          } else if (!prior || prior.length === 0) {
+            const replyText = cfg["after_hours_reply_text"] || DEFAULT_AFTER_HOURS_TEXT;
+            afterHoursReplied = await textlyDirectSend(
+              supabase, contactNumber, replyText, "after_hours_auto_reply",
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error("after-hours auto-reply failed (message already logged):", e);
+    }
+  }
+
   // ── Inbound notify: owner fork else silo blast (ported v1.2/v1.1) ──
   // Keyword messages (STOP/START/HELP) never notify — the auto-reply and
   // conversation_events row are the record.
@@ -539,6 +667,7 @@ Deno.serve(async (req: Request) => {
     ok: true, action: "logged", direction, message_id: messageId,
     routed_ro: routedRO ? routedRO.ro_id : null,
     keyword: keywordAction,
+    after_hours_replied: afterHoursReplied,
     notified, notified_owner: notifiedOwner,
   });
 });
