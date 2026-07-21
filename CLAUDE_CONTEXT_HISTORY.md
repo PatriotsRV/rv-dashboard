@@ -9,6 +9,13 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 150 — SIDEBAR POLISH round + partial regression (feature/sidebar-layout @ `bd437be`; NO merge, NO release; Sync Gate Case A).** Cloud session; Roland live-reviewed on localhost:8765.
+  - Headless smoke (sandbox Chromium) 9/9 PASS: classic default, v1.477 badge, sidebar boot + shell, 9/9 cards regrouped (54 csecs), sample-card suppression, banner flash fix, toggle round-trip, messages/checkin load.
+  - 8 Roland-directed changes: mockup label colors (killed classic blue text-stroke); 22px days-on-lot KPI chip (heat color intact); Repair Type sidebar chevron (sidebar-only DOM enhancement); 14px card-group headers + 12.5px hints; 14px top-of-photo alerts (date-trip banners + wo-missing badge, sidebar-scoped); mobile wish lamp pinned lower-left 42px (desktop left-offset had stranded it on the Filters button); CUSTOMER group mockup parity (fmeta phone/email rows, fbox comm card, compact blue Thread pill); hard-delete confirm now types DELETE (case-insensitive) instead of the customer name.
+  - Edward Curtis pulsing-card investigation: stale open parts request (`has_open_parts_request=true` by Mauricio, `parts_status='estimate'`, 0 parts rows, RO already Delivered/Cashed Out) — indicator working as designed on stale data; Roland cleared it via Set Parts Status.
+  - NEW deploy directive captured (Roland): sidebar ships on its OWN page ("sidebar_mockup.html") linked from index.html as "New RO DB Tester" — NOT via the main-page toggle for now. 3 decisions still open; see the 🔴 TODO row.
+  - NEW cloud gotchas: device-bridge `git push` fails (proxy 403, no network — pushes must run in Roland's Terminal); git cannot unlink its own `HEAD.lock` after commit (mv to `_to_delete/` immediately).
+  - Session ended early — Roland pivoted to the Textly/Kenect messaging session; sidebar work resumes the session after.
 - ✅ **Session 149 — KENECT DELTA PULL COMPLETE + VERIFIED + IMPORTED (1 new migration + docs; NO code, NO release; Sync Gate Case A).** The only hard 7/24 deadline is CLEARED.
   - Context: Vested activated Textly late 7/20 → Kenect send/receive died (~4:37 PM CDT last successful send). Roland pulled the delta immediately; Textly kickoff deferred to S150 (after sidebar regression, per Roland).
   - NEW `supabase/migrations/kenect_delta_setup_s149.sql` — idempotent re-open of the S141 anon ingest path (staging_s141 itself is NOT re-runnable: permanent authenticated CREATE POLICYs duplicate-error + roll back).
