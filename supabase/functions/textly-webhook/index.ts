@@ -7,7 +7,7 @@
 //   per conversation per closed period. Config via app_config (all
 //   optional — hard defaults ship in code):
 //     business_hours            JSON: {"tz":"America/Chicago",
-//                               "mon":"08:00-17:00",..., "sat":null,"sun":null}
+//                               "mon":"08:30-17:00",..., "sat":null,"sun":null}
 //                               (null/missing day = closed all day)
 //     after_hours_reply_text    the reply body
 //     after_hours_reply_enabled "false" = kill switch (default on)
@@ -98,8 +98,8 @@ const DEFAULT_AFTER_HOURS_TEXT =
 type BusinessHours = { tz?: string; [day: string]: string | null | undefined };
 const DEFAULT_BUSINESS_HOURS: BusinessHours = {
   tz: "America/Chicago",
-  mon: "08:00-17:00", tue: "08:00-17:00", wed: "08:00-17:00",
-  thu: "08:00-17:00", fri: "08:00-17:00",
+  mon: "08:30-17:00", tue: "08:30-17:00", wed: "08:30-17:00",
+  thu: "08:30-17:00", fri: "08:30-17:00",
   sat: null, sun: null,
 };
 
