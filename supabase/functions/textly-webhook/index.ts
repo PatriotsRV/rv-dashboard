@@ -94,7 +94,7 @@ const DEFAULT_FROM_E164 = "+19404885047";
 // Defaults mirror the Kenect Auto Response config captured S151
 // (docs/specs/REVIEW_REQUEST_SPEC.md). app_config overrides all three.
 const DEFAULT_AFTER_HOURS_TEXT =
-  "Thank you for texting Patriots RV Services. We are currently closed. We will respond to you as soon as we become available.";
+  "Thank you for texting Patriots RV Services. We are currently closed. We will respond to you as soon as we become available between 8:30 - 5:00 CST. Have a great day.";
 type BusinessHours = { tz?: string; [day: string]: string | null | undefined };
 const DEFAULT_BUSINESS_HOURS: BusinessHours = {
   tz: "America/Chicago",
