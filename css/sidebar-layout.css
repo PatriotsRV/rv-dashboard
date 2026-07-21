@@ -281,14 +281,15 @@ html.layout-sidebar .sb-csec {
   margin: 7px 10px 0;
 }
 html.layout-sidebar .ro-card .sb-csec:last-child { margin-bottom: 10px; }
+/* v1.477 S150 (Roland): bigger card-group header rows — plenty of room */
 html.layout-sidebar .sb-csec-h {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
+  gap: 7px;
+  padding: 9px 12px;
   cursor: pointer;
   user-select: none;
-  font-size: 11.5px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: .5px;
   color: var(--sb-text);
@@ -297,7 +298,7 @@ html.layout-sidebar .sb-csec-h:hover { background: rgba(47,129,247,.08); }
 html.layout-sidebar .sb-csec-h .chev {
   margin-left: auto;
   color: var(--sb-muted);
-  font-size: 10px;
+  font-size: 12px;
   transition: transform .15s;
 }
 html.layout-sidebar .sb-csec.open .sb-csec-h .chev { transform: rotate(180deg); }
@@ -359,6 +360,10 @@ html.layout-sidebar #sbScrollWrap .view-mode-label {
   font-size: 13px !important;
   font-weight: 600 !important;
   letter-spacing: normal !important;
+  /* v1.477 S150: kill the classic 1.5px blue text-stroke outline — it made
+     sidebar labels render blue instead of the mockup's light text */
+  -webkit-text-stroke: 0 !important;
+  text-stroke: 0 !important;
 }
 html.layout-sidebar #sbScrollWrap .filter-active-indicator { background: var(--sb-blue); }
 html.layout-sidebar #sbScrollWrap .filter-chevron { color: var(--sb-muted); }
@@ -423,16 +428,19 @@ html.layout-sidebar .sb-status-chip {
   text-transform: capitalize;
 }
 /* relocated classic elements, re-dressed as chips */
+/* v1.477 S150 (Roland): days-on-lot is a KPI — make it stand out on the tile.
+   Inline heat color from render.js still applies (green→amber→red by age). */
 html.layout-sidebar .sb-hdr2 .days-on-lot {
-  font-size: 12px !important;
+  font-size: 22px !important;
   font-weight: 800;
+  line-height: 1;
   background: var(--sb-panel2);
   border: 1px solid var(--sb-border);
   border-radius: 6px;
-  padding: 3px 8px;
+  padding: 5px 10px;
   margin: 0 !important;
 }
-html.layout-sidebar .sb-hdr2 .days-on-lot .days-label { font-size: 10px; }
+html.layout-sidebar .sb-hdr2 .days-on-lot .days-label { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; }
 html.layout-sidebar .sb-hdr2 .urgency-selector-badge {
   position: static !important;
   margin-left: auto !important;
@@ -472,6 +480,73 @@ html.layout-sidebar .ro-card .note-item[data-field="repairDescription"] {
   margin: 0 10px 8px;
 }
 
+/* ── v1.477 S150 (Roland): 💬 CUSTOMER group parity with mockup v0.7 ──
+   fmeta-style PHONE/EMAIL rows + fbox-style CUSTOMER COMM card with the
+   compact blue Thread pill. Classic mode untouched. */
+html.layout-sidebar .sb-csec[data-sbg="cust"] .info-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .info-label {
+  color: var(--sb-text);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  min-width: 0;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .info-value,
+html.layout-sidebar .sb-csec[data-sbg="cust"] .info-value a {
+  color: var(--sb-text);
+  font-size: 12px;
+  font-family: inherit;
+  text-decoration: none;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .note-item {
+  background: var(--sb-panel2);
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0 7px;
+  font-size: 12px;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .note-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .note-title {
+  font-weight: 700;
+  font-size: 11.5px;
+  letter-spacing: .03em;
+  color: var(--sb-text);
+  text-transform: uppercase;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .comm-thread-link {
+  margin-left: auto;
+  background: var(--sb-blue);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .note-content {
+  font-size: 12px;
+  color: var(--sb-text);
+}
+html.layout-sidebar .sb-csec[data-sbg="cust"] .placeholder-text {
+  color: var(--sb-blue);
+  font-style: italic;
+  font-size: 12px;
+}
+
 /* ── Boot flash fix: the pre-auth sampleData placeholder cards have no
    Supabase id (data-ro-sid="") — hide them in sidebar mode so demo ROs
    (with fake overdue dates) never flash alert banners before the live
@@ -484,21 +559,27 @@ html.layout-sidebar .ro-card[data-ro-sid=""] { display: none; }
 html.layout-sidebar .sb-dalert {
   display: block;
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   margin: 8px 10px 0;
-  font-size: 11.5px;
+  font-size: 14px; /* v1.477 S150 (Roland): must-act banners read bigger */
   font-weight: 800;
   letter-spacing: .3px;
   text-align: center;
 }
 html.layout-sidebar .sb-dalert.red   { background: #ef4444; color: #fff; }
 html.layout-sidebar .sb-dalert.amber { background: #f59e0b; color: #0d1117; }
+/* v1.477 S150 (Roland): Missing-WO badge scaled to match the alert banners
+   in sidebar mode (classic keeps its 0.78rem size) */
+html.layout-sidebar .ro-card .wo-missing-badge {
+  font-size: 14px;
+  padding: 9px 12px;
+}
 
 /* 🔔 group: feed rows + header hint */
 html.layout-sidebar .sb-hint {
   margin-left: auto;
   font-weight: 600;
-  font-size: 10.5px;
+  font-size: 12.5px; /* v1.477 S150: scaled with the bigger .sb-csec-h row */
   color: var(--sb-muted);
   white-space: nowrap;
 }
@@ -559,4 +640,15 @@ html.layout-sidebar.sb-rail #erFloatingBtn { left: calc(var(--sb-railw) + 14px) 
     background: rgba(0,0,0,.55);
     z-index: 495;
   }
+  /* v1.477 S150 (Roland): on mobile the sidebar is off-canvas, so the desktop
+     left-offset stranded the wish lamp on top of the Filters button (right).
+     Pin it small at the true lower-left; Filters keeps the lower-right. */
+  html.layout-sidebar #erFloatingBtn,
+  html.layout-sidebar.sb-rail #erFloatingBtn {
+    left: 12px !important;
+    bottom: 12px !important;
+    width: 42px !important;
+    height: 42px !important;
+  }
+  html.layout-sidebar #erFloatingBtn span { font-size: 20px !important; }
 }

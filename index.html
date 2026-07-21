@@ -1751,15 +1751,19 @@
         // Uses the same ordering as scrub_soft_deleted_ros() in the migration.
         async function hardDeleteROnow(supabaseId, customerName) {
             if (!isAdmin()) return;
+            // v1.477 S150 (Roland): confirm by typing DELETE, not the customer
+            // name — names can themselves contain "DELETE" (test ROs) or odd
+            // whitespace, which made the name-match confirm confusing. Also
+            // resolves the S115 whitespace-normalization TODO.
             const msg =
                 `PERMANENTLY delete this RO and every note, part, time log, audit entry, ` +
                 `insurance scan, work order, and work-list entry attached to it?\n\n` +
                 `Customer: ${customerName}\n\n` +
-                `This cannot be undone. Type the customer name to confirm — or click Cancel.`;
+                `This cannot be undone. Type DELETE to confirm — or click Cancel.`;
             const typed = prompt(msg);
             if (typed === null) return;
-            if (typed.trim() !== (customerName || '').trim()) {
-                showToast('Name did not match — delete cancelled.', 'warning');
+            if (typed.trim().toUpperCase() !== 'DELETE') {
+                showToast('You must type DELETE to confirm — delete cancelled.', 'warning');
                 return;
             }
             try {

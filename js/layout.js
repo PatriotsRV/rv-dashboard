@@ -74,7 +74,29 @@
     var rotypeC = document.getElementById('insurance-collapsible');
     if (rotypeC) moveInto('sbSlotROType', rotypeC.closest('.filter-section'));
     var repairBtn = document.querySelector('.filter-btn[data-type="repair"]');
-    if (repairBtn) moveInto('sbSlotRepair', repairBtn.closest('.filter-section'));
+    if (repairBtn) {
+      var repairSec = repairBtn.closest('.filter-section');
+      moveInto('sbSlotRepair', repairSec);
+      // v1.477 S150 (Roland): Repair Type has no chevron in classic (always-open
+      // section) — give it one in sidebar mode for parity with the other filter
+      // groups. Sidebar-only DOM enhancement; classic markup untouched.
+      var repairLbl = repairSec && repairSec.querySelector('.filter-label');
+      if (repairLbl && !repairLbl.querySelector('.filter-chevron')) {
+        var repairChev = document.createElement('span');
+        repairChev.className = 'filter-chevron open';
+        repairChev.textContent = '▼';
+        repairLbl.appendChild(repairChev);
+        repairLbl.classList.add('filter-toggle-label');
+        repairLbl.style.cursor = 'pointer';
+        repairLbl.addEventListener('click', function () {
+          var grp = repairSec.querySelector('.filter-group');
+          if (!grp) return;
+          var isOpen = grp.style.display !== 'none';
+          grp.style.display = isOpen ? 'none' : '';
+          repairChev.classList.toggle('open', !isOpen);
+        });
+      }
+    }
     var statusC = document.getElementById('status-collapsible');
     if (statusC) moveInto('sbSlotStatus', statusC.closest('.filter-section'));
 
