@@ -97,14 +97,20 @@ Deno.serve(async (req: Request) => {
       if (upErr) throw upErr;
 
       // Manager notify via the existing 15-min email cron.
+      // Role values + active filter mirror send-dropoff-report's recipient
+      // pattern (lowercase snake_case; there is no 'Admin' staff role —
+      // Roland is sr_manager). S154 fix: the first cut used capitalized
+      // labels and matched ZERO staff, silently skipping the notify.
       const { data: mgrs, error: mgrErr } = await supabase
-        .from("staff").select("email")
-        .in("role", ["Manager", "Sr Manager", "Admin"])
+        .from("staff").select("email, role, active")
+        .in("role", ["manager", "sr_manager", "parts_manager"])
         .not("email", "is", null);
-      if (!mgrErr && mgrs && mgrs.length) {
+      const recipients = [...new Set((mgrs || [])
+        .filter((s) => s.active !== false && s.email).map((s) => s.email))];
+      if (!mgrErr && recipients.length) {
         const { error: snErr } = await supabase.from("scheduled_notifications").insert({
           scheduled_at: new Date().toISOString(),
-          recipient_emails: mgrs.map((m) => m.email),
+          recipient_emails: recipients,
           subject: `⭐ Private review feedback from ${row.customer_name || "a customer"}`,
           body: `A customer chose "send us direct feedback" instead of a public review.\n\n` +
                 `Customer: ${row.customer_name || "(no name)"} (…${row.phone_key.slice(-4)})\n\n` +
