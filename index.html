@@ -3654,7 +3654,20 @@
                     case 'print-qr':          printQRLabel(idx);                  break;
                     case 'checkin':           openCheckIn(idx);                   break;
                     case 'photo-library':     openPhotoLibrary(idx);              break;
-                    case 'edit-field':        editField(idx, btn.dataset.field);  break;
+                    case 'edit-field':
+                        // [v1.481 S153, Roland decision] Sidebar view: ONE messaging interface.
+                        // Clicking the CUSTOMER COMM box opens the live Textly thread (same as
+                        // the 💬 Thread pill) instead of the legacy add-a-note modal. Classic
+                        // view keeps the notes modal. Shop ROs (no customer/thread) keep the
+                        // notes modal in both layouts.
+                        if (btn.dataset.field === 'customerCommunicationNotes'
+                            && document.documentElement.classList.contains('layout-sidebar')
+                            && currentFilteredData[idx] && currentFilteredData[idx].roType !== 'shop') {
+                            openMessagesModal(currentFilteredData[idx]);
+                        } else {
+                            editField(idx, btn.dataset.field);
+                        }
+                        break;
                     case 'time-logs':         openTimeLogsModal(idx);             break;
                     case 'refresh-logs':      manualRefreshTimeLogs();            break;
                     case 'edit-ro':           openEditRO(idx);                    break;
