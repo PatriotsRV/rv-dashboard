@@ -61,10 +61,19 @@ export const PRVS_FUNCTION_SECRET = 'b8b5561b957160e04db62bbf1682ebdc036de251a07
 // Blue has never seen the customer. Engagement must be computed against
 // PB_LINE_E164 only; inbound on the Kenect line does NOT count.
 //
-// ⚠️ CHANGE PB_LINE_E164 AT PORT CUTOVER, when 940-488-5047 moves to Project
-// Blue. Getting this wrong silently inverts every engagement warning.
+// ⚠️ RETIRED S151 (GH#39 Textly pivot): Project Blue is out — no port ever
+// happened. PB_LINE_E164/KENECT_LINE_E164 are retained only for historical
+// thread math (which line an old message arrived on); nothing gates on them.
 export const PB_LINE_E164 = '+19404074145';
 export const KENECT_LINE_E164 = '+19404885047';
+
+// TEXTLY_LINE_E164 (S151, GH#39 Textly pivot) — the Textly (Vested Networks
+// white-label of Textable) sending line. It is the SAME number as the old
+// Kenect line: 940-488-5047 never moved (it is a VoIP line hosted at Vested,
+// S143); Textly took over its SMS on 7/20. That kills the PB engagement trap
+// for good — every imported Kenect thread lives on the very line we now send
+// from, so outbound genuinely reaches everyone again.
+export const TEXTLY_LINE_E164 = '+19404885047';
 
 // ── Google APIs (Sheets / Drive / Calendar / Auth) ──────────────────
 export const GOOGLE_CONFIG = {

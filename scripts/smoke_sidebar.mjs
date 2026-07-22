@@ -1,4 +1,4 @@
-// S152 sidebar v1.477 deploy-plan headless smoke — pre-auth checks only
+// S152 sidebar deploy-plan headless smoke — pre-auth checks only (v1.481 since the S153 pre-prod merge + renumber)
 import { chromium } from 'playwright';
 
 const BASE = 'http://localhost:8765';
@@ -31,10 +31,10 @@ check('#sbShell present in sidebar mode', !!sbShell);
 const classicBtn = await page.$('#sbFoot button[onclick*="classic"]');
 check('↩ Classic View button present in sidebar footer', !!classicBtn);
 
-// ── 3. Boot log v1.477 ──────────────────────────────────────────
+// ── 3. Boot log v1.481 ──────────────────────────────────────────
 await page.waitForTimeout(1500);
 const bootLog = consoleLogs.find((t) => t.includes('Module system loaded'));
-check('app.js boot log announces v1.477', !!bootLog && bootLog.includes('v1.477 [SIDEBAR S147+S152]'),
+check('app.js boot log announces v1.481', !!bootLog && bootLog.includes('v1.481 [SIDEBAR S147+S152'),
   bootLog ? bootLog.slice(0, 60) : 'no boot log seen');
 
 // ── 4. Return path: Classic View ────────────────────────────────
@@ -60,7 +60,7 @@ const badge = await page.evaluate(() => {
   const spans = [...document.querySelectorAll('header span')];
   return spans.map((s) => s.textContent).find((t) => /^v1\.\d+$/.test((t || '').trim()));
 });
-check('header version badge v1.477', badge && badge.trim() === 'v1.477', String(badge));
+check('header version badge v1.481', badge && badge.trim() === 'v1.481', String(badge));
 
 // ── 6. Round trip: tester link → sidebar again ──────────────────
 await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), link.click()]);

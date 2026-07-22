@@ -1,7 +1,67 @@
 <!DOCTYPE html>
 <!--
-    PRVS Messages — PB Inbox + Conversation Assignment v1.6
+    PRVS Messages — Inbox + Conversation Assignment v1.10
+
+    v1.11 (Session 151, 2026-07-21): CONTACT INFO + READABILITY (Roland).
+    (1) Details pane shows the customer's EMAIL and ADDRESS with one-tap
+    copy buttons — sourced from the newest live repair_orders row for the
+    number, falling back to the newest cashiered (archived) row; renders
+    "No email or address on file." when neither exists. (2) Readability:
+    root font-size 16 -> 17.5px (+9% on every rem-based size, shared bubble
+    renderer included) and input borders darkened + thickened
+    (--input-border #7FA6CB, 1.5px) for older eyes.
+    v1.10b (same session): SEARCH ALL HISTORY (Roland directive). The list
+    window is still the newest 1000, but typing 3+ chars in search now also
+    runs a debounced (350ms) server-side sweep of the FULL conversations
+    table — digits-heavy queries match phone_key, otherwise customer_name
+    ilike — merging up to 50 hits into the local cache. Old imported Kenect
+    contacts are now reachable from the search box.
+    v1.10a (same session): existing-number path REWORKED after live test —
+    Roland added a lead whose number carried a closed 2023 Kenect thread under
+    another name; the old behavior kept the stale name + closed status, so the
+    "new" contact was invisible under the Open filter and the name search.
+    Now: rename to the typed name (manager is the authority), reopen, float to
+    top, clear the search box, and the select-after-create is fault-isolated.
+    v1.10 (Session 151, 2026-07-21): NEW CONTACT for leads (Roland directive —
+    early-sales-cycle texting for people with no RO and no message history).
+    "+ New" button beside search (managers+ only, mirroring the S138
+    conversations_insert_manager RLS policy so the UI never offers what the
+    DB would refuse). Modal takes name + mobile; duplicate phone_key opens
+    the existing conversation (with name backfill if empty) instead of
+    duplicating; new rows get status open + last_message_at now so they float
+    to the top. First outbound then flows the normal textly-send path (its
+    phone_key upsert is conflict-safe with the pre-created row).
+
+    v1.9 (Session 151, 2026-07-21): ARGENTINA CELESTE THEME (Roland directive —
+    "happy and calm"). Full light restyle scoped to this page via the :root
+    vars + class rules: jersey-white panes, celeste sky-blue (#75AADB) actions/
+    accents, navy-black header frame with a celeste collar stripe, gold
+    (#C9A544) for detail labels + unread dots. The shared bubble renderer
+    (js/messaging.js) reads the same :root vars so bubbles adapt with NO
+    change to the dashboard modal (index.html keeps its dark theme). Header
+    line label updated: "Textly line +1 (940) 488-5047" (was the retired PB
+    line). No markup or logic changes beyond the label.
+
+    v1.8 (Session 151, 2026-07-21): MMS attach + emoji + per-user signatures.
+    Composer gains a 📎 photo attach (uploads to NEW public bucket
+    message-media, compressed toward MMS-friendly size, sent via textly-send
+    media), a 😊 emoji picker, and an auto-appended per-user signature from
+    NEW staff.sms_signature (preview under the composer; photo-only sends
+    are allowed and still sign). All logic lives in js/messaging.js
+    composerExtrasHtml()/initComposerExtras() — one implementation for both
+    this inbox and the RO card modal (#composerExtrasSlot filled at boot).
+    Migration: message_media_signatures_s151.sql.
     Session 138, 2026-07-15 (GH#39, per docs/specs/PB_INBOX_ASSIGNMENT_SPEC.md §5)
+
+    v1.7 (Session 151, 2026-07-21): TEXTLY PIVOT. Outbound now goes through the
+    textly-send edge fn (Textly = Vested Networks' white-label of Textable),
+    sending from 940-488-5047 — the SAME line all the imported Kenect history
+    lives on. The v1.6 PB engagement banner self-retires (js/messaging.js
+    pbEngagementBannerHtml() now always returns ''); the #msgPbWarn slot and
+    renderThread() call are unchanged. The assignment staff-SMS below also
+    swaps projectblue-send -> textly-send. Inbound is captured by the NEW
+    textly-webhook edge fn (relay ingest; same conversations/messages
+    semantics as projectblue-webhook, which stays deployed but dormant).
 
     v1.6 (Session 144, 2026-07-16): PB engagement warning above the composer.
     This inbox is where the S142 import is most dangerous: staff read a long
@@ -68,11 +128,31 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
+        /* ═══ v1.9 (S151c): ARGENTINA CELESTE THEME ═══════════════════
+           Roland directive: the messages board should exude "happy and calm"
+           — the full jersey spectrum: white field, celeste sky-blue stripes
+           (#75AADB), the navy-black frame, and a restrained World Cup gold
+           for the small accents (labels, unread dots). Light theme is LOCAL
+           to this page; the dashboard + the shared bubble renderer read the
+           :root vars, so bubbles adapt automatically. */
         :root {
-            --bg-primary: #0b1121; --bg-secondary: #0f172a; --bg-tertiary: #1e293b;
-            --border-color: #1e3a5f; --text-primary: #e2e8f0; --text-secondary: #94a3b8;
-            --accent-info: #60a5fa;
+            --bg-primary: #F5FAFE;      /* thread field — just off white     */
+            --bg-secondary: #FFFFFF;    /* panes — jersey white              */
+            --bg-tertiary: #DCEBF7;     /* dividers — palest celeste         */
+            --border-color: #BBD9F0;    /* celeste-soft borders              */
+            --text-primary: #10243E;    /* navy-black (the frame)            */
+            --text-secondary: #53718E;  /* calm slate blue                   */
+            --accent-info: #2F6FA8;     /* readable link blue                */
+            --celeste: #75AADB;         /* AFA sky blue                      */
+            --celeste-deep: #4E8FC7;
+            --celeste-mist: #EAF4FB;
+            --gold: #C9A544;            /* the third star                    */
+            --input-border: #4E7CA8;    /* v1.11a: darker still per Roland */
         }
+        /* v1.11: one-step readability bump — every rem-based size on the page
+           (bubbles included, they come from the shared renderer in rem) scales
+           off this root. 16px -> 17.5px ≈ +9%, per Roland for older eyes. */
+        html { font-size: 17.5px; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Barlow Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -82,113 +162,118 @@
             height: 100vh; height: 100dvh; overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #0f1a2e 0%, #1a2744 100%);
-            border-bottom: 2px solid var(--border-color); padding: 12px 20px;
+            background: linear-gradient(135deg, #0A1220 0%, #14304F 100%);
+            border-bottom: 3px solid var(--celeste); padding: 12px 20px;
             display: flex; align-items: center; justify-content: space-between; gap: 12px;
         }
         .header-title { font-size: 1.2rem; font-weight: 700; color: white; letter-spacing: 0.5px; }
         .header-right { display: flex; align-items: center; gap: 10px; }
         .badge-role { padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
-        .badge-admin { background: #7c3aed; color: white; }
-        .badge-manager { background: #2563eb; color: white; }
-        .badge-user { background: #334155; color: #94a3b8; }
-        .back-link { color: #60a5fa; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
-        .back-link:hover { text-decoration: underline; }
+        .badge-admin { background: var(--gold); color: #10243E; }
+        .badge-manager { background: var(--celeste-deep); color: white; }
+        .badge-user { background: #2A4A6E; color: #BBD9F0; }
+        .back-link { color: #9CC4E8; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+        .back-link:hover { text-decoration: underline; color: white; }
         .auth-gate { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 20px; }
-        .auth-gate h2 { color: #94a3b8; font-size: 1.1rem; font-weight: 500; }
+        .auth-gate h2 { color: var(--text-secondary); font-size: 1.1rem; font-weight: 500; }
 
         .layout { display: grid; grid-template-columns: 320px 1fr 300px; height: calc(100vh - 55px); height: calc(100dvh - 55px); }
         .pane { overflow-y: auto; min-height: 0; }
 
         /* ── Left: conversation list ── */
-        .list-pane { border-right: 1px solid var(--bg-tertiary); background: var(--bg-secondary); display: flex; flex-direction: column; }
+        .list-pane { border-right: 1px solid var(--border-color); background: var(--bg-secondary); display: flex; flex-direction: column; }
         .list-tools { padding: 10px; border-bottom: 1px solid var(--bg-tertiary); }
         .search-input {
-            width: 100%; padding: 8px 12px; background: var(--bg-primary); color: white;
-            border: 1px solid #334155; border-radius: 8px; font-size: 0.9rem; font-family: inherit;
+            width: 100%; padding: 8px 12px; background: var(--bg-secondary); color: var(--text-primary);
+            border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.9rem; font-family: inherit;
         }
+        .search-input::placeholder { color: #8FA9C2; }
         .filter-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
         .filter-btn {
-            background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid #334155;
+            background: var(--celeste-mist); color: var(--text-secondary); border: 1px solid var(--border-color);
             border-radius: 14px; padding: 3px 12px; font-size: 0.75rem; cursor: pointer; font-family: inherit;
         }
-        .filter-btn.active { background: #1d4ed8; color: white; border-color: #3b82f6; }
+        .filter-btn.active { background: var(--celeste); color: white; border-color: var(--celeste-deep); }
         .convo-list { flex: 1; overflow-y: auto; }
         .convo-row {
             display: flex; gap: 10px; padding: 10px 12px; cursor: pointer;
-            border-bottom: 1px solid #16213a; align-items: center;
+            border-bottom: 1px solid #E4EFF8; align-items: center;
         }
-        .convo-row:hover { background: #131c33; }
-        .convo-row.selected { background: #16234a; border-left: 3px solid #3b82f6; padding-left: 9px; }
+        .convo-row:hover { background: var(--celeste-mist); }
+        .convo-row.selected { background: #DDEDFA; border-left: 3px solid var(--celeste-deep); padding-left: 9px; }
         .avatar {
             flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;
-            background: #1d4ed8; color: white; display: flex; align-items: center; justify-content: center;
+            background: var(--celeste); color: white; display: flex; align-items: center; justify-content: center;
             font-weight: 700; font-size: 0.85rem;
         }
-        .avatar.closed { background: #334155; }
+        .avatar.closed { background: #C4D3E0; }
         .convo-main { flex: 1; min-width: 0; }
-        .convo-name { font-weight: 600; font-size: 0.95rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .convo-name { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .convo-snippet { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .convo-meta { text-align: right; flex: 0 0 auto; }
-        .convo-time { font-size: 0.68rem; color: #64748b; }
+        .convo-time { font-size: 0.68rem; color: #7E97AE; }
         .owner-chip {
             display: inline-block; margin-top: 3px; padding: 1px 7px; border-radius: 10px;
-            background: #1e3a5f; color: #93c5fd; font-size: 0.62rem; font-weight: 600; max-width: 90px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            background: var(--celeste-mist); color: var(--accent-info); font-size: 0.62rem; font-weight: 600; max-width: 90px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--border-color);
         }
-        .unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; margin-left: 5px; }
+        .unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); margin-left: 5px; }
 
         /* ── Center: thread ── */
         .thread-pane { display: flex; flex-direction: column; background: var(--bg-primary); }
         .thread-header {
             padding: 10px 16px; border-bottom: 1px solid var(--bg-tertiary);
             display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            background: var(--bg-secondary);
         }
-        .thread-title { font-weight: 700; font-size: 1.05rem; color: white; }
+        .thread-title { font-weight: 700; font-size: 1.05rem; color: var(--text-primary); }
         #msgThread { flex: 1; overflow-y: auto; padding: 14px 16px; }
-        .composer { padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bg-tertiary); }
+        .composer { padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--bg-tertiary); background: var(--bg-secondary); }
         .composer textarea {
-            width: 100%; padding: 10px 12px; background: var(--bg-secondary); color: white;
-            border: 1px solid #334155; border-radius: 8px; font-size: 0.92rem; font-family: inherit; resize: vertical;
+            width: 100%; padding: 10px 12px; background: var(--bg-secondary); color: var(--text-primary);
+            border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.92rem; font-family: inherit; resize: vertical;
         }
+        .composer textarea::placeholder { color: #8FA9C2; }
         .send-btn {
             margin-top: 8px; width: 100%; padding: 10px; border-radius: 8px;
-            border: 1.5px solid rgba(59,130,246,0.5); background: rgba(59,130,246,0.12);
-            color: #3b82f6; cursor: pointer; font-size: 0.95rem; font-weight: 700; font-family: inherit;
+            border: 1.5px solid var(--celeste-deep); background: var(--celeste);
+            color: white; cursor: pointer; font-size: 0.95rem; font-weight: 700; font-family: inherit;
         }
+        .send-btn:hover:not(:disabled) { background: var(--celeste-deep); }
         .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .optout-banner {
-            margin: 0 16px 8px; padding: 8px 12px; background: rgba(239,68,68,0.12);
-            border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; color: #fca5a5; font-size: 0.82rem;
+            margin: 0 16px 8px; padding: 8px 12px; background: #FDECEC;
+            border: 1px solid #F3B4B4; border-radius: 8px; color: #B42318; font-size: 0.82rem;
         }
         .empty-note { text-align: center; color: var(--text-secondary); font-size: 0.85rem; padding: 40px 12px; }
 
         /* ── Right: details ── */
-        .details-pane { border-left: 1px solid var(--bg-tertiary); background: var(--bg-secondary); padding: 14px; }
+        .details-pane { border-left: 1px solid var(--border-color); background: var(--bg-secondary); padding: 14px; }
         .details-section { margin-bottom: 18px; }
         .details-label {
-            color: #fbbf24; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.6px;
+            color: #A8862B; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.6px;
             margin-bottom: 6px; text-transform: uppercase;
         }
         .details-value { font-size: 0.9rem; color: var(--text-primary); }
         .ro-chip {
             display: inline-block; margin: 2px 4px 2px 0; padding: 3px 9px; border-radius: 8px;
-            background: #16234a; border: 1px solid #1e3a5f; color: #93c5fd; font-size: 0.75rem;
+            background: var(--celeste-mist); border: 1px solid var(--border-color); color: var(--accent-info); font-size: 0.75rem;
             text-decoration: none; font-family: 'JetBrains Mono', monospace;
         }
         .assign-select, .assign-input {
-            width: 100%; padding: 8px 10px; background: var(--bg-primary); color: white;
-            border: 1px solid #334155; border-radius: 8px; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px;
+            width: 100%; padding: 8px 10px; background: var(--bg-secondary); color: var(--text-primary);
+            border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px;
         }
         .mini-btn {
-            background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid #334155;
+            background: var(--celeste-mist); color: #3E5C79; border: 1px solid var(--border-color);
             border-radius: 8px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; font-family: inherit;
         }
-        .mini-btn:hover { color: white; }
-        .mini-btn.primary { background: #1d4ed8; border-color: #3b82f6; color: white; }
+        .mini-btn:hover { color: var(--text-primary); background: #DDEDFA; }
+        .mini-btn.primary { background: var(--celeste-deep); border-color: var(--celeste-deep); color: white; }
+        .mini-btn.primary:hover { background: #3F7CB2; color: white; }
         .mini-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .event-row { font-size: 0.75rem; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px solid #16213a; }
-        .event-row strong { color: #cbd5e1; }
+        .event-row { font-size: 0.75rem; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px solid #E4EFF8; }
+        .event-row strong { color: var(--text-primary); }
 
         /* ── Toast ── */
         #toastBox {
@@ -197,12 +282,12 @@
         }
         .toast {
             padding: 10px 18px; border-radius: 10px; font-size: 0.9rem; font-weight: 600;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.5); max-width: 85vw;
+            box-shadow: 0 6px 18px rgba(16,36,62,0.18); max-width: 85vw;
         }
-        .toast.success { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
-        .toast.error   { background: #450a0a; color: #fca5a5; border: 1px solid #ef4444; }
-        .toast.warning { background: #451a03; color: #fcd34d; border: 1px solid #f59e0b; }
-        .toast.info    { background: #172554; color: #93c5fd; border: 1px solid #3b82f6; }
+        .toast.success { background: #E8F7EE; color: #1B7A3D; border: 1px solid #7BD3A0; }
+        .toast.error   { background: #FDECEC; color: #B42318; border: 1px solid #F3A0A0; }
+        .toast.warning { background: #FEF4E0; color: #9A6B0B; border: 1px solid #EBCB7C; }
+        .toast.info    { background: var(--celeste-mist); color: var(--accent-info); border: 1px solid var(--celeste); }
 
         /* ── Responsive: two-pane under 1100px, single under 760px ── */
         .mobile-back { display: none; }
@@ -210,7 +295,7 @@
             .layout { grid-template-columns: 300px 1fr; }
             .details-pane {
                 position: fixed; right: 0; top: 55px; bottom: 0; width: 300px; z-index: 60;
-                transform: translateX(100%); transition: transform 0.18s ease; box-shadow: -8px 0 22px rgba(0,0,0,0.5);
+                transform: translateX(100%); transition: transform 0.18s ease; box-shadow: -8px 0 22px rgba(16,36,62,0.22);
             }
             .details-pane.open { transform: translateX(0); }
             .details-toggle { display: inline-block !important; }
@@ -221,6 +306,18 @@
             body.thread-open .list-pane { display: none; }
             body.thread-open .thread-pane { display: flex; }
             .mobile-back { display: inline-block; }
+            /* v1.11a MOBILE: the line label + badges wrapped the header to
+               ~3 rows while .layout still assumed 55px — everything below
+               shifted down and Send fell off-screen. Keep the header ONE
+               row and slim the composer so Send always stays visible. */
+            #pbLine, #verBadge { display: none; }
+            .header { padding: 8px 12px; }
+            .badge-role { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            #msgSigPreview { display: none !important; } /* sig still sends; preview costs space */
+            #msgExtrasRow { margin: 6px 0 !important; }
+            .composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
+            .composer textarea { rows: 2; }
+            .send-btn { margin-top: 6px; padding: 9px; }
         }
         .details-toggle { display: none; }
     </style>
@@ -240,12 +337,12 @@
         <div style="display:flex; align-items:center; gap:14px;">
             <a class="back-link" href="index.html">&larr; Dashboard</a>
             <span class="header-title">&#128172; Messages</span>
-            <span id="pbLine" style="font-size:0.72rem; color:#64748b;">PB line +1 (940) 407-4145</span>
+            <span id="pbLine" style="font-size:0.72rem; color:#8FB8DC;">Textly line +1 (940) 488-5047</span>
         </div>
         <div class="header-right">
             <button class="mini-btn details-toggle" onclick="toggleDetails()">&#8505; Details</button>
             <span id="userBadge" class="badge-role badge-user"></span>
-            <span id="verBadge" style="font-size:0.65rem; color:#64748b; font-family:'JetBrains Mono',monospace;"></span>
+            <span id="verBadge" style="font-size:0.65rem; color:#8FB8DC; font-family:'JetBrains Mono',monospace;"></span>
         </div>
     </div>
 
@@ -253,7 +350,10 @@
         <!-- LEFT -->
         <div class="pane list-pane">
             <div class="list-tools">
-                <input id="convoSearch" class="search-input" type="text" placeholder="Search name or phone&hellip;">
+                <div style="display:flex; gap:6px;">
+                    <input id="convoSearch" class="search-input" type="text" placeholder="Search name or phone&hellip;" style="flex:1;">
+                    <button id="newConvoBtn" class="mini-btn primary" style="display:none; flex:0 0 auto; white-space:nowrap;" onclick="openNewConvoModal()" title="Start a conversation with a new lead or customer">&#10133; New</button>
+                </div>
                 <div class="filter-row">
                     <button class="filter-btn active" data-filter="open">Open</button>
                     <button class="filter-btn" data-filter="all">All</button>
@@ -287,6 +387,7 @@
             <div id="msgPbWarn"></div>
             <div class="composer">
                 <textarea id="msgBody" class="form-input" rows="2" placeholder="Type a message to the customer&hellip;"></textarea>
+                <div id="composerExtrasSlot"></div><!-- S151b: filled by composerExtrasHtml() at boot -->
                 <button id="msgSendBtn" class="send-btn" onclick="inboxSend()" disabled>&#128228; Send</button>
             </div>
         </div>
@@ -303,6 +404,7 @@
                     </div>
                     <div id="detailPhone" style="font-size:0.82rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; margin-top:2px;"></div>
                     <div id="detailOptout" style="display:none; margin-top:6px; color:#fca5a5; font-size:0.78rem;">&#128721; Opted out (STOP)</div>
+                    <div id="detailContact" style="margin-top:8px;"></div><!-- v1.11: email + address from RO / archive -->
                 </div>
                 <div class="details-section">
                     <div class="details-label">Linked ROs</div>
@@ -333,6 +435,21 @@
     </div>
 </div>
 
+<!-- S151d (v1.10): New Contact modal — start a conversation with a lead -->
+<div id="newConvoModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(92vw, 380px); box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:12px;">&#10133; New Contact</div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Name (lead / customer)</label>
+        <input id="ncName" class="assign-input" type="text" placeholder="e.g. Dale Brisby" style="margin-bottom:10px;">
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Mobile number</label>
+        <input id="ncPhone" class="assign-input" type="tel" placeholder="+1 or 10 digits" style="margin-bottom:14px;">
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="mini-btn" onclick="closeNewConvoModal()">Cancel</button>
+            <button id="ncCreateBtn" class="mini-btn primary" onclick="createNewConversation()">Create &amp; open</button>
+        </div>
+    </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script type="module">
@@ -342,7 +459,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.6';
+const PAGE_VERSION = 'messages v1.11';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -414,7 +531,7 @@ Object.defineProperty(window, 'currentUser', { get: () => currentUser });
 
 // Reuse the dashboard's renderer + send path (spec §5.2 — one source).
 const messaging = await import('./js/messaging.js');
-const { loadMessages, bubbleHtml, sendCustomerMessage, pbEngagement, pbEngagementBannerHtml } = messaging;
+const { loadMessages, bubbleHtml, sendCustomerMessage, pbEngagement, pbEngagementBannerHtml, composerExtrasHtml, initComposerExtras, refreshSignaturePreview } = messaging; // S151b: +composer extras
 
 // ── RBAC (closed-ros.html pattern) ───────────────────────────────────
 async function loadUserRoles() {
@@ -511,12 +628,95 @@ function showApp() {
     else if (isManagerOrAdmin()) { badge.className = 'badge-role badge-manager'; badge.textContent = name + ' (Manager)'; }
     else { badge.className = 'badge-role badge-user'; badge.textContent = name; }
     populateAssignSelect();
+    // S151d: New Contact button (managers+, matches the RLS insert policy).
+    if (isManagerOrAdmin()) document.getElementById('newConvoBtn').style.display = '';
+    // S151b: attach/emoji/signature composer extras (shared with the RO modal).
+    const slot = document.getElementById('composerExtrasSlot');
+    if (slot && !slot.innerHTML) { slot.innerHTML = composerExtrasHtml(); initComposerExtras(); }
     refreshAll();
     _pollTimer = setInterval(refreshAll, 60000);
     window.addEventListener('focus', refreshAll);
 }
 
 // ── Conversation list ────────────────────────────────────────────────
+// ── S151d (v1.10): New Contact — start a conversation with a lead ────
+// Managers+ only: matches the S138 conversations_insert_manager RLS policy,
+// so the UI never offers a button the DB would 403.
+function openNewConvoModal() {
+    document.getElementById('ncName').value = '';
+    document.getElementById('ncPhone').value = '';
+    document.getElementById('newConvoModal').style.display = 'flex';
+    document.getElementById('ncName').focus();
+}
+function closeNewConvoModal() {
+    document.getElementById('newConvoModal').style.display = 'none';
+}
+function _ncToE164(raw) {
+    const t = String(raw || '').trim();
+    if (t.startsWith('+')) return '+' + t.slice(1).replace(/\D/g, '');
+    const d = t.replace(/\D/g, '');
+    if (d.length === 10) return '+1' + d;
+    if (d.length === 11 && d.startsWith('1')) return '+' + d;
+    return '';
+}
+async function createNewConversation() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can add contacts.', 'warning'); return; }
+    const name = (document.getElementById('ncName').value || '').trim();
+    const phone = _ncToE164(document.getElementById('ncPhone').value);
+    if (!phone || phone.length < 12) { showToast('Enter a valid US mobile number (10 digits or +1XXXXXXXXXX).', 'warning'); return; }
+    const key = phoneKeyOf(phone);
+    const btn = document.getElementById('ncCreateBtn');
+    btn.disabled = true;
+    try {
+        // Already have this number? Open it instead of duplicating.
+        const { data: existing, error: exErr } = await getSB()
+            .from('conversations').select('id, customer_name').eq('phone_key', key).maybeSingle();
+        if (exErr) throw exErr;
+        if (existing) {
+            // v1.10a: this number already has a conversation (often imported
+            // Kenect history under an old/closed name). The manager typing a
+            // name is the authority on who we're talking to NOW: rename it,
+            // REOPEN it, and float it to the top so it behaves like new.
+            const upd = { status: 'open', last_message_at: new Date().toISOString() };
+            if (name) upd.customer_name = name;
+            const { error: nmErr } = await getSB().from('conversations')
+                .update(upd).eq('id', existing.id);
+            if (nmErr) console.error('existing-convo reopen error:', nmErr);
+            closeNewConvoModal();
+            document.getElementById('convoSearch').value = '';
+            await loadConversations();
+            try { await selectConversation(existing.id); }
+            catch (selErr) { console.error('select after reuse failed:', selErr); }
+            showToast(existing.customer_name && name && existing.customer_name !== name
+                ? `That number had prior history as "${existing.customer_name}" - reopened it as ${name}.`
+                : 'That number already had a conversation - reopened it.', 'info');
+            return;
+        }
+        const { data: created, error: insErr } = await getSB().from('conversations').insert({
+            phone_key: key,
+            display_phone: phone,
+            customer_name: name || null,
+            status: 'open',
+            last_message_at: new Date().toISOString(), // floats to top of the list
+        }).select('id').maybeSingle();
+        if (insErr) throw insErr;
+        closeNewConvoModal();
+        document.getElementById('convoSearch').value = '';
+        await loadConversations();
+        if (created?.id) {
+            try { await selectConversation(created.id); }
+            catch (selErr) { console.error('select after create failed:', selErr); }
+        }
+        showToast('Contact added - send the first text below.', 'success');
+    } catch (e) {
+        console.error('createNewConversation error:', e);
+        showToast('Could not add contact: ' + (e.message || e), 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 async function loadConversations() {
     if (!getSB() || !supabaseSession) return;
     const { data, error } = await getSB()
@@ -543,11 +743,16 @@ async function loadConversations() {
 function filteredConversations() {
     const q = (document.getElementById('convoSearch').value || '').trim().toLowerCase();
     const myEmail = (currentUser?.email || '').toLowerCase();
+    // v1.10b: an active SEARCH overrides the status/assignment filters —
+    // "find this person" beats "show me open work". Every imported Kenect
+    // conversation is closed, so filtering search hits by Open hid exactly
+    // the contacts the global search exists to surface.
+    const searching = q.length > 0;
     return _conversations.filter(c => {
-        if (_activeFilter === 'open' && c.status !== 'open') return false;
-        if (_activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
-        if (_activeFilter === 'unassigned' && (c.assigned_to || c.status !== 'open')) return false;
-        if (_activeFilter === 'mine' && ((c.assigned_to || '').toLowerCase() !== myEmail || c.status !== 'open')) return false;
+        if (!searching && _activeFilter === 'open' && c.status !== 'open') return false;
+        if (!searching && _activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
+        if (!searching && _activeFilter === 'unassigned' && (c.assigned_to || c.status !== 'open')) return false;
+        if (!searching && _activeFilter === 'mine' && ((c.assigned_to || '').toLowerCase() !== myEmail || c.status !== 'open')) return false;
         if (q) {
             const hay = ((c.customer_name || '') + ' ' + (c.display_phone || '') + ' ' + c.phone_key).toLowerCase();
             if (!hay.includes(q)) return false;
@@ -586,7 +791,16 @@ function renderConvoList() {
 
 // ── Thread + details ─────────────────────────────────────────────────
 async function selectConversation(id) {
-    const c = _conversations.find(x => x.id === id);
+    let c = _conversations.find(x => x.id === id);
+    // v1.10a: the list holds only the NEWEST 1000 conversations (supabase
+    // default cap; the 3,225-convo Kenect import blew past it). A convo
+    // outside that window (old imported thread reached via New Contact)
+    // is fetched on demand and joined to the local cache.
+    if (!c && getSB()) {
+        const { data, error } = await getSB().from('conversations').select('*').eq('id', id).maybeSingle();
+        if (error) console.error('selectConversation on-demand fetch error:', error);
+        if (data) { c = data; _conversations.push(c); }
+    }
     if (!c) return;
     _activeConvo = c;
     document.body.classList.add('thread-open');
@@ -612,6 +826,53 @@ async function renderThread() {
     const warnEl = document.getElementById('msgPbWarn');
     if (warnEl) warnEl.innerHTML = pbEngagementBannerHtml(pbEngagement(msgs));
 }
+// v1.11: contact info (email/address) with one-tap copy.
+function _contactRowHtml(label, value) {
+    return `<div style="display:flex; align-items:flex-start; gap:6px; margin-top:4px;">
+        <span style="flex:0 0 auto; font-size:0.68rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px; padding-top:2px;">${label}</span>
+        <span style="flex:1; font-size:0.8rem; color:var(--text-primary); word-break:break-word; user-select:all;">${escapeHtml(value)}</span>
+        <button class="mini-btn" style="flex:0 0 auto; padding:1px 7px; font-size:0.72rem;" title="Copy ${label.toLowerCase()}" onclick="copyContactValue(this)" data-copy="${escapeHtml(value)}">&#128203;</button>
+    </div>`;
+}
+async function copyContactValue(btn) {
+    try {
+        await navigator.clipboard.writeText(btn.dataset.copy || '');
+        showToast('Copied.', 'success');
+    } catch (e) { showToast('Copy failed - select the text and copy manually.', 'warning'); }
+}
+async function renderContactInfo(c, linkedROs) {
+    const box = document.getElementById('detailContact');
+    if (!box) return;
+    box.innerHTML = '';
+    // Newest-first live ROs that carry contact fields.
+    const sorted = [...(linkedROs || [])].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    let email = sorted.find(r => (r.email || '').trim())?.email?.trim() || '';
+    let address = sorted.find(r => (r.address || '').trim())?.address?.trim() || '';
+    // Archive fallback: cashiered keeps email/address for past customers.
+    if (!email || !address) {
+        try {
+            const last4 = c.phone_key.slice(-4);
+            const { data: arch, error: archErr } = await getSB()
+                .from('cashiered')
+                .select('phone, email, address, date_received')
+                .ilike('phone', '%' + last4 + '%')
+                .order('date_received', { ascending: false })
+                .limit(20);
+            if (!archErr && arch) {
+                const mine = arch.filter(r => phoneKeyOf(r.phone) === c.phone_key);
+                if (!email) email = (mine.find(r => (r.email || '').trim())?.email || '').trim();
+                if (!address) address = (mine.find(r => (r.address || '').trim())?.address || '').trim();
+            }
+        } catch (e) { console.error('cashiered contact lookup failed:', e); }
+    }
+    // Still selected? (async race guard)
+    if (_activeConvo?.id !== c.id) return;
+    let html = '';
+    if (email) html += _contactRowHtml('Email', email);
+    if (address) html += _contactRowHtml('Addr', address);
+    box.innerHTML = html || '<div style="font-size:0.72rem; color:#8FA9C2; margin-top:2px;">No email or address on file.</div>';
+}
+
 async function renderDetails() {
     const c = _activeConvo;
     if (!c) return;
@@ -634,16 +895,23 @@ async function renderDetails() {
     roBox.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
     const { data: ros, error: roErr } = await getSB()
         .from('repair_orders')
-        .select('id, ro_id, customer_name, rv, phone, status')
+        .select('id, ro_id, customer_name, rv, phone, status, email, address, updated_at')
         .is('deleted_at', null)
         .not('phone', 'is', null);
+    let linked = [];
     if (roErr) { roBox.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading ROs</span>'; }
     else {
-        const linked = (ros || []).filter(r => phoneKeyOf(r.phone) === c.phone_key);
+        linked = (ros || []).filter(r => phoneKeyOf(r.phone) === c.phone_key);
         roBox.innerHTML = linked.length
             ? linked.map(r => `<a class="ro-chip" href="index.html?ro=${encodeURIComponent(r.ro_id || '')}" target="_blank" title="${escapeHtml(r.customer_name || '')} — ${escapeHtml(r.status || '')}">${escapeHtml(r.ro_id || '?')}</a>`).join('')
             : '<span style="color:#64748b; font-size:0.8rem;">No active RO for this number.</span>';
     }
+
+    // ── v1.11: email + address (Roland directive: easy to see + copy) ──
+    // Source of truth order: newest live RO that has the field, else the
+    // newest cashiered (archived) RO for this number. Render nothing when
+    // we simply don't have it.
+    renderContactInfo(c, linked);
 
     // Assignment history.
     const evBox = document.getElementById('eventList');
@@ -748,7 +1016,7 @@ async function assignConversation() {
         ownerPhone = (staffRow?.phone_number || '').trim();
         if (ownerPhone) {
             try {
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/projectblue-send`, {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${supabaseSession?.access_token || SUPABASE_ANON_KEY}`,
@@ -860,7 +1128,41 @@ async function refreshAll() {
 function backToList() { document.body.classList.remove('thread-open'); }
 function toggleDetails() { document.getElementById('detailsPane').classList.toggle('open'); }
 
-document.getElementById('convoSearch').addEventListener('input', renderConvoList);
+// v1.10b: search covers ALL conversations, not just the newest-1000 window.
+// Local render fires instantly; a debounced server search sweeps the full
+// table and merges any hits the window is missing (Roland directive S151).
+let _searchTimer = null;
+document.getElementById('convoSearch').addEventListener('input', () => {
+    renderConvoList();
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(searchAllConversations, 350);
+});
+async function searchAllConversations() {
+    const q = (document.getElementById('convoSearch').value || '').trim();
+    if (q.length < 3 || !getSB() || !supabaseSession) return;
+    try {
+        const digits = q.replace(/\D/g, '');
+        let query = getSB().from('conversations').select('*');
+        if (digits.length >= 4 && digits.length >= (q.replace(/[\s()+.-]/g, '').length - 1)) {
+            // Phone-ish query: match digits against the phone key.
+            query = query.ilike('phone_key', '%' + digits + '%');
+        } else {
+            // Name query: escape ilike wildcards + PostgREST syntax chars.
+            const safe = q.replace(/[%_,().\\]/g, ' ').trim();
+            if (!safe) return;
+            query = query.ilike('customer_name', '%' + safe + '%');
+        }
+        const { data, error } = await query
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .limit(50);
+        if (error) { console.error('searchAllConversations error:', error); return; }
+        let added = 0;
+        (data || []).forEach(row => {
+            if (!_conversations.some(c => c.id === row.id)) { _conversations.push(row); added++; }
+        });
+        if (added > 0) renderConvoList();
+    } catch (e) { console.error('searchAllConversations failed:', e); }
+}
 document.getElementById('assignFilter').addEventListener('input', populateAssignSelect);
 document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -873,6 +1175,8 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 
 // Inline onclick bridge.
 Object.assign(window, {
+    openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
+    copyContactValue, // v1.11
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });

@@ -1,18 +1,21 @@
-// js/messaging.js — PRVS Dashboard customer messaging (GH#39, Project Blue)
-// Session 131, 2026-07-04. Supersedes the Sendblue Phase 2 POC module
-// (feature/sendblue-poc, v1.448) — same window-bridge surface, new provider.
+// js/messaging.js — PRVS Dashboard customer messaging (GH#39, Textly)
+// Session 131, 2026-07-04 (Project Blue). S151, 2026-07-21: TEXTLY PIVOT —
+// sends now go through the `textly-send` edge function (Textly = Vested
+// Networks' white-label of Textable), from 940-488-5047, the same line all
+// the imported Kenect history lives on. Same request/response contract as
+// projectblue-send, so this swap is endpoint-name + provider-copy only.
+// Inbound is captured by the `textly-webhook` edge fn (relayWebhook ingest).
 //
-// Sends iMessage/SMS through the `projectblue-send` edge function (dedicated
-// PB line +1 940 407-4145) and renders the conversation for the RO's customer.
-// Inbound replies are captured by the `projectblue-webhook` edge fn into the
-// `messages` table WITHOUT an ro_id (RO routing is a later phase), so the
-// thread query follows the LOCKED threading decision from
+// Thread model unchanged — LOCKED threading decision from
 // docs/specs/MESSAGING_AUTOMATION_SPEC.md §3: **customer-inbox, RO-tagged** —
 // one conversation per customer phone. loadMessages pulls rows matching the
 // RO id OR the customer's phone (both directions), merged chronologically.
 //
-// DEFERRED (spec P3-P6): automated sends, MMS from the modal, delivery-status
-// reconciliation, STOP/HELP handling, per-RO inbound routing.
+// RETIRED S151: the PB engagement warning (S144). Textly sends from the line
+// the customers have been texting for years, so the "may never arrive" trap
+// is gone. pbEngagement()/pbEngagementBannerHtml() are kept as no-op exports
+// so both render surfaces (modal + messages.html) drop the banner without a
+// coordinated markup change; delete them in a later cleanup pass.
 //
 // Conventions: window-bridge pattern (Object.assign at bottom) like the other
 // modules; reads bare globals getSB / currentUser / showToast / escapeHtml /
@@ -20,52 +23,33 @@
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KENECT_LINE_E164 } from './config.js';
 
-        // ── PB engagement (S144) ────────────────────────────────────
-        // Project Blue silently swallows outbound to any number that has never
-        // texted OUR PB line: it returns success, issues a pbm_ handle, and
-        // queues the message forever with no failure event. Evidence S144:
-        // every PB send to a never-engaged number stuck (3/3); 52/56 to engaged
-        // numbers moved. Not an iMessage artifact — 44/44 iMessages to engaged
-        // numbers delivered fine.
-        //
-        // The trap this guards: the S142 Kenect import gave every customer a
-        // deep, warm-looking thread — but that history arrived on the KENECT
-        // line, which PB has never seen. 3,190 of 3,211 conversations (99.3%)
-        // read as engaged to a human and are cold to Project Blue. Before the
-        // import an empty thread was an honest signal; now nothing is.
-        //
-        // Computed from rows already loaded, so it costs no extra round trip.
-        // Safe against loadMessages' newest-200 window: any PB-era inbound is
-        // by definition among the newest rows.
+        // ── PB engagement (S144) — RETIRED S151 (Textly pivot) ──────
+        // The S144 warning existed because Project Blue silently swallowed
+        // outbound to any number that had never texted the PB line (evidence
+        // S144: 3/3 never-engaged sends stuck; the S142 Kenect import made
+        // 99.3% of threads look warm while cold to PB). Textly sends from
+        // 940-488-5047 — the very line all that history arrived on — so the
+        // trap no longer exists. Kept as no-op exports so the two render
+        // surfaces (RO modal + messages.html) drop the banner without a
+        // coordinated markup change. Delete both in a later cleanup pass.
         function _last10(v) { return String(v || '').replace(/\D/g, '').slice(-10); }
 
         export function pbEngagement(rows) {
-            const pbLine = _last10(PB_LINE_E164);
+            // Historical shape preserved; always reads as engaged now.
             const kenectLine = _last10(KENECT_LINE_E164);
             const inbound = (rows || []).filter(m => (m.direction || '') === 'inbound');
-            const onPb = inbound.filter(m => _last10(m.phone_to) === pbLine);
             const onKenect = inbound.filter(m => _last10(m.phone_to) === kenectLine);
             return {
-                engaged: onPb.length > 0,
-                lastPbInboundAt: onPb.length ? onPb[onPb.length - 1].created_at : null,
-                // The dangerous case: looks warm, is cold.
-                kenectOnly: onPb.length === 0 && onKenect.length > 0,
+                engaged: true, // Textly = same line as the history; everyone is reachable
+                lastPbInboundAt: null,
+                kenectOnly: false,
                 kenectInboundCount: onKenect.length,
             };
         }
 
-        // Returns '' when engaged — render unconditionally, it self-suppresses.
-        export function pbEngagementBannerHtml(state) {
-            if (!state || state.engaged) return '';
-            const why = state.kenectOnly
-                ? `The conversation above is <strong>imported Kenect history</strong> — it arrived on our old line (940-488-5047), and Project Blue has never seen it.`
-                : `Project Blue has no inbound from this number on our line.`;
-            return `
-                <div style="border:1px solid rgba(245,158,11,0.5); background:rgba(245,158,11,0.12); border-radius:8px; padding:9px 11px; margin-bottom:10px; font-size:0.76rem; color:var(--text-primary); line-height:1.45;">
-                    \u{26A0}\u{FE0F} <strong>This customer has never texted our Project Blue line.</strong><br>
-                    ${why} Project Blue will accept this message and hold it until they reply first — with no failure notice. <strong>It may never arrive.</strong>
-                    <br><span style="color:var(--text-secondary);">If it's time-sensitive, call them instead.</span>
-                </div>`;
+        // RETIRED S151: always '' — Textly has no engagement gate.
+        export function pbEngagementBannerHtml(_state) {
+            return '';
         }
 
         // Best-effort E.164 normalization for US numbers. The modal lets the
@@ -200,6 +184,165 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             if (warnEl) warnEl.innerHTML = pbEngagementBannerHtml(pbEngagement(msgs));
         }
 
+        // ── S151b: composer extras — 📎 MMS attach, 😊 emoji, ✍️ signature ──
+        // Shared by BOTH send surfaces (RO modal below + messages.html): the
+        // markup uses fixed element ids, initComposerExtras() wires whichever
+        // instance is currently in the DOM, and sendCustomerMessage() reads
+        // the module-level state. One implementation, two composers.
+        let _msgAttachment = null;   // { url, name } after a successful upload
+        let _mySig;                  // undefined = not loaded · null = none · string = signature
+
+        const MSG_MEDIA_BUCKET = 'message-media';
+        const MSG_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // MMS carrier ceiling; we compress toward ~1MB
+
+        const COMPOSER_EMOJIS = ['\u{1F44D}','\u{1F44C}','\u{1F64F}','\u{1F44F}','\u{1F4AA}','\u{1F91D}','\u{1F44B}','✅','\u{1F389}','⭐','\u{1F525}','❤️','\u{1F600}','\u{1F601}','\u{1F602}','\u{1F605}','\u{1F642}','\u{1F609}','\u{1F60E}','\u{1F914}','\u{1F62E}','\u{1F622}','⚠️','❗','❓','\u{1F4C5}','⏰','\u{1F4DE}','\u{1F4AC}','\u{1F4B0}','\u{1F9FE}','\u{1F527}','\u{1F529}','\u{1F6E0}️','\u{1F690}','\u{1F3D5}️','☀️','\u{1F327}️','\u{1F4F7}','\u{1F4CE}'];
+
+        // Markup injected under the textarea (modal builds it inline;
+        // messages.html carries the same block statically).
+        export function composerExtrasHtml() {
+            return `
+                <div id="msgExtrasRow" style="position:relative; display:flex; align-items:center; gap:10px; margin:8px 0 10px;">
+                    <button type="button" id="msgAttachBtn" title="Attach a photo (MMS)" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
+                    <button type="button" id="msgEmojiBtn" title="Insert emoji" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F60A}</button>
+                    <span id="msgAttachChip" style="display:none; align-items:center; gap:6px; font-size:0.72rem; color:var(--accent-info); border:1px solid rgba(96,165,250,0.4); border-radius:6px; padding:2px 8px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+                    <input type="file" id="msgAttach" accept="image/*" style="display:none;">
+                    <div id="msgEmojiPop" style="display:none; position:absolute; bottom:34px; left:0; z-index:50; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:8px; width:266px; box-shadow:0 8px 24px rgba(0,0,0,0.45);"></div>
+                </div>
+                <div id="msgSigPreview" style="display:none; font-size:0.7rem; color:var(--text-secondary); border-left:2px solid var(--border-color); padding:2px 0 2px 8px; margin:-2px 0 8px; white-space:pre-wrap;"></div>`;
+        }
+
+        async function _loadMySignature() {
+            if (_mySig !== undefined) return _mySig;
+            _mySig = null;
+            try {
+                const email = (typeof currentUser !== 'undefined' && currentUser?.email) || null;
+                if (email && getSB()) {
+                    const { data, error } = await getSB().from('staff')
+                        .select('sms_signature').eq('email', email).maybeSingle();
+                    if (!error && data?.sms_signature && String(data.sms_signature).trim()) {
+                        _mySig = String(data.sms_signature).replace(/\r\n/g, '\n').trim();
+                    }
+                }
+            } catch (e) { console.error('signature load failed (sending without):', e); }
+            return _mySig;
+        }
+
+        export async function refreshSignaturePreview() {
+            const el = document.getElementById('msgSigPreview');
+            if (!el) return;
+            const sig = await _loadMySignature();
+            if (sig) {
+                el.textContent = '✍️ Added to every send:\n' + sig;
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+
+        function _renderAttachChip() {
+            const chip = document.getElementById('msgAttachChip');
+            if (!chip) return;
+            if (_msgAttachment) {
+                chip.style.display = 'inline-flex';
+                chip.innerHTML = `\u{1F5BC}️ ${escapeHtml(_msgAttachment.name)} <a href="#" id="msgAttachClear" title="Remove attachment" style="color:#ef4444; text-decoration:none; font-weight:700;">&times;</a>`;
+                document.getElementById('msgAttachClear')?.addEventListener('click', (e) => {
+                    e.preventDefault(); _msgAttachment = null; _renderAttachChip();
+                });
+            } else {
+                chip.style.display = 'none';
+                chip.innerHTML = '';
+            }
+        }
+
+        // Downscale big images toward MMS-friendly size (max edge 1600px, JPEG).
+        async function _compressImage(file) {
+            if (!/^image\//.test(file.type) || file.type === 'image/gif' || file.size < 1.5 * 1024 * 1024) return file;
+            try {
+                const bmp = await createImageBitmap(file);
+                const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(bmp.width * scale);
+                canvas.height = Math.round(bmp.height * scale);
+                canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.82));
+                if (blob && blob.size < file.size) {
+                    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+                }
+            } catch (e) { console.error('image compress failed (using original):', e); }
+            return file;
+        }
+
+        async function _handleAttachPick(ev) {
+            const file = ev.target.files && ev.target.files[0];
+            ev.target.value = '';
+            if (!file) return;
+            if (!getSB() || (typeof supabaseSession === 'undefined' || !supabaseSession)) {
+                showToast('Sign in first to attach photos.', 'warning'); return;
+            }
+            const btn = document.getElementById('msgAttachBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+            try {
+                const upload = await _compressImage(file);
+                if (upload.size > MSG_MEDIA_MAX_BYTES) {
+                    showToast('That photo is over 5MB even after compression - MMS carriers will reject it. Pick a smaller one.', 'warning', { duration: 8000 });
+                    return;
+                }
+                const safe = (upload.name || 'photo.jpg').replace(/[^A-Za-z0-9._-]/g, '_').slice(-60);
+                const path = `mms/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+                const { error: upErr } = await getSB().storage.from(MSG_MEDIA_BUCKET)
+                    .upload(path, upload, { contentType: upload.type, upsert: false });
+                if (upErr) { showToast('Photo upload failed: ' + upErr.message, 'error', { duration: 8000 }); return; }
+                const { data: pub } = getSB().storage.from(MSG_MEDIA_BUCKET).getPublicUrl(path);
+                if (!pub?.publicUrl) { showToast('Photo uploaded but no public URL came back.', 'error'); return; }
+                _msgAttachment = { url: pub.publicUrl, name: upload.name || 'photo' };
+                _renderAttachChip();
+            } catch (e) {
+                console.error('attach failed:', e);
+                showToast('Attach failed: ' + e.message, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '\u{1F4CE}'; }
+            }
+        }
+
+        function _buildEmojiPop() {
+            const pop = document.getElementById('msgEmojiPop');
+            if (!pop) return;
+            pop.innerHTML = COMPOSER_EMOJIS.map(e =>
+                `<button type="button" class="msg-emoji-opt" data-e="${e}" style="background:transparent; border:none; font-size:1.25rem; padding:3px; cursor:pointer; line-height:1;">${e}</button>`).join('');
+            pop.querySelectorAll('.msg-emoji-opt').forEach(b => b.addEventListener('click', () => {
+                const ta = document.getElementById('msgBody');
+                if (ta) {
+                    const s = ta.selectionStart ?? ta.value.length;
+                    ta.value = ta.value.slice(0, s) + b.dataset.e + ta.value.slice(ta.selectionEnd ?? s);
+                    ta.focus();
+                    ta.selectionStart = ta.selectionEnd = s + b.dataset.e.length;
+                }
+                pop.style.display = 'none';
+            }));
+        }
+
+        // Wire the composer-extras instance currently in the DOM. Safe to call
+        // repeatedly (modal re-opens); it re-binds the fresh elements.
+        export function initComposerExtras() {
+            _msgAttachment = null;
+            document.getElementById('msgAttachBtn')?.addEventListener('click', () => document.getElementById('msgAttach')?.click());
+            document.getElementById('msgAttach')?.addEventListener('change', _handleAttachPick);
+            const emojiBtn = document.getElementById('msgEmojiBtn');
+            const pop = document.getElementById('msgEmojiPop');
+            if (emojiBtn && pop) {
+                _buildEmojiPop();
+                emojiBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
+                });
+                document.addEventListener('click', (e) => {
+                    if (pop.style.display !== 'none' && !pop.contains(e.target) && e.target !== emojiBtn) pop.style.display = 'none';
+                });
+            }
+            _renderAttachChip();
+            refreshSignaturePreview();
+        }
+
         export async function openMessagesModal(ro) {
             if (!ro) { showToast('Open a repair order first, then click Message Customer.', 'warning'); return; }
             if (!getSB()) { showToast('Please connect to the PRVS database first.', 'warning'); return; }
@@ -234,12 +377,14 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                     </div>
                     <div id="msgPbWarn"></div>
                     <textarea id="msgBody" class="form-input" rows="3" placeholder="Type a message to the customer…" style="resize:vertical; margin-bottom:10px;"></textarea>
+                    ${composerExtrasHtml()}
                     <div style="display:flex; gap:10px;">
                         <button onclick="closeMessagesModal()" style="flex:0 0 auto; padding:10px 16px; border-radius:8px; border:1px solid var(--border-color); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">Cancel</button>
                         <button id="msgSendBtn" onclick="sendCustomerMessage('${roSupabaseId || ''}', '${roCode}')" style="flex:1; padding:10px; border-radius:8px; border:1.5px solid rgba(59,130,246,0.5); background:rgba(59,130,246,0.12); color:#3b82f6; cursor:pointer; font-size:0.9rem; font-weight:700;">\u{1F4E4} Send</button>
                     </div>
                 </div>`;
             document.body.appendChild(modal);
+            initComposerExtras(); // S151b: wire attach/emoji/signature for this instance
             _refreshThread(roSupabaseId, defaultPhone);
         }
 
@@ -258,13 +403,20 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             if (!phoneEl || !bodyEl) return;
 
             const phone = _toE164(phoneEl.value);
-            const body = (bodyEl.value || '').trim();
+            let body = (bodyEl.value || '').trim();
             if (!phone || phone.length < 11) { showToast('Enter a valid phone number in +1XXXXXXXXXX format.', 'warning'); return; }
-            if (!body) { showToast('Type a message first.', 'warning'); return; }
+            // S151b: a photo with no text is a valid MMS.
+            if (!body && !_msgAttachment) { showToast('Type a message (or attach a photo) first.', 'warning'); return; }
+
+            // S151b: per-user signature (staff.sms_signature) auto-appends —
+            // the preview under the composer shows exactly what will be added.
+            const sig = await _loadMySignature();
+            if (sig && body && !body.endsWith(sig)) body = body + '\n\n' + sig;
+            if (sig && !body) body = sig; // photo-only send still signs
 
             if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
             try {
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/projectblue-send`, {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${(typeof supabaseSession !== 'undefined' && supabaseSession?.access_token) ? supabaseSession.access_token : SUPABASE_ANON_KEY}`,
@@ -279,12 +431,13 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                         ro_code: roCode || null,
                         sent_by: (currentUser && currentUser.email) || null,
                         context: 'ro_customer',
+                        media_url: _msgAttachment ? _msgAttachment.url : null, // S151b MMS
                     }),
                 });
                 const data = await res.json().catch(() => ({}));
 
                 if (res.status === 503) {
-                    showToast('Project Blue is not configured yet (PROJECTBLUE_API_KEY not set on the project).', 'warning', { duration: 9000 });
+                    showToast('Textly is not configured yet (TEXTLY_API_TOKEN not set on the project).', 'warning', { duration: 9000 });
                     return;
                 }
                 if (res.status === 403 && data.opted_out) {
@@ -293,15 +446,16 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                     return;
                 }
                 if (!res.ok || data.ok === false) {
-                    const detail = data.error || data.projectblue?.error || `HTTP ${res.status}`;
+                    const detail = data.error || data.textly?.error || `HTTP ${res.status}`;
                     showToast('Send failed: ' + detail, 'error', { duration: 9000 });
-                    log('❌ Project Blue send failed: ' + JSON.stringify(data));
+                    log('❌ Textly send failed: ' + JSON.stringify(data));
                     return;
                 }
 
                 bodyEl.value = '';
+                _msgAttachment = null; _renderAttachChip(); // S151b: clear after send
                 showToast(`Message sent${data.is_imessage === true ? ' (iMessage)' : data.is_imessage === false ? ' (SMS)' : ''}.`, 'success');
-                log('✅ Project Blue send ok: ' + (data.message_handle || data.status || ''));
+                log('✅ Textly send ok: ' + (data.message_handle || data.status || ''));
                 _refreshThread(roSupabaseId, phone);
             } catch (err) {
                 console.error('sendCustomerMessage error:', err);
@@ -317,4 +471,6 @@ Object.assign(window, {
   closeMessagesModal,
   refreshMessagesThread,
   sendCustomerMessage,
+  initComposerExtras,      // S151b
+  refreshSignaturePreview, // S151b
 });

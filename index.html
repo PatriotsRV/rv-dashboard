@@ -1,8 +1,14 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.477
-    v1.477: [S147] SIDEBAR LAYOUT TOGGLE — the team-approved sidebar-mockup.html
+    PRVS Dashboard v1.481
+    v1.481: [S153] SIDEBAR LAYOUT SHIPS — feature/sidebar-layout (S147+S150+
+    S152, was v1.477) merged with Textly-era pre-prod v1.480 and RENUMBERED
+    (prod took v1.478-v1.480 during the Textly pivot while the branch soaked).
+    Closes the S152 ship blocker: branch messaging now posts textly-send —
+    pre-merge it still posted the retired projectblue-send (the S152 live test
+    went out the PB temp line). No functional change beyond the merge itself.
+    v1.477 (unreleased — ships as v1.481): [S147] SIDEBAR LAYOUT TOGGLE — the team-approved sidebar-mockup.html
     v0.7 design becomes a fully-functional per-user layout on the REAL dashboard.
     Classic ⇄ Sidebar switch (S152 deploy plan, Roland 7/21): "🧪 New RO DB
     Tester" header link -> sidebar-mockup.html, now a tiny LAUNCHER page that
@@ -21,6 +27,41 @@
     zero effect on classic. Desktop: fixed 260px sidebar + collapsible rail;
     Mobile (<900px): off-canvas drawer + 🎛️ Filters button. Stats bar gains a
     collapsible 📊 Stats wrapper (sidebar mode only). No DB change.
+    v1.480: [GH#39 S151e] Messages board round 3 (rides with messages-v1.11):
+    details pane gains customer EMAIL + ADDRESS with one-tap copy (newest live
+    repair_orders row for the number, cashiered archive fallback); page-wide
+    readability bump on messages.html (root 16 -> 17.5px + darker 1.5px input
+    borders #4E7CA8); mobile fixes (one-row header, slim composer, Send always
+    on-screen); js/messaging.js composer-extras row spacing fix (affects the
+    RO card modal too - the ONLY index.html-side change in this bump).
+    v1.479: [GH#39 S151b] MMS attach + emoji picker + per-user SMS signatures.
+    Composer (RO card modal + messages.html v1.8 — ONE implementation in
+    js/messaging.js composerExtrasHtml()/initComposerExtras()) gains: 📎 photo
+    attach (client-side downscale toward MMS size, upload to NEW public bucket
+    message-media, sent via textly-send v1.1 media[]; photo-only sends allowed),
+    😊 emoji picker (40 common, cursor-insert), ✍️ auto-appended signature from
+    NEW staff.sms_signature with a preview under the composer (photo-only sends
+    still sign). Migration message_media_signatures_s151.sql (bucket + policy +
+    column + initial signatures). textly-send v1.1: media_url accepts string OR
+    array; body optional when media present.
+    v1.478: [GH#39 S151] TEXTLY PIVOT — outbound texting swings from Project
+    Blue to Textly (Vested Networks' white-label of Textable). Kenect died
+    7/20 when Vested activated Textly, so the shop was hard down on texting;
+    this restores it WITHOUT any number movement: Textly sends from
+    940-488-5047, the SAME VoIP line (hosted at Vested) that all 56k imported
+    Kenect messages arrived on. NEW edge fns textly-send (drop-in
+    request/response contract of projectblue-send; STOP gate + conversations
+    upsert preserved; is_imessage always null — SMS/MMS only) + textly-webhook
+    (relayWebhook ingest; ports ALL projectblue-webhook v1.2 behavior:
+    echo-dedupe [+MessageID relay dedupe + handle backfill], inbound RO
+    routing, conversation upserts, STOP/HELP TCPA gate + auto-replies,
+    assigned-owner notify fork + silo blast). js/messaging.js + messages.html
+    v1.7 point at textly-send; the S144 PB engagement banner SELF-RETIRES
+    (pbEngagementBannerHtml() always '' — the engagement trap was PB-specific
+    and the history line IS the sending line now). js/config.js gains
+    TEXTLY_LINE_E164. PB fns stay deployed but dormant; the
+    projectblue-reconcile cron should be unscheduled (TODO). NOTE v1.477 is
+    reserved by feature/sidebar-layout (unmerged), same precedent as v1.448.
     v1.476: [GH#39 S144] PB engagement warning in the message composer. Project
     Blue silently swallows outbound to any number that has never texted OUR PB
     line (+1 940-407-4145): it returns success, issues a pbm_ handle, then queues
@@ -663,7 +704,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.477</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.481</span>
           </span>
         </div>
         <header>
@@ -692,7 +733,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.477</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.481</span>
             </div>
         </header>
 
@@ -3436,7 +3477,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.477 - 2026-07-20 - Sidebar Layout Toggle (Session 147): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
