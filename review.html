@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<!--
+    PRVS Review Request Landing Page v1.0 (Session 154, 2026-07-22) — GH#40
+    "Would you recommend Patriots RV Services?" — the Kenect Reviews
+    replacement, styled on the messages.html celeste theme.
+
+    Static GitHub Pages file. NO Supabase client, NO login: all traffic goes
+    through the token-gated review-feedback edge fn (?t=<uuid> from the SMS
+    link ties the visit to one review_requests row).
+      Yes -> Google / Facebook buttons (click beacon fire-and-forget, then
+             navigate; links from docs/specs/REVIEW_REQUEST_SPEC.md)
+      No  -> private feedback textarea -> review_feedback queue + manager email
+    Unknown/missing token: page still works as a plain review page (Yes path
+    only, no tracking) so a forwarded link never dead-ends a customer.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Patriots RV Services — How did we do?</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-primary: #F5FAFE; --bg-secondary: #FFFFFF; --bg-tertiary: #DCEBF7;
+    --border-color: #BBD9F0; --text-primary: #10243E; --text-secondary: #53718E;
+    --celeste: #75AADB; --celeste-deep: #4E8FC7; --celeste-mist: #EAF4FB;
+    --gold: #C9A544; --input-border: #4E7CA8;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size: 17.5px; }
+body {
+    font-family:'Barlow Condensed',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    min-height: 100vh; display:flex; flex-direction:column; align-items:center;
+}
+.topbar {
+    width:100%; background: linear-gradient(135deg,#0A1220 0%,#14304F 100%);
+    border-bottom:3px solid var(--celeste); padding:14px 20px; text-align:center;
+}
+.topbar img { height:56px; vertical-align:middle; }
+.card {
+    background:var(--bg-secondary); border:1px solid var(--border-color);
+    border-radius:14px; box-shadow:0 10px 34px rgba(16,36,62,0.12);
+    width:min(94vw,430px); margin:36px 0 24px; padding:28px 24px; text-align:center;
+}
+h1 { font-size:1.45rem; font-weight:700; margin-bottom:6px; }
+.sub { color:var(--text-secondary); font-size:0.95rem; margin-bottom:22px; }
+.yn { display:flex; gap:12px; justify-content:center; }
+.btn {
+    display:inline-block; border:none; cursor:pointer; text-decoration:none;
+    font-family:inherit; font-weight:600; font-size:1.05rem;
+    padding:12px 34px; border-radius:10px; transition:transform .08s ease;
+}
+.btn:active { transform:scale(0.97); }
+.btn-yes { background:var(--celeste-deep); color:#fff; }
+.btn-no  { background:var(--bg-tertiary); color:var(--text-primary); border:1px solid var(--border-color); }
+.btn-site {
+    width:100%; margin-top:12px; padding:14px 10px; font-size:1.05rem;
+    background:#fff; color:var(--text-primary); border:1.5px solid var(--input-border);
+}
+.btn-site.google { border-color:#4285F4; }
+.btn-site.facebook { border-color:#1877F2; }
+textarea {
+    width:100%; min-height:130px; resize:vertical; margin-top:14px;
+    border:1.5px solid var(--input-border); border-radius:10px; padding:10px;
+    font-family:inherit; font-size:0.95rem; color:var(--text-primary);
+}
+.btn-submit { background:var(--celeste-deep); color:#fff; width:100%; margin-top:12px; }
+.escape { display:block; margin-top:14px; font-size:0.85rem; color:var(--text-secondary); }
+.escape a { color:var(--celeste-deep); }
+.thanks { font-size:1.1rem; padding:16px 0; }
+.stars { color:var(--gold); font-size:1.3rem; letter-spacing:3px; margin-bottom:10px; }
+.hidden { display:none; }
+.footer { color:var(--text-secondary); font-size:0.78rem; margin-bottom:22px; }
+</style>
+</head>
+<body>
+<div class="topbar"><img src="logo.png" alt="Patriots RV Services"></div>
+
+<div class="card">
+    <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+
+    <!-- Step 1: Yes / No -->
+    <div id="stepAsk">
+        <h1 id="askHeadline">Would you recommend Patriots&nbsp;RV&nbsp;Services?</h1>
+        <div class="sub">Thanks for letting us take care of your RV.</div>
+        <div class="yn">
+            <button class="btn btn-yes" onclick="showYes()">Yes</button>
+            <button class="btn btn-no" onclick="showNo()">No</button>
+        </div>
+    </div>
+
+    <!-- Step 2a: YES — pick a site -->
+    <div id="stepYes" class="hidden">
+        <h1>Wonderful!</h1>
+        <div class="sub">Select a site to leave a review — it only takes a minute.</div>
+        <a class="btn btn-site google" href="https://search.google.com/local/writereview?placeid=ChIJqdpO2dM3TIYRBv2akD3h9l0"
+           onclick="beacon('google')">Review us on Google</a>
+        <a class="btn btn-site facebook" href="https://facebook.com/113792958286912"
+           onclick="beacon('facebook')">Review us on Facebook</a>
+    </div>
+
+    <!-- Step 2b: NO — private feedback -->
+    <div id="stepNo" class="hidden">
+        <h1>How can we improve?</h1>
+        <div class="sub">Send us direct feedback and we'll be in touch to make things right.</div>
+        <textarea id="fbText" placeholder="Tell us what happened&hellip;"></textarea>
+        <button class="btn btn-submit" id="fbSubmit" onclick="submitFeedback()">Submit Feedback</button>
+        <span class="escape">If you'd prefer, you can <a href="#" onclick="showYes(); return false;">leave an online review</a>.</span>
+    </div>
+
+    <!-- Step 3: feedback thanks -->
+    <div id="stepDone" class="hidden">
+        <h1>Thank you.</h1>
+        <div class="thanks">Your feedback went straight to our management team. We'll be in touch.</div>
+    </div>
+</div>
+
+<div class="footer">Patriots RV Services &middot; Sanger, TX</div>
+
+<script>
+var FN_URL = 'https://axfejhudchdejoiwaetq.supabase.co/functions/v1/review-feedback';
+var TOKEN = new URLSearchParams(location.search).get('t') || '';
+
+function show(id) {
+    ['stepAsk','stepYes','stepNo','stepDone'].forEach(function (s) {
+        document.getElementById(s).classList.toggle('hidden', s !== id);
+    });
+}
+function showYes() { show('stepYes'); }
+function showNo()  { show('stepNo'); }
+
+// Personalized greeting when the token resolves (fails silently — the
+// page must never dead-end a customer on a bad/old link).
+if (TOKEN) {
+    fetch(FN_URL + '?t=' + encodeURIComponent(TOKEN))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+            if (d && d.first_name) {
+                document.getElementById('askHeadline').textContent =
+                    d.first_name + ', would you recommend Patriots RV Services?';
+            }
+        })
+        .catch(function () {});
+}
+
+// Fire-and-forget click stamp; never blocks the navigation.
+function beacon(site) {
+    if (!TOKEN) return true;
+    try {
+        // text/plain = CORS "simple request" (no preflight to race the
+        // navigation); the edge fn parses the JSON body regardless of type.
+        var payload = JSON.stringify({ t: TOKEN, action: 'click', site: site });
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(FN_URL, new Blob([payload], { type: 'text/plain' }));
+        } else {
+            fetch(FN_URL, { method:'POST', headers:{'Content-Type':'text/plain'},
+                            body: payload, keepalive:true }).catch(function () {});
+        }
+    } catch (e) {}
+    return true;
+}
+
+function submitFeedback() {
+    var text = (document.getElementById('fbText').value || '').trim();
+    if (!text) { document.getElementById('fbText').focus(); return; }
+    var btn = document.getElementById('fbSubmit');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    fetch(FN_URL, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ t: TOKEN, action:'feedback', text: text })
+    }).then(function (r) {
+        if (r.ok) { show('stepDone'); }
+        else { throw new Error('HTTP ' + r.status); }
+    }).catch(function () {
+        btn.disabled = false; btn.textContent = 'Submit Feedback';
+        alert('Sorry - the feedback could not be sent. Please try again, or call us at (940) 488-5047.');
+    });
+}
+</script>
+</body>
+</html>

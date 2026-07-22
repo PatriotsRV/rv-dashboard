@@ -2,7 +2,14 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
-    v1.12 (Session 154, 2026-07-22): CUSTOMER NOTES (Kenect parity, Roland).
+    v1.12 (Session 154, 2026-07-22): CUSTOMER NOTES + REVIEW REQUEST (GH#40).
+    (2) NEW "Review" details-pane section (managers+): ⭐ Request a review
+    inserts a manual review_requests row (sends within 15 min via the
+    process-review-requests cron -> textly-send; bypasses the 60-day guard
+    like Kenect real-time requests) + shows last-asked / queued state.
+    Pairs with review_requests_s154.sql, review.html, and the
+    process-review-requests + review-feedback edge fns.
+    (1) CUSTOMER NOTES (Kenect parity, Roland).
     NEW "Notes" details-pane section backed by the NEW customer_notes table
     (migration customer_notes_s154.sql; keyed by phone_key; 542 Kenect
     contact notes backfilled from kenect_contacts_raw before the staging
@@ -445,6 +452,11 @@
                 <div class="details-section">
                     <div class="details-label">Status</div>
                     <button class="mini-btn" id="closeReopenBtn" onclick="toggleClosed()"></button>
+                </div>
+                <div class="details-section" id="reviewReqSection"><!-- v1.12 GH#40: manual review request (managers+) -->
+                    <div class="details-label">Review</div>
+                    <button class="mini-btn" id="reviewReqBtn" onclick="requestReview()">&#11088; Request a review</button>
+                    <div id="reviewReqInfo" style="font-size:0.72rem; color:#8FA9C2; margin-top:4px;"></div>
                 </div>
                 <div class="details-section">
                     <div class="details-label">Assignment history</div>
@@ -965,6 +977,60 @@ async function saveCustomerNote() {
     }
 }
 
+// ── v1.12 GH#40: manual "Request a review" (managers+; bypasses the
+//    60-day guard by design, like Kenect's real-time requests — the
+//    guard only lives in the auto enqueue trigger) ────────────────────
+async function renderReviewSection(c) {
+    const sec = document.getElementById('reviewReqSection');
+    const info = document.getElementById('reviewReqInfo');
+    if (!sec) return;
+    sec.style.display = isManagerOrAdmin() ? '' : 'none';
+    if (!isManagerOrAdmin()) return;
+    info.textContent = '';
+    try {
+        const { data, error } = await getSB()
+            .from('review_requests')
+            .select('status, sent_at, scheduled_at, clicked_at, review_site')
+            .eq('phone_key', c.phone_key)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(); // 0 rows valid — never asked
+        if (error) throw error;
+        if (_activeConvo?.id !== c.id) return;
+        if (data?.status === 'pending') {
+            info.textContent = 'Request queued — sends ' + new Date(data.scheduled_at).toLocaleString('en-US', { month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' }) + '.';
+        } else if (data?.status === 'sent') {
+            info.textContent = 'Last asked ' + timeAgo(data.sent_at) + ' ago' +
+                (data.clicked_at ? ' · opened ' + (data.review_site || 'a review site') : '') + '.';
+        }
+    } catch (err) { console.error('renderReviewSection error:', err); }
+}
+async function requestReview() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can request reviews.', 'warning'); return; }
+    if (c.opted_out_at) { showToast('This customer opted out of texts (STOP).', 'warning'); return; }
+    if (!confirm('Text ' + (c.customer_name || c.display_phone || c.phone_key) + ' a review request now? It sends within 15 minutes.')) return;
+    try {
+        const { error } = await getSB().from('review_requests').insert({
+            phone: c.display_phone || ('+1' + c.phone_key),
+            phone_key: c.phone_key,
+            customer_name: c.customer_name || null,
+            scheduled_at: new Date().toISOString(),
+            manual: true,
+            source: 'manual',
+            requested_by: supabaseSession?.user?.email || null,
+        });
+        if (error) throw error;
+        showToast('Review request queued — sends within 15 minutes.', 'success');
+        await renderReviewSection(c);
+    } catch (err) {
+        console.error('requestReview error:', err);
+        showToast('Review request failed: ' + (err.message || err), 'error');
+    }
+}
+
 async function renderDetails() {
     const c = _activeConvo;
     if (!c) return;
@@ -1007,6 +1073,9 @@ async function renderDetails() {
 
     // ── v1.12: customer note (Kenect parity — customer_notes by phone_key) ──
     renderCustomerNote(c);
+
+    // ── v1.12 GH#40: manual review request section (managers+) ──
+    renderReviewSection(c);
 
     // Assignment history.
     const evBox = document.getElementById('eventList');
@@ -1272,7 +1341,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 Object.assign(window, {
     openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
     copyContactValue, // v1.11
-    editCustomerNote, saveCustomerNote, cancelCustomerNote, // v1.12
+    editCustomerNote, saveCustomerNote, cancelCustomerNote, requestReview, // v1.12
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
