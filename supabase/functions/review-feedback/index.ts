@@ -19,17 +19,25 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const CORS = {
-  "Access-Control-Allow-Origin": "https://patriotsrv.github.io",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+// Same origin allow-list pattern as textly-send (localhost for dev tests).
+const ALLOWED_ORIGINS = ["https://patriotsrv.github.io", "http://localhost:8765"];
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("Origin") || "";
+  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : "";
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Vary": "Origin",
+  };
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req: Request) => {
+  const cors = getCorsHeaders(req);
   const json = (obj: unknown, status = 200) =>
-    new Response(JSON.stringify(obj), { status, headers: { ...CORS, "Content-Type": "application/json" } });
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+    new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json" } });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
