@@ -2,6 +2,13 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.12 (Session 154, 2026-07-22): CUSTOMER NOTES (Kenect parity, Roland).
+    NEW "Notes" details-pane section backed by the NEW customer_notes table
+    (migration customer_notes_s154.sql; keyed by phone_key; 542 Kenect
+    contact notes backfilled from kenect_contacts_raw before the staging
+    drop). All staff see the note; managers+ edit (mirrors the DB RLS:
+    authenticated SELECT, is_manager_or_above() write). Edits upsert with
+    source='staff' + updated_by; .maybeSingle() lookup (0 rows is valid).
     v1.11 (Session 151, 2026-07-21): CONTACT INFO + READABILITY (Roland).
     (1) Details pane shows the customer's EMAIL and ADDRESS with one-tap
     copy buttons — sourced from the newest live repair_orders row for the
@@ -406,6 +413,19 @@
                     <div id="detailOptout" style="display:none; margin-top:6px; color:#fca5a5; font-size:0.78rem;">&#128721; Opted out (STOP)</div>
                     <div id="detailContact" style="margin-top:8px;"></div><!-- v1.11: email + address from RO / archive -->
                 </div>
+                <div class="details-section"><!-- v1.12: customer notes (Kenect parity) -->
+                    <div class="details-label" style="display:flex; align-items:center; gap:8px;">Notes
+                        <button class="mini-btn" id="editNoteBtn" onclick="editCustomerNote()" title="Edit note" style="padding:1px 7px; font-size:0.72rem;">&#9998;</button>
+                    </div>
+                    <div id="detailNoteView" class="details-value" style="white-space:pre-wrap; font-size:0.82rem;"></div>
+                    <div id="detailNoteEdit" style="display:none;">
+                        <textarea id="noteTextarea" class="assign-input" rows="5" style="width:100%; resize:vertical; font-size:0.85rem;"></textarea>
+                        <div style="display:flex; gap:6px; margin-top:6px;">
+                            <button class="mini-btn primary" onclick="saveCustomerNote()">Save note</button>
+                            <button class="mini-btn" onclick="cancelCustomerNote()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="details-section">
                     <div class="details-label">Linked ROs</div>
                     <div id="detailROs" class="details-value"></div>
@@ -459,8 +479,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.11';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S142)');
+const PAGE_VERSION = 'messages v1.12';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S154)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
@@ -873,6 +893,78 @@ async function renderContactInfo(c, linkedROs) {
     box.innerHTML = html || '<div style="font-size:0.72rem; color:#8FA9C2; margin-top:2px;">No email or address on file.</div>';
 }
 
+// ── v1.12: customer notes (Kenect parity — table customer_notes) ─────
+let _activeNote = null; // customer_notes row for the active conversation (null = none)
+async function renderCustomerNote(c) {
+    const view = document.getElementById('detailNoteView');
+    const editBox = document.getElementById('detailNoteEdit');
+    const btn = document.getElementById('editNoteBtn');
+    if (!view || !c) return;
+    editBox.style.display = 'none';
+    view.style.display = '';
+    btn.style.display = isManagerOrAdmin() ? '' : 'none';
+    view.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
+    _activeNote = null;
+    try {
+        const { data, error } = await getSB()
+            .from('customer_notes')
+            .select('phone_key, note, source, updated_by, updated_at')
+            .eq('phone_key', c.phone_key)
+            .maybeSingle(); // 0 rows is valid — most numbers have no note
+        if (error) throw error;
+        if (_activeConvo?.id !== c.id) return; // async race guard (renderContactInfo pattern)
+        _activeNote = data || null;
+        if (data && (data.note || '').trim()) {
+            const meta = data.source === 'kenect_import'
+                ? 'Imported from Kenect'
+                : (data.updated_by ? 'Updated by ' + staffNameOf(data.updated_by) : 'Staff note');
+            view.innerHTML = escapeHtml(data.note) +
+                `<div style="font-size:0.68rem; color:#8FA9C2; margin-top:4px;">${escapeHtml(meta)}${data.updated_at ? ' &middot; ' + escapeHtml(timeAgo(data.updated_at)) + ' ago' : ''}</div>`;
+        } else {
+            view.innerHTML = '<span style="font-size:0.72rem; color:#8FA9C2;">No notes for this customer.</span>';
+        }
+    } catch (err) {
+        console.error('renderCustomerNote error:', err);
+        view.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading note</span>';
+    }
+}
+function editCustomerNote() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit notes.', 'warning'); return; }
+    if (!_activeConvo) return;
+    document.getElementById('noteTextarea').value = _activeNote?.note || '';
+    document.getElementById('detailNoteView').style.display = 'none';
+    document.getElementById('detailNoteEdit').style.display = '';
+    document.getElementById('noteTextarea').focus();
+}
+function cancelCustomerNote() {
+    document.getElementById('detailNoteEdit').style.display = 'none';
+    document.getElementById('detailNoteView').style.display = '';
+}
+async function saveCustomerNote() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit notes.', 'warning'); return; }
+    const note = (document.getElementById('noteTextarea').value || '').trim();
+    try {
+        const { error } = await getSB().from('customer_notes').upsert({
+            phone_key: c.phone_key,
+            note,
+            display_name: c.customer_name || null,
+            source: 'staff',
+            updated_by: supabaseSession?.user?.email || null,
+        }, { onConflict: 'phone_key' });
+        if (error) throw error;
+        showToast('Note saved.', 'success');
+        cancelCustomerNote();
+        await renderCustomerNote(c);
+    } catch (err) {
+        console.error('saveCustomerNote error:', err);
+        showToast('Note save failed: ' + (err.message || err), 'error');
+    }
+}
+
 async function renderDetails() {
     const c = _activeConvo;
     if (!c) return;
@@ -912,6 +1004,9 @@ async function renderDetails() {
     // newest cashiered (archived) RO for this number. Render nothing when
     // we simply don't have it.
     renderContactInfo(c, linked);
+
+    // ── v1.12: customer note (Kenect parity — customer_notes by phone_key) ──
+    renderCustomerNote(c);
 
     // Assignment history.
     const evBox = document.getElementById('eventList');
@@ -1177,6 +1272,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 Object.assign(window, {
     openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
     copyContactValue, // v1.11
+    editCustomerNote, saveCustomerNote, cancelCustomerNote, // v1.12
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
