@@ -10,12 +10,17 @@
     Pairs with review_requests_s154.sql, review.html, and the
     process-review-requests + review-feedback edge fns.
     (1) CUSTOMER NOTES (Kenect parity, Roland).
-    NEW "Notes" details-pane section backed by the NEW customer_notes table
-    (migration customer_notes_s154.sql; keyed by phone_key; 542 Kenect
-    contact notes backfilled from kenect_contacts_raw before the staging
-    drop). All staff see the note; managers+ edit (mirrors the DB RLS:
-    authenticated SELECT, is_manager_or_above() write). Edits upsert with
-    source='staff' + updated_by; .maybeSingle() lookup (0 rows is valid).
+    NEW "Notes" details-pane section + Add-Notes MODAL (v1.12b, Roland
+    directive with Kenect screenshot): notes are an APPEND-ONLY per-entry
+    history in the NEW customer_note_entries table (migrations
+    customer_notes_s154.sql then customer_note_entries_s154.sql; keyed by
+    phone_key; 542 Kenect contact notes rescued from kenect_contacts_raw
+    before the staging drop). Every entry auto-stamps author + date
+    (Kenect made staff hand-type "6/9/26 AP" — here the system does it,
+    like the RO updates timeline). Pane shows the newest entry + "+N more";
+    the ✎ modal shows full history + add box. All staff read; managers+
+    add; no update/delete (history can't be rewritten — audit-log
+    reasoning, enforced by RLS).
     v1.11 (Session 151, 2026-07-21): CONTACT INFO + READABILITY (Roland).
     (1) Details pane shows the customer's EMAIL and ADDRESS with one-tap
     copy buttons — sourced from the newest live repair_orders row for the
@@ -420,18 +425,11 @@
                     <div id="detailOptout" style="display:none; margin-top:6px; color:#fca5a5; font-size:0.78rem;">&#128721; Opted out (STOP)</div>
                     <div id="detailContact" style="margin-top:8px;"></div><!-- v1.11: email + address from RO / archive -->
                 </div>
-                <div class="details-section"><!-- v1.12: customer notes (Kenect parity) -->
+                <div class="details-section"><!-- v1.12: customer notes (Kenect parity; v1.12b modal history per Roland) -->
                     <div class="details-label" style="display:flex; align-items:center; gap:8px;">Notes
-                        <button class="mini-btn" id="editNoteBtn" onclick="editCustomerNote()" title="Edit note" style="padding:1px 7px; font-size:0.72rem;">&#9998;</button>
+                        <button class="mini-btn" id="editNoteBtn" onclick="openNotesModal()" title="View / add notes" style="padding:1px 7px; font-size:0.72rem;">&#9998;</button>
                     </div>
                     <div id="detailNoteView" class="details-value" style="white-space:pre-wrap; font-size:0.82rem;"></div>
-                    <div id="detailNoteEdit" style="display:none;">
-                        <textarea id="noteTextarea" class="assign-input" rows="5" style="width:100%; resize:vertical; font-size:0.85rem;"></textarea>
-                        <div style="display:flex; gap:6px; margin-top:6px;">
-                            <button class="mini-btn primary" onclick="saveCustomerNote()">Save note</button>
-                            <button class="mini-btn" onclick="cancelCustomerNote()">Cancel</button>
-                        </div>
-                    </div>
                 </div>
                 <div class="details-section">
                     <div class="details-label">Linked ROs</div>
@@ -478,6 +476,24 @@
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <button class="mini-btn" onclick="closeNewConvoModal()">Cancel</button>
             <button id="ncCreateBtn" class="mini-btn primary" onclick="createNewConversation()">Create &amp; open</button>
+        </div>
+    </div>
+</div>
+
+<!-- v1.12b: Customer Notes modal — full history + add (Roland S154; Kenect Add-Notes parity, but each entry auto-stamps author + date) -->
+<div id="notesModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(92vw, 470px); max-height:86vh; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:10px;">&#128221; Notes &mdash; <span id="notesModalName"></span></div>
+        <div id="notesModalList" style="flex:1; overflow-y:auto; min-height:80px; max-height:46vh; border:1px solid var(--border-color); border-radius:10px; padding:10px; background:var(--bg-primary);"></div>
+        <div id="notesModalAdd">
+            <textarea id="noteTextarea" class="assign-input" rows="3" placeholder="Add a note&hellip; (your name + date are stamped automatically)" style="width:100%; resize:vertical; margin-top:10px; font-size:0.85rem;"></textarea>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+                <button class="mini-btn" onclick="closeNotesModal()">Close</button>
+                <button class="mini-btn primary" id="noteSaveBtn" onclick="saveCustomerNote()">Save note</button>
+            </div>
+        </div>
+        <div id="notesModalCloseOnly" style="display:none; text-align:right; margin-top:10px;">
+            <button class="mini-btn" onclick="closeNotesModal()">Close</button>
         </div>
     </div>
 </div>
@@ -905,72 +921,98 @@ async function renderContactInfo(c, linkedROs) {
     box.innerHTML = html || '<div style="font-size:0.72rem; color:#8FA9C2; margin-top:2px;">No email or address on file.</div>';
 }
 
-// ── v1.12: customer notes (Kenect parity — table customer_notes) ─────
-let _activeNote = null; // customer_notes row for the active conversation (null = none)
+// ── v1.12: customer notes (Kenect parity — customer_note_entries) ────
+// v1.12b (Roland): Kenect-style Add Notes MODAL, upgraded — the notes are
+// an APPEND-ONLY per-entry history and every entry auto-stamps author +
+// date (Kenect made staff hand-type "6/9/26 AP"; here the system does it,
+// mirroring the RO updates timeline). Details pane shows the newest entry;
+// the ✎ modal shows the full history + add box (add = managers+, matching
+// the note_entries_insert_manager RLS policy).
+let _noteEntries = [];
+let _notesModalOpen = false;
+function _noteAuthorLabel(e) {
+    if (e.source === 'kenect_import') return 'Kenect import';
+    return e.created_by ? staffNameOf(e.created_by) : 'Staff';
+}
+function _noteWhen(e) {
+    return new Date(e.created_at).toLocaleString('en-US', { month:'numeric', day:'numeric', year:'2-digit', hour:'numeric', minute:'2-digit' });
+}
 async function renderCustomerNote(c) {
     const view = document.getElementById('detailNoteView');
-    const editBox = document.getElementById('detailNoteEdit');
-    const btn = document.getElementById('editNoteBtn');
     if (!view || !c) return;
-    editBox.style.display = 'none';
-    view.style.display = '';
-    btn.style.display = isManagerOrAdmin() ? '' : 'none';
     view.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
-    _activeNote = null;
+    _noteEntries = [];
     try {
         const { data, error } = await getSB()
-            .from('customer_notes')
-            .select('phone_key, note, source, updated_by, updated_at')
+            .from('customer_note_entries')
+            .select('id, note, created_by, source, created_at')
             .eq('phone_key', c.phone_key)
-            .maybeSingle(); // 0 rows is valid — most numbers have no note
+            .order('created_at', { ascending: false })
+            .limit(100);
         if (error) throw error;
         if (_activeConvo?.id !== c.id) return; // async race guard (renderContactInfo pattern)
-        _activeNote = data || null;
-        if (data && (data.note || '').trim()) {
-            const meta = data.source === 'kenect_import'
-                ? 'Imported from Kenect'
-                : (data.updated_by ? 'Updated by ' + staffNameOf(data.updated_by) : 'Staff note');
-            view.innerHTML = escapeHtml(data.note) +
-                `<div style="font-size:0.68rem; color:#8FA9C2; margin-top:4px;">${escapeHtml(meta)}${data.updated_at ? ' &middot; ' + escapeHtml(timeAgo(data.updated_at)) + ' ago' : ''}</div>`;
-        } else {
+        _noteEntries = data || [];
+        if (!_noteEntries.length) {
             view.innerHTML = '<span style="font-size:0.72rem; color:#8FA9C2;">No notes for this customer.</span>';
+        } else {
+            const newest = _noteEntries[0];
+            const more = _noteEntries.length - 1;
+            view.innerHTML = escapeHtml(newest.note) +
+                `<div style="font-size:0.68rem; color:#8FA9C2; margin-top:4px;">${escapeHtml(_noteAuthorLabel(newest))} &middot; ${escapeHtml(_noteWhen(newest))}` +
+                (more > 0 ? ` &middot; <a href="#" onclick="openNotesModal(); return false;" style="color:var(--celeste-deep);">+${more} more</a>` : '') + '</div>';
         }
+        if (_notesModalOpen) renderNotesModalList();
     } catch (err) {
         console.error('renderCustomerNote error:', err);
-        view.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading note</span>';
+        view.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading notes</span>';
     }
 }
-function editCustomerNote() {
-    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
-    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit notes.', 'warning'); return; }
-    if (!_activeConvo) return;
-    document.getElementById('noteTextarea').value = _activeNote?.note || '';
-    document.getElementById('detailNoteView').style.display = 'none';
-    document.getElementById('detailNoteEdit').style.display = '';
-    document.getElementById('noteTextarea').focus();
+function renderNotesModalList() {
+    const list = document.getElementById('notesModalList');
+    if (!list) return;
+    list.innerHTML = _noteEntries.length
+        ? _noteEntries.map(e =>
+            `<div style="border-bottom:1px solid var(--bg-tertiary); padding:7px 0;">
+                <div style="white-space:pre-wrap; font-size:0.85rem;">${escapeHtml(e.note)}</div>
+                <div style="font-size:0.68rem; color:#8FA9C2; margin-top:3px;">${escapeHtml(_noteAuthorLabel(e))} &middot; ${escapeHtml(_noteWhen(e))}</div>
+            </div>`).join('')
+        : '<span style="font-size:0.78rem; color:#8FA9C2;">No notes yet.</span>';
 }
-function cancelCustomerNote() {
-    document.getElementById('detailNoteEdit').style.display = 'none';
-    document.getElementById('detailNoteView').style.display = '';
+function openNotesModal() {
+    const c = _activeConvo;
+    if (!c) return;
+    document.getElementById('notesModalName').textContent = c.customer_name || c.display_phone || c.phone_key;
+    renderNotesModalList();
+    const canWrite = isManagerOrAdmin();
+    document.getElementById('notesModalAdd').style.display = canWrite ? '' : 'none';
+    document.getElementById('notesModalCloseOnly').style.display = canWrite ? 'none' : '';
+    document.getElementById('noteTextarea').value = '';
+    document.getElementById('notesModal').style.display = 'flex';
+    _notesModalOpen = true;
+    if (canWrite) document.getElementById('noteTextarea').focus();
+}
+function closeNotesModal() {
+    document.getElementById('notesModal').style.display = 'none';
+    _notesModalOpen = false;
 }
 async function saveCustomerNote() {
     const c = _activeConvo;
     if (!c) return;
     if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
-    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit notes.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can add notes.', 'warning'); return; }
     const note = (document.getElementById('noteTextarea').value || '').trim();
+    if (!note) { document.getElementById('noteTextarea').focus(); return; }
     try {
-        const { error } = await getSB().from('customer_notes').upsert({
+        const { error } = await getSB().from('customer_note_entries').insert({
             phone_key: c.phone_key,
             note,
-            display_name: c.customer_name || null,
+            created_by: supabaseSession?.user?.email || null,
             source: 'staff',
-            updated_by: supabaseSession?.user?.email || null,
-        }, { onConflict: 'phone_key' });
+        });
         if (error) throw error;
-        showToast('Note saved.', 'success');
-        cancelCustomerNote();
-        await renderCustomerNote(c);
+        showToast('Note added.', 'success');
+        document.getElementById('noteTextarea').value = '';
+        await renderCustomerNote(c); // refreshes pane + open modal list
     } catch (err) {
         console.error('saveCustomerNote error:', err);
         showToast('Note save failed: ' + (err.message || err), 'error');
@@ -1341,7 +1383,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 Object.assign(window, {
     openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
     copyContactValue, // v1.11
-    editCustomerNote, saveCustomerNote, cancelCustomerNote, requestReview, // v1.12
+    openNotesModal, closeNotesModal, saveCustomerNote, requestReview, // v1.12
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
