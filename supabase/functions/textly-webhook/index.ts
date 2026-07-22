@@ -9,6 +9,9 @@
 //   staff notify — keyword messages skip the notify fork). Policy per
 //   Roland: everyone in the messaging DB is opted-in by default; the
 //   opt-in path exists only to reverse a prior STOP.
+//   Also S155: after-hours default text gains "Mon-Fri" (matches the
+//   app_config after_hours_reply_text row, updated same session — the
+//   config row is the LIVE source; this default is the fallback).
 // v1.1 (Session 152, 2026-07-21): AFTER-HOURS AUTO-REPLY — replaces the
 //   Kenect "Auto Response" feature (Kenect dies COB 7/24). Inbound,
 //   non-keyword messages arriving outside business hours get ONE reply
@@ -102,7 +105,7 @@ const DEFAULT_FROM_E164 = "+19404885047";
 // Defaults mirror the Kenect Auto Response config captured S151
 // (docs/specs/REVIEW_REQUEST_SPEC.md). app_config overrides all three.
 const DEFAULT_AFTER_HOURS_TEXT =
-  "Thank you for texting Patriots RV Services. We are currently closed. We will respond to you as soon as we become available between 8:30 - 5:00 CST. Have a great day.";
+  "Thank you for texting Patriots RV Services. We are currently closed. We will respond to you as soon as we become available between 8:30 - 5:00 CST Mon-Fri. Have a great day.";
 type BusinessHours = { tz?: string; [day: string]: string | null | undefined };
 const DEFAULT_BUSINESS_HOURS: BusinessHours = {
   tz: "America/Chicago",
