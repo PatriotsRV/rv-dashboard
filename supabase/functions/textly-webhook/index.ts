@@ -1,6 +1,14 @@
 // ============================================================
 // textly-webhook (GH#39 Textly pivot, Session 151, 2026-07-21) - capture + routing
 // ============================================================
+// v1.2 (Session 155, 2026-07-22): OPT-IN KEYWORDS GATED ON opted_out_at.
+//   A body of exactly START/YES/UNSTOP is only treated as a TCPA opt-in
+//   when the conversation is currently opted out. Fixes the S154 field
+//   incident: a customer answering "Yes" to a service advisor's question
+//   got the "You are resubscribed..." confirmation (and, silently, no
+//   staff notify — keyword messages skip the notify fork). Policy per
+//   Roland: everyone in the messaging DB is opted-in by default; the
+//   opt-in path exists only to reverse a prior STOP.
 // v1.1 (Session 152, 2026-07-21): AFTER-HOURS AUTO-REPLY — replaces the
 //   Kenect "Auto Response" feature (Kenect dies COB 7/24). Inbound,
 //   non-keyword messages arriving outside business hours get ONE reply
@@ -421,6 +429,17 @@ Deno.serve(async (req: Request) => {
           .select("id, assigned_to, customer_name, opted_out_at")
           .eq("phone_key", key)
           .maybeSingle();
+
+        // v1.2 (S155): opt-in keywords only count when the conversation is
+        // ACTUALLY opted out. Policy (Roland): everyone in the messaging DB
+        // is opted-in by default; opt-in/out is the STOP/START lifecycle
+        // going forward. So a plain "Yes" from an opted-in customer (e.g.
+        // answering a service advisor's question — the S154 Johnny
+        // Huddleston case) is a normal conversational reply: no state
+        // change, no "resubscribed" confirmation, and the ordinary
+        // after-hours + staff-notify flow applies. START/YES/UNSTOP still
+        // resubscribe (with confirmation) when opted_out_at is set.
+        if (keywordAction === "opted_in" && !existing?.opted_out_at) keywordAction = null;
 
         const upsertRow: Record<string, unknown> = {
           phone_key: key,
