@@ -9,6 +9,10 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 156 — RLS role-helper email-match fix DEPLOYED (DB-only; NO release; index.html stays v1.481; Sync Gate Case A).**
+  - Mauricio's messages.html reopen threw the conversation_events RLS error; root cause = 5 auth users (andrew, mauricio, ryan, solar, tipton) with `public.users.id` != auth.uid, making is_manager_or_above/is_sr_manager_or_admin/has_role/is_insurance_wo_writer return FALSE (the conversations UPDATE had been no-oping silently).
+  - NEW migration `rls_role_helpers_email_match_s156.sql` (run live by Roland, MCP-verified): all 4 helpers now match users by id OR lower(verified JWT email), the is_silo_manager precedent. Unblocks all messages.html manager actions + Sr-Manager-gated WO writes for the 5.
+  - Follow-ups logged: 🟡 verify Mauricio's retest; 🔵 reconcile the users.id/auth.uid drift (+ 9 auth users with no users row).
 - ✅ **Session 155 — textly-webhook v1.2 (TCPA opt-in gate) DEPLOYED + after-hours text update + Supabase Nano -> Micro at $0 (NO release; index.html stays v1.481; Sync Gate Case A).**
   - Root-caused the S154 "You are resubscribed" field incident: OPT_IN_KEYWORDS exact-matched a customer’s conversational "Yes" and v1.1 auto-replied unconditionally (and skipped the staff notify). v1.2 gates opt-in keywords on `opted_out_at` being set — policy per Roland: whole messaging DB opted-in by default; opt-in only reverses a prior STOP. Deployed from Roland’s Terminal; live-verified ("Yes" -> no resubscribe, no event, after-hours reply fired instead; MCP-verified 0 keyword auto-replies).
   - After-hours reply text now includes days open: "...between 8:30 - 5:00 CST Mon-Fri. Have a great day and stay safe!" — app_config row UPDATEd (live immediately) + code default synced verbatim (ASCII, 187 chars = 2 segments).
