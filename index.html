@@ -1,7 +1,23 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.481
+    PRVS Dashboard v1.482
+    v1.482: [S158] MESSAGES BUNDLE — (1) ER d62a26e4 multi-attach: the 💬
+    composer (RO modal + messages.html) takes up to 5 photos and/or PDFs per
+    send (js/messaging.js: input multiple, per-file chips, PDFs uncompressed
+    under the 5MB MMS gate, 📄 document-chip bubble render; textly-send v1.1
+    media[] already supported arrays). (2) ER ac394468: Make-a-Wish category
+    dropdown now represents EVERY page — 7 new page-area options (Messages /
+    Texting, Solar, Leads, Closed ROs / Archive, Reports / Analytics, Time
+    Off, Employee Guide) added to all 6 erCategory selects (index submit +
+    admin filter, checkin, closed-ros, solar, worklist-report, analytics) +
+    enhancement.js pageDefaults maps every page. (3) notes load PAGINATED in
+    ro-crud.js (S158 fix): kills the silent 1000-row PostgREST window before
+    it hits (~mid-Aug). Ships alongside messages.html v1.13 (Teams/Groups
+    staff broadcast + staff_groups_s158.sql), textly-send v1.2
+    (staff_broadcast context), textly-webhook v1.3 (ER 93b00023 reopen +
+    needs-reply notify), send-unreplied-reminder v1.0 + 4:30 cron
+    (unreplied_eod_reminder_s158.sql).
     v1.481: [S153] SIDEBAR LAYOUT SHIPS — feature/sidebar-layout (S147+S150+
     S152, was v1.477) merged with Textly-era pre-prod v1.480 and RENUMBERED
     (prod took v1.478-v1.480 during the Textly pivot while the branch soaked).
@@ -704,7 +720,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.481</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.482</span>
           </span>
         </div>
         <header>
@@ -733,7 +749,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.481</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.482</span>
             </div>
         </header>
 
@@ -3477,7 +3493,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -7460,6 +7476,13 @@ function toggleWOTasks(tasksId, chevId) {
                 <option value="Calendar">Calendar</option>
                 <option value="Work List">Work List</option>
                 <option value="Notifications / Email">Notifications / Email</option>
+                <option value="Messages / Texting">Messages / Texting</option>
+                <option value="Solar">Solar</option>
+                <option value="Leads">Leads</option>
+                <option value="Closed ROs / Archive">Closed ROs / Archive</option>
+                <option value="Reports / Analytics">Reports / Analytics</option>
+                <option value="Time Off">Time Off</option>
+                <option value="Employee Guide">Employee Guide</option>
                 <option value="General UI/UX" selected>General UI/UX</option>
                 <option value="New Feature Idea">New Feature Idea</option>
                 <option value="Bug Report">Bug Report</option>
@@ -7554,6 +7577,13 @@ let _erFilterCategory = 'all';
                 <option value="Calendar">Calendar</option>
                 <option value="Work List">Work List</option>
                 <option value="Notifications / Email">Notifications / Email</option>
+                <option value="Messages / Texting">Messages / Texting</option>
+                <option value="Solar">Solar</option>
+                <option value="Leads">Leads</option>
+                <option value="Closed ROs / Archive">Closed ROs / Archive</option>
+                <option value="Reports / Analytics">Reports / Analytics</option>
+                <option value="Time Off">Time Off</option>
+                <option value="Employee Guide">Employee Guide</option>
                 <option value="General UI/UX">General UI/UX</option>
                 <option value="New Feature Idea">New Feature Idea</option>
                 <option value="Bug Report">Bug Report</option>

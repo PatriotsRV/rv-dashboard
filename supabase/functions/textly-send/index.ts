@@ -1,6 +1,10 @@
 // ============================================================
 // textly-send (GH#39 Textly pivot, Session 151, 2026-07-21) - outbound only
 // ============================================================
+// v1.2 (Session 158, 2026-07-25): 'staff_broadcast' added to the
+//   suppression-exempt contexts — the Teams/Groups broadcast (messages.html
+//   v1.13) texts STAFF phones, which must not run the customer opt-out gate
+//   and must not create conversations rows (inbox stays customer-only).
 // v1.1 (Session 151, same day): MMS + photo-only sends. media_url accepts a
 //   string OR an array (Textable media[] takes multiple public URLs), and a
 //   send with media but no text is valid (message goes up as ''). Pairs with
@@ -80,7 +84,7 @@ function phoneKey(raw: unknown): string {
 
 // Contexts that bypass the opt-out gate: staff phones aren't customers, and
 // the STOP confirmation auto-reply must be deliverable.
-const SUPPRESSION_EXEMPT_CONTEXTS = new Set(["staff_notify", "auto_reply"]);
+const SUPPRESSION_EXEMPT_CONTEXTS = new Set(["staff_notify", "auto_reply", "staff_broadcast"]); // v1.2: +staff_broadcast
 
 Deno.serve(async (req: Request) => {
   const cors = getCorsHeaders(req);

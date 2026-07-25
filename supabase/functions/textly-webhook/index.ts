@@ -1,6 +1,20 @@
 // ============================================================
 // textly-webhook (GH#39 Textly pivot, Session 151, 2026-07-21) - capture + routing
 // ============================================================
+// v1.3 (Session 158, 2026-07-25): INBOUND REOPEN + NEEDS-REPLY NOTIFY (ER 93b00023).
+//   (a) A non-keyword inbound message now sets conversations.status='open' —
+//       previously a closed conversation receiving a customer text STAYED
+//       closed and was invisible under the inbox's default Open filter.
+//       A closed->open transition logs a 'reopened' conversation_events row
+//       (actor 'customer-sms').
+//   (b) Assigned-owner notify fires ONLY on the needs-reply FLIP: the inbound
+//       that arrives when the conversation was closed, brand new, or the
+//       owner had already replied (last_direction outbound). Back-to-back
+//       customer texts no longer re-notify (the old 60-min subject dedupe is
+//       replaced by the flip check + a 5-min race guard for double relays).
+//   (c) Pairs with the NEW send-unreplied-reminder edge fn (4:30 PM CT
+//       weekday cron): owners with open+awaiting-reply conversations get an
+//       end-of-day email + SMS reminder (unreplied_eod_reminder_s158.sql).
 // v1.2 (Session 155, 2026-07-22): OPT-IN KEYWORDS GATED ON opted_out_at.
 //   A body of exactly START/YES/UNSTOP is only treated as a TCPA opt-in
 //   when the conversation is currently opted out. Fixes the S154 field
@@ -398,6 +412,10 @@ Deno.serve(async (req: Request) => {
     opted_out_at: string | null;
   } | null = null;
   let keywordAction: "opted_out" | "opted_in" | "help" | null = null;
+  // v1.3: did this inbound FLIP the conversation into needs-reply state?
+  // True when there was no conversation, it was closed, or the owner had
+  // already replied (last_direction outbound). Drives the notify fork.
+  let needsReplyFlip = false;
   if (direction === "outbound" && contactNumber) {
     // Outbound events that reach here are NON-dupes (sends made outside the
     // dashboard, e.g. the Textly web app) — keep the conversation row current.
@@ -427,9 +445,10 @@ Deno.serve(async (req: Request) => {
 
         // Read existing row first so we can (a) avoid clobbering a good
         // customer_name with null and (b) write old/new values to events.
+        // v1.3: + status/last_direction for the reopen + needs-reply flip.
         const { data: existing } = await supabase
           .from("conversations")
-          .select("id, assigned_to, customer_name, opted_out_at")
+          .select("id, assigned_to, customer_name, opted_out_at, status, last_direction")
           .eq("phone_key", key)
           .maybeSingle();
 
@@ -450,6 +469,14 @@ Deno.serve(async (req: Request) => {
           last_message_at: receivedAt,
           last_direction: "inbound",
         };
+        // v1.3 (ER 93b00023): a real customer message OPENS the conversation.
+        // Keyword messages (STOP/START/HELP) are auto-handled and do NOT
+        // reopen a closed conversation.
+        const wasClosed = existing?.status === "closed";
+        if (!keywordAction) {
+          upsertRow.status = "open";
+          needsReplyFlip = !existing || wasClosed || existing.last_direction !== "inbound";
+        }
         // Name precedence: routed RO (our CRM truth) > Textable ContactName
         // (only when we have nothing — don't clobber CRM names with carrier
         // caller-id strings).
@@ -470,6 +497,18 @@ Deno.serve(async (req: Request) => {
           .maybeSingle();
         if (upErr) console.error("conversations upsert error:", upErr.message);
         convo = upserted || existing || null;
+
+        // v1.3: audit the customer-driven reopen (closed -> open).
+        if (convo && !keywordAction && wasClosed) {
+          const { error: evErr } = await supabase.from("conversation_events").insert({
+            conversation_id: convo.id,
+            event: "reopened",
+            actor_email: "customer-sms",
+            old_value: "closed",
+            new_value: "open",
+          });
+          if (evErr) console.error("customer reopen event insert error:", evErr.message);
+        }
 
         // Audit + auto-reply for the keyword actions.
         if (convo && keywordAction === "opted_out" && !existing?.opted_out_at) {
@@ -562,19 +601,22 @@ Deno.serve(async (req: Request) => {
   // conversation_events row are the record.
   let notified = false;
   let notifiedOwner: string | null = null;
-  if (direction === "inbound" && !keywordAction && convo?.assigned_to) {
-    // ── ASSIGNED: notify the owner instead of the blast ──────────────
+  if (direction === "inbound" && !keywordAction && convo?.assigned_to && needsReplyFlip) {
+    // ── ASSIGNED: notify the owner — v1.3: ONLY on the needs-reply FLIP
+    // (ER 93b00023). The flip check replaces the old 60-min subject dedupe;
+    // the 5-min guard below only protects against a double-POSTed relay
+    // racing the upsert.
     try {
       const owner = convo.assigned_to;
       const customerLabel = convo.customer_name || routedRO?.customer_name || contactNumber || "Customer";
       const subject = `\u{1F4AC} Customer reply — ${customerLabel} (${phoneKey(contactNumber)})`;
-      const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       const { data: recent } = await supabase
         .from("scheduled_notifications")
         .select("id")
         .eq("source", "assigned_inbound_notify")
         .eq("subject", subject)
-        .gte("created_at", hourAgo)
+        .gte("created_at", fiveMinAgo)
         .limit(1);
       if (!recent || recent.length === 0) {
         const preview = body.length > 160 ? body.slice(0, 157) + "..." : body;
@@ -591,7 +633,7 @@ Deno.serve(async (req: Request) => {
             routedRO?.ro_id ? `RO ID: ${routedRO.ro_id}` : "(No active RO matched this number.)",
             "",
             "Open Messages on the dashboard to respond.",
-            "(You will get at most one of these per conversation per hour.)",
+            "(You get one of these when a conversation needs your reply — follow-up texts before you answer won't re-notify.)",
           ].join("\n"),
           source: "assigned_inbound_notify",
           status: "pending",
@@ -602,7 +644,7 @@ Deno.serve(async (req: Request) => {
           notified = true;
           notifiedOwner = owner;
           // SMS to the owner's mobile (staff.phone_number; NULL = skip).
-          // Shares the 60-min dedupe above (we only get here when fresh).
+          // Shares the flip check + race guard above (we only get here when fresh).
           const { data: staffRow } = await supabase
             .from("staff")
             .select("phone_number")

@@ -91,9 +91,15 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             // Inbound MMS render (S138, spec P3): media_url is text[] — the
             // reconciliation poll backfills PB's media_attachment_url.
             const mediaList = Array.isArray(m.media_url) ? m.media_url : (m.media_url ? [m.media_url] : []);
-            const media = mediaList.filter(Boolean).map(u =>
-                `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img src="${escapeHtml(u)}" alt="attachment" loading="lazy" style="max-width:200px; max-height:200px; border-radius:8px; display:block; margin-top:6px;"></a>`
-            ).join('');
+            // S158 (ER d62a26e4): PDFs render as a document chip, not a broken <img>.
+            const media = mediaList.filter(Boolean).map(u => {
+                const isPdf = /\.pdf(\?|#|$)/i.test(String(u).split('?')[0]) || /\.pdf(\?|#|$)/i.test(String(u));
+                if (isPdf) {
+                    const name = decodeURIComponent(String(u).split('?')[0].split('/').pop() || 'document.pdf');
+                    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.78rem; color:var(--accent-info); text-decoration:none; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\u{1F4C4} ${escapeHtml(name)}</a>`;
+                }
+                return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img src="${escapeHtml(u)}" alt="attachment" loading="lazy" style="max-width:200px; max-height:200px; border-radius:8px; display:block; margin-top:6px;"></a>`;
+            }).join('');
             return `
                 <div style="display:flex; justify-content:${align}; margin-bottom:8px;">
                     <div style="max-width:78%; background:${bg}; border:1px solid ${border}; border-radius:12px; padding:8px 11px;">
@@ -189,11 +195,16 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         // markup uses fixed element ids, initComposerExtras() wires whichever
         // instance is currently in the DOM, and sendCustomerMessage() reads
         // the module-level state. One implementation, two composers.
-        let _msgAttachment = null;   // { url, name } after a successful upload
+        // S158 (ER d62a26e4): MULTI-attach — up to 5 photos and/or PDFs per
+        // send (textly-send v1.1 already takes media_url as an array; this was
+        // client-side single-file only). Images compress as before; PDFs pass
+        // through untouched under the same 5MB MMS gate.
+        let _msgAttachments = [];    // [{ url, name }] after successful uploads
         let _mySig;                  // undefined = not loaded · null = none · string = signature
 
         const MSG_MEDIA_BUCKET = 'message-media';
         const MSG_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // MMS carrier ceiling; we compress toward ~1MB
+        const MSG_MEDIA_MAX_COUNT = 5;               // S158: per-send attachment cap
 
         const COMPOSER_EMOJIS = ['\u{1F44D}','\u{1F44C}','\u{1F64F}','\u{1F44F}','\u{1F4AA}','\u{1F91D}','\u{1F44B}','✅','\u{1F389}','⭐','\u{1F525}','❤️','\u{1F600}','\u{1F601}','\u{1F602}','\u{1F605}','\u{1F642}','\u{1F609}','\u{1F60E}','\u{1F914}','\u{1F62E}','\u{1F622}','⚠️','❗','❓','\u{1F4C5}','⏰','\u{1F4DE}','\u{1F4AC}','\u{1F4B0}','\u{1F9FE}','\u{1F527}','\u{1F529}','\u{1F6E0}️','\u{1F690}','\u{1F3D5}️','☀️','\u{1F327}️','\u{1F4F7}','\u{1F4CE}'];
 
@@ -202,10 +213,10 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         export function composerExtrasHtml() {
             return `
                 <div id="msgExtrasRow" style="position:relative; display:flex; align-items:center; gap:10px; margin:8px 0 10px;">
-                    <button type="button" id="msgAttachBtn" title="Attach a photo (MMS)" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
+                    <button type="button" id="msgAttachBtn" title="Attach photos or PDFs (MMS, up to 5)" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
                     <button type="button" id="msgEmojiBtn" title="Insert emoji" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F60A}</button>
-                    <span id="msgAttachChip" style="display:none; align-items:center; gap:6px; font-size:0.72rem; color:var(--accent-info); border:1px solid rgba(96,165,250,0.4); border-radius:6px; padding:2px 8px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-                    <input type="file" id="msgAttach" accept="image/*" style="display:none;">
+                    <span id="msgAttachChip" style="display:none; flex-wrap:wrap; align-items:center; gap:6px; font-size:0.72rem; color:var(--accent-info); max-width:340px;"></span>
+                    <input type="file" id="msgAttach" accept="image/*,application/pdf" multiple style="display:none;">
                     <div id="msgEmojiPop" style="display:none; position:absolute; bottom:34px; left:0; z-index:50; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:8px; width:266px; box-shadow:0 8px 24px rgba(0,0,0,0.45);"></div>
                 </div>
                 <div id="msgSigPreview" style="display:none; font-size:0.7rem; color:var(--text-secondary); border-left:2px solid var(--border-color); padding:2px 0 2px 8px; margin:-2px 0 8px; white-space:pre-wrap;"></div>`;
@@ -242,12 +253,17 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         function _renderAttachChip() {
             const chip = document.getElementById('msgAttachChip');
             if (!chip) return;
-            if (_msgAttachment) {
+            if (_msgAttachments.length) {
                 chip.style.display = 'inline-flex';
-                chip.innerHTML = `\u{1F5BC}️ ${escapeHtml(_msgAttachment.name)} <a href="#" id="msgAttachClear" title="Remove attachment" style="color:#ef4444; text-decoration:none; font-weight:700;">&times;</a>`;
-                document.getElementById('msgAttachClear')?.addEventListener('click', (e) => {
-                    e.preventDefault(); _msgAttachment = null; _renderAttachChip();
-                });
+                chip.innerHTML = _msgAttachments.map((a, i) => {
+                    const icon = /\.pdf$/i.test(a.name || '') ? '\u{1F4C4}' : '\u{1F5BC}️';
+                    return `<span style="display:inline-flex; align-items:center; gap:4px; border:1px solid rgba(96,165,250,0.4); border-radius:6px; padding:2px 8px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon} ${escapeHtml(a.name)} <a href="#" class="msgAttachRm" data-idx="${i}" title="Remove attachment" style="color:#ef4444; text-decoration:none; font-weight:700;">&times;</a></span>`;
+                }).join('');
+                chip.querySelectorAll('.msgAttachRm').forEach(el => el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    _msgAttachments.splice(parseInt(el.dataset.idx, 10), 1);
+                    _renderAttachChip();
+                }));
             } else {
                 chip.style.display = 'none';
                 chip.innerHTML = '';
@@ -273,28 +289,42 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         }
 
         async function _handleAttachPick(ev) {
-            const file = ev.target.files && ev.target.files[0];
+            // S158 (ER d62a26e4): multi-file — the picker allows several at once,
+            // and repeat picks ADD to the pending set (up to MSG_MEDIA_MAX_COUNT).
+            const files = Array.from(ev.target.files || []);
             ev.target.value = '';
-            if (!file) return;
+            if (!files.length) return;
             if (!getSB() || (typeof supabaseSession === 'undefined' || !supabaseSession)) {
-                showToast('Sign in first to attach photos.', 'warning'); return;
+                showToast('Sign in first to attach files.', 'warning'); return;
+            }
+            const room = MSG_MEDIA_MAX_COUNT - _msgAttachments.length;
+            if (room <= 0) {
+                showToast(`Max ${MSG_MEDIA_MAX_COUNT} attachments per message — remove one first.`, 'warning');
+                return;
+            }
+            if (files.length > room) {
+                showToast(`Only ${room} more attachment${room === 1 ? '' : 's'} fit (max ${MSG_MEDIA_MAX_COUNT}) — attaching the first ${room}.`, 'warning', { duration: 6000 });
             }
             const btn = document.getElementById('msgAttachBtn');
             if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
             try {
-                const upload = await _compressImage(file);
-                if (upload.size > MSG_MEDIA_MAX_BYTES) {
-                    showToast('That photo is over 5MB even after compression - MMS carriers will reject it. Pick a smaller one.', 'warning', { duration: 8000 });
-                    return;
+                for (const file of files.slice(0, room)) {
+                    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+                    // PDFs pass through untouched; images compress toward MMS size.
+                    const upload = isPdf ? file : await _compressImage(file);
+                    if (upload.size > MSG_MEDIA_MAX_BYTES) {
+                        showToast(`"${upload.name}" is over 5MB${isPdf ? '' : ' even after compression'} - MMS carriers will reject it. Skipped.`, 'warning', { duration: 8000 });
+                        continue;
+                    }
+                    const safe = (upload.name || (isPdf ? 'document.pdf' : 'photo.jpg')).replace(/[^A-Za-z0-9._-]/g, '_').slice(-60);
+                    const path = `mms/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+                    const { error: upErr } = await getSB().storage.from(MSG_MEDIA_BUCKET)
+                        .upload(path, upload, { contentType: upload.type || (isPdf ? 'application/pdf' : undefined), upsert: false });
+                    if (upErr) { showToast(`Upload failed for "${upload.name}": ` + upErr.message, 'error', { duration: 8000 }); continue; }
+                    const { data: pub } = getSB().storage.from(MSG_MEDIA_BUCKET).getPublicUrl(path);
+                    if (!pub?.publicUrl) { showToast(`"${upload.name}" uploaded but no public URL came back.`, 'error'); continue; }
+                    _msgAttachments.push({ url: pub.publicUrl, name: upload.name || (isPdf ? 'document' : 'photo') });
                 }
-                const safe = (upload.name || 'photo.jpg').replace(/[^A-Za-z0-9._-]/g, '_').slice(-60);
-                const path = `mms/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
-                const { error: upErr } = await getSB().storage.from(MSG_MEDIA_BUCKET)
-                    .upload(path, upload, { contentType: upload.type, upsert: false });
-                if (upErr) { showToast('Photo upload failed: ' + upErr.message, 'error', { duration: 8000 }); return; }
-                const { data: pub } = getSB().storage.from(MSG_MEDIA_BUCKET).getPublicUrl(path);
-                if (!pub?.publicUrl) { showToast('Photo uploaded but no public URL came back.', 'error'); return; }
-                _msgAttachment = { url: pub.publicUrl, name: upload.name || 'photo' };
                 _renderAttachChip();
             } catch (e) {
                 console.error('attach failed:', e);
@@ -324,7 +354,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         // Wire the composer-extras instance currently in the DOM. Safe to call
         // repeatedly (modal re-opens); it re-binds the fresh elements.
         export function initComposerExtras() {
-            _msgAttachment = null;
+            _msgAttachments = []; // S158: multi-attach reset
             document.getElementById('msgAttachBtn')?.addEventListener('click', () => document.getElementById('msgAttach')?.click());
             document.getElementById('msgAttach')?.addEventListener('change', _handleAttachPick);
             const emojiBtn = document.getElementById('msgEmojiBtn');
@@ -405,8 +435,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             const phone = _toE164(phoneEl.value);
             let body = (bodyEl.value || '').trim();
             if (!phone || phone.length < 11) { showToast('Enter a valid phone number in +1XXXXXXXXXX format.', 'warning'); return; }
-            // S151b: a photo with no text is a valid MMS.
-            if (!body && !_msgAttachment) { showToast('Type a message (or attach a photo) first.', 'warning'); return; }
+            // S151b: a photo with no text is a valid MMS. S158: multi-attach.
+            if (!body && !_msgAttachments.length) { showToast('Type a message (or attach a photo/PDF) first.', 'warning'); return; }
 
             // S151b: per-user signature (staff.sms_signature) auto-appends —
             // the preview under the composer shows exactly what will be added.
@@ -431,7 +461,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                         ro_code: roCode || null,
                         sent_by: (currentUser && currentUser.email) || null,
                         context: 'ro_customer',
-                        media_url: _msgAttachment ? _msgAttachment.url : null, // S151b MMS
+                        media_url: _msgAttachments.length ? _msgAttachments.map(a => a.url) : null, // S158: array (textly-send v1.1 media[])
                     }),
                 });
                 const data = await res.json().catch(() => ({}));
@@ -453,7 +483,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                 }
 
                 bodyEl.value = '';
-                _msgAttachment = null; _renderAttachChip(); // S151b: clear after send
+                _msgAttachments = []; _renderAttachChip(); // S151b/S158: clear after send
                 showToast(`Message sent${data.is_imessage === true ? ' (iMessage)' : data.is_imessage === false ? ' (SMS)' : ''}.`, 'success');
                 log('✅ Textly send ok: ' + (data.message_handle || data.status || ''));
                 _refreshThread(roSupabaseId, phone);

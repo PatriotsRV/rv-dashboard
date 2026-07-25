@@ -38,11 +38,18 @@ export function openERModal() {
     // Auto-default category based on current page
     const page = window.location.pathname.split('/').pop() || 'index.html';
     const catSelect = document.getElementById('erCategory');
+    // S158 (ER ac394468): every page now has a matching category (the new
+    // page-area options shipped to all 6 erCategory selects same session).
     const pageDefaults = {
         'checkin.html': 'Time Clock / Check-In',
-        'solar.html': 'General UI/UX',
-        'analytics.html': 'General UI/UX',
-        'worklist-report.html': 'Work List'
+        'solar.html': 'Solar',
+        'analytics.html': 'Reports / Analytics',
+        'worklist-report.html': 'Work List',
+        'closed-ros.html': 'Closed ROs / Archive',
+        'messages.html': 'Messages / Texting',
+        'leads.html': 'Leads',
+        'time-off.html': 'Time Off',
+        'guide.html': 'Employee Guide'
     };
     if (pageDefaults[page]) {
         catSelect.value = pageDefaults[page];

@@ -2,6 +2,27 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.13 (Session 158, 2026-07-25): TEAMS/GROUPS STAFF BROADCAST (S151 TODO)
+    + MULTI-ATTACH + REOPEN/REMINDER pairing.
+    (1) 📢 Broadcast (managers+, header button): compose once → INDIVIDUAL
+    texts to a picked team. Teams = All staff / silo teams derived live from
+    staff.service_silo / custom saved groups (NEW staff_groups table,
+    migration staff_groups_s158.sql, manager+ RLS). Recipient checkbox list
+    (staff without a mobile number shown disabled), save-checked-as-group +
+    delete-group inline. Sends loop textly-send with NEW context
+    'staff_broadcast' (textly-send v1.2 exempts it from the opt-out gate and
+    conversation upsert — staff texts never clutter the customer inbox).
+    Body goes out prefixed "📢 <sender>: " so staff know who sent it.
+    (2) Composer multi-attach (ER d62a26e4): up to 5 photos and/or PDFs per
+    send — js/messaging.js S158 (input multiple, per-file chips, PDFs skip
+    compression, bubble renders PDFs as 📄 document chips).
+    (3) Server-side pairing (ER 93b00023, deploys with this release):
+    textly-webhook v1.3 reopens closed conversations on customer texts +
+    notifies the assigned owner ONLY on the needs-reply flip; NEW
+    send-unreplied-reminder edge fn + 4:30 PM CT weekday cron
+    (unreplied_eod_reminder_s158.sql) emails+texts owners with unreplied
+    conversations at end of day.
+
     v1.12 (Session 154, 2026-07-22): CUSTOMER NOTES + REVIEW REQUEST (GH#40).
     (2) NEW "Review" details-pane section (managers+): ⭐ Request a review
     inserts a manual review_requests row (sends within 15 min via the
@@ -359,6 +380,7 @@
             <span id="pbLine" style="font-size:0.72rem; color:#8FB8DC;">Textly line +1 (940) 488-5047</span>
         </div>
         <div class="header-right">
+            <button id="broadcastBtn" class="mini-btn" style="display:none;" onclick="openBroadcastModal()" title="Text a team or group of staff at once">&#128226; Broadcast</button>
             <button class="mini-btn details-toggle" onclick="toggleDetails()">&#8505; Details</button>
             <span id="userBadge" class="badge-role badge-user"></span>
             <span id="verBadge" style="font-size:0.65rem; color:#8FB8DC; font-family:'JetBrains Mono',monospace;"></span>
@@ -498,6 +520,35 @@
     </div>
 </div>
 
+<!-- S158 (v1.13): Teams/Groups staff broadcast modal (managers+) -->
+<div id="broadcastModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(94vw, 520px); max-height:90vh; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:10px;">&#128226; Staff Broadcast</div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Team / group</label>
+        <select id="bcTeamSelect" class="assign-select" onchange="broadcastTeamChanged()"></select>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin:4px 0;">
+            <span style="font-size:0.72rem; color:var(--text-secondary);">Recipients — <span id="bcCount">0</span> selected</span>
+            <span style="display:flex; gap:6px;">
+                <button class="mini-btn" style="padding:1px 8px; font-size:0.7rem;" onclick="bcCheckAll(true)">All</button>
+                <button class="mini-btn" style="padding:1px 8px; font-size:0.7rem;" onclick="bcCheckAll(false)">None</button>
+            </span>
+        </div>
+        <div id="bcRecipients" style="flex:0 1 auto; overflow-y:auto; min-height:70px; max-height:32vh; border:1px solid var(--border-color); border-radius:10px; padding:8px 10px; background:var(--bg-primary); font-size:0.85rem;"></div>
+        <div style="display:flex; gap:6px; align-items:center; margin-top:8px;">
+            <input id="bcGroupName" class="assign-input" type="text" placeholder="Save checked as group&hellip;" style="flex:1; margin-bottom:0;">
+            <button class="mini-btn" onclick="saveStaffGroup()" title="Save the checked staff as a reusable custom group">&#128190; Save</button>
+            <button id="bcDeleteGroupBtn" class="mini-btn" style="display:none; color:#B42318;" onclick="deleteStaffGroup()" title="Delete this custom group">&#128465;</button>
+        </div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin:10px 0 4px;">Message — each person gets an individual text, prefixed "&#128226; <span id="bcSenderName"></span>:"</label>
+        <textarea id="bcBody" class="assign-input" rows="3" placeholder="Type the broadcast&hellip;" style="width:100%; resize:vertical; margin-bottom:10px;"></textarea>
+        <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+            <span id="bcProgress" style="font-size:0.75rem; color:var(--text-secondary); margin-right:auto;"></span>
+            <button class="mini-btn" onclick="closeBroadcastModal()">Cancel</button>
+            <button id="bcSendBtn" class="mini-btn primary" onclick="sendBroadcast()">&#128228; Send broadcast</button>
+        </div>
+    </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script type="module">
@@ -507,8 +558,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.12';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S154)');
+const PAGE_VERSION = 'messages v1.13';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S158)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
@@ -678,6 +729,8 @@ function showApp() {
     populateAssignSelect();
     // S151d: New Contact button (managers+, matches the RLS insert policy).
     if (isManagerOrAdmin()) document.getElementById('newConvoBtn').style.display = '';
+    // S158 (v1.13): Broadcast button (managers+, matches staff_groups RLS).
+    if (isManagerOrAdmin()) document.getElementById('broadcastBtn').style.display = '';
     // S151b: attach/emoji/signature composer extras (shared with the RO modal).
     const slot = document.getElementById('composerExtrasSlot');
     if (slot && !slot.innerHTML) { slot.innerHTML = composerExtrasHtml(); initComposerExtras(); }
@@ -1320,6 +1373,203 @@ async function editCustomerName() {
     }
 }
 
+// ── S158 (v1.13): Teams/Groups staff broadcast (managers+) ──────────
+// Teams: All staff / silo teams (derived live from staff.service_silo) /
+// custom groups (staff_groups table). Sends loop textly-send with context
+// 'staff_broadcast' — suppression-exempt + no conversations row (v1.2), so
+// staff texts never appear in the customer inbox.
+const SILO_LABELS = {
+    repair: 'Repair', solar: 'Solar', vroom: 'Vroom', roof: 'Roof',
+    paint_body: 'Paint & Body', chassis: 'Chassis', detailing: 'Detailing',
+    truetopper: 'TrueTopper',
+};
+let _staffGroups = [];   // custom groups from staff_groups
+let _bcSending = false;
+
+async function loadStaffGroups() {
+    try {
+        const { data, error } = await getSB()
+            .from('staff_groups').select('*').order('name');
+        if (error) throw error;
+        _staffGroups = data || [];
+    } catch (e) {
+        console.error('loadStaffGroups error:', e);
+        _staffGroups = [];
+    }
+}
+function _bcTeamOptions() {
+    const silos = [...new Set(_allStaff.map(s => (s.service_silo || '').trim()).filter(Boolean))].sort();
+    let html = '<option value="all">All staff</option>';
+    if (silos.length) {
+        html += '<optgroup label="Silo teams">' + silos.map(k =>
+            `<option value="silo:${escapeHtml(k)}">${escapeHtml(SILO_LABELS[k] || k)}</option>`).join('') + '</optgroup>';
+    }
+    if (_staffGroups.length) {
+        html += '<optgroup label="Custom groups">' + _staffGroups.map(g =>
+            `<option value="group:${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`).join('') + '</optgroup>';
+    }
+    return html;
+}
+function _bcTeamMembers(teamValue) {
+    if (teamValue === 'all') return _allStaff.filter(s => s.email);
+    if (teamValue.startsWith('silo:')) {
+        const silo = teamValue.slice(5);
+        return _allStaff.filter(s => s.email && (s.service_silo || '').trim() === silo);
+    }
+    if (teamValue.startsWith('group:')) {
+        const g = _staffGroups.find(x => x.id === teamValue.slice(6));
+        if (!g) return [];
+        const set = new Set((g.member_emails || []).map(e => String(e).toLowerCase()));
+        return _allStaff.filter(s => s.email && set.has(s.email.toLowerCase()));
+    }
+    return [];
+}
+async function openBroadcastModal() {
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can broadcast.', 'warning'); return; }
+    await loadStaffGroups();
+    document.getElementById('bcTeamSelect').innerHTML = _bcTeamOptions();
+    document.getElementById('bcSenderName').textContent = currentUser?.name || currentUser?.email || '';
+    document.getElementById('bcBody').value = '';
+    document.getElementById('bcGroupName').value = '';
+    document.getElementById('bcProgress').textContent = '';
+    document.getElementById('broadcastModal').style.display = 'flex';
+    broadcastTeamChanged();
+}
+function closeBroadcastModal() {
+    if (_bcSending) return; // don't close mid-send
+    document.getElementById('broadcastModal').style.display = 'none';
+}
+function broadcastTeamChanged() {
+    const teamValue = document.getElementById('bcTeamSelect').value;
+    document.getElementById('bcDeleteGroupBtn').style.display = teamValue.startsWith('group:') ? '' : 'none';
+    const members = _bcTeamMembers(teamValue)
+        .slice().sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+    const box = document.getElementById('bcRecipients');
+    box.innerHTML = members.length ? members.map(s => {
+        const phone = (s.phone_number || '').trim();
+        const disabled = phone ? '' : 'disabled';
+        return `<label style="display:flex; align-items:center; gap:8px; padding:3px 0; ${phone ? '' : 'opacity:0.5;'} cursor:${phone ? 'pointer' : 'not-allowed'};">
+            <input type="checkbox" class="bcRecip" value="${escapeHtml(s.email)}" ${phone ? 'checked' : ''} ${disabled} onchange="bcUpdateCount()">
+            <span style="flex:1;">${escapeHtml(s.name || s.email)}</span>
+            <span style="font-size:0.68rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace;">${phone ? escapeHtml(phone) : 'no mobile #'}</span>
+        </label>`;
+    }).join('') : '<span style="font-size:0.78rem; color:#8FA9C2;">No staff in this team.</span>';
+    bcUpdateCount();
+}
+function bcCheckAll(on) {
+    document.querySelectorAll('#bcRecipients .bcRecip:not(:disabled)').forEach(cb => { cb.checked = on; });
+    bcUpdateCount();
+}
+function bcUpdateCount() {
+    const n = document.querySelectorAll('#bcRecipients .bcRecip:checked').length;
+    document.getElementById('bcCount').textContent = n;
+}
+function _bcCheckedEmails() {
+    return [...document.querySelectorAll('#bcRecipients .bcRecip:checked')].map(cb => cb.value);
+}
+async function saveStaffGroup() {
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can save groups.', 'warning'); return; }
+    const name = (document.getElementById('bcGroupName').value || '').trim();
+    if (!name) { showToast('Name the group first.', 'warning'); return; }
+    const emails = _bcCheckedEmails();
+    if (!emails.length) { showToast('Check at least one recipient first.', 'warning'); return; }
+    try {
+        const { error } = await getSB().from('staff_groups').upsert({
+            name,
+            member_emails: emails,
+            created_by: currentUser?.email || null,
+        }, { onConflict: 'name' });
+        if (error) throw error;
+        showToast(`Group "${name}" saved (${emails.length} member${emails.length === 1 ? '' : 's'}).`, 'success');
+        document.getElementById('bcGroupName').value = '';
+        await loadStaffGroups();
+        const sel = document.getElementById('bcTeamSelect');
+        const keep = sel.value;
+        sel.innerHTML = _bcTeamOptions();
+        const g = _staffGroups.find(x => x.name === name);
+        sel.value = g ? 'group:' + g.id : keep;
+        broadcastTeamChanged();
+    } catch (err) {
+        console.error('saveStaffGroup error:', err);
+        showToast('Group save failed: ' + (err.message || err), 'error');
+    }
+}
+async function deleteStaffGroup() {
+    const teamValue = document.getElementById('bcTeamSelect').value;
+    if (!teamValue.startsWith('group:')) return;
+    const g = _staffGroups.find(x => x.id === teamValue.slice(6));
+    if (!g) return;
+    if (!confirm(`Delete the custom group "${g.name}"? (Staff themselves are not affected.)`)) return;
+    try {
+        const { error } = await getSB().from('staff_groups').delete().eq('id', g.id);
+        if (error) throw error;
+        showToast(`Group "${g.name}" deleted.`, 'success');
+        await loadStaffGroups();
+        const sel = document.getElementById('bcTeamSelect');
+        sel.innerHTML = _bcTeamOptions();
+        sel.value = 'all';
+        broadcastTeamChanged();
+    } catch (err) {
+        console.error('deleteStaffGroup error:', err);
+        showToast('Group delete failed: ' + (err.message || err), 'error');
+    }
+}
+async function sendBroadcast() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can broadcast.', 'warning'); return; }
+    if (_bcSending) return;
+    const bodyRaw = (document.getElementById('bcBody').value || '').trim();
+    if (!bodyRaw) { showToast('Type the broadcast message first.', 'warning'); return; }
+    const emails = _bcCheckedEmails();
+    if (!emails.length) { showToast('Check at least one recipient.', 'warning'); return; }
+    const phoneByEmail = new Map(_allStaff.map(s => [s.email?.toLowerCase(), (s.phone_number || '').trim()]));
+    const targets = emails
+        .map(e => ({ email: e, phone: phoneByEmail.get(e.toLowerCase()) || '' }))
+        .filter(t => t.phone);
+    if (!targets.length) { showToast('None of the checked staff have a mobile number.', 'warning'); return; }
+    if (!confirm(`Send this text individually to ${targets.length} staff member${targets.length === 1 ? '' : 's'}?`)) return;
+    const senderName = currentUser?.name || currentUser?.email || 'PRVS';
+    const body = `\u{1F4E2} ${senderName}: ${bodyRaw}`;
+    const btn = document.getElementById('bcSendBtn');
+    const prog = document.getElementById('bcProgress');
+    _bcSending = true;
+    btn.disabled = true;
+    let sent = 0, failed = 0;
+    try {
+        for (let i = 0; i < targets.length; i++) {
+            prog.textContent = `Sending ${i + 1}/${targets.length}…`;
+            try {
+                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${supabaseSession?.access_token || SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                    },
+                    body: JSON.stringify({
+                        action: 'send',
+                        to: targets[i].phone,
+                        body,
+                        context: 'staff_broadcast',
+                        sent_by: currentUser?.email || null,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.ok !== false) sent++;
+                else { failed++; console.error('broadcast send failed for', targets[i].email, data); }
+            } catch (e) {
+                failed++; console.error('broadcast send error for', targets[i].email, e);
+            }
+        }
+        prog.textContent = '';
+        showToast(`Broadcast sent to ${sent} staff${failed ? ` — ${failed} FAILED (see console)` : '.'}`, failed ? 'warning' : 'success', { duration: 8000 });
+        if (!failed) closeBroadcastModal();
+    } finally {
+        _bcSending = false;
+        btn.disabled = false;
+    }
+}
+
 // ── Refresh / UI plumbing ────────────────────────────────────────────
 async function refreshAll() {
     if (!supabaseSession) return;
@@ -1384,6 +1634,8 @@ Object.assign(window, {
     openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
     copyContactValue, // v1.11
     openNotesModal, closeNotesModal, saveCustomerNote, requestReview, // v1.12
+    openBroadcastModal, closeBroadcastModal, broadcastTeamChanged, // v1.13 S158
+    bcCheckAll, bcUpdateCount, saveStaffGroup, deleteStaffGroup, sendBroadcast, // v1.13 S158
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
