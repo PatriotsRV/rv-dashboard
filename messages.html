@@ -558,7 +558,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.13a';
+const PAGE_VERSION = 'messages v1.13b';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S158)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -1398,12 +1398,12 @@ async function loadStaffGroups() {
     }
 }
 function _bcTeamOptions() {
-    const silos = [...new Set(_allStaff.map(s => (s.service_silo || '').trim()).filter(Boolean))].sort();
+    // v1.13b (S158, Roland): silo teams HIDDEN from the picker — staff.service_silo
+    // currently maps MANAGERS only (it drives other permissions, GH#23), so silo
+    // "teams" render as one-manager lists that just confuse. Custom groups cover
+    // team broadcasts until silo membership is real. (_bcTeamMembers keeps the
+    // silo: handling so re-enabling is a one-line revert here.)
     let html = '<option value="all">All staff</option>';
-    if (silos.length) {
-        html += '<optgroup label="Silo teams">' + silos.map(k =>
-            `<option value="silo:${escapeHtml(k)}">${escapeHtml(SILO_LABELS[k] || k)}</option>`).join('') + '</optgroup>';
-    }
     if (_staffGroups.length) {
         html += '<optgroup label="Custom groups">' + _staffGroups.map(g =>
             `<option value="group:${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`).join('') + '</optgroup>';
