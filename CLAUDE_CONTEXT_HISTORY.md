@@ -9,6 +9,15 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 158 — MESSAGES BUNDLE SHIPPED (v1.482 + messages-v1.13b, Sync Gate Case B) + first on-computer session verified.**
+  - **On-computer mode (S157 TODO): all 5 checks PASS.** Mount in one call; the folder Allow dialog is a both-modes permission (expectation disproven — it stays); direct `git push` works (Terminal workaround RETIRED); deletes work after a one-time `allow_cowork_file_delete` grant; backup keep-9 prune clean; `_to_delete/` (49MB of S150–S157 lockfiles + old snapshots) emptied. New session pattern: TWO dialogs (folder Allow + delete grant).
+  - **notes 1000-row window FIXED** (`js/ro-crud.js`): `.range()` pagination, stable created_at,id order — 624 rows / ~165 wk was ~2.3 weeks from silently dropping the NEWEST notes.
+  - **S151 Teams/Groups staff broadcast** (messages.html v1.13b): 📢 modal, All staff + custom groups (NEW `staff_groups` table, manager RLS; silo teams hidden per Roland — service_silo maps managers only), save = update-in-place, sends via NEW textly-send v1.2 context `staff_broadcast` (suppression-exempt, NO conversations row — verified 2 sends / 0 inbox pollution).
+  - **ER 93b00023** (textly-webhook v1.3 + NEW send-unreplied-reminder v1.0 + `unreplied_eod_reminder_s158.sql`): non-keyword inbound reopens closed conversations ('reopened' event by customer-sms); owner notify ONLY on the needs-reply flip; 4:30 PM CT weekday cron digests owners with unreplied conversations (email + SMS, per-day idempotent). Live-tested: reopen ✓, Lynn's notify SMS 2s after inbound ✓, second text NO re-notify ✓, manual reminder fire → 9 owners / 9 emails / 9 SMS on REAL backlog ✓.
+  - **ER d62a26e4 multi-attach** (js/messaging.js): up to 5 photos/PDFs, per-file chips, PDFs uncompressed under the 5MB gate, 📄 PDF bubble chips. Live test found carriers strip a media[5] bundle to 1 image → **S158a: one media per MMS** (send#1 text+sig+first file, rest media-only) — 5/5 landed on iPhone.
+  - **ER ac394468**: Make-a-Wish CATEGORY dropdown now represents every page — 7 new options across all 6 erCategory selects + enhancement.js pageDefaults.
+  - Confirmed for Roland: **Textly = SMS/MMS only, no iMessage/blue bubbles** (that was the PB/Sendblue pitch; killed by the port requirement + engagement gate).
+
 - ✅ **Session 157 — Cloud-vs-on-computer Cowork model clarified + mode switch decided (docs only; NO release; index.html stays v1.481; Sync Gate Case A).**
   - The per-session "Allow folder access" dialog is inherent to cloud mode: session-scoped device-bridge grants (cloud-by-default rollout ~S136, matching the MOUNT GATE saga start). The Context-panel rv-dashboard chip is a stale snapshot, never a mount.
   - Storage model: the repo lives ONLY on the Mac in both modes; the cloud sandbox is ephemeral scratch. No sync layer between modes — switching cannot fork the context files. Drive-failure protection = the End-Session GitHub push, not cloud mode.
@@ -219,6 +228,7 @@
 
 | Version | Date | Summary |
 |---|---|---|
+| v1.482 + messages-v1.13b | 2026-07-25 | **Session 158.** MESSAGES BUNDLE — Teams/Groups staff broadcast (staff_groups + context staff_broadcast, custom groups, silo teams hidden), ER 93b00023 (webhook v1.3 customer-reopen + needs-reply-flip notify + send-unreplied-reminder 4:30 CT cron), ER d62a26e4 multi-attach ≤5 photos/PDFs (one media per MMS — carriers strip bundles), ER ac394468 Make-a-Wish page categories x 6 pages, notes-load pagination (1000-row window fix). |
 | messages-v1.12 + review-v1.0 | 2026-07-22 | **Session 154.** GH#40 review-request automation (cashiered trigger → 24h-delayed SMS → review.html Yes/No landing w/ Google/FB deep links + private-feedback queue + manager email; manual ⭐ button) + Kenect customer notes rescued into append-only customer_note_entries w/ the Add Notes modal (author+date auto-stamped). index.html untouched (v1.481). |
 | v1.481 | 2026-07-22 | SIDEBAR LAYOUT SHIPS — per-user Classic ⇄ Sidebar layout toggle via DOM relocation (js/layout.js + css/sidebar-layout.css, built S147/polished S150/deploy plan S152/merged+shipped S153); launcher page replaces sidebar-mockup.html (v0.7 kept at tag sidebar-mockup-v0.7) + 🧪 New RO DB Tester header link; sidebar comm box opens the Textly thread (one messaging interface); merged with Textly-era v1.480; smoke 25/25 |
 | v1.480 + messages-v1.11 | 2026-07-21 | **Session 151.** Details-pane customer email+address w/ one-tap copy (live RO + cashiered fallback); messages.html readability (root 17.5px, darker inputs #4E7CA8); mobile one-row header + Send-visible; messaging.js extras spacing. Prod main `70981d6`. |
