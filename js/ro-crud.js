@@ -37,13 +37,27 @@
 
                 if (error) throw error;
 
-                // Load notes for all ROs in one query
+                // Load notes for all ROs — PAGINATED (S158).
+                // PostgREST silently caps un-limited selects at 1000 rows; ordered
+                // ascending, that would drop the NEWEST notes once active-RO notes
+                // pass 1000 (624 as of S158, growing ~165/wk). The loop below makes
+                // the SAME single request as before, and only fetches another page
+                // when the previous page came back full (i.e. more rows exist).
                 const roIds = ros.map(r => r.id);
-                const { data: notes } = await getSB()
-                    .from('notes')
-                    .select('ro_id, type, body, created_at')
-                    .in('ro_id', roIds)
-                    .order('created_at', { ascending: true });
+                const NOTES_PAGE = 1000;
+                let notes = [];
+                for (let from = 0; ; from += NOTES_PAGE) {
+                    const { data: page, error: notesErr } = await getSB()
+                        .from('notes')
+                        .select('ro_id, type, body, created_at')
+                        .in('ro_id', roIds)
+                        .order('created_at', { ascending: true })
+                        .order('id', { ascending: true }) // stable tie-break so page boundaries never skip/dup rows
+                        .range(from, from + NOTES_PAGE - 1);
+                    if (notesErr) { warn('notes page load failed at offset', from, notesErr); break; }
+                    notes = notes.concat(page || []);
+                    if (!page || page.length < NOTES_PAGE) break;
+                }
 
                 // Load parts summary for badges
                 const { data: parts } = await getSB()
