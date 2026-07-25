@@ -1,7 +1,21 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.482
+    PRVS Dashboard v1.483
+    v1.483: [S159] SIDEBAR CARD REORG ROUND 2 + AUDIT FIX — (1) Edit RO no-op audit rows FIXED:
+    updateROInSupabase blanket per-field audit REMOVED; the inline Edit-save diff is the single
+    audit writer (numeric-aware dollarValue compare kills the '18495'->'18495.00' noise; labels
+    added for Planned Drop-Off/Pickup/Parking Spot/Training RO). (2) RO STATUS box click now opens
+    a READ + ADD history modal (all notes newest-first, scrollable, 🎤 dictate) — was add-only.
+    (3) Sidebar card regroup (Roland): TYPE/RV/VIN/TECH/ADDRESS rows + Manage Photos & Docs moved
+    ADMIN -> RO MANAGEMENT (TYPE directly under the status dropdown); progress bar + WO silo chips
+    to the TOP of the group renamed 🧰 WORK ORDERS; 📍 parking badge to the always-visible header
+    chip row; 🗑 Delete RO moved Edit-RO-modal -> card ⚙️ ADMIN dropdown in sidebar (admin-only,
+    same softDeleteCurrentRO soft-delete; classic Edit RO keeps its delete block). Labels:
+    'RO Status' -> 'RO Status Updates', CUSTOMER -> CUSTOMER INFO AND COMMS. (4) Sidebar photo
+    dead-bar fixed (.rv-photo height:auto under the 130px img). (5) Card action buttons 12.5px ->
+    14.5px. (6) Mobile Add-Part silo dropdown 16px @ <=768px. S152/S153 repaint reports NOT
+    reproducible on v1.482 (live-verified, both layouts, all three layers).
     v1.482: [S158] MESSAGES BUNDLE — (1) ER d62a26e4 multi-attach: the 💬
     composer (RO modal + messages.html) takes up to 5 photos and/or PDFs per
     send (js/messaging.js: input multiple, per-file chips, PDFs uncompressed
@@ -720,7 +734,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.482</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.483</span>
           </span>
         </div>
         <header>
@@ -749,7 +763,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.482</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.483</span>
             </div>
         </header>
 
@@ -1634,13 +1648,15 @@
 
 
         // ── GH#30: Admin Delete RO — soft-delete with 1-week auto-scrub ──
-        // Called from the 🗑 Delete RO button inside the Edit RO modal footer.
-        async function softDeleteCurrentRO() {
+        // Called from the 🗑 Delete RO button inside the Edit RO modal footer (classic),
+        // or [S159] from the sidebar card ⚙️ ADMIN dropdown with an explicit currentData index.
+        async function softDeleteCurrentRO(explicitIdx) {
             if (!isAdmin()) {
                 showToast('Admin access required to delete ROs.', 'warning');
                 return;
             }
-            const idx = (typeof editingROIndex === 'number') ? editingROIndex : -1;
+            const idx = (typeof explicitIdx === 'number') ? explicitIdx
+                : ((typeof editingROIndex === 'number') ? editingROIndex : -1);
             if (idx < 0 || idx >= currentData.length) {
                 showToast('Could not identify the RO to delete — reopen the modal and try again.', 'danger');
                 return;
@@ -3493,7 +3509,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -4363,6 +4379,7 @@
             // Section titles
             'Repair Description': 'Descripción de Reparación',
             'RO Status': 'Estado de la OR',
+            'RO Status Updates': 'Actualizaciones de Estado de la OR', // [S159] note-box + history-modal title
             'Customer Comm': 'Comunicación',
             'Message Customer': 'Mensaje al Cliente',
             'Thread': 'Hilo',
@@ -6176,12 +6193,21 @@
                         keypadCode: 'Keypad Code', // [ER BUGFIX v1.458 S118]
                         keepPluggedIn: 'Keep Plugged In', // [ER BUGFIX v1.458 S118]
                         urgentUpdate: 'Urgent Update', // [ER a7d1474e v1.466 S127]
+                        plannedDropoffDate: 'Planned Drop-Off Date', // [S159] was only covered by the removed updateROInSupabase blanket audit
+                        pickupDate: 'Pickup Date',                   // [S159] ditto
+                        isTraining: 'Training RO',                   // [S159] ditto
+                        parkingSpot: 'Parking Spot',                 // [S159] ditto — completes coverage of every Edit RO form field
                     };
                     const changes = [];
                     for (const [key, label] of Object.entries(fieldLabels)) {
                         const oldVal = String(existing[key] || '').trim();
                         const newVal = String(data[key] || '').trim();
-                        if (oldVal !== newVal) {
+                        // [S159 FIX] numeric-aware compare for dollarValue ONLY — the form prefills
+                        // toFixed(2), so '18495' vs '18495.00' is formatting, not a change. Other fields
+                        // string-compare (keypadCode '0123' vs '123' IS a real change).
+                        const bothNumeric = key === 'dollarValue' && oldVal !== '' && newVal !== '' && isFinite(oldVal) && isFinite(newVal);
+                        const unchanged = bothNumeric ? parseFloat(oldVal) === parseFloat(newVal) : oldVal === newVal;
+                        if (!unchanged) {
                             changes.push({ field: label, oldValue: oldVal, newValue: newVal });
                         }
                     }

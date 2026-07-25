@@ -154,9 +154,9 @@
   var GROUPS = [
     { key: 'mgmt',  title: '📋 RO MANAGEMENT' },
     { key: 'notif', title: '🔔 NOTIFICATIONS & REMINDERS' },
-    { key: 'work',  title: '🧰 WORK' },
+    { key: 'work',  title: '🧰 WORK ORDERS' }, // [S159b Roland] was WORK
     { key: 'parts', title: '🔩 PARTS' },
-    { key: 'cust',  title: '💬 CUSTOMER' },
+    { key: 'cust',  title: '💬 CUSTOMER INFO AND COMMS' }, // [S159b Roland] was CUSTOMER
     { key: 'admin', title: '⚙️ ADMIN' }
   ];
 
@@ -165,26 +165,48 @@
     ['.insurance-badge', 'mgmt'], ['.customer-pay-badge', 'mgmt'],
     ['.warranty-badge', 'mgmt'], ['.hybrid-badge', 'mgmt'],
     ['.shop-badge', 'mgmt'], ['.training-badge', 'mgmt'],
-    ['.status-selector-container', 'mgmt'], ['.wo-summary-chips', 'mgmt'],
+    ['.status-selector-container', 'mgmt'],
+    // [S159b Roland] WO summary chips moved mgmt → work (chips live where techs check in)
     ['.note-item[data-field="roStatusNotes"]', 'mgmt'],
+    // [S159 Roland] TYPE/RV/VIN/TECH rows + Manage Photos & Docs moved ADMIN → RO MGMT,
+    // placed ABOVE the action buttons (details after notes, buttons at group end).
+    ['.rv-info', 'mgmt'], ['.photo-upload-btn', 'mgmt'],
     ['.edit-ro-btn', 'mgmt'], ['.card-secondary-btn[data-action="add-to-list"]', 'mgmt'],
     ['.schedule-ro-btn', 'mgmt'],
     ['.schedule-notif-banner-btn', 'notif'],   // mockup v0.5.2: Schedule button lives IN the 🔔 group
     ['.key-dates-row', 'notif'],
+    ['.progress-section', 'work'],  // [S159b Roland] progress bar at the TOP of Work Orders
+    ['.wo-summary-chips', 'work'],  // then the per-silo WO overview
     ['.checkin-btn', 'work'], ['.keys-power-row', 'work'],
-    ['.card-parking-badge', 'work'], ['.progress-section', 'work'],
+    ['.card-parking-badge', 'work'], // staging only — hdr2 build relocates it to the card top
     ['.time-logs-section', 'work'], ['.work-order-btn', 'work'],
     ['.parts-badge', 'parts'], ['.parts-status-chip', 'parts'],
     ['.request-parts-btn', 'parts'], ['.parts-btn', 'parts'],
     ['.mark-ordered-btn', 'parts'],
     ['.note-item[data-field="customerCommunicationNotes"]', 'cust'],
     ['.message-customer-btn', 'cust'],
-    ['.rv-info', 'admin'], ['.photo-upload-btn', 'admin'],
     ['.qr-collapsible-wrapper', 'admin'], ['.archive-ro-btn', 'admin']
   ];
 
   window.sbToggleCsec = function (el) {
     el.parentElement.classList.toggle('open');
+  };
+
+  // [S159] Sidebar ADMIN-dropdown Delete RO — resolve the card's RO via data-ro-sid
+  // (UUID-first, GH#29 pattern), then hand off to the shared soft-delete flow.
+  window.sbDeleteRO = function (btn) {
+    var card = btn.closest('.ro-card');
+    var sid = card && card.getAttribute('data-ro-sid');
+    if (!sid || typeof window.softDeleteCurrentRO !== 'function') return;
+    // currentData is an inline top-level `let` — reach it via the shared global
+    // lexical environment (S84 pattern), not window.
+    var _cd = (typeof currentData !== 'undefined') ? currentData : (window.currentData || []);
+    var idx = _cd.findIndex(function (r) { return r._supabaseId === sid; });
+    if (idx < 0) {
+      if (typeof window.showToast === 'function') window.showToast('Could not resolve this RO — refresh and try again.', 'danger');
+      return;
+    }
+    window.softDeleteCurrentRO(idx);
   };
 
   function tr(s) { return (typeof window.t === 'function') ? window.t(s) : s; }
@@ -199,7 +221,7 @@
       var els = card.querySelectorAll(pair[0]);
       for (var i = 0; i < els.length; i++) {
         // phone/email rows are pulled from .rv-info separately below, and
-        // .rv-info itself moves to admin — skip descendants already captured
+        // .rv-info itself moves to mgmt (S159; was admin) — skip descendants already captured
         if (!bodies[pair[1]]) {
           bodies[pair[1]] = document.createElement('div');
           bodies[pair[1]].className = 'sb-csec-b';
@@ -209,7 +231,8 @@
     });
 
     // Customer group: pull phone/email rows out of the (now-moved) rv-info
-    var rvInfo = bodies.admin && bodies.admin.querySelector('.rv-info');
+    // [S159] rv-info now lands in mgmt (was admin)
+    var rvInfo = bodies.mgmt && bodies.mgmt.querySelector('.rv-info');
     if (rvInfo) {
       var links = rvInfo.querySelectorAll('a[href^="tel:"], a[href^="mailto:"]');
       for (var j = 0; j < links.length; j++) {
@@ -220,9 +243,21 @@
           bodies.cust.insertBefore(row, bodies.cust.querySelector('.note-item, .message-customer-btn'));
         }
       }
+      // [S159b Roland] TYPE (services) row moves up directly under the status
+      // dropdown — quick read of the RO's services at the top of RO Management.
+      var typeRow = null, tRows = rvInfo.querySelectorAll('.info-row');
+      for (var k = 0; k < tRows.length; k++) {
+        var tl = tRows[k].querySelector('.info-label');
+        if (tl && /^(type|tipo)/i.test(tl.textContent.trim())) { typeRow = tRows[k]; break; }
+      }
+      if (typeRow && bodies.mgmt) {
+        var statusC = bodies.mgmt.querySelector('.status-selector-container');
+        if (statusC) statusC.insertAdjacentElement('afterend', typeRow);
+        else bodies.mgmt.insertBefore(typeRow, bodies.mgmt.firstChild);
+      }
       if (!rvInfo.querySelector('.info-row')) rvInfo.remove();
-      if (bodies.admin && !bodies.admin.childNodes.length) delete bodies.admin;
     }
+    if (bodies.admin && !bodies.admin.childNodes.length) delete bodies.admin;
 
     // Drop now-empty original wrappers
     ['.card-actions-primary', '.card-actions-secondary', '.notes-section'].forEach(function (sel) {
@@ -245,8 +280,8 @@
       var sub = document.createElement('div');
       sub.className = 'sb-sub';
       var unitText = '';
-      if (bodies.admin) {
-        var rows = bodies.admin.querySelectorAll('.rv-info .info-row');
+      if (bodies.mgmt) { // [S159] rv-info moved admin → mgmt
+        var rows = bodies.mgmt.querySelectorAll('.rv-info .info-row');
         for (var r = 0; r < rows.length; r++) {
           var lbl = rows[r].querySelector('.info-label');
           if (lbl && /^RV\b/i.test(lbl.textContent.trim())) {
@@ -289,6 +324,10 @@
       }
       var urg = card.querySelector('.urgency-selector-badge');
       if (urg) hdr2.appendChild(urg);
+      // [S159b Roland] 📍 RV location (parking badge) belongs at the TOP of the RO —
+      // pulled out of the Work group into the always-visible header chip row.
+      var park = (bodies.work && bodies.work.querySelector('.card-parking-badge')) || card.querySelector('.card-parking-badge');
+      if (park) hdr2.appendChild(park);
       (sub.parentNode ? sub : name).insertAdjacentElement('afterend', hdr2);
 
       // always-visible thin progress bar (input stays in 🧰 Work)
@@ -306,6 +345,21 @@
     var chr = card.querySelector('.card-header-row');
     if (chr && !chr.children.length) chr.remove();
 
+    // [S159 Roland] 🗑 Delete RO moves out of the Edit RO modal (sidebar only) into
+    // the ⚙️ ADMIN dropdown. Admin-gated; same softDeleteCurrentRO flow (soft-delete,
+    // 7-day auto-purge, restorable from Recently Deleted).
+    try {
+      if (typeof window.isAdmin === 'function' && window.isAdmin() && card.getAttribute('data-ro-sid')) {
+        if (!bodies.admin) { bodies.admin = document.createElement('div'); bodies.admin.className = 'sb-csec-b'; }
+        var delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'sb-del-ro-btn';
+        delBtn.textContent = '🗑 ' + tr('Delete RO');
+        delBtn.setAttribute('onclick', 'sbDeleteRO(this)');
+        bodies.admin.appendChild(delBtn);
+      }
+    } catch (e) {}
+
     // Append populated groups in canonical order
     GROUPS.forEach(function (g) {
       if (!bodies[g.key]) return;
@@ -314,16 +368,18 @@
 
     // ── Collapsed-header hints (mockup compact info layer) ────────────────
     setHint(card, 'mgmt', (function () {
-      var woN = card.querySelectorAll('.sb-csec[data-sbg="mgmt"] .wo-summary-chip:not(.wo-summary-chip-empty)').length;
+      // [S159b] WO chips moved to WORK — mgmt hint is the $ value alone now
       var d = card.querySelector('.sb-csec[data-sbg="mgmt"] .dollar-value');
-      var parts = [];
-      if (woN) parts.push(woN + ' WO');
-      if (d) parts.push(d.textContent.trim());
-      return parts.join(' · ');
+      return d ? d.textContent.trim() : '';
     })());
     setHint(card, 'work', (function () {
+      // [S159b] WO count rides with the chips into the WORK hint
+      var woN = card.querySelectorAll('.sb-csec[data-sbg="work"] .wo-summary-chip:not(.wo-summary-chip-empty)').length;
       var pv = card.querySelector('.sb-csec[data-sbg="work"] .progress-value');
-      return pv ? pv.textContent.trim() : '';
+      var parts = [];
+      if (woN) parts.push(woN + ' WO');
+      if (pv) parts.push(pv.textContent.trim());
+      return parts.join(' · ');
     })());
     setHint(card, 'parts', (function () {
       var pb = card.querySelector('.sb-csec[data-sbg="parts"] .parts-badge');

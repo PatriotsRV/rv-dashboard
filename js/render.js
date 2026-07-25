@@ -548,7 +548,7 @@
                             <div class="note-item editable-field" data-action="edit-field" data-idx="${index}" data-field="roStatusNotes">
                                 <div class="note-header">
                                     <span class="note-icon">🔧</span>
-                                    <span class="note-title">${t('RO Status')}</span>
+                                    <span class="note-title">${t('RO Status Updates')}</span>
                                 </div>
                                 <div class="note-content">${ro.roStatusNotes ? ro.roStatusNotes.split('\n').map(escapeHtml).reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                             </div>

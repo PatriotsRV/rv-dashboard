@@ -586,13 +586,11 @@
                 }
             }
 
-            // Write audit log — build array of changed fields
-            const auditChanges = Object.entries(formData).map(([field, value]) => ({
-                field,
-                oldValue: ro[field] || '',
-                newValue: value || '',
-            }));
-            await writeAuditLog(ro.roId, auditChanges);
+            // [S159 FIX — Edit RO no-op audit rows] Audit writing REMOVED from this function.
+            // This block used to log EVERY formData field unconditionally (old==new no-op rows
+            // for unchanged fields, plus a duplicate raw-key row for every real change). The
+            // Edit RO save handler in index.html is the single audit writer: it diffs old vs
+            // new (numeric-aware as of S159) and calls writeAuditLog with friendly labels.
 
             // [ER cb7742a8 S129] Server-side calendar sync on edit (drop-off + promised +
             // pickup) via the service-account edge fn — no Google token needed on the
@@ -940,6 +938,46 @@
             }
         }
 
+        // [S159 Roland] RO STATUS click → READ + ADD modal: full scrollable history
+        // (newest first) plus an add box. Replaces the add-only prompt for roStatusNotes;
+        // the card box stays as a preview, this is the full reader. Reuses the
+        // #voiceNotesInput/#voiceNotesStatus ids so 🎤 startVoiceDictationForModal works.
+        // No backdrop-click close (S30 modal outside-click lock convention).
+        function showStatusHistoryModal(existingText) {
+            return new Promise((resolve) => {
+                const entries = (existingText || '')
+                    .split(/\n---\n|\n(?=\[\d{2}\/\d{2}\/\d{2})/)
+                    .map(s => s.trim()).filter(Boolean).reverse();
+                const historyHtml = entries.length
+                    ? entries.map(e =>
+                        `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:0.9rem;line-height:1.45;color:#1e293b;white-space:pre-wrap;word-break:break-word;">${escapeHtml(e)}</div>`
+                      ).join('')
+                    : `<div style="color:#94a3b8;font-style:italic;padding:8px 0;">${t('No status notes yet.')}</div>`;
+                const wrap = document.createElement('div');
+                wrap.id = 'roStatusHistoryModal';
+                wrap.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+                wrap.innerHTML = `
+                    <div style="background:white;border-radius:16px;padding:26px 30px;max-width:640px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                        <h3 style="margin:0 0 14px 0;color:#1e293b;font-size:1.25rem;">🔧 ${t('RO Status Updates')} <span style="font-size:0.8rem;font-weight:400;color:#94a3b8;">(${entries.length})</span></h3>
+                        <div style="flex:1;overflow-y:auto;min-height:60px;max-height:45vh;margin-bottom:14px;">${historyHtml}</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <div style="font-size:0.85rem;font-weight:700;color:#334155;">${t('Add update')}</div>
+                            <button type="button" onclick="startVoiceDictationForModal()" style="padding:6px 14px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;">🎤 ${t('Dictate')}</button>
+                        </div>
+                        <textarea id="voiceNotesInput" placeholder="Type or use voice..." style="width:100%;min-height:90px;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:1rem;font-family:inherit;resize:vertical;margin-bottom:6px;box-sizing:border-box;"></textarea>
+                        <div id="voiceNotesStatus" style="margin-bottom:10px;font-size:0.9rem;color:#64748b;min-height:18px;"></div>
+                        <div style="display:flex;gap:12px;justify-content:flex-end;">
+                            <button type="button" data-act="close" style="padding:11px 22px;background:#64748b;color:white;border:none;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:600;">${t('Close')}</button>
+                            <button type="button" data-act="save" style="padding:11px 22px;background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);color:white;border:none;border-radius:8px;cursor:pointer;font-size:1rem;font-weight:600;">💾 ${t('Add Note')}</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(wrap);
+                const done = (val) => { wrap.remove(); resolve(val); };
+                wrap.querySelector('[data-act="close"]').addEventListener('click', () => done(null));
+                wrap.querySelector('[data-act="save"]').addEventListener('click', () => done(document.getElementById('voiceNotesInput').value));
+            });
+        }
+
         export async function editField(index, fieldName) {
             if (!getSB()) {
                 showToast('Please connect to the PRVS database first.', 'warning');
@@ -997,7 +1035,11 @@
                 }
 
                 // ── STATUS NOTES & COMM NOTES — append-only with timestamp ──
-                const newUpdate = await showVoiceNotesModal(`Add update to ${field.name}:`);
+                // [S159] roStatusNotes opens the READ + ADD history modal instead of
+                // the add-only prompt; comm notes keep the original flow.
+                const newUpdate = (fieldName === 'roStatusNotes')
+                    ? await showStatusHistoryModal(decodedValue)
+                    : await showVoiceNotesModal(`Add update to ${field.name}:`);
                 if (newUpdate === null || newUpdate.trim() === '') return;
 
                 const timestamp = new Date().toLocaleString('en-US', {
@@ -1128,9 +1170,13 @@
                 const etc = document.getElementById('editIsTraining');
                 if (etc) etc.checked = !!ro.isTraining;
 
-                // GH#30: Delete RO block — admin only
+                // GH#30: Delete RO block — admin only.
+                // [S159] Sidebar layout: hidden here — Delete RO lives in the card's
+                // ⚙️ ADMIN dropdown instead (layout.js builds it, same softDeleteCurrentRO).
+                // Classic keeps the in-modal block so no capability is lost there.
                 const edw = document.getElementById('editDeleteWrap');
-                if (edw) edw.style.display = isAdmin() ? '' : 'none';
+                const _sbLayout = document.documentElement.classList.contains('layout-sidebar');
+                if (edw) edw.style.display = (isAdmin() && !_sbLayout) ? '' : 'none';
 
                 document.getElementById('editROOverlay').classList.add('active');
             } catch (error) {

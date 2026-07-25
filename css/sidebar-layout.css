@@ -314,7 +314,7 @@ html.layout-sidebar .ro-card .sb-csec-b button {
   gap: 8px;
   border-radius: 8px !important;
   padding: 10px 12px !important;
-  font-size: 12.5px !important;
+  font-size: 14.5px !important; /* [S159b Roland] was 12.5px — card action buttons too small to read */
   font-weight: 600 !important;
   letter-spacing: .3px;
   cursor: pointer;
@@ -341,6 +341,27 @@ html.layout-sidebar .ro-card .message-customer-btn { display: none !important; }
 html.layout-sidebar .ro-card .photo-upload-btn   { border-left-color: var(--sb-blue) !important; }
 html.layout-sidebar .ro-card .archive-ro-btn     { border-left-color: #5c6b85 !important; }
 html.layout-sidebar .ro-card .qr-toggle-btn      { border-left-color: #5c6b85 !important; }
+/* [S159b Roland] TYPE row relocated under the status dropdown — inline label + chips,
+   breathing room before the RO STATUS box */
+html.layout-sidebar .ro-card .sb-csec[data-sbg="mgmt"] > .sb-csec-b > .info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+html.layout-sidebar .ro-card .sb-csec[data-sbg="mgmt"] > .sb-csec-b > .info-row .repair-types-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+  flex: 1;
+}
+/* [S159b] 📍 parking badge re-homed in the header chip row */
+html.layout-sidebar .sb-hdr2 .card-parking-badge { margin: 0; }
+
+/* [S159] 🗑 Delete RO in the ⚙️ ADMIN dropdown (admin-only; moved out of Edit RO in sidebar) */
+html.layout-sidebar .ro-card .sb-del-ro-btn       { border-left-color: #dc2626 !important; color: #fca5a5 !important; }
+html.layout-sidebar .ro-card .sb-del-ro-btn:hover { background: #46242e !important; border-color: #7f1d1d !important; }
 /* Tech Check In stays the solid-green primary (mockup .f-solid) */
 html.layout-sidebar .ro-card .sb-csec-b button.checkin-btn {
   background: #22c55e !important;
@@ -383,7 +404,7 @@ html.layout-sidebar #sbScrollWrap .filter-btn.active {
 }
 
 /* ── Tile header anatomy (mockup: photo → name → sub → chip row → bar) ── */
-html.layout-sidebar .ro-card .rv-photo { margin: 0; }
+html.layout-sidebar .ro-card .rv-photo { margin: 0; height: auto; } /* [S159] height:auto — the classic 180px container height left a ~50px dead bar under the 130px img */
 html.layout-sidebar .ro-card .rv-photo img {
   width: 100%;
   height: 130px;
