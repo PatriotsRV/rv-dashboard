@@ -558,7 +558,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.13';
+const PAGE_VERSION = 'messages v1.13a';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S158)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -1442,6 +1442,12 @@ function closeBroadcastModal() {
 function broadcastTeamChanged() {
     const teamValue = document.getElementById('bcTeamSelect').value;
     document.getElementById('bcDeleteGroupBtn').style.display = teamValue.startsWith('group:') ? '' : 'none';
+    // v1.13a (S158, Roland feedback): picking a custom group pre-fills the
+    // name box so Save = UPDATE THAT GROUP (upsert-by-name). Picking a silo
+    // team / All staff clears it — typing a name there CREATES a new group.
+    const gName = teamValue.startsWith('group:')
+        ? (_staffGroups.find(x => x.id === teamValue.slice(6))?.name || '') : '';
+    document.getElementById('bcGroupName').value = gName;
     const members = _bcTeamMembers(teamValue)
         .slice().sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
     const box = document.getElementById('bcRecipients');
