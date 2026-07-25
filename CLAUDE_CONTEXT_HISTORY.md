@@ -9,6 +9,12 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 157 — Cloud-vs-on-computer Cowork model clarified + mode switch decided (docs only; NO release; index.html stays v1.481; Sync Gate Case A).**
+  - The per-session "Allow folder access" dialog is inherent to cloud mode: session-scoped device-bridge grants (cloud-by-default rollout ~S136, matching the MOUNT GATE saga start). The Context-panel rv-dashboard chip is a stale snapshot, never a mount.
+  - Storage model: the repo lives ONLY on the Mac in both modes; the cloud sandbox is ephemeral scratch. No sync layer between modes — switching cannot fork the context files. Drive-failure protection = the End-Session GitHub push, not cloud mode.
+  - Roland decision: run future sessions "On your computer". 🟡 TODO added to verify the first on-computer session (mount path, no Allow dialog, direct git push, deletes work) before retiring the cloud workarounds (recorded as ⚗️ unproven expectations).
+  - Housekeeping: backup.sh 55-file snapshot OK; keep-9 prune blocked by cloud no-delete → 5 oldest snapshots mv’d to `_to_delete/old_backup_snapshots_s157/`.
+
 - ✅ **Session 156 — RLS role-helper email-match fix DEPLOYED (DB-only; NO release; index.html stays v1.481; Sync Gate Case A).**
   - Mauricio's messages.html reopen threw the conversation_events RLS error; root cause = 5 auth users (andrew, mauricio, ryan, solar, tipton) with `public.users.id` != auth.uid, making is_manager_or_above/is_sr_manager_or_admin/has_role/is_insurance_wo_writer return FALSE (the conversations UPDATE had been no-oping silently).
   - NEW migration `rls_role_helpers_email_match_s156.sql` (run live by Roland, MCP-verified): all 4 helpers now match users by id OR lower(verified JWT email), the is_silo_manager precedent. Unblocks all messages.html manager actions + Sr-Manager-gated WO writes for the 5.
