@@ -446,46 +446,66 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
 
             if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
             try {
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${(typeof supabaseSession !== 'undefined' && supabaseSession?.access_token) ? supabaseSession.access_token : SUPABASE_ANON_KEY}`,
-                        'Content-Type': 'application/json',
-                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
-                    },
-                    body: JSON.stringify({
-                        action: 'send',
-                        to: phone,
-                        body,
-                        ro_id: roSupabaseId || null,
-                        ro_code: roCode || null,
-                        sent_by: (currentUser && currentUser.email) || null,
-                        context: 'ro_customer',
-                        media_url: _msgAttachments.length ? _msgAttachments.map(a => a.url) : null, // S158: array (textly-send v1.1 media[])
-                    }),
-                });
-                const data = await res.json().catch(() => ({}));
+                // S158a (Roland live test): ONE MEDIA PER MMS. A 5-image bundle went
+                // out as one Textly send with media[5] — Textly accepted it but only
+                // 1 image reached the handset (carriers cap TOTAL MMS payload ~1MB
+                // and silently strip the rest). So we now chunk like phones do:
+                // send #1 = text (+signature) + first attachment; each remaining
+                // attachment goes as its own media-only follow-up MMS.
+                const sends = [];
+                if (_msgAttachments.length === 0) {
+                    sends.push({ body, media_url: null });
+                } else {
+                    sends.push({ body, media_url: _msgAttachments[0].url });
+                    for (let i = 1; i < _msgAttachments.length; i++) {
+                        sends.push({ body: '', media_url: _msgAttachments[i].url });
+                    }
+                }
+                let sentCount = 0;
+                for (let i = 0; i < sends.length; i++) {
+                    if (btn && sends.length > 1) btn.textContent = `Sending ${i + 1}/${sends.length}…`;
+                    const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${(typeof supabaseSession !== 'undefined' && supabaseSession?.access_token) ? supabaseSession.access_token : SUPABASE_ANON_KEY}`,
+                            'Content-Type': 'application/json',
+                            'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                        },
+                        body: JSON.stringify({
+                            action: 'send',
+                            to: phone,
+                            body: sends[i].body,
+                            ro_id: roSupabaseId || null,
+                            ro_code: roCode || null,
+                            sent_by: (currentUser && currentUser.email) || null,
+                            context: 'ro_customer',
+                            media_url: sends[i].media_url,
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
 
-                if (res.status === 503) {
-                    showToast('Textly is not configured yet (TEXTLY_API_TOKEN not set on the project).', 'warning', { duration: 9000 });
-                    return;
-                }
-                if (res.status === 403 && data.opted_out) {
-                    // STOP gate (S138): customer texted STOP; server refuses sends.
-                    showToast('\u{1F6D1} ' + (data.error || 'This customer opted out of texts (STOP). Sends are blocked until they reply START.'), 'error', { duration: 10000 });
-                    return;
-                }
-                if (!res.ok || data.ok === false) {
-                    const detail = data.error || data.textly?.error || `HTTP ${res.status}`;
-                    showToast('Send failed: ' + detail, 'error', { duration: 9000 });
-                    log('❌ Textly send failed: ' + JSON.stringify(data));
-                    return;
+                    if (res.status === 503) {
+                        showToast('Textly is not configured yet (TEXTLY_API_TOKEN not set on the project).', 'warning', { duration: 9000 });
+                        return;
+                    }
+                    if (res.status === 403 && data.opted_out) {
+                        // STOP gate (S138): customer texted STOP; server refuses sends.
+                        showToast('\u{1F6D1} ' + (data.error || 'This customer opted out of texts (STOP). Sends are blocked until they reply START.'), 'error', { duration: 10000 });
+                        return;
+                    }
+                    if (!res.ok || data.ok === false) {
+                        const detail = data.error || data.textly?.error || `HTTP ${res.status}`;
+                        showToast(`Send failed${sentCount ? ` after ${sentCount} of ${sends.length} parts` : ''}: ` + detail, 'error', { duration: 9000 });
+                        log('❌ Textly send failed: ' + JSON.stringify(data));
+                        return;
+                    }
+                    sentCount++;
+                    log('✅ Textly send ok (' + sentCount + '/' + sends.length + '): ' + (data.message_handle || data.status || ''));
                 }
 
                 bodyEl.value = '';
                 _msgAttachments = []; _renderAttachChip(); // S151b/S158: clear after send
-                showToast(`Message sent${data.is_imessage === true ? ' (iMessage)' : data.is_imessage === false ? ' (SMS)' : ''}.`, 'success');
-                log('✅ Textly send ok: ' + (data.message_handle || data.status || ''));
+                showToast(sends.length > 1 ? `Message sent (${sends.length} parts — 1 per attachment).` : 'Message sent.', 'success');
                 _refreshThread(roSupabaseId, phone);
             } catch (err) {
                 console.error('sendCustomerMessage error:', err);
