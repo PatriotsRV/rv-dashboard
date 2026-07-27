@@ -2,6 +2,34 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.16 (Session 160, 2026-07-27, same session as v1.15): BROADCAST GROUP
+    THREADS (Roland live-test feedback: "I can only see all the participants.
+    I also want to be able to send messages"). The 📢 Broadcasts chip now
+    lists ONE ROW PER GROUP (latest send preview + count); clicking opens a
+    THREAD modal: all past broadcasts to that group oldest→newest, a
+    collapsible 👥 participants strip (CURRENT membership — All staff /
+    staff_groups by name; falls back to the last send's roster if the group
+    was deleted/renamed), and a composer that broadcasts to the group's
+    current members. Send loop + staff_broadcasts log refactored into the
+    shared _runBroadcast() used by BOTH the header Broadcast modal and the
+    thread composer. Staff replies still land in their own conversations.
+
+    v1.15 (Session 160, 2026-07-27): BROADCASTS ON THE BOARD (Roland: "when
+    I do a broadcast, there is no way to see it on the Messages board").
+    Sends were only per-recipient messages rows (context staff_broadcast,
+    NO group identity, NO conversations row by design), so broadcasts were
+    invisible in the inbox. NEW: (1) sendBroadcast() logs ONE row per
+    broadcast to staff_broadcasts (NEW table, migration
+    staff_broadcasts_s160.sql, managers+ RLS: group name, sender, raw body,
+    recipient roster w/ per-send ok, counts). (2) 📢 Broadcasts filter chip
+    (managers+ only) lists broadcast history like conversations — group
+    name, sent/failed counts, sender + preview, time. (3) Clicking one
+    opens a READ-ONLY detail modal (body, meta, recipient roster) — a
+    modal, NOT the thread pane, so _activeConvo plumbing is untouched.
+    History starts at this version — the S158 test broadcasts predate the
+    log table and won't appear. Staff REPLIES to a broadcast still arrive
+    as that staff member's own conversation in the inbox (unchanged).
+
     v1.14 (Session 160, 2026-07-27): MARK READ/SEEN — per-conversation
     needs-reply reset (Roland: customers reply "Thanks" / Like a message and
     the convo looks like it still needs a PRVS response). New "✓ Mark read /
@@ -416,6 +444,8 @@
                     <button class="filter-btn" data-filter="unresponded">Unresponded</button>
                     <button class="filter-btn" data-filter="unassigned">Unassigned</button>
                     <button class="filter-btn" data-filter="mine">Mine</button>
+                    <!-- v1.15 (S160): broadcast history chip — managers+ only -->
+                    <button class="filter-btn" data-filter="broadcasts" id="bcFilterBtn" style="display:none;">&#128226; Broadcasts</button>
                 </div>
             </div>
             <div id="convoList" class="convo-list">
@@ -568,6 +598,29 @@
     </div>
 </div>
 
+<!-- v1.16 (S160): broadcast GROUP THREAD — history + participants + composer -->
+<div id="broadcastViewModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(94vw, 560px); height:min(88vh, 700px); display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <div>
+                <div id="bcvTitle" style="font-weight:700; font-size:1.05rem;"></div>
+                <div id="bcvMeta" style="font-size:0.72rem; color:var(--text-secondary);"></div>
+            </div>
+            <button class="mini-btn" onclick="closeBroadcastView()">Close</button>
+        </div>
+        <button id="bcvRecipToggle" class="mini-btn" onclick="bcvToggleRecipients()" style="align-self:flex-start; margin-top:8px; padding:2px 10px; font-size:0.75rem;"></button>
+        <div id="bcvRecipients" style="display:none; flex:0 0 auto; overflow-y:auto; max-height:20vh; border:1px solid var(--border-color); border-radius:10px; padding:6px 8px; background:var(--bg-secondary); margin-top:6px;"></div>
+        <div id="bcvHistory" style="flex:1 1 auto; overflow-y:auto; margin-top:8px; padding-right:4px;"></div>
+        <div style="flex:0 0 auto; border-top:1px solid var(--border-color); padding-top:10px; margin-top:8px;">
+            <textarea id="bcvComposeBody" class="assign-input" rows="2" placeholder="Broadcast to this group&hellip; (each person gets an individual text)" style="width:100%; resize:vertical; margin-bottom:8px;"></textarea>
+            <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+                <span id="bcvProgress" style="font-size:0.75rem; color:var(--text-secondary); margin-right:auto;"></span>
+                <button id="bcvSendBtn" class="mini-btn primary" onclick="bcvSend()">&#128228; Send to group</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script type="module">
@@ -577,7 +630,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.14';
+const PAGE_VERSION = 'messages v1.16';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -750,6 +803,8 @@ function showApp() {
     if (isManagerOrAdmin()) document.getElementById('newConvoBtn').style.display = '';
     // S158 (v1.13): Broadcast button (managers+, matches staff_groups RLS).
     if (isManagerOrAdmin()) document.getElementById('broadcastBtn').style.display = '';
+    // v1.15 (S160): Broadcasts history chip (managers+, matches staff_broadcasts RLS).
+    if (isManagerOrAdmin()) document.getElementById('bcFilterBtn').style.display = '';
     // S151b: attach/emoji/signature composer extras (shared with the RO modal).
     const slot = document.getElementById('composerExtrasSlot');
     if (slot && !slot.innerHTML) { slot.innerHTML = composerExtrasHtml(); initComposerExtras(); }
@@ -882,6 +937,8 @@ function filteredConversations() {
 }
 function renderConvoList() {
     const list = document.getElementById('convoList');
+    // v1.15 (S160): Broadcasts chip renders broadcast history, not conversations.
+    if (_activeFilter === 'broadcasts') { renderBroadcastList(); return; }
     const rows = filteredConversations();
     if (!rows.length) {
         list.innerHTML = '<div class="empty-note">No conversations match.</div>';
@@ -1431,6 +1488,151 @@ async function editCustomerName() {
     }
 }
 
+// ── v1.15 (S160): Broadcasts on the board (managers+) ───────────────
+// Roland: "when I do a broadcast, there is no way to see it on the
+// Messages board." Sends are per-recipient messages rows with NO group
+// identity, so sendBroadcast() now also logs ONE row per broadcast to
+// staff_broadcasts (group name, sender, body, recipient roster —
+// migration staff_broadcasts_s160.sql, managers+ RLS). The 📢 Broadcasts
+// filter chip lists them; clicking a row opens a read-only detail modal
+// (modal, NOT the thread pane — keeps _activeConvo plumbing untouched).
+let _broadcasts = [];
+let _broadcastsLoaded = false;
+async function loadBroadcasts() {
+    try {
+        const { data, error } = await getSB()
+            .from('staff_broadcasts').select('*')
+            .order('created_at', { ascending: false }).limit(200);
+        if (error) throw error;
+        _broadcasts = data || [];
+        _broadcastsLoaded = true;
+    } catch (e) {
+        console.error('loadBroadcasts error:', e);
+        _broadcasts = [];
+    }
+}
+async function renderBroadcastList() {
+    const list = document.getElementById('convoList');
+    if (!_broadcastsLoaded) {
+        list.innerHTML = '<div class="empty-note">Loading broadcasts&hellip;</div>';
+        await loadBroadcasts();
+        if (_activeFilter !== 'broadcasts') return; // user switched away mid-load
+    }
+    if (!_broadcasts.length) {
+        list.innerHTML = '<div class="empty-note">No broadcasts yet. Send one with the &#128226; Broadcast button &mdash; it will show up here.</div>';
+        return;
+    }
+    // v1.16 (S160): one row PER GROUP (latest first) — clicking opens the
+    // group THREAD (history + composer), not a single-send detail.
+    const groups = [];
+    const byName = new Map();
+    for (const b of _broadcasts) { // _broadcasts is created_at DESC
+        if (!byName.has(b.group_name)) { byName.set(b.group_name, { name: b.group_name, latest: b, count: 0 }); groups.push(byName.get(b.group_name)); }
+        byName.get(b.group_name).count++;
+    }
+    list.innerHTML = groups.map(g => `
+        <div class="convo-row ${_activeBroadcastGroup === g.name ? 'selected' : ''}" data-bcgroup="${escapeHtml(g.name)}">
+            <div class="avatar">&#128226;</div>
+            <div class="convo-main">
+                <div class="convo-name">${escapeHtml(g.name)} <span style="color:#64748b; font-weight:400; font-size:0.78rem;">&middot; ${g.count} broadcast${g.count === 1 ? '' : 's'}</span></div>
+                <div class="convo-snippet">${escapeHtml(staffNameOf(g.latest.sender_email))}: ${escapeHtml(g.latest.body)}</div>
+            </div>
+            <div class="convo-meta">
+                <div class="convo-time">${escapeHtml(timeAgo(g.latest.created_at))}</div>
+            </div>
+        </div>`).join('');
+    list.querySelectorAll('.convo-row[data-bcgroup]').forEach(el => {
+        el.addEventListener('click', () => openBroadcastView(el.dataset.bcgroup));
+    });
+}
+// ── v1.16 (S160): group THREAD view — history + participants + composer ──
+let _activeBroadcastGroup = null;
+function _currentGroupTargets(groupName) {
+    // Resolve the group's CURRENT membership. Fallback: last send's roster
+    // (covers renamed/deleted groups; phones ride along from the roster).
+    const withPhone = (arr) => arr
+        .map(s => ({ email: s.email, name: s.name || s.email, phone: (s.phone_number || '').trim() }))
+        .filter(t => t.phone);
+    if (groupName === 'All staff') return { targets: withPhone(_allStaff), live: true };
+    const g = _staffGroups.find(x => x.name === groupName);
+    if (g) {
+        const set = new Set((g.member_emails || []).map(e => String(e).toLowerCase()));
+        return { targets: withPhone(_allStaff.filter(s => s.email && set.has(s.email.toLowerCase()))), live: true };
+    }
+    const last = _broadcasts.find(b => b.group_name === groupName);
+    const roster = Array.isArray(last?.recipients) ? last.recipients : [];
+    return { targets: roster.filter(r => r.phone).map(r => ({ email: r.email, name: r.name || r.email, phone: r.phone })), live: false };
+}
+async function openBroadcastView(groupName) {
+    _activeBroadcastGroup = groupName;
+    await loadStaffGroups(); // membership may have changed since boot
+    document.getElementById('bcvTitle').innerHTML = `&#128226; ${escapeHtml(groupName)}`;
+    const { targets, live } = _currentGroupTargets(groupName);
+    document.getElementById('bcvMeta').textContent = live
+        ? `${targets.length} current member${targets.length === 1 ? '' : 's'} with a mobile number`
+        : `Group no longer saved — using the last send's ${targets.length}-person roster`;
+    document.getElementById('bcvRecipients').innerHTML = targets.length
+        ? targets.map(t => `<span style="display:inline-block; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:999px; padding:2px 10px; margin:2px 3px 2px 0; font-size:0.78rem;" title="${escapeHtml(t.phone)}">${escapeHtml(t.name)}</span>`).join('')
+        : '<span style="color:#ef4444; font-size:0.8rem;">No members with a mobile number — sends will fail.</span>';
+    document.getElementById('bcvRecipients').style.display = 'none';
+    document.getElementById('bcvRecipToggle').textContent = `\u{1F465} Show participants (${targets.length})`;
+    renderBroadcastThread(groupName);
+    document.getElementById('bcvComposeBody').value = '';
+    document.getElementById('bcvProgress').textContent = '';
+    document.getElementById('broadcastViewModal').style.display = 'flex';
+    renderBroadcastList(); // refresh row selection highlight
+}
+function renderBroadcastThread(groupName) {
+    const box = document.getElementById('bcvHistory');
+    const items = _broadcasts.filter(b => b.group_name === groupName).slice().reverse(); // oldest -> newest
+    box.innerHTML = items.length
+        ? items.map(b => `
+            <div style="margin:8px 0; padding:8px 12px; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:10px;">
+                <div style="font-size:0.72rem; color:var(--text-secondary); margin-bottom:3px;">${escapeHtml(staffNameOf(b.sender_email))} &middot; ${escapeHtml(new Date(b.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))} &middot; ${b.sent_count}/${b.recipient_count} sent${b.failed_count ? ` &middot; <span style="color:#ef4444;">${b.failed_count} failed</span>` : ''}</div>
+                <div style="font-size:0.9rem; white-space:pre-wrap;">${escapeHtml(b.body)}</div>
+            </div>`).join('')
+        : '<div style="color:#64748b; font-size:0.85rem; padding:8px 0;">No broadcasts to this group yet.</div>';
+    box.scrollTop = box.scrollHeight;
+}
+function bcvToggleRecipients() {
+    const el = document.getElementById('bcvRecipients');
+    const showing = el.style.display !== 'none';
+    el.style.display = showing ? 'none' : 'block';
+    const { targets } = _currentGroupTargets(_activeBroadcastGroup || '');
+    document.getElementById('bcvRecipToggle').textContent = showing
+        ? `\u{1F465} Show participants (${targets.length})` : `\u{1F465} Hide participants`;
+}
+async function bcvSend() {
+    const groupName = _activeBroadcastGroup;
+    if (!groupName) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can broadcast.', 'warning'); return; }
+    if (_bcSending) return;
+    const bodyRaw = (document.getElementById('bcvComposeBody').value || '').trim();
+    if (!bodyRaw) { showToast('Type the message first.', 'warning'); return; }
+    const { targets } = _currentGroupTargets(groupName);
+    if (!targets.length) { showToast('No members with a mobile number.', 'warning'); return; }
+    if (!confirm(`Send this text individually to ${targets.length} member${targets.length === 1 ? '' : 's'} of "${groupName}"?`)) return;
+    const btn = document.getElementById('bcvSendBtn');
+    _bcSending = true; btn.disabled = true;
+    try {
+        const { sent, failed } = await _runBroadcast(targets, bodyRaw, groupName, document.getElementById('bcvProgress'));
+        showToast(`Sent to ${sent} member${sent === 1 ? '' : 's'}${failed ? ` — ${failed} FAILED (see console)` : '.'}`, failed ? 'warning' : 'success', { duration: 8000 });
+        document.getElementById('bcvComposeBody').value = '';
+        await loadBroadcasts();
+        renderBroadcastThread(groupName);
+        if (_activeFilter === 'broadcasts') renderBroadcastList();
+    } finally {
+        _bcSending = false; btn.disabled = false;
+        document.getElementById('bcvProgress').textContent = '';
+    }
+}
+function closeBroadcastView() {
+    _activeBroadcastGroup = null;
+    document.getElementById('broadcastViewModal').style.display = 'none';
+    if (_activeFilter === 'broadcasts') renderBroadcastList();
+}
+
 // ── S158 (v1.13): Teams/Groups staff broadcast (managers+) ──────────
 // Teams: All staff / silo teams (derived live from staff.service_silo) /
 // custom groups (staff_groups table). Sends loop textly-send with context
@@ -1592,46 +1794,78 @@ async function sendBroadcast() {
         .filter(t => t.phone);
     if (!targets.length) { showToast('None of the checked staff have a mobile number.', 'warning'); return; }
     if (!confirm(`Send this text individually to ${targets.length} staff member${targets.length === 1 ? '' : 's'}?`)) return;
-    const senderName = currentUser?.name || currentUser?.email || 'PRVS';
-    const body = `\u{1F4E2} ${senderName}: ${bodyRaw}`;
+    // v1.15 (S160): capture the group label for the broadcast log.
+    const teamSel = document.getElementById('bcTeamSelect');
+    const groupLabel = (teamSel?.options[teamSel.selectedIndex]?.textContent || 'All staff').trim();
+    const nameByEmail = new Map(_allStaff.map(s => [s.email?.toLowerCase(), s.name || s.email]));
+    const namedTargets = targets.map(t => ({ ...t, name: nameByEmail.get(t.email.toLowerCase()) || t.email }));
     const btn = document.getElementById('bcSendBtn');
-    const prog = document.getElementById('bcProgress');
     _bcSending = true;
     btn.disabled = true;
-    let sent = 0, failed = 0;
     try {
-        for (let i = 0; i < targets.length; i++) {
-            prog.textContent = `Sending ${i + 1}/${targets.length}…`;
-            try {
-                const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${supabaseSession?.access_token || SUPABASE_ANON_KEY}`,
-                        'Content-Type': 'application/json',
-                        'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
-                    },
-                    body: JSON.stringify({
-                        action: 'send',
-                        to: targets[i].phone,
-                        body,
-                        context: 'staff_broadcast',
-                        sent_by: currentUser?.email || null,
-                    }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (res.ok && data.ok !== false) sent++;
-                else { failed++; console.error('broadcast send failed for', targets[i].email, data); }
-            } catch (e) {
-                failed++; console.error('broadcast send error for', targets[i].email, e);
-            }
-        }
-        prog.textContent = '';
+        const { sent, failed } = await _runBroadcast(namedTargets, bodyRaw, groupLabel, document.getElementById('bcProgress'));
         showToast(`Broadcast sent to ${sent} staff${failed ? ` — ${failed} FAILED (see console)` : '.'}`, failed ? 'warning' : 'success', { duration: 8000 });
         if (!failed) closeBroadcastModal();
     } finally {
         _bcSending = false;
         btn.disabled = false;
     }
+}
+// ── v1.16 (S160): shared broadcast engine — modal AND group thread ──
+// targets: [{email,name,phone}]. Sends one textly-send per target
+// (context staff_broadcast), then logs ONE staff_broadcasts row (the log
+// write is non-fatal — the texts are already out).
+async function _runBroadcast(targets, bodyRaw, groupLabel, progEl) {
+    const senderName = currentUser?.name || currentUser?.email || 'PRVS';
+    const body = `\u{1F4E2} ${senderName}: ${bodyRaw}`;
+    const roster = [];
+    let sent = 0, failed = 0;
+    for (let i = 0; i < targets.length; i++) {
+        if (progEl) progEl.textContent = `Sending ${i + 1}/${targets.length}…`;
+        try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${supabaseSession?.access_token || SUPABASE_ANON_KEY}`,
+                    'Content-Type': 'application/json',
+                    'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                },
+                body: JSON.stringify({
+                    action: 'send',
+                    to: targets[i].phone,
+                    body,
+                    context: 'staff_broadcast',
+                    sent_by: currentUser?.email || null,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            const ok = res.ok && data.ok !== false;
+            if (ok) sent++;
+            else { failed++; console.error('broadcast send failed for', targets[i].email, data); }
+            roster.push({ email: targets[i].email, name: targets[i].name || targets[i].email, phone: targets[i].phone, ok });
+        } catch (e) {
+            failed++; console.error('broadcast send error for', targets[i].email, e);
+            roster.push({ email: targets[i].email, name: targets[i].name || targets[i].email, phone: targets[i].phone, ok: false });
+        }
+    }
+    if (progEl) progEl.textContent = '';
+    try {
+        const { error: logErr } = await getSB().from('staff_broadcasts').insert({
+            group_name: groupLabel,
+            sender_email: currentUser?.email || 'unknown',
+            body: bodyRaw,
+            recipients: roster,
+            recipient_count: targets.length,
+            sent_count: sent,
+            failed_count: failed,
+        });
+        if (logErr) throw logErr;
+        _broadcastsLoaded = false; // next Broadcasts-chip view reloads
+    } catch (e) {
+        console.error('staff_broadcasts log failed (texts already sent):', e);
+        showToast('Broadcast log write failed — history may not show this send.', 'warning');
+    }
+    return { sent, failed };
 }
 
 // ── Refresh / UI plumbing ────────────────────────────────────────────
@@ -1702,6 +1936,7 @@ Object.assign(window, {
     bcCheckAll, bcUpdateCount, saveStaffGroup, deleteStaffGroup, sendBroadcast, // v1.13 S158
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     markConversationRead, // v1.14 S160
+    closeBroadcastView, bcvToggleRecipients, bcvSend, // v1.15/v1.16 S160
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
 
