@@ -2,6 +2,21 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.14 (Session 160, 2026-07-27): MARK READ/SEEN — per-conversation
+    needs-reply reset (Roland: customers reply "Thanks" / Like a message and
+    the convo looks like it still needs a PRVS response). New "✓ Mark read /
+    seen" button in the details Status section, visible only when the convo
+    is awaiting a reply (status=open + last_direction=inbound). Click flips
+    last_direction -> 'outbound' (conversation stays OPEN; nothing sent),
+    which clears BOTH the Open-unresponded UI state and the 4:30 PM
+    send-unreplied-reminder digest (same predicate). Next customer inbound
+    re-flips via textly-webhook v1.3 needsReplyFlip and notifies the owner
+    normally. MANAGERS+ only (Roland S160 decision — matches the existing
+    conversations UPDATE / conversation_events INSERT RLS, which is
+    is_manager_or_above(); a non-manager write would silently no-op).
+    Audited to conversation_events as 'marked_read' (CHECK widened:
+    conversation_events_marked_read_s160.sql).
+
     v1.13 (Session 158, 2026-07-25): TEAMS/GROUPS STAFF BROADCAST (S151 TODO)
     + MULTI-ATTACH + REOPEN/REMINDER pairing.
     (1) 📢 Broadcast (managers+, header button): compose once → INDIVIDUAL
@@ -472,6 +487,10 @@
                 <div class="details-section">
                     <div class="details-label">Status</div>
                     <button class="mini-btn" id="closeReopenBtn" onclick="toggleClosed()"></button>
+                    <!-- v1.14 (S160): per-conversation Mark read/seen — clears the needs-reply
+                         state (Thanks / Likes replies) without sending or closing. -->
+                    <button class="mini-btn" id="markReadBtn" onclick="markConversationRead()" style="display:none; margin-top:6px;">&#10003; Mark read / seen</button>
+                    <div id="markReadInfo" style="display:none; font-size:0.72rem; color:#8FA9C2; margin-top:4px;">Clears the awaiting-reply flag (and tonight's 4:30 reminder) for this conversation only.</div>
                 </div>
                 <div class="details-section" id="reviewReqSection"><!-- v1.12 GH#40: manual review request (managers+) -->
                     <div class="details-label">Review</div>
@@ -558,8 +577,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.13b';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S158)');
+const PAGE_VERSION = 'messages v1.14';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
@@ -1142,6 +1161,10 @@ async function renderDetails() {
     const crBtn = document.getElementById('closeReopenBtn');
     crBtn.textContent = c.status === 'closed' ? 'Reopen conversation' : 'Close conversation';
     crBtn.disabled = !isManagerOrAdmin();
+    // v1.14 (S160): Mark read/seen — only when awaiting a reply, managers+ only (RLS).
+    const awaitingReply = c.status === 'open' && c.last_direction === 'inbound' && isManagerOrAdmin();
+    document.getElementById('markReadBtn').style.display = awaitingReply ? '' : 'none';
+    document.getElementById('markReadInfo').style.display = awaitingReply ? '' : 'none';
 
     // Linked ROs by phone key (same match as webhook routing).
     const roBox = document.getElementById('detailROs');
@@ -1352,6 +1375,41 @@ async function toggleClosed() {
     } catch (err) {
         console.error('toggleClosed error:', err);
         showToast('Update failed: ' + (err.message || err), 'error');
+    }
+}
+// ── v1.14 (S160): Mark read/seen — per-conversation needs-reply reset ──
+// For "Thanks" / Like replies that need no response: flips last_direction
+// to 'outbound' so the convo leaves the Open-unresponded set AND tonight's
+// send-unreplied-reminder query (status=open + last_direction=inbound).
+// Conversation stays OPEN. Next customer inbound flips it back via the
+// webhook (v1.3 needsReplyFlip: last_direction !== 'inbound') and the
+// owner is notified as usual. MANAGERS+ ONLY (Roland decision S160):
+// conversations UPDATE + conversation_events INSERT RLS are both
+// is_manager_or_above() — a non-manager write would silently no-op (S141
+// 204 gotcha). Audited as 'marked_read' (CHECK widened by migration
+// conversation_events_marked_read_s160.sql).
+async function markConversationRead() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can mark read.', 'warning'); return; }
+    if (!(c.status === 'open' && c.last_direction === 'inbound')) { showToast('Nothing awaiting a reply here.', 'info'); return; }
+    try {
+        const { error: upErr } = await getSB().from('conversations')
+            .update({ last_direction: 'outbound' }).eq('id', c.id);
+        if (upErr) throw upErr;
+        const { error: evErr } = await getSB().from('conversation_events').insert({
+            conversation_id: c.id,
+            event: 'marked_read',
+            actor_email: currentUser.email,
+            old_value: 'inbound', new_value: 'outbound',
+        });
+        if (evErr) throw evErr;
+        showToast('Marked read — no reply needed.', 'success');
+        await refreshAll();
+    } catch (err) {
+        console.error('markConversationRead error:', err);
+        showToast('Mark read failed: ' + (err.message || err), 'error');
     }
 }
 async function editCustomerName() {
@@ -1643,6 +1701,7 @@ Object.assign(window, {
     openBroadcastModal, closeBroadcastModal, broadcastTeamChanged, // v1.13 S158
     bcCheckAll, bcUpdateCount, saveStaffGroup, deleteStaffGroup, sendBroadcast, // v1.13 S158
     inboxSend, assignConversation, unassignConversation, toggleClosed,
+    markConversationRead, // v1.14 S160
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
 
