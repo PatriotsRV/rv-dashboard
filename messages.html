@@ -2,6 +2,37 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.17 (Session 161, 2026-07-28): LEAD CAPTURE + CREATE RO FROM LEAD.
+    The New Contact modal captured only name + phone, so everything learned
+    about a lead lived in the thread text. It now also captures EMAIL, RV
+    (year / make / model as three boxes) and SERVICE TYPE (multi-select
+    mirroring the RO form's 8 checkboxes). All optional — phone is still the
+    only required field, so the fast "just start texting" path is unchanged.
+
+    Storage (migration conversations_lead_fields_s161.sql): new columns on
+    `conversations` — email, rv_year, rv_make, rv_model, service_type, plus a
+    GENERATED `rv` column that joins the three parts into repair_orders.rv
+    format ('2016 Winnebago View'). ⚠️ `rv` is GENERATED ALWAYS — never write
+    to it; write the three parts and let Postgres derive it.
+
+    Service Type values come from SERVICE_SILOS + SILO_TO_REPAIR_TYPE in
+    js/config.js — the SAME source the RO board uses — and are stored
+    comma-joined ('Vroom, Repairs') exactly like repair_orders.repair_type.
+    Do not hardcode the list here: labels differ from stored values
+    ('Paint & Body' displays, 'Paint and Body' stores).
+
+    NEW "Lead Info" details section (RV + service-type chips) with a ✎ editor
+    for managers+, so info can be filled in as it emerges rather than only at
+    creation. Blank boxes CLEAR on the edit screen but are IGNORED on create,
+    so reopening an existing conversation never wipes known data.
+
+    NEW 📝 "Create RO from this lead" button — opens index.html (v1.484) with
+    the fields as URL params and the New RO form prefilled. A HANDOFF, not an
+    insert: ro_id is a deterministic PRVS-XXXX-XXXX hash generated in
+    index.html beside the form's validation and calendar wiring, and forking
+    that into a second file is how the two silently drift. Button hides when
+    the number already has a live RO (i.e. already converted).
+
     v1.16 (Session 160, 2026-07-27, same session as v1.15): BROADCAST GROUP
     THREADS (Roland live-test feedback: "I can only see all the participants.
     I also want to be able to send messages"). The 📢 Broadcasts chip now
@@ -498,9 +529,19 @@
                     </div>
                     <div id="detailNoteView" class="details-value" style="white-space:pre-wrap; font-size:0.82rem;"></div>
                 </div>
+                <!-- v1.17 (S161): lead info — RV + Service Type, editable by managers+ -->
+                <div class="details-section">
+                    <div class="details-label" style="display:flex; align-items:center; gap:8px;">Lead Info
+                        <button class="mini-btn" id="editLeadBtn" onclick="openLeadModal()" title="Edit email, RV and service type" style="padding:1px 7px; font-size:0.72rem;">&#9998;</button>
+                    </div>
+                    <div id="detailLead" class="details-value" style="font-size:0.82rem;"></div>
+                </div>
                 <div class="details-section">
                     <div class="details-label">Linked ROs</div>
                     <div id="detailROs" class="details-value"></div>
+                    <!-- v1.17 (S161): lead -> RO handoff. Hidden for non-managers
+                         and whenever this number already has a live RO. -->
+                    <button class="mini-btn primary" id="createROBtn" onclick="createROFromLead()" style="display:none; margin-top:8px; width:100%;">&#128221; Create RO from this lead</button>
                 </div>
                 <div class="details-section">
                     <div class="details-label">Assignment</div>
@@ -543,7 +584,20 @@
         <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Name (lead / customer)</label>
         <input id="ncName" class="assign-input" type="text" placeholder="e.g. Dale Brisby" style="margin-bottom:10px;">
         <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Mobile number</label>
-        <input id="ncPhone" class="assign-input" type="tel" placeholder="+1 or 10 digits" style="margin-bottom:14px;">
+        <input id="ncPhone" class="assign-input" type="tel" placeholder="+1 or 10 digits" style="margin-bottom:10px;">
+        <!-- v1.17 (S161): lead-capture fields. Everything below is OPTIONAL —
+             only the phone is required, so the fast "just start texting"
+             path is unchanged. Fields map 1:1 onto the RO form. -->
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Email</label>
+        <input id="ncEmail" class="assign-input" type="email" placeholder="name@example.com" style="margin-bottom:10px;">
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">RV &mdash; year / make / model</label>
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+            <input id="ncRvYear"  class="assign-input" type="text" placeholder="2016"      style="flex:0 0 74px;">
+            <input id="ncRvMake"  class="assign-input" type="text" placeholder="Winnebago" style="flex:1 1 auto;">
+            <input id="ncRvModel" class="assign-input" type="text" placeholder="View"      style="flex:1 1 auto;">
+        </div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Service Type <span style="opacity:0.7;">(what are they coming in for?)</span></label>
+        <div id="ncServiceTypes" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:14px;"></div>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <button class="mini-btn" onclick="closeNewConvoModal()">Cancel</button>
             <button id="ncCreateBtn" class="mini-btn primary" onclick="createNewConversation()">Create &amp; open</button>
@@ -565,6 +619,28 @@
         </div>
         <div id="notesModalCloseOnly" style="display:none; text-align:right; margin-top:10px;">
             <button class="mini-btn" onclick="closeNotesModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- v1.17 (S161): Lead Info editor — email / RV / service type (managers+) -->
+<div id="leadModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(92vw, 400px); box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:12px;">&#9998; Lead Info &mdash; <span id="leadModalName"></span></div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Email</label>
+        <input id="ldEmail" class="assign-input" type="email" placeholder="name@example.com" style="margin-bottom:10px;">
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">RV &mdash; year / make / model</label>
+        <div style="display:flex; gap:6px; margin-bottom:4px;">
+            <input id="ldRvYear"  class="assign-input" type="text" placeholder="2016"      style="flex:0 0 74px;">
+            <input id="ldRvMake"  class="assign-input" type="text" placeholder="Winnebago" style="flex:1 1 auto;">
+            <input id="ldRvModel" class="assign-input" type="text" placeholder="View"      style="flex:1 1 auto;">
+        </div>
+        <div id="ldRvPreview" style="font-size:0.7rem; color:var(--text-secondary); margin-bottom:10px; min-height:14px;"></div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Service Type</label>
+        <div id="ldServiceTypes" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:14px;"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="mini-btn" onclick="closeLeadModal()">Cancel</button>
+            <button id="ldSaveBtn" class="mini-btn primary" onclick="saveLeadInfo()">Save</button>
         </div>
     </div>
 </div>
@@ -630,7 +706,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.16';
+const PAGE_VERSION = 'messages v1.17';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -702,6 +778,18 @@ Object.defineProperty(window, 'currentUser', { get: () => currentUser });
 
 // Reuse the dashboard's renderer + send path (spec §5.2 — one source).
 const messaging = await import('./js/messaging.js');
+
+// v1.17 (S161): Service Types come from js/config.js — the SAME source the RO
+// board uses — so a lead's service types are byte-identical to what the RO form
+// writes into repair_orders.repair_type. Do NOT hardcode the list here; the
+// labels differ from the values ('Paint & Body' displays, 'Paint and Body'
+// stores) and SILO_TO_REPAIR_TYPE is what reconciles them.
+const { SERVICE_SILOS, SILO_TO_REPAIR_TYPE } = await import('./js/config.js');
+// [{ value: 'Paint and Body', display: '🎨 Paint & Body' }, …]
+const LEAD_SERVICE_TYPES = SERVICE_SILOS.map(s => ({
+    value: SILO_TO_REPAIR_TYPE[s.key],
+    display: s.emoji + ' ' + s.label,
+})).filter(s => s.value);
 const { loadMessages, bubbleHtml, sendCustomerMessage, pbEngagement, pbEngagementBannerHtml, composerExtrasHtml, initComposerExtras, refreshSignaturePreview } = messaging; // S151b: +composer extras
 
 // ── RBAC (closed-ros.html pattern) ───────────────────────────────────
@@ -817,9 +905,46 @@ function showApp() {
 // ── S151d (v1.10): New Contact — start a conversation with a lead ────
 // Managers+ only: matches the S138 conversations_insert_manager RLS policy,
 // so the UI never offers a button the DB would 403.
+// v1.17 (S161): renders the Service Type chips into any container. Shared by
+// the New Contact modal and the details-panel editor so the two can never
+// drift apart. `checked` is the comma-joined string we store.
+function renderServiceTypeChips(containerId, idPrefix, checkedCsv) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+    const on = String(checkedCsv || '')
+        .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    box.innerHTML = LEAD_SERVICE_TYPES.map((t, i) => {
+        const id = idPrefix + i;
+        const isOn = on.includes(t.value.toLowerCase());
+        return `<label for="${id}" style="display:inline-flex; align-items:center; gap:4px; font-size:0.74rem; padding:3px 8px; border:1px solid var(--border-color); border-radius:14px; cursor:pointer; user-select:none; background:${isOn ? 'var(--accent-info)' : 'transparent'}; color:${isOn ? '#fff' : 'var(--text-secondary)'};">
+            <input type="checkbox" id="${id}" data-st-group="${idPrefix}" value="${escapeHtml(t.value)}" ${isOn ? 'checked' : ''} style="margin:0; cursor:pointer;">
+            ${escapeHtml(t.display)}
+        </label>`;
+    }).join('');
+    // Live chip highlight — purely cosmetic, the checkbox is the state.
+    box.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const lbl = cb.closest('label');
+            lbl.style.background = cb.checked ? 'var(--accent-info)' : 'transparent';
+            lbl.style.color = cb.checked ? '#fff' : 'var(--text-secondary)';
+        });
+    });
+}
+// Comma-joined in the RO's exact format ('Vroom, Repairs'), or null when none.
+function readServiceTypeChips(idPrefix) {
+    const picked = Array.from(document.querySelectorAll(`input[data-st-group="${idPrefix}"]:checked`))
+        .map(cb => cb.value);
+    return picked.length ? picked.join(', ') : null;
+}
+
 function openNewConvoModal() {
     document.getElementById('ncName').value = '';
     document.getElementById('ncPhone').value = '';
+    document.getElementById('ncEmail').value = '';
+    document.getElementById('ncRvYear').value = '';
+    document.getElementById('ncRvMake').value = '';
+    document.getElementById('ncRvModel').value = '';
+    renderServiceTypeChips('ncServiceTypes', 'ncst', '');
     document.getElementById('newConvoModal').style.display = 'flex';
     document.getElementById('ncName').focus();
 }
@@ -839,6 +964,16 @@ async function createNewConversation() {
     if (!isManagerOrAdmin()) { showToast('Only managers and admins can add contacts.', 'warning'); return; }
     const name = (document.getElementById('ncName').value || '').trim();
     const phone = _ncToE164(document.getElementById('ncPhone').value);
+    // v1.17 (S161): optional lead fields. NOTE: never write `rv` — it is a
+    // GENERATED column derived from these three parts (migration
+    // conversations_lead_fields_s161.sql). Writing it errors.
+    const leadFields = {
+        email:        (document.getElementById('ncEmail').value || '').trim() || null,
+        rv_year:      (document.getElementById('ncRvYear').value || '').trim() || null,
+        rv_make:      (document.getElementById('ncRvMake').value || '').trim() || null,
+        rv_model:     (document.getElementById('ncRvModel').value || '').trim() || null,
+        service_type: readServiceTypeChips('ncst'),
+    };
     if (!phone || phone.length < 12) { showToast('Enter a valid US mobile number (10 digits or +1XXXXXXXXXX).', 'warning'); return; }
     const key = phoneKeyOf(phone);
     const btn = document.getElementById('ncCreateBtn');
@@ -855,6 +990,10 @@ async function createNewConversation() {
             // REOPEN it, and float it to the top so it behaves like new.
             const upd = { status: 'open', last_message_at: new Date().toISOString() };
             if (name) upd.customer_name = name;
+            // v1.17: only overwrite a lead field when the manager actually
+            // typed something. A blank box must never wipe data we already
+            // hold on a reopened conversation.
+            for (const [k, v] of Object.entries(leadFields)) if (v) upd[k] = v;
             const { error: nmErr } = await getSB().from('conversations')
                 .update(upd).eq('id', existing.id);
             if (nmErr) console.error('existing-convo reopen error:', nmErr);
@@ -874,6 +1013,7 @@ async function createNewConversation() {
             customer_name: name || null,
             status: 'open',
             last_message_at: new Date().toISOString(), // floats to top of the list
+            ...leadFields, // v1.17 (S161)
         }).select('id').maybeSingle();
         if (insErr) throw insErr;
         closeNewConvoModal();
@@ -1017,13 +1157,123 @@ async function copyContactValue(btn) {
         showToast('Copied.', 'success');
     } catch (e) { showToast('Copy failed - select the text and copy manually.', 'warning'); }
 }
+// ── v1.17 (S161): Lead Info — RV + Service Type on the conversation ──────
+// These live on `conversations` (migration conversations_lead_fields_s161.sql)
+// and are shaped to drop straight into an RO: `rv` is a GENERATED column that
+// joins rv_year/make/model into repair_orders.rv format, and `service_type` is
+// comma-joined exactly like repair_orders.repair_type.
+function renderLeadInfo(c) {
+    const box = document.getElementById('detailLead');
+    if (!box) return;
+    const editBtn = document.getElementById('editLeadBtn');
+    if (editBtn) editBtn.style.display = isManagerOrAdmin() ? '' : 'none';
+    let html = '';
+    if (c.rv) html += _contactRowHtml('RV', c.rv);
+    if (c.service_type) {
+        const chips = String(c.service_type).split(',').map(s => s.trim()).filter(Boolean)
+            .map(s => `<span style="display:inline-block; font-size:0.7rem; padding:1px 7px; border-radius:10px; background:var(--accent-info); color:#fff; margin:1px 3px 1px 0;">${escapeHtml(s)}</span>`).join('');
+        html += `<div style="margin-top:4px;">${chips}</div>`;
+    }
+    box.innerHTML = html || '<div style="font-size:0.72rem; color:#8FA9C2;">No RV or service type captured yet.</div>';
+}
+
+function openLeadModal() {
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit lead info.', 'warning'); return; }
+    const c = _activeConvo;
+    if (!c) return;
+    document.getElementById('leadModalName').textContent = c.customer_name || c.display_phone || '';
+    document.getElementById('ldEmail').value   = c.email    || '';
+    document.getElementById('ldRvYear').value  = c.rv_year  || '';
+    document.getElementById('ldRvMake').value  = c.rv_make  || '';
+    document.getElementById('ldRvModel').value = c.rv_model || '';
+    renderServiceTypeChips('ldServiceTypes', 'ldst', c.service_type || '');
+    _refreshRvPreview();
+    ['ldRvYear', 'ldRvMake', 'ldRvModel'].forEach(id =>
+        document.getElementById(id).oninput = _refreshRvPreview);
+    document.getElementById('leadModal').style.display = 'flex';
+}
+function closeLeadModal() { document.getElementById('leadModal').style.display = 'none'; }
+
+// Mirrors the DB's generated-column expression so the manager sees exactly
+// what will land in repair_orders.rv before saving.
+function _refreshRvPreview() {
+    const parts = ['ldRvYear', 'ldRvMake', 'ldRvModel']
+        .map(id => (document.getElementById(id).value || '').trim()).filter(Boolean);
+    const el = document.getElementById('ldRvPreview');
+    el.textContent = parts.length ? 'Saves to the RO as: ' + parts.join(' ') : '';
+}
+
+async function saveLeadInfo() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit lead info.', 'warning'); return; }
+    const c = _activeConvo;
+    if (!c) return;
+    const btn = document.getElementById('ldSaveBtn');
+    btn.disabled = true;
+    try {
+        // Blanks here are INTENTIONAL clears — unlike the create modal, this is
+        // an explicit edit screen, so an emptied box means "remove it".
+        // `rv` is GENERATED — never include it in the payload.
+        const payload = {
+            email:        (document.getElementById('ldEmail').value   || '').trim() || null,
+            rv_year:      (document.getElementById('ldRvYear').value  || '').trim() || null,
+            rv_make:      (document.getElementById('ldRvMake').value  || '').trim() || null,
+            rv_model:     (document.getElementById('ldRvModel').value || '').trim() || null,
+            service_type: readServiceTypeChips('ldst'),
+        };
+        const { error } = await getSB().from('conversations').update(payload).eq('id', c.id);
+        if (error) throw error;
+        // Re-read so `rv` reflects what Postgres actually generated rather than
+        // what we guessed — the DB is the authority on that column.
+        const { data: fresh, error: reErr } = await getSB()
+            .from('conversations').select('*').eq('id', c.id).maybeSingle();
+        if (reErr) throw reErr;
+        if (fresh) { _activeConvo = fresh; renderLeadInfo(fresh); _refreshCreateROBtn(fresh); }
+        closeLeadModal();
+        showToast('Lead info saved.', 'success');
+    } catch (e) {
+        console.error('saveLeadInfo failed:', e);
+        showToast('Could not save lead info: ' + (e.message || e), 'warning');
+    } finally { btn.disabled = false; }
+}
+
+// Show the handoff button only when it makes sense: managers+, and no live RO
+// already exists for this number (an existing RO means it's already converted —
+// the RO chips above are the answer).
+function _refreshCreateROBtn(c, hasLiveRO) {
+    const btn = document.getElementById('createROBtn');
+    if (!btn) return;
+    const show = isManagerOrAdmin() && !hasLiveRO;
+    btn.style.display = show ? '' : 'none';
+}
+
+// Hands off to the RO form in index.html rather than inserting here — ro_id is
+// a deterministic PRVS-XXXX-XXXX hash generated in index.html alongside the
+// form's validation and calendar wiring. Duplicating that in a second file is
+// exactly how the two drift apart.
+function createROFromLead() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can create ROs.', 'warning'); return; }
+    const p = new URLSearchParams({ newro: '1' });
+    if (c.customer_name) p.set('name', c.customer_name);
+    if (c.display_phone) p.set('phone', c.display_phone);
+    if (c.email)         p.set('email', c.email);
+    if (c.rv)            p.set('rv', c.rv);              // already RO-shaped (generated)
+    if (c.service_type)  p.set('service_type', c.service_type);
+    window.open('index.html?' + p.toString(), '_blank');
+}
+
 async function renderContactInfo(c, linkedROs) {
     const box = document.getElementById('detailContact');
     if (!box) return;
     box.innerHTML = '';
     // Newest-first live ROs that carry contact fields.
     const sorted = [...(linkedROs || [])].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
-    let email = sorted.find(r => (r.email || '').trim())?.email?.trim() || '';
+    // v1.17 (S161): an email typed on the lead itself WINS over one inferred
+    // from a past RO — someone entered it deliberately for this conversation.
+    let email = (c.email || '').trim()
+             || sorted.find(r => (r.email || '').trim())?.email?.trim() || '';
     let address = sorted.find(r => (r.address || '').trim())?.address?.trim() || '';
     // Archive fallback: cashiered keeps email/address for past customers.
     if (!email || !address) {
@@ -1245,6 +1495,11 @@ async function renderDetails() {
     // newest cashiered (archived) RO for this number. Render nothing when
     // we simply don't have it.
     renderContactInfo(c, linked);
+
+    // v1.17 (S161): lead info + the lead->RO handoff button. `linked` is the
+    // live-RO match by phone, so an already-converted lead hides the button.
+    renderLeadInfo(c);
+    _refreshCreateROBtn(c, linked.length > 0);
 
     // ── v1.12: customer note (Kenect parity — customer_notes by phone_key) ──
     renderCustomerNote(c);
@@ -1937,6 +2192,7 @@ Object.assign(window, {
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     markConversationRead, // v1.14 S160
     closeBroadcastView, bcvToggleRecipients, bcvSend, // v1.15/v1.16 S160
+    openLeadModal, closeLeadModal, saveLeadInfo, createROFromLead, // v1.17 S161
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
 

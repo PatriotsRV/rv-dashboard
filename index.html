@@ -1,7 +1,21 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.483
+    PRVS Dashboard v1.484
+    v1.484: [S161] CREATE RO FROM LEAD (receiver half) — messages.html v1.17 captures
+    email / RV (year+make+model) / Service Type on a lead, then opens
+    index.html?newro=1&name=&phone=&email=&rv=&service_type= and this page opens the
+    New RO modal PREFILLED. New applyLeadPrefillFromUrl() called after
+    setupModalListeners(). Deliberately a HANDOFF rather than an insert on the Messages
+    side: ro_id is a deterministic PRVS-XXXX-XXXX hash generated here, next to the
+    form's validation and calendar wiring — forking that into messages.html is how the
+    two drift apart. Notes: params are stripped via history.replaceState immediately so
+    a refresh can't reopen a half-filled modal; the fill waits for supabaseSession
+    (RO form is behind the login gate) and gives up quietly after ~30s; it clicks the
+    real #newROBtn so the modal's own reset logic runs unchanged; service types arrive
+    comma-joined in the RO's own vocabulary and are matched case-insensitively against
+    the repairType checkboxes. NOTHING auto-saves — the manager reviews, adds the
+    description/dates a lead never had, and clicks Save RO.
     v1.483: [S159] SIDEBAR CARD REORG ROUND 2 + AUDIT FIX — (1) Edit RO no-op audit rows FIXED:
     updateROInSupabase blanket per-field audit REMOVED; the inline Edit-save diff is the single
     audit writer (numeric-aware dollarValue compare kills the '18495'->'18495.00' noise; labels
@@ -734,7 +748,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.483</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.484</span>
           </span>
         </div>
         <header>
@@ -763,7 +777,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.483</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.484</span>
             </div>
         </header>
 
@@ -3509,7 +3523,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.484 - 2026-07-28 - S161 Create RO from lead (receiver): applyLeadPrefillFromUrl() opens the New RO modal prefilled from messages.html v1.17 lead fields (name/phone/email/rv/service_type via URL params, params stripped on arrival, waits for auth, nothing auto-saves) - prior: v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -3529,6 +3543,7 @@
             setTimeout(restoreFilterSectionStates, 100);
             setupEventListeners();
             setupModalListeners();
+            applyLeadPrefillFromUrl(); // v1.484 (S161): lead -> RO handoff from messages.html
             updateClock();
             setInterval(updateClock, 1000);
             
@@ -5976,6 +5991,85 @@
         // [PHASE 7 DELETED v1.437 S88] openEditRO() -> js/ro-crud.js (module-owned via window bridge; byte-identical extraction verified)
 
         // [PHASE 7 DELETED v1.437 S88] closeEditModal() -> js/ro-crud.js (module-owned via window bridge; byte-identical extraction verified)
+
+        // ── v1.484 (S161): "Create RO from this lead" receiver ───────────────
+        // messages.html opens index.html?newro=1&name=&phone=&email=&rv=&service_type=
+        // and we open the New RO modal prefilled. Deliberately a HANDOFF, not a
+        // direct insert on the Messages side: ro_id is a deterministic
+        // PRVS-XXXX-XXXX hash generated here, next to the form's validation and
+        // calendar wiring. Building the RO over there would fork that logic.
+        //
+        // Nothing is saved automatically — the manager reviews and clicks Save,
+        // so required fields the lead never had (description, dates) still get
+        // filled by a human.
+        function applyLeadPrefillFromUrl() {
+            let params;
+            try { params = new URLSearchParams(window.location.search); }
+            catch (e) { return; }
+            if (params.get('newro') !== '1') return;
+
+            // Strip the params NOW so a refresh (or a shared URL) doesn't
+            // reopen a half-filled RO modal later.
+            try {
+                const clean = window.location.pathname + window.location.hash;
+                window.history.replaceState({}, '', clean);
+            } catch (e) { /* non-fatal */ }
+
+            const lead = {
+                name:         params.get('name') || '',
+                phone:        params.get('phone') || '',
+                email:        params.get('email') || '',
+                rv:           params.get('rv') || '',
+                service_type: params.get('service_type') || '',
+            };
+
+            // The RO form lives behind the login gate. Wait for a session
+            // rather than prefilling a modal nobody can save. Give up quietly
+            // after ~30s so we never spin forever.
+            let waited = 0;
+            const tryFill = () => {
+                const overlay = document.getElementById('modalOverlay');
+                const btn = document.getElementById('newROBtn');
+                const ready = overlay && btn && typeof supabaseSession !== 'undefined' && supabaseSession;
+                if (!ready) {
+                    waited += 400;
+                    if (waited > 30000) { log('⚠️ lead prefill: gave up waiting for auth'); return; }
+                    setTimeout(tryFill, 400);
+                    return;
+                }
+                // Go through the real button so the modal's own reset logic
+                // (title, submit label, training checkbox) runs exactly as normal.
+                btn.click();
+
+                const set = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (el && val) el.value = val;
+                };
+                set('new_customerName',  lead.name);
+                set('new_customerPhone', lead.phone);
+                set('new_customerEmail', lead.email);
+                set('new_rv',            lead.rv);
+
+                // Service types arrive comma-joined in the RO's own vocabulary
+                // ('Vroom, Repairs'), so these match the checkbox values as-is.
+                // Compared case-insensitively anyway — cheap insurance against
+                // a stray capitalization drift between the two lists.
+                const wanted = lead.service_type.split(',')
+                    .map(s => s.trim().toLowerCase()).filter(Boolean);
+                let matched = 0;
+                if (wanted.length) {
+                    document.querySelectorAll('#newROForm input[name="repairType"]').forEach(cb => {
+                        if (wanted.includes(String(cb.value).toLowerCase())) { cb.checked = true; matched++; }
+                    });
+                }
+                if (wanted.length && matched < wanted.length) {
+                    console.warn('lead prefill: unmatched service types', { wanted, matched });
+                }
+                log('✅ Lead prefill applied from messages.html');
+                showToast('Prefilled from the lead — review, add a description, then Save RO.', 'info', { duration: 8000 });
+            };
+            tryFill();
+        }
 
                 function setupModalListeners() {
             const newROBtn = document.getElementById('newROBtn');
