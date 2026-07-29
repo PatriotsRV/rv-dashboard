@@ -65,7 +65,8 @@ const COHORTS: Record<string, { timeLabel: string; workers: { name: string; emai
 };
 
 function reminderBody(timeLabel: string): string {
-  return `It's ${timeLabel} and this is a friendly reminder to make sure you check in to your ROs as soon as you begin work. This is a friendly reminder for you and your coworkers. Thank you`;
+  // Wording set by Roland mid-S162 (reworded from the original v1.0 text).
+  return `⏰ Please Tech Check-In to your RO - It's ${timeLabel} and you have not checked into any RO yet. This is a friendly reminder. Thank you!`;
 }
 
 function chicagoDayISO(d: Date): string {
