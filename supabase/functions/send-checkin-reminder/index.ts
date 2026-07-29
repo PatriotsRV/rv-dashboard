@@ -18,8 +18,11 @@
 //   { "cohort": "815" | "930",   REQUIRED — which roster + message time
 //     "dry_run": true,           optional — report who WOULD be texted, send nothing
 //     "force": true,             optional — bypass the weekday guard (testing)
-//     "time_label": "1:40" }     optional — override the "It's X" time in the
+//     "time_label": "1:40",      optional — override the "It's X" time in the
 //                                message (manual off-schedule runs; cron omits it)
+//     "manual_to": ["email"] }   optional — send ONLY to these staff emails,
+//                                BYPASSING the clock-in check (Roland-directed
+//                                one-off nags; cron omits it)
 //
 // Config (app_config, optional):
 //   checkin_reminder_enabled  "false" = kill switch (default on)
@@ -49,6 +52,7 @@ const COHORTS: Record<string, { timeLabel: string; workers: { name: string; emai
     timeLabel: "9:30",
     workers: [
       { name: "Cooper Cihak", email: "cooper@patriotsrvservices.com" },
+      { name: "Jason Rubin", email: "jason@patriotsrvservices.com" },
       { name: "Riley Scott", email: "solar@patriotsrvservices.com" },
       { name: "Rod Wombles", email: "rod@patriotsrvservices.com" },
       { name: "Rudy Juarez", email: "rudy@patriotsrvservices.com" },
@@ -98,7 +102,10 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
-  let body: { cohort?: string; dry_run?: boolean; force?: boolean; time_label?: string } = {};
+  let body: {
+    cohort?: string; dry_run?: boolean; force?: boolean;
+    time_label?: string; manual_to?: string[];
+  } = {};
   try { body = await req.json(); } catch { /* empty body */ }
 
   const cohort = COHORTS[String(body.cohort || "")];
@@ -164,8 +171,27 @@ Deno.serve(async (req: Request) => {
   const msg = reminderBody((body.time_label || "").trim() || cohort.timeLabel);
   const reminded: string[] = [], skipped: string[] = [], noPhone: string[] = [], failed: string[] = [];
 
-  for (const w of cohort.workers) {
-    if (clockedIn.has(w.email)) { skipped.push(w.name); continue; }
+  // manual_to: explicit recipient list, clock-in check bypassed. Staff
+  // phones for non-roster emails are looked up ad hoc.
+  const manualTo = (body.manual_to || []).map((e) => String(e).toLowerCase().trim()).filter(Boolean);
+  let targets = cohort.workers;
+  if (manualTo.length) {
+    const known = new Map(
+      Object.values(COHORTS).flatMap((c) => c.workers).map((w) => [w.email, w.name]),
+    );
+    targets = manualTo.map((email) => ({ name: known.get(email) || email, email }));
+    const extra = manualTo.filter((e) => !phoneByEmail.has(e));
+    if (extra.length) {
+      const { data: more } = await supabase
+        .from("staff").select("email, phone_number").eq("active", true).in("email", extra);
+      for (const s of more || []) {
+        phoneByEmail.set(String(s.email || "").toLowerCase(), (s.phone_number || "").trim());
+      }
+    }
+  }
+
+  for (const w of targets) {
+    if (!manualTo.length && clockedIn.has(w.email)) { skipped.push(w.name); continue; }
     const phone = phoneByEmail.get(w.email) || "";
     if (!phone) { noPhone.push(w.name); console.error(`no phone for ${w.email}`); continue; }
     if (body.dry_run) { reminded.push(w.name); continue; }
