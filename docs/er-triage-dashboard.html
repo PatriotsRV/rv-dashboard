@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PRVS — Enhancement Request Triage</title>
+<title>PRVS &mdash; Enhancement Request Triage</title>
 <style>
   :root{
     --bg:#0b1220; --panel:#111c30; --panel2:#0e1626; --line:#1e2d45;
@@ -36,8 +36,8 @@
 </style>
 </head>
 <body>
-  <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-06-28 · Session 128 · full pass vs index.html v1.466 · 11 open ERs (all Needed)</div>
+  <h1>PRVS &mdash; Enhancement Request Triage</h1>
+  <div class="sub">2026-07-29 &middot; headless nightly runner &middot; full pass vs index.html v1.484 / messages.html v1.17 &middot; 88 ERs, 30 open &middot; 25 work items below (3 Bugs + 22 Needed) &middot; 4 more ready to close + 2 Data SQL, see docs/ER_TRIAGE_2026-07-29.md</div>
 
   <div class="cards" id="stats"></div>
 
@@ -47,46 +47,97 @@
     <span class="pill" data-f="L">L</span>
     <span class="pill" data-f="M">M</span>
     <span class="pill" data-f="S">S</span>
-    <input id="q" placeholder="Search ERs…">
+    <input id="q" placeholder="Search ERs...">
   </div>
 
   <div id="list"></div>
 
 <script>
 const ERS = [
- {id:"7f2d0d70",by:"Lynn",date:"06-26",cat:"Reporting",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Monday report of the week's drop-offs so each team can confirm the customer is in their work list.",
-  verdict:"No dedicated drop-off-reconciliation report exists. Partially related to the send-manager-report Monday escalation, but that flags promised/part dates, not a roster of the week's arrivals. Build = new weekly edge fn (or section) listing ROs whose planned_dropoff_date fell in the prior week + their target silo/manager. Pairs with cbc70a86."},
- {id:"cbc70a86",by:"Lynn",date:"05-21",cat:"Workflow",loe:"M",theme:"Notifications & Task-Tracking",
-  desc:"Returning-customer check-in auto-adds the customer to the work list of each involved team lead.",
-  verdict:"Confirmed NOT done: no manager_work_lists insert anywhere in customer-checkin.html. Build = on commit, map the RO's repair_type(s) -> silo(s) -> manager(s) (REPAIR_TYPE_TO_SILO + staff cache) and insert manager_work_lists rows, reusing the dashboard addToWorkList logic. Directly enables 7f2d0d70."},
- {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
-  verdict:"No task-tracker subsystem exists today. Needs a tasks table (per RO), UI to add/complete tasks, and a daily reminder of still-open tasks. Same theme as 5925fc01."},
- {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Notif/Digest",loe:"L",theme:"Notifications & Task-Tracking",
-  desc:"Notify the right team on every RO update; daily comprehensive list of all in-progress jobs with to-dos scraped from status notes.",
-  verdict:"PARTIAL: the daily-digest half is largely served now by the Manager Daily Report (per-manager active work + fire watch). Still open: a notification on every RO update + auto-scraping to-dos from status notes into a list. Anchor of the Notifications/Task-Tracking initiative."},
- {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
-  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to stock — listed as available, priced, and searchable.",
-  verdict:"New subsystem. Confirmed nothing in js/parts.js handles stock/inventory. Needs an inventory table, receive/consume/adjust flows, a searchable stock view, and links from the parts-request path. Largest item on the board."},
- {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",loe:"L",theme:"Parts & Inventory",
-  desc:"Track a part that needs to be returned to the supplier or warrantied by the supplier.",
-  verdict:"No supplier-return/warranty workflow in code. = GH#24 Shop Operations Phase 2 (Parts Returns): reverse-direction flow, return reasons, credit/warranty tracking. Canonical for the declined dup 86bbaf50."},
- {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
-  desc:"Rework the field order on the parts-entry / ordering screen (move fields around).",
-  verdict:"Underspecified — a layout tweak with no target layout given. Quick to build once Lynn provides the desired field order / a mockup. BLOCKED on detail, not on effort."},
- {id:"1fe68261",by:"Rod",date:"04-13",cat:"Shop tasks",loe:"M",theme:"Work Orders & Shop tasks",
-  desc:"Track tasks not tied to a customer unit (e.g. swapping poly barrels, prepping roof bays for multiple units).",
-  verdict:"Overlaps the existing Shop Operations RO type but those are single ROs, not a recurring shared-task model. Needs a lightweight non-customer/shop task list (could ride on Shop Operations ROs or a new shop_tasks model)."},
+ {id:"d4d0eeba",by:"Brandon",date:"07-22",cat:"BUG - navigation",loe:"S",theme:"Bugs (still present - fix first)",
+  desc:"BUG: clicking an RO from the work list or a Messages link never lands on the right board entry.",
+  verdict:"CANONICAL BUG, confirmed on v1.484. Severity small (navigation, no data risk), two paths. Work list: scrollToROInBoard (index.html L4094) only finds already-rendered cards, else toasts (L4109; that toast's Clear Filters re-renders but never scrolls). Messages: js/qr.js handleDeepLink (L198) returns silently when the RO is not in currentFilteredData (L207) or has no card (L210). Fix = clear filters, re-render, scroll, highlight. Covers 9031e101 and 1bc33dd6."},
+ {id:"9031e101",by:"Riley Scott",date:"07-21",cat:"BUG - mobile nav",loe:"S",theme:"Bugs (still present - fix first)",
+  desc:"BUG: tapping a unit in the Work List on iPhone does not take you to the proper unit.",
+  verdict:"Same root cause as d4d0eeba, iPhone work-list path. js/work-list.js L328 calls scrollToROInBoard (index.html L4094), which only scans already-rendered [data-ro-index] cards; a filtered-off RO dead-ends in the 'RO not visible' toast (L4109). Ship as one fix with d4d0eeba."},
+ {id:"d94a418a",by:"Brandon",date:"07-27",cat:"BUG - data-display",loe:"S",theme:"Bugs (still present - fix first)",
+  desc:"BUG: RO STATUS text is not shown the way it was typed - the latter portion appears near the top.",
+  verdict:"CONFIRMED on v1.484. Severity data-display (render only, no data loss). js/render.js L553 draws the card RO Status box via split newline + map(escapeHtml) + reverse(), reversing EVERY line, so a multi-line note reads bottom-line-first. Entry boundaries are lost upstream (js/ro-crud.js joins entries with a newline). NEW this pass: L563 does the same to the Customer Communication box. The S159 history modal splits on the entry regex and is correct - reuse that split for both boxes. CSS is fine."},
+
  {id:"0448de62",by:"Sofia",date:"06-11",cat:"Auth form",loe:"L",theme:"Messaging & e-sign",
   desc:"Send an authorization form remotely for e-signature.",
-  verdict:"No remote-signing flow today (RAF is signed on the in-person check-in kiosk). Needs a tokenized public signing page + delivery (email/SMS) + storage of the signed form. Pairs with Sendblue messaging Phase 3."},
- {id:"ed1b873e",by:"Roland",date:"06-07",cat:"Auth/Cost",loe:"XL",theme:"Auth & cost",
-  desc:"Replace Google-email auth (~$25/mo each, ~$500/mo total; most staff don't use the email) with database-specific auth.",
-  verdict:"Security-critical subsystem swap. Auth today is Google id-token + RBAC keyed on email. Alternatives: Supabase email/password or magic-link, or shared role accounts, to drop Workspace seats. Roland wants to scope this together. Touches every page's sign-in + RBAC."},
- {id:"e06d747e",by:"solar",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock",
+  verdict:"Confirmed still absent on v1.484: signing is kiosk-only (customer-checkin.html on-device signature pad) and the raf_copy branch of supabase/functions/send-quote-email (L386) only emails a copy AFTER signing; grep for signing_token / esign / remote_sign across js and supabase returns nothing. Needs a tokenized public signing page, a delivery path and signed-form storage. Pairs naturally with the Textly SMS channel."},
+ {id:"5fec3eca",by:"Sofia",date:"07-15",cat:"Email content",loe:"S",theme:"Messaging & e-sign",
+  desc:"Show the customer's address on the emailed copy of the authorization form.",
+  verdict:"Confirmed absent on v1.484: the raf_copy branch of send-quote-email (L386) destructures to / cc / customerName / roId / signedDate / rv / services / workType / phone / customerType / serviceDesc / warrantyDesc / promisedDate / signatureDataUrl at L387 with no customerAddress. The address exists only in the lead_staff_notify branch (L549, HTML L674, text L748). Small: add customerAddress to the raf_copy payload and both templates."},
+ {id:"9aab7550",by:"Brandon",date:"07-21",cat:"Messaging UX",loe:"S",theme:"Messaging & e-sign",
+  desc:"Highlight new messages that have not been checked yet so they are clearly visible.",
+  verdict:"Partial on messages.html v1.17: a small gold .unread-dot renders per conversation (CSS L334, markup L1095) but only when last_direction is inbound AND status is open (unresponded L1089), and there is no row-level highlight. Small: add a stronger unread treatment (bold row / tinted background) and widen the condition so a closed-then-reopened thread also flags."},
+ {id:"21fc3a9d",by:"Brandon",date:"07-21",cat:"Messaging UX",loe:"S",theme:"Messaging & e-sign",
+  desc:"Rescale the conversation list so the text is easier to read.",
+  verdict:"Confirmed absent on messages.html v1.17: the page uses fixed rem font sizes with no user text-size control - grep for font-scale / fontScale / textSize / zoom returns nothing. Small: add a persisted font-scale control for the conversation list."},
+ {id:"f1e6e311",by:"Brandon",date:"07-21",cat:"Messaging UX",loe:"S",theme:"Messaging & e-sign",
+  desc:"Add a button to clear the name faster in the messaging search bar.",
+  verdict:"Confirmed absent on messages.html v1.17: convoSearch (L469) is a plain text input with no clear affordance - it is reset only programmatically (L1001, L1020). Small: add a clear (x) button that empties the search and re-runs the filter (read at L1059, input handler L2144)."},
+ {id:"6e9ca4dc",by:"Brandon",date:"07-21",cat:"Messaging UX",loe:"S",theme:"Messaging & e-sign",
+  desc:"Remove the redundant 'Added to every send' line at the bottom of every chat.",
+  verdict:"Valid, still present on desktop: js/messaging.js refreshSignaturePreview writes 'Added to every send:' into #msgSigPreview (L222, text set L246) under the composer on both surfaces. messages.html hides it ONLY inside the max-width 760px mobile media query (L430, query opens L417), so desktop messages.html and the RO-card composer still show it. Small: remove it or collapse it behind a toggle in all viewports; the signature itself keeps sending."},
+
+ {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
+  desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to searchable priced stock.",
+  verdict:"Confirmed still absent on v1.484: grep for inventory / on_hand / in_stock / stock_qty across js, supabase/migrations and supabase/functions returns zero hits; parts remain per-RO line items only (js/parts.js). New subsystem: inventory table, receive/consume/adjust flows, a searchable priced stock view, and links from the parts-request path. Largest item on the board."},
+ {id:"b19975d4",by:"Lynn",date:"04-09",cat:"Parts",loe:"L",theme:"Parts & Inventory",
+  desc:"Track a part that needs to be returned to the supplier or warrantied by the supplier.",
+  verdict:"Partial infra only, re-verified on v1.484: js/config.js PART_STATUSES (L200) includes 'Returned' and js/parts.js has a Return Deadline input (pf_returnDeadline L226, read L343), but grep for rma / return_reason / supplier_credit across js and supabase/migrations finds no RMA number, return reason, supplier credit or reverse-direction flow. Equals GH#24 Shop Ops Phase 2. Canonical for the declined duplicate 86bbaf50."},
+ {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
+  desc:"Rework the field order on the parts-entry / ordering screen.",
+  verdict:"Form exists and is unchanged on v1.484: js/parts.js pf_supplier L181, pf_partName L190, pf_qty L200, pf_status L204, pf_serviceSilo L208, pf_returnDeadline L226. The ask is only to reorder those fields, which is quick once Lynn supplies the target layout or a mockup. BLOCKED on detail, not on effort."},
+
+ {id:"29654af7",by:"Lynn",date:"07-06",cat:"Navigation",loe:"S",theme:"Board & Navigation UX",
+  desc:"Button that takes you back to the top of the page / to the search bar after scrolling down.",
+  verdict:"Confirmed still absent on v1.484: grep for backToTop / back-to-top / window.scrollTo across index.html, js and css returns nothing - only targeted scrollIntoView calls exist. Small: add a scroll-triggered back-to-top / jump-to-search control, ideally present in the sidebar layout too. Canonical for duplicate 2b78696c (Lynn re-raised the same ask 2026-07-27)."},
+ {id:"d1844e46",by:"Lynn",date:"07-16",cat:"Board sort",loe:"S",theme:"Board & Navigation UX",
+  desc:"Sort the dashboard by promised date then oldest on lot, keeping Shop Operations pinned to the top.",
+  verdict:"Confirmed absent on v1.484: js/render.js renderBoard sorts on the single blended calculatePriority score (L31-39) with the shop-ops pin at L35-37; grep for sortBy / sortSelect / sortMode returns nothing, so there is no selectable strict promised-then-oldest order. Small: add the strict sort option while keeping the shop pin. Related to 1aeb3f58, which delivered only the promised-date chip."},
+ {id:"d432863a",by:"Brandon",date:"07-21",cat:"Branding",loe:"S",theme:"Board & Navigation UX",
+  desc:"Make the browser tab icon the Patriots logo so the dashboard stands out among open tabs.",
+  verdict:"Confirmed still absent on v1.484: grep for favicon / rel=icon / apple-touch-icon across all live repo .html files returns nothing, so every tab shows the generic browser icon. Small: add a Patriots-logo favicon plus apple-touch-icon to each page head (logo.png already ships in the repo but needs resizing to icon dimensions)."},
+
+ {id:"5fbfa299",by:"Brandon",date:"06-30",cat:"RO lifecycle",loe:"M",theme:"RO fields & status",
+  desc:"Archive customers or units that are only in the system because we quoted them and never moved forward.",
+  verdict:"Confirmed still absent on v1.484: the only archive path is the cashiered one (js/ro-crud.js archiveROInSupabase L658, archived_at L692 into cashiered_child_archives); there is no archived / abandoned flag, status or board filter for quoted-but-never-progressed units. Needs a soft-archive flag, a board filter and an un-archive path. Note the S161 lead-capture path keeps FUTURE quotes on the Messages board rather than as ROs, but existing quote-only ROs still need this. Pairs with 972af03c."},
+ {id:"972af03c",by:"Lynn",date:"07-17",cat:"RO status",loe:"S",theme:"RO fields & status",
+  desc:"Add a CANCELED status - keep the record for notes rather than deleting it.",
+  verdict:"Confirmed still absent on v1.484: there is no Canceled / Cancelled RO status - js/config.js STATUS_PROGRESS_MAP (L151-164) and js/render.js ALL_STATUSES (L741-745) both end at Delivered/Cashed Out, and a case-insensitive grep for 'cancel' in those two files returns nothing. Small: add a Canceled status plus color/priority maps, exclude it from the on-lot and queue counts, and keep the record for notes. Pairs with 5fbfa299."},
+ {id:"50175fce",by:"Lynn",date:"07-27",cat:"RO fields",loe:"S",theme:"RO fields & status",
+  desc:"Move the urgent-update INPUT onto the tile itself instead of only inside Edit RO.",
+  verdict:"Valid and confirmed absent on v1.484: urgent_update is writable only from the New/Edit RO forms (index.html textarea L6796, editUrgentUpdate L7309 read at L6263; js/ro-crud.js L414 create, L467/L491 edit) and the card banner is read-only - js/render.js L324 even titles it 'change it via Edit RO'. Small: add an inline edit-in-place control at the bottom of the tile reusing the existing editField / notify path so it still fires urgent_update_notify. Follow-on to delivered ER a7d1474e."},
+
+ {id:"5925fc01",by:"Lynn",date:"04-09",cat:"Notif/Digest",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Notify the right team on every RO update; daily comprehensive list of in-progress jobs with to-dos scraped from status notes.",
+  verdict:"PARTIAL, re-verified on v1.484. The daily in-progress digest half is served by supabase/functions/send-manager-report, and single-event notifies exist (service_added_notify js/work-orders.js L293, urgent_update_notify js/ro-crud.js L370). Still absent: notify-on-every-RO-update and to-do scraping from status notes (grep for ro_tasks / task_tracker / customer_task across js and supabase/migrations returns nothing). Anchor of this theme; pairs with af14b3cb."},
+ {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
+  desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
+  verdict:"Confirmed still absent on v1.484: js/shop-tasks.js is a non-customer shop checklist with no ro_id / customer link and no reminder column, and grep for ro_tasks / customer_task / task_tracker across js and supabase/migrations returns nothing. Needs a per-RO tasks table, an add/complete UI and a daily open-task reminder. Pairs with 5925fc01."},
+
+ {id:"e06d747e",by:"Riley Scott",date:"04-10",cat:"Time Clock",loe:"S",theme:"Time clock",
   desc:"Tech check-in 'float' for ease of access.",
-  verdict:"Underspecified. Likely a floating/sticky check-in button for quick access, but page + exact behavior unclear (checkin.html is QR/roId-driven today). Needs scoping with the submitter before build."},
+  verdict:"Confirmed still absent on v1.484: no floating or sticky tech check-in control in index.html or checkin.html, and js/render.js compact-col-actions (L228-235) offers edit / parts / WO / notify / message / schedule only, with no check-in button. Underspecified: scope the target page and the exact behavior with the submitter. Pairs with 6bb61db2 - scope the two together."},
+ {id:"6bb61db2",by:"Riley Scott",date:"07-22",cat:"Time Clock",loe:"S",theme:"Time clock",
+  desc:"Check-in/out button on the compact view, plus a live reminder at login of which unit you are clocked into.",
+  verdict:"Confirmed still absent on v1.484: js/render.js compact-col-actions (L228-235) has edit / parts / WO / notify / message / schedule but no check-in-out button, and grep for a persistent 'clocked into' / active time_log indicator across index.html and js returns nothing. Small: add a compact check-in/out action plus a login-time active-time_log banner shown across views. Pairs with e06d747e."},
+
+ {id:"ed1b873e",by:"Roland",date:"06-07",cat:"Auth/Cost",loe:"XL",theme:"Auth & cost",
+  desc:"Replace Google-email auth (about $25/mo each, near $500/mo total) with database-specific auth.",
+  verdict:"Confirmed still Google-based on v1.484: js/auth.js imports GOOGLE_CONFIG from js/config.js (L69), initialises gapi with it (L203-204) and signs in via google.accounts One Tap plus signInWithIdToken (GROUP D, L44-48, L449); the check-in kiosk uses the same path. Swapping to Supabase password / magic-link or shared role accounts would drop roughly $500/mo but touches every page sign-in PLUS the email-keyed RBAC. Security-critical - Roland wants to scope this together."},
+
+ {id:"2f752d40",by:"Jason Rubin",date:"07-21",cat:"Work Orders",loe:"S",theme:"Work Orders & Shop tasks",
+  desc:"Auto-populate the WO dollar amount from total task hours x the posted $195/hr labor rate.",
+  verdict:"Confirmed still absent on v1.484: js/work-orders.js has independent manual inputs woFormDollar (L360) and woFormEstHours (L365), read separately on save (L649-650), with no labor-rate arithmetic anywhere (grep for LABOR_RATE or 195 in the module returns nothing). Small: auto-populate dollar_value = effective hours x $195 (task est_hours rollup when present, else the WO-level figure), with an editable override that respects the existing dollarLocked readonly gate (L324)."},
+
+ {id:"0e172b2c",by:"Sofia",date:"07-16",cat:"Dedup/Merge",loe:"M",theme:"Data integrity & merge",
+  desc:"Merge customer accounts created under different spellings, asking the customer to verify which is correct.",
+  verdict:"Partial, re-verified on v1.484: js/duplicates.js has an RO-level merge/delete engine (getBaseROId L35, findDuplicateGroups L40, openDuplicateManager L51, executeDupeMerge) but it groups strictly on the PRVS-XXXX-XXXX base RO id (L36, L44), so two ROs created under different spellings of the same customer are never detected. Needs name/phone account dedup plus a verify-which-is-correct merge step. The one-off cleanup for the Huebert/Hubert case is Data ER 3f254929."},
 ];
 
 const ORDER={XL:0,L:1,M:2,S:3};
@@ -96,11 +147,11 @@ function renderStats(){
   const c={XL:0,L:0,M:0,S:0};
   ERS.forEach(e=>c[e.loe]++);
   document.getElementById('stats').innerHTML=
-    `<div class="stat"><div class="n">${ERS.length}</div><div class="l">Open ERs (all Needed)</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--xl)">${c.XL}</div><div class="l">XL — new subsystem</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--l)">${c.L}</div><div class="l">L — multi-session</div></div>`+
-    `<div class="stat"><div class="n" style="color:#7fb0ff">${c.M}</div><div class="l">M — ½–1 session</div></div>`+
-    `<div class="stat"><div class="n" style="color:var(--s)">${c.S}</div><div class="l">S — under 2h*</div></div>`;
+    `<div class="stat"><div class="n">${ERS.length}</div><div class="l">Open work items (3 Bugs + 22 Needed)</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--xl)">${c.XL}</div><div class="l">XL &mdash; new subsystem</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--l)">${c.L}</div><div class="l">L &mdash; multi-session</div></div>`+
+    `<div class="stat"><div class="n" style="color:#7fb0ff">${c.M}</div><div class="l">M &mdash; half to one session</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--s)">${c.S}</div><div class="l">S &mdash; under 2h*</div></div>`;
 }
 function renderList(){
   const list=document.getElementById('list'); list.innerHTML="";
@@ -117,7 +168,7 @@ function renderList(){
       const d=document.createElement('div'); d.className="er b-"+e.loe;
       d.innerHTML=`<div class="top"><p class="desc">${e.desc}</p>
         <span class="tag t-${e.loe}">LOE ${e.loe}</span></div>
-        <div class="meta">${e.id} · ${e.by} · ${e.date} · ${e.cat}</div>
+        <div class="meta">${e.id} &middot; ${e.by} &middot; ${e.date} &middot; ${e.cat}</div>
         <div class="verdict">${e.verdict}</div>`;
       list.appendChild(d);
     });
