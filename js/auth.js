@@ -363,6 +363,137 @@ export function initSupabaseAuthListener() {
 }
 
 /**
+ * v1.485 (S163) — SERVER-SIDE session probe. Closes the S146 "silent 0-RV
+ * connected dashboard" wedge (found on Lynn's iPhone, hit Cooper Cihak S163).
+ *
+ * THE BUG THIS EXISTS TO KILL
+ *   getSession() reads the localStorage blob. A blob is not a session. If the
+ *   refresh token has been revoked or the refresh silently failed, the blob is
+ *   still sitting there and getSession() happily hands it back. Boot then sets
+ *   window.supabaseSession, paints "✓ Connected to PRVS", and every subsequent
+ *   PostgREST request goes out with a dead JWT — which after the S133 anon
+ *   lockdown means 0 rows, no error, on every table. The board renders empty
+ *   and NO reload ever fixes it, because nothing ever replaces the blob.
+ *   Cooper's evidence S163: last auth.sessions refresh 25h old, zero GoTrue
+ *   activity that day, 92 live ROs in the DB, dashboard showing 0.
+ *
+ * WHY auth.getUser() AND NOT THE 1-ROW `staff` SELECT THE TODO ASKED FOR
+ *   A table probe is only a valid sensor if that table is unreadable by anon.
+ *   `staff` is SELECT-readable and the anon grants have moved twice (S133,
+ *   S161) — the day one changes, a table probe starts returning rows for a
+ *   dead session and reports the wedge as healthy. That is precisely the S143
+ *   "a sensor with a FALSE NEGATIVE is worse than no sensor" trap. getUser()
+ *   hits GoTrue /auth/v1/user with the access token and asks the auth server
+ *   itself, so it depends on no RLS policy and cannot rot when grants change.
+ *
+ * OFFLINE IS NOT DEAD — this distinction is the whole safety of the fix.
+ *   Techs run this on phones on an RV lot with bad signal. A probe that treats
+ *   "request failed" as "session invalid" would sign people out mid-shift and
+ *   be far worse than the bug. Only a 4xx from GoTrue (JWT rejected) counts as
+ *   dead. Network errors, timeouts and 5xx return 'unreachable', which leaves
+ *   the session completely untouched.
+ *
+ * @returns {Promise<{ok: boolean, reason: 'verified'|'no-session'|'dead'|'unreachable'}>}
+ */
+export async function verifySupabaseSession(session) {
+    if (!session) return { ok: false, reason: 'no-session' };
+    try {
+        // TIMEOUT RACE — this probe sits in the boot path, so it must never be
+        // able to hang the page. Without it, a slow/hanging GoTrue would leave
+        // the dashboard stuck before first data load, which is WORSE than the
+        // bug being fixed (that at least rendered, just empty). Losing the race
+        // is treated as 'unreachable', i.e. the session is left alone.
+        const PROBE_TIMEOUT_MS = 8000;
+        const { data, error } = await Promise.race([
+            getSB().auth.getUser(),
+            new Promise(resolve => setTimeout(
+                () => resolve({ data: null, error: { name: 'AuthRetryableFetchError', status: 0,
+                                                     message: 'probe timed out after ' + PROBE_TIMEOUT_MS + 'ms' } }),
+                PROBE_TIMEOUT_MS)),
+        ]);
+
+        if (error) {
+            const status = error.status;
+            // 429 is a RATE LIMIT, not a verdict on the token — signing someone
+            // out because GoTrue was busy would be a self-inflicted outage.
+            const retryable = !status || status === 0 || status === 408 ||
+                              status === 429 || status >= 500 ||
+                              error.name === 'AuthRetryableFetchError';
+            if (retryable) {
+                console.warn('⚠️ Session probe INCONCLUSIVE (offline/server):', error.message,
+                             '— session left intact, not signing out');
+                return { ok: false, reason: 'unreachable' };
+            }
+            console.warn('🔒 Session probe REJECTED by GoTrue (status ' + status + '):', error.message);
+            return { ok: false, reason: 'dead' };
+        }
+
+        if (!data || !data.user) {
+            console.warn('🔒 Session probe returned no user — token is dead');
+            return { ok: false, reason: 'dead' };
+        }
+
+        console.log('✅ Supabase session VERIFIED server-side:', data.user.email);
+        return { ok: true, reason: 'verified' };
+    } catch (e) {
+        // A thrown fetch is an offline signal, not an auth verdict.
+        console.warn('⚠️ Session probe threw (treated as offline):', e.message);
+        return { ok: false, reason: 'unreachable' };
+    }
+}
+
+/**
+ * v1.485 (S163) — tear down a proven-dead session so the next sign-in is real.
+ * Only ever called on reason:'dead' from verifySupabaseSession().
+ *
+ * signOut() alone is NOT enough: when the SDK already considers the session
+ * gone it can no-op and leave the localStorage blob in place — and that blob
+ * IS the wedge. So the storageKey is removed explicitly afterwards. This is the
+ * programmatic equivalent of the manual escape hatch (dashboard Disconnect, or
+ * Settings -> Safari -> Website Data) that the S146 note documented.
+ */
+export async function forceReauth(why) {
+    console.warn('🔄 Forcing re-auth —', why);
+    try {
+        await getSB().auth.signOut();
+    } catch (e) {
+        console.warn('signOut() failed during forced re-auth (continuing):', e.message);
+    }
+    try {
+        localStorage.removeItem(SB_AUTH_OPTIONS.auth.storageKey);
+    } catch (e) {}
+    clearToken();
+    window.supabaseSession        = null;
+    window.userRoles              = [];
+    window.sessionRestoredFromCache = false;
+    window.initialLoadDone        = false;
+    updateAuthStatus(false);
+
+    // SELF-HEAL: re-fire One Tap immediately. gisLoaded()'s prompt already ran
+    // at GSI load — before the probe had a verdict — and at that moment
+    // window.supabaseSession was still set from the stale blob, so it was
+    // SKIPPED. Without this, a wedged tech has to know to tap "Connect to
+    // PRVS"; with it, a plain page reload fixes itself. The id callback's
+    // `if (window.supabaseSession) return` guard is safe to re-enter now
+    // because we just nulled it above.
+    // Wrapped: One Tap applies an exponential cooldown after dismissals, so
+    // this is best-effort and must never throw into the boot path.
+    try {
+        if (window.google?.accounts?.id) {
+            google.accounts.id.prompt();
+            console.log('🔄 One Tap re-prompted after forced re-auth');
+        }
+    } catch (e) {
+        console.warn('One Tap re-prompt unavailable:', e.message);
+    }
+
+    if (typeof window.showToast === 'function') {
+        window.showToast('Your session expired — signing you back in. If nothing happens, tap "Connect to PRVS".',
+                         'info', { duration: 10000 });
+    }
+}
+
+/**
  * Update the auth-status DOM: indicator dot, status text, modal button, header
  * connect button, and connection status label. Also wires the disconnect/connect
  * onClick handlers. Called whenever the connection state changes.
@@ -371,7 +502,7 @@ export function initSupabaseAuthListener() {
  * window.renderBoard, window.currentData, window.sampleData) so the module
  * version stays equivalent to inline through Phase 4.5.
  */
-export function updateAuthStatus(connected) {
+export function updateAuthStatus(connected, verified = true) {
     const indicator = document.getElementById('authIndicator');
     const status = document.getElementById('authStatus');
     const authButton = document.getElementById('authButton');
@@ -380,8 +511,16 @@ export function updateAuthStatus(connected) {
 
     if (connected) {
         // Modal button
+        // v1.485 (S163): `verified` is the second half of the S146 fix — do NOT
+        // claim "Connected to PRVS" without a live Supabase session behind it.
+        // The Google-token-only fallback path can restore the UI with no
+        // Supabase session at all, and the DB reads it makes come back EMPTY.
+        // Saying "connected" there is what made Cooper's wedge invisible: the
+        // badge was the reason nobody suspected auth for a whole shift.
         indicator.classList.add('connected');
-        status.textContent = 'Connected to PRVS Database';
+        status.textContent = verified
+            ? 'Connected to PRVS Database'
+            : 'Signing in to PRVS Database… (data may be incomplete)';
         authButton.textContent = 'Disconnect';
         authButton.onclick = async () => {
             await getSB().auth.signOut(); // end Supabase session
@@ -400,8 +539,13 @@ export function updateAuthStatus(connected) {
         };
 
         // Header button
-        connectSheetsBtn.classList.add('connected');
-        connectionStatus.textContent = '✓ Connected to PRVS';
+        if (verified) {
+            connectSheetsBtn.classList.add('connected');
+            connectionStatus.textContent = '✓ Connected to PRVS';
+        } else {
+            connectSheetsBtn.classList.remove('connected');
+            connectionStatus.textContent = '⚠️ Reconnecting…';
+        }
     } else {
         // Modal button
         indicator.classList.remove('connected');
@@ -545,6 +689,29 @@ export async function loadSavedToken() {
     try {
         const { data: { session } } = await getSB().auth.getSession();
         if (session) {
+            // ── v1.485 (S163) SESSION PROBE ──────────────────────────────
+            // getSession() only proves a BLOB exists in localStorage. Ask the
+            // auth server whether the token is actually alive before we trust
+            // it, paint the connected badge, or load a board that would come
+            // back empty. See verifySupabaseSession() for the full rationale.
+            const probe = await verifySupabaseSession(session);
+
+            if (probe.reason === 'dead') {
+                // Proven-dead token. This is the S146/Cooper wedge: leaving it
+                // in place renders a "connected" dashboard with 0 rows forever.
+                // Tear it down and bail out so gisLoaded()'s One Tap (which
+                // fires on !window.supabaseSession) can do a real sign-in.
+                await forceReauth('boot probe: stored session rejected by GoTrue');
+                return false;
+            }
+
+            if (probe.reason === 'unreachable') {
+                // Offline or GoTrue 5xx — NOT a verdict on the session. Keep it
+                // and carry on with the cached restore; the board may be stale
+                // but we will not log a tech out over one bad request.
+                console.warn('⚠️ Could not verify session (offline?) — continuing with cached session');
+            }
+
             window.supabaseSession = session;
             console.log('✅ Supabase session active — loading data');
 
@@ -616,7 +783,13 @@ export async function loadSavedToken() {
                 } catch (e) {}
             }
 
-            updateAuthStatus(true);
+            // v1.485 (S163): verified=false — we are in the Google-token-only
+            // fallback with NO Supabase session, so every DB read below runs as
+            // anon and comes back empty post-S133. Show "⚠️ Reconnecting…", not
+            // "✓ Connected". gisLoaded()'s One Tap fires right after this
+            // (gated on !window.supabaseSession) and flips it to verified via
+            // the onAuthStateChange SIGNED_IN handler.
+            updateAuthStatus(true, false);
             if (typeof window.loadDataFromSupabase === 'function') await window.loadDataFromSupabase();
             if (typeof window.loadTimeLogsFromSupabase === 'function') await window.loadTimeLogsFromSupabase();
 
@@ -763,7 +936,18 @@ export async function gisLoaded() {
                             if (typeof window.loadStaff === 'function')            await window.loadStaff();
                             if (typeof window.loadAppConfig === 'function')        await window.loadAppConfig();
                             if (typeof window.loadDataFromSupabase === 'function') await window.loadDataFromSupabase();
-                            console.log('✅ Post-One-Tap Step-2 backfill complete (staff + app_config + data)');
+                            // v1.485 (S163): backfill the REMAINING loads too. This
+                            // callback is now the sole hydration path whenever the
+                            // tokenClient flow had no id_token to exchange (Cooper's
+                            // private-tab case), and it previously stopped after the
+                            // three above — leaving a board with real ROs but no time
+                            // logs, no parts and no custom fields, which reads as a
+                            // half-broken app rather than a fixed one.
+                            if (typeof window.loadTimeLogsFromSupabase === 'function') await window.loadTimeLogsFromSupabase();
+                            if (typeof window.loadPartsFromSupabase === 'function')    await window.loadPartsFromSupabase();
+                            if (typeof window.loadCustomFieldConfig === 'function')    await window.loadCustomFieldConfig();
+                            if (typeof window.startTimeLogsAutoRefresh === 'function') window.startTimeLogsAutoRefresh();
+                            console.log('✅ Post-One-Tap backfill complete (staff + app_config + ROs + time logs + parts + custom fields)');
                         } catch (stepTwoErr) {
                             console.warn('⚠️ Post-One-Tap Step-2 backfill failed:', stepTwoErr.message);
                         }
@@ -817,7 +1001,12 @@ export async function gisLoaded() {
             // Only do full load if this is a fresh login (no data yet)
             if (!window.initialLoadDone) {
                 await getUserInfo();
-                updateAuthStatus(true);
+                // v1.485 (S163): unverified until signInWithIdToken below actually
+                // returns a session. Google auth alone is not DB auth — and if the
+                // exchange fails, the old code left a "✓ Connected" badge over an
+                // anon-key session whose reads come back empty (same wedge class as
+                // S146/Cooper). Flipped to verified on success, a few lines down.
+                updateAuthStatus(true, false);
 
                 if (window.currentUser?.email) {
                     // ── Store identity for persistent sessions ──────
@@ -832,25 +1021,73 @@ export async function gisLoaded() {
                     // Exchange Google ID token for a real Supabase session.
                     // This enables proper RLS enforcement and replaces anon key writes.
                     try {
-                        // Use Google id_token (JWT) for Supabase signInWithIdToken
-                        // id_token comes from google.accounts.id.initialize callback
+                        // Use Google id_token (JWT) for Supabase signInWithIdToken.
+                        // id_token comes ONLY from the google.accounts.id.initialize
+                        // callback (One Tap / ID flow) — window.googleIdToken is
+                        // written in exactly one place, auth.js ~line 885.
+                        //
+                        // ⚠️ `resp` here is an initTokenClient (OAuth2 ACCESS-token
+                        // flow) response. It carries access_token / expires_in /
+                        // scope / token_type and NEVER an id_token, so
+                        // `resp.id_token` is always undefined. It is kept only as
+                        // documentation of that fact.
                         const idTokenToUse = window.googleIdToken || resp.id_token;
+
+                        // ── v1.485 (S163) COOPER'S ACTUAL BUG ────────────────
+                        // If One Tap never fired, there is NO id_token — and the
+                        // old code called signInWithIdToken with token:'' anyway.
+                        // That is a GUARANTEED failure, swallowed as "non-fatal"
+                        // with the badge already reading "✓ Connected to PRVS" a
+                        // few lines above. Net effect: Google sign-in succeeds,
+                        // the Supabase exchange silently does not, every read runs
+                        // as anon and returns 0 rows post-S133, and the user sees a
+                        // connected dashboard with an empty board and no error.
+                        // That is exactly what Cooper Cihak hit on 2026-07-29 in a
+                        // Safari PRIVATE tab, where One Tap is blocked. A normal
+                        // tab worked immediately, which is what ruled out the
+                        // stale-session theory this was first blamed on.
+                        //
+                        // Fix (deliberately minimal — this is the shared login path
+                        // for every user, so control flow below is left EXACTLY as
+                        // it was): skip only the doomed call, prompt One Tap, and
+                        // TELL the user. The id.initialize callback completes the
+                        // exchange when the token arrives — its
+                        // `if (window.supabaseSession) return` guard passes because
+                        // there is no session yet — and its success block backfills
+                        // the data loads. Badge stays "⚠️ Reconnecting…" throughout.
+                        let sbData = null, sbError = null;
                         if (!idTokenToUse) {
-                            console.warn('⚠️ No Google id_token available — requesting via prompt...');
-                            google.accounts.id.prompt();
+                            console.warn('⚠️ No Google id_token available — Supabase exchange SKIPPED (not attempted with an empty token). Prompting One Tap; the id callback will complete it.');
+                            if (typeof window.showToast === 'function') {
+                                window.showToast('Signed in with Google, but NOT yet connected to the PRVS database — the board will stay empty until that finishes. If you are in a Private browsing tab, please switch to a normal tab.',
+                                                 'warning', { duration: 14000 });
+                            }
+                            try { google.accounts.id.prompt(); } catch (e) {
+                                console.warn('One Tap prompt unavailable:', e.message);
+                            }
+                        } else {
+                            ({ data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
+                                provider: 'google',
+                                token:    idTokenToUse,
+                                nonce:    localStorage.getItem('prvs_sb_nonce') || undefined,
+                            }));
                         }
-                        const { data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
-                            provider: 'google',
-                            token:    idTokenToUse || '',
-                            nonce:    localStorage.getItem('prvs_sb_nonce') || undefined,
-                        });
-                        if (sbError) {
-                            console.warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
-                            console.log('Continuing with anon key — RBAC not enforced this session');
+                        // v1.485 (S163): `!sbData?.session` is REQUIRED, not defensive
+                        // padding — on the skipped-exchange path above both sbData and
+                        // sbError are null, and without this guard the else-branch
+                        // dereferences sbData.session and throws into the outer catch.
+                        if (sbError || !sbData?.session) {
+                            if (sbError) {
+                                console.warn('⚠️ Supabase signInWithIdToken failed (non-fatal):', sbError.message);
+                                console.log('Continuing with anon key — RBAC not enforced this session');
+                            }
+                            // Badge stays "⚠️ Reconnecting…" — do not advertise a
+                            // connection the DB will not honor.
                         } else {
                             window.supabaseSession = sbData.session;
                             console.log('✅ Supabase authenticated session created — RBAC active');
                             console.log('Session expires:', new Date(window.supabaseSession.expires_at * 1000).toLocaleString());
+                            updateAuthStatus(true); // v1.485 (S163): now genuinely verified
                         }
                     } catch (e) {
                         console.warn('⚠️ Supabase auth exchange failed (non-fatal):', e.message);
@@ -918,6 +1155,9 @@ Object.assign(window, {
     initSupabaseAuthListener,
     updateAuthStatus,
     handleAuthClick,
+    // Group E (v1.485, S163 — session probe / forced re-auth)
+    verifySupabaseSession,
+    forceReauth,
     // Group D (Phase 4B-D)
     getUserInfo,
     loadSavedToken,

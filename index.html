@@ -1,7 +1,52 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.484
+    PRVS Dashboard v1.485
+    v1.485: [S163] "CONNECTED BADGE OVER AN EMPTY BOARD" — TWO SEPARATE CAUSES FIXED.
+    Trigger: Cooper Cihak, 2026-07-29 — signed in, badge reading "✓ CONNECTED TO PRVS",
+    v1.484, 0 ROs, in a Safari PRIVATE tab. A normal tab worked immediately.
+    ⚠️ FIRST DIAGNOSIS WAS WRONG AND IS RECORDED HERE ON PURPOSE (S143 rule — an untested
+    guess must not harden into history). This was initially blamed on the S146 stale-session
+    wedge, citing a 25h-stale auth.sessions refresh and no GoTrue activity that day. That
+    evidence never distinguished the two causes: if he had used the app only in a private
+    tab, zero activity on his normal profile is exactly what you would expect. And the
+    decisive fact points the other way — a stale blob lives in the NORMAL profile's
+    localStorage, so switching to a normal tab could not have fixed it. Private Browsing
+    was the trigger. auth.audit_log_entries could not confirm or deny it: that table is
+    empty project-wide (0 rows ever), so its silence proves nothing — checked, not assumed.
+    CAUSE 1 — COOPER'S ACTUAL BUG (proved from code, not inferred). window.googleIdToken
+    is written in exactly ONE place: the google.accounts.id.initialize (One Tap) callback.
+    The tokenClient callback's `resp` is an OAuth2 ACCESS-token response and NEVER carries
+    id_token, so `resp.id_token` is always undefined. In a private tab One Tap is blocked
+    ⇒ no id_token ⇒ the old code called signInWithIdToken with token:'' anyway — a
+    GUARANTEED failure, swallowed as "non-fatal" with the badge already painted connected
+    a few lines earlier. Net: Google sign-in succeeds, the Supabase exchange silently does
+    not, every read runs as anon and returns 0 rows post-S133 lockdown. FIX: never make the
+    doomed empty-token call; prompt One Tap and TELL the user (toast naming private
+    browsing) instead of failing in the console. Control flow around it left byte-for-byte
+    intact — this is the shared login path for every user. The One Tap success backfill now
+    also loads time logs, parts and custom fields, since it is the sole hydration path in
+    this scenario and previously stopped after staff/app_config/ROs.
+    CAUSE 2 — THE S146 WEDGE, still real and independently worth fixing (Lynn's iPhone,
+    S146). getSession() returns the localStorage blob without validating it server-side, so
+    a revoked token boots as a "session" and no reload ever replaces it. NEW
+    verifySupabaseSession() does a real GoTrue round-trip via auth.getUser() at boot.
+    Deliberately NOT the 1-row `staff` SELECT the old TODO specified: staff is anon-readable
+    and the anon grants have already moved twice (S133, S161), so a table probe would
+    eventually report a dead session as HEALTHY — the S143 false-negative-sensor trap.
+    getUser() asks the auth server and depends on no RLS policy. OFFLINE IS NOT DEAD: only
+    a GoTrue 4xx counts as dead; network errors, timeouts, 408, 429 and 5xx return
+    'unreachable' and leave the session untouched, because techs run this on phones with bad
+    lot signal and a probe that logs them out mid-shift would be worse than the bug. An 8s
+    timeout race means the probe can never hang boot (a hang would be worse than the wedge,
+    which at least rendered). NEW forceReauth() = signOut() PLUS an explicit removeItem of
+    the storageKey, since signOut() can no-op and leave the very blob that IS the wedge,
+    then re-fires One Tap so a plain reload self-heals.
+    BOTH CAUSES SHARED ONE ENABLER — THE BADGE LIED. updateAuthStatus(connected, verified):
+    "✓ Connected to PRVS" now requires a live Supabase session behind it; the
+    Google-token-only fallback and the pre-exchange window show "⚠️ Reconnecting…". Under
+    v1.485 Cooper's screenshot would have read "Reconnecting" with a toast naming private
+    browsing — the badge is why this cost a shift and an investigation instead of ten seconds.
     v1.484: [S161] CREATE RO FROM LEAD (receiver half) — messages.html v1.17 captures
     email / RV (year+make+model) / Service Type on a lead, then opens
     index.html?newro=1&name=&phone=&email=&rv=&service_type= and this page opens the
@@ -748,7 +793,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.484</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.485</span>
           </span>
         </div>
         <header>
@@ -777,7 +822,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.484</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.485</span>
             </div>
         </header>
 
@@ -3523,7 +3568,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.484 - 2026-07-28 - S161 Create RO from lead (receiver): applyLeadPrefillFromUrl() opens the New RO modal prefilled from messages.html v1.17 lead fields (name/phone/email/rv/service_type via URL params, params stripped on arrival, waits for auth, nothing auto-saves) - prior: v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.485 - 2026-07-29 - S163 "connected badge over an empty board" - TWO causes. (1) COOPER 7/29 (Safari PRIVATE tab, normal tab fixed it - the initial stale-session diagnosis was WRONG and is documented as such): One Tap is blocked in private browsing, so there is no id_token, and the tokenClient resp NEVER carries one - the old code called signInWithIdToken with an empty token anyway, a guaranteed failure swallowed as non-fatal while the badge already read Connected. Now: never make the doomed call, prompt One Tap, toast the user naming private browsing; One Tap backfill extended to time logs + parts + custom fields. (2) S146 WEDGE (Lynn, independently real): boot now VERIFIES the session server-side via auth.getUser() - not a staff table probe, which is anon-readable and would eventually report a dead session as healthy (S143 false-negative trap); GoTrue 4xx = dead -> forceReauth (signOut + explicit storageKey removeItem + One Tap re-prompt); offline/timeout/408/429/5xx = unreachable -> session left ALONE (no logging techs out on bad lot signal); 8s timeout so the probe cannot hang boot. BOTH enabled by a lying badge: updateAuthStatus(connected, verified) now shows "Reconnecting" without a live Supabase session - prior: v1.484 - 2026-07-28 - S161 Create RO from lead (receiver): applyLeadPrefillFromUrl() opens the New RO modal prefilled from messages.html v1.17 lead fields (name/phone/email/rv/service_type via URL params, params stripped on arrival, waits for auth, nothing auto-saves) - prior: v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
