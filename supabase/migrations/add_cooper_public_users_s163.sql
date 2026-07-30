@@ -1,4 +1,39 @@
 -- ============================================================================
+-- ⚠️⚠️  CORRECTION BANNER — ADDED SESSION 164 (2026-07-30). READ BEFORE THE
+--        COMMENTS BELOW. This file has NOT been run, and per Roland (S164) it
+--        STAYS PARKED. Two claims in the original header are now DISPROVEN and
+--        are preserved only so the reasoning trail stays honest:
+--
+--   (1) "That symptom was a STALE SESSION wedge (S146 class)" — WRONG. That was
+--       S163's FIRST diagnosis and it was overturned within the same session.
+--       The real cause of Cooper's 0-RO dashboard was the empty-id_token path
+--       in private browsing (One Tap blocked ⇒ signInWithIdToken({token:''})).
+--
+--   (2) "almost certainly an RLS INSERT block" — WRONG, disproven S164. RLS is
+--       enabled on public.users, but policy `authenticated_full_access` is
+--       ALL / qual true / with_check true, and `authenticated` holds full table
+--       grants including INSERT. Nothing was ever blocking the write.
+--
+--   THE ACTUAL CAUSE: upsertUser() has ZERO call sites in live code. It is
+--   defined+exported at js/auth.js:326 and bridged at :1154, but nothing calls
+--   it; the invocation was lost during modularization (gone by v1.427,
+--   2026-05-25). Proof from data: upsertUser stamps updated_at on every
+--   sign-in, yet no public.users row has changed since 2026-04-11 despite
+--   daily logins. It has never run for anyone.
+--
+--   SCOPE IS ALSO WRONG: the gap is not Cooper alone, it is SEVEN staff, all
+--   techs — Cooper Cihak, Ignacio Ochoa, Rod Wombles, Rudy Juarez, Tommy
+--   Belew, Travis Wombles, Zak Wombles. Hand-patching one of them would leave
+--   six behind and bury the real (dead-code) cause.
+--
+--   IMPACT TODAY: none. A missing public.users row makes the role helpers
+--   return false, which is already the correct answer for a tech with no
+--   user_roles grant. See CLAUDE_CONTEXT.md → Known Issues (S164).
+--
+--   The VERIFY queries at the bottom remain valid and are read-only.
+-- ============================================================================
+--
+-- ============================================================================
 -- add_cooper_public_users_s163.sql
 -- Session 163 (2026-07-29) — give Cooper Cihak his missing public.users row.
 --
