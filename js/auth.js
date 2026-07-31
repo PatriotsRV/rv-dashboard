@@ -480,7 +480,7 @@ export async function forceReauth(why) {
     // this is best-effort and must never throw into the boot path.
     try {
         if (window.google?.accounts?.id) {
-            google.accounts.id.prompt();
+            promptOneTapWithReason('force-reauth');   // v1.486: was a bare prompt()
             console.log('🔄 One Tap re-prompted after forced re-auth');
         }
     } catch (e) {
@@ -490,6 +490,96 @@ export async function forceReauth(why) {
     if (typeof window.showToast === 'function') {
         window.showToast('Your session expired — signing you back in. If nothing happens, tap "Connect to PRVS".',
                          'info', { duration: 10000 });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// v1.486 (S165) — ONE TAP SUPPRESSION FALLBACK (Zak, Firefox/Android).
+//
+// The app's ONLY source of a Google id_token was the One Tap prompt
+// (google.accounts.id.prompt). Some browsers suppress One Tap entirely —
+// Firefox's tracking protection blocks its third-party machinery, FedCM
+// can be disabled in Chrome settings, private tabs block it (Cooper,
+// S163), and dismissals trigger an exponential cooldown (S78). In every
+// one of those states the user could sign in to Google via the OAuth2
+// popup, yet had NO path to a Supabase session: reads ran as anon, the
+// board stayed empty, and clearing cache/site data could not help
+// because the block is browser-level, not site-level.
+//
+// Fix: an explicit, official "Sign in with Google" BUTTON
+// (google.accounts.id.renderButton) rendered into a dismissible card.
+// The button flow is a first-party user gesture — immune to One Tap
+// suppression and cooldowns — and delivers its credential to the SAME
+// id.initialize callback the One Tap path uses, so everything downstream
+// (signInWithIdToken, role load, backfill) is the code that already
+// works. Card is additive UI: never blocks the page, hidden the moment
+// a credential arrives.
+// ─────────────────────────────────────────────────────────────────────
+
+export function showGoogleSignInFallback() {
+    try {
+        if (window.supabaseSession) return;          // already healthy — nothing to fix
+        if (!window.google?.accounts?.id) return;    // GIS not loaded yet
+        let card = document.getElementById('gsiFallbackCard');
+        if (!card) {
+            card = document.createElement('div');
+            card.id = 'gsiFallbackCard';
+            card.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;'
+                + 'background:#1f2937;color:#f9fafb;border:1px solid #f59e0b;border-radius:10px;'
+                + 'padding:16px 18px 14px;box-shadow:0 8px 24px rgba(0,0,0,.45);max-width:340px;text-align:center;';
+            card.innerHTML = '<div style="font-size:0.85rem;line-height:1.35;margin-bottom:10px;">'
+                + 'Automatic Google sign-in is blocked in this browser.<br>'
+                + 'Tap the button to finish connecting to PRVS:</div>'
+                + '<div id="gsiFallbackBtn" style="display:flex;justify-content:center;"></div>';
+            const x = document.createElement('button');
+            x.textContent = '✕';
+            x.setAttribute('aria-label', 'Dismiss');
+            x.style.cssText = 'position:absolute;top:2px;right:6px;background:none;border:none;color:#9ca3af;font-size:14px;cursor:pointer;padding:4px;';
+            x.onclick = hideGoogleSignInFallback;
+            card.appendChild(x);
+            document.body.appendChild(card);
+            google.accounts.id.renderButton(card.querySelector('#gsiFallbackBtn'), {
+                type: 'standard', theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill',
+            });
+        }
+        card.style.display = 'block';
+    } catch (e) {
+        // Must never throw into the auth path — the card is best-effort UI.
+        console.warn('Sign-in fallback card failed (non-fatal):', e.message);
+    }
+}
+
+export function hideGoogleSignInFallback() {
+    const card = document.getElementById('gsiFallbackCard');
+    if (card) card.style.display = 'none';
+}
+
+/**
+ * v1.486 (S165): prompt One Tap AND name the outcome. Before this, every
+ * suppression was silent — we diagnosed Zak by elimination instead of by
+ * reading a reason. The moment callback logs displayed/not_displayed/
+ * skipped/dismissed + the reason string, and shows the button fallback on
+ * not_displayed/skipped (definitively suppressed states). Under FedCM,
+ * Chrome withholds some reasons — every accessor is feature-checked and
+ * the whole callback is best-effort.
+ */
+export function promptOneTapWithReason(context) {
+    try {
+        google.accounts.id.prompt((moment) => {
+            try {
+                let status = 'displayed';
+                if (moment?.isNotDisplayed?.())        status = 'not_displayed:' + (moment.getNotDisplayedReason?.() || 'unknown');
+                else if (moment?.isSkippedMoment?.())  status = 'skipped:'       + (moment.getSkippedReason?.()      || 'unknown');
+                else if (moment?.isDismissedMoment?.()) status = 'dismissed:'    + (moment.getDismissedReason?.()    || 'unknown');
+                console.log(`One Tap moment [${context}]: ${status}`);
+                if (status.startsWith('not_displayed') || status.startsWith('skipped')) {
+                    showGoogleSignInFallback();
+                }
+            } catch (e) { /* FedCM may withhold moment details — never throw */ }
+        });
+    } catch (e) {
+        console.warn(`One Tap prompt unavailable [${context}]:`, e.message);
+        showGoogleSignInFallback();
     }
 }
 
@@ -883,6 +973,9 @@ export async function gisLoaded() {
         callback: async (credentialResponse) => {
             if (credentialResponse.credential) {
                 window.googleIdToken = credentialResponse.credential;
+                // v1.486: credential arrived (One Tap OR the fallback button —
+                // both flows land here). The fallback card has done its job.
+                hideGoogleSignInFallback();
                 // v1.417: skip ONLY if Supabase session is actually live. The previous
                 // condition (sessionRestoredFromCache || supabaseSession) also returned
                 // early when Step 2 restored UI from a stale Google-only cache without
@@ -965,7 +1058,7 @@ export async function gisLoaded() {
     // only contained a stale Google token, suppressing the One Tap prompt that would
     // have re-authed Supabase. This is the root-cause edit for Lynn's flakiness.
     if (!window.supabaseSession) {
-        google.accounts.id.prompt();
+        promptOneTapWithReason('boot');   // v1.486: was a bare prompt() — now logs suppression reason + shows button fallback
     } else {
         console.log('✅ Supabase session live — skipping One Tap prompt');
     }
@@ -1057,14 +1150,19 @@ export async function gisLoaded() {
                         // the data loads. Badge stays "⚠️ Reconnecting…" throughout.
                         let sbData = null, sbError = null;
                         if (!idTokenToUse) {
-                            console.warn('⚠️ No Google id_token available — Supabase exchange SKIPPED (not attempted with an empty token). Prompting One Tap; the id callback will complete it.');
+                            console.warn('⚠️ No Google id_token available — Supabase exchange SKIPPED (not attempted with an empty token). Prompting One Tap + showing button fallback; the id callback will complete it.');
                             if (typeof window.showToast === 'function') {
-                                window.showToast('Signed in with Google, but NOT yet connected to the PRVS database — the board will stay empty until that finishes. If you are in a Private browsing tab, please switch to a normal tab.',
+                                window.showToast('Signed in with Google, but NOT yet connected to the PRVS database — tap the blue "Sign in with Google" button below to finish connecting. (Private browsing tabs can also block this — switch to a normal tab.)',
                                                  'warning', { duration: 14000 });
                             }
-                            try { google.accounts.id.prompt(); } catch (e) {
-                                console.warn('One Tap prompt unavailable:', e.message);
-                            }
+                            // v1.486 (S165): the user is DEFINITIVELY stuck at this point
+                            // — Google OAuth succeeded but no id_token exists and One Tap
+                            // may be suppressed (Zak: Firefox/Android blocks it at the
+                            // browser level; cache-clearing cannot fix that). Show the
+                            // renderButton fallback unconditionally, don't wait on the
+                            // moment callback (FedCM can withhold it).
+                            showGoogleSignInFallback();
+                            promptOneTapWithReason('token-flow-no-id_token');
                         } else {
                             ({ data: sbData, error: sbError } = await getSB().auth.signInWithIdToken({
                                 provider: 'google',
@@ -1158,6 +1256,10 @@ Object.assign(window, {
     // Group E (v1.485, S163 — session probe / forced re-auth)
     verifySupabaseSession,
     forceReauth,
+    // Group F (v1.486, S165 — One Tap suppression fallback)
+    showGoogleSignInFallback,
+    hideGoogleSignInFallback,
+    promptOneTapWithReason,
     // Group D (Phase 4B-D)
     getUserInfo,
     loadSavedToken,
