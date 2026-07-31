@@ -1,7 +1,19 @@
 <!DOCTYPE html>
 <!--
-    PRVS Customer Check-In v1.16
-    Released: 2026-07-08
+    PRVS Customer Check-In v1.17
+    Released: 2026-07-31
+    v1.17: [S165] EXPLICIT-SELECTION ATTACH/NEW CONFIRM (Tom Rather dupe, 7/30). When the
+          receptionist explicitly selects an existing RO from the returning-customer
+          search but that RO is NOT a scheduled drop (already On Lot / active — e.g. the
+          arrival was hand-flipped on the dashboard before check-in ran), the v1.13 guard
+          silently fell through and created a duplicate (PRVS-TO07-7388-2). Now a blocking
+          two-button dialog asks: "Same job — attach" vs "New job — separate RO". Attach
+          path is a MINIMAL update: merges description ([CHECK-IN date] appended), fills
+          only BLANK contact/RV fields, preserves date_received; deliberately never
+          touches status / ro_type / repair_type / urgency (the live RO owns those).
+          Timeline note + success screen name the attach. The implicit phone/email
+          lookup path still never attaches to active work — the dialog fires ONLY on
+          explicit staff selection.
     v1.16: [BUGFIX S135] Date fields no longer echo between check-ins. startNewCheckin()
           was not clearing the three date inputs (leadDropoffDate, leadPromisedDate,
           scheduledDropoffDate), so a prior customer's Drop Off / Promised dates carried
@@ -993,7 +1005,7 @@
 </div>
 
 <!-- Version badge -->
-<div class="version-badge">PRVS Customer Check-In v1.16</div>
+<div class="version-badge">PRVS Customer Check-In v1.17</div>
 
 <!-- Toast container -->
 <div class="toast-container" id="toastContainer"></div>
@@ -2045,6 +2057,7 @@
 
             let insertedRO = null;
             let reusedScheduledRO = false;
+            let attachedToActiveRO = false;   // [v1.17 S165] staff chose to attach to an ACTIVE RO
 
             // [ER BUGFIX v1.12 S114 / DUP-RO HARDENING v1.13 S118] Returning-customer duplicate-RO
             // guard. If this customer already has a FUTURE scheduled-drop RO (status 'Scheduled',
@@ -2096,13 +2109,29 @@
                 try {
                     const { data: existRO } = await getSB()
                         .from('repair_orders')
-                        .select('id, ro_id, status, date_received, description')
+                        .select('id, ro_id, status, date_received, description, ro_type, phone, email, address, rv, vin, promised_date')
                         .eq('id', priorROId)
                         .maybeSingle();
                     const isScheduledDrop = existRO && (
                         existRO.status === 'Scheduled' ||
                         (existRO.status === 'Not On Lot' && !existRO.date_received)
                     );
+
+                    // [v1.17 S165] EXPLICIT-SELECTION CONFIRM (Tom Rather 7/30 dupe).
+                    // When the receptionist explicitly picked an existing RO from the
+                    // returning-customer search but that RO is NOT a scheduled drop
+                    // (already On Lot / active — e.g. the arrival was hand-flipped on
+                    // the dashboard before check-in ran), the old guard silently fell
+                    // through and created a duplicate. Explicit selection expresses
+                    // intent — so ASK instead of silently duplicating. The implicit
+                    // phone/email lookup path still never attaches to active work.
+                    const wasExplicitlySelected = !!(selectedRO && selectedRO._source === 'repair_orders' && selectedRO.id === priorROId);
+                    let attachToActive = false;
+                    if (existRO && !isScheduledDrop && wasExplicitlySelected) {
+                        const choice = await askAttachOrNew(existRO);
+                        attachToActive = (choice === 'attach');
+                    }
+
                     if (isScheduledDrop) {
                         // Append the new check-in details rather than overwrite the scheduled RO's description.
                         const mergedDescription = (existRO.description && existRO.description.trim())
@@ -2134,6 +2163,35 @@
                         if (updErr) throw updErr;
                         insertedRO = updated;
                         reusedScheduledRO = true;
+                    } else if (attachToActive) {
+                        // [v1.17 S165] Attach to an ACTIVE RO — MINIMAL update by design.
+                        // Merge the description and fill only BLANK contact/RV fields.
+                        // Deliberately NOT touched: status, ro_type, repair_type,
+                        // urgency — the live RO owns those (overwriting ro_type here
+                        // would have turned Tom Rather's insurance RO into standard).
+                        const mergedDescription = (existRO.description && existRO.description.trim())
+                            ? `${existRO.description}\n\n[CHECK-IN ${today}]\n${fullDescription}`
+                            : fullDescription;
+                        const updatePayload = {
+                            description:   mergedDescription,
+                            phone:         existRO.phone   || phone   || null,
+                            email:         existRO.email   || email   || null,
+                            address:       existRO.address || address || null,
+                            rv:            existRO.rv      || rv      || null,
+                            vin:           existRO.vin     || vin     || null,
+                            promised_date: existRO.promised_date || promisedDate,
+                            date_received: existRO.date_received || dateReceived,
+                            customer_type: 'Returning',
+                        };
+                        const { data: updated, error: updErr } = await getSB()
+                            .from('repair_orders')
+                            .update(updatePayload)
+                            .eq('id', priorROId)
+                            .select()
+                            .single();
+                        if (updErr) throw updErr;
+                        insertedRO = updated;
+                        attachedToActiveRO = true;
                     }
                 } catch (e) {
                     console.warn('Returning-customer dedupe check failed (non-fatal; will create a new RO):', e);
@@ -2191,13 +2249,17 @@
             } catch (e) { console.warn('sync-ro-calendar (check-in) failed (non-fatal):', e); }
 
             // [ER BUGFIX v1.12 S114] Record the scheduled->arrived conversion on the RO timeline.
-            if (reusedScheduledRO) {
+            // [v1.17 S165] Also record staff-chosen attach-to-active.
+            if (reusedScheduledRO || attachedToActiveRO) {
                 try {
                     const tsConv = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                    const noteBody = reusedScheduledRO
+                        ? `[${tsConv} - Customer Check-In] ↩ Returning customer checked in against their existing scheduled RO (${insertedRO.ro_id}); no duplicate RO created. Status set to ${status}.`
+                        : `[${tsConv} - Customer Check-In] ↩ Check-in ATTACHED to this customer's existing ACTIVE RO (${insertedRO.ro_id}) by staff choice; no duplicate RO created. Description merged; status left unchanged (${insertedRO.status}).`;
                     await getSB().from('notes').insert({
                         ro_id: insertedRO.id,
                         type:  'ro_status',
-                        body:  `[${tsConv} - Customer Check-In] ↩ Returning customer checked in against their existing scheduled RO (${insertedRO.ro_id}); no duplicate RO created. Status set to ${status}.`,
+                        body:  noteBody,
                     });
                 } catch (e) { console.warn('Conversion note insert failed (non-fatal):', e); }
             }
@@ -2431,11 +2493,12 @@
             const typeLabel = roType === 'hybrid' ? 'Hybrid (New + Warranty)' : roType === 'warranty' ? 'Warranty' : 'Standard';
             // [v1.13] When we attached to an existing scheduled RO, say so plainly so staff
             // don't think a duplicate was made — and word the lead verb accordingly.
-            const createdVerb = reusedScheduledRO ? 'updated' : 'created';
+            const createdVerb = (reusedScheduledRO || attachedToActiveRO) ? 'updated' : 'created';
             document.getElementById('successMsg').innerHTML = `
                 ${modeLabel} — ${typeLabel} RO ${createdVerb} for <strong>${escapeHtml(customerName)}</strong>.<br>
-                Status: <strong>${status}</strong>
+                Status: <strong>${escapeHtml(insertedRO.status || status)}</strong>
                 ${reusedScheduledRO ? '<br>↩ Attached to this customer\'s existing scheduled RO — no duplicate created.' : ''}
+                ${attachedToActiveRO ? '<br>↩ Attached to this customer\'s existing ACTIVE RO — no duplicate created.' : ''}
                 ${email && formState.mode === 'dropoff' ? '<br>A copy of the signed agreement has been sent to the customer\'s email.' : ''}
             `;
             goToStep(5);
@@ -2597,6 +2660,32 @@
     }
 
     // ── UTILITIES ─────────────────────────────────────────────────
+    // [v1.17 S165] Explicit-selection confirm dialog — shown at submit when the
+    // receptionist explicitly picked an existing RO that is already active (not a
+    // scheduled drop). Returns Promise<'attach'|'new'>. Touch-sized buttons; no
+    // dismiss without choosing so the decision is always deliberate.
+    function askAttachOrNew(existRO) {
+        return new Promise((resolve) => {
+            const ov = document.createElement('div');
+            ov.id = 'attachConfirmOverlay';
+            ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+            ov.innerHTML = `
+                <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:24px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.35);">
+                    <div style="font-size:2rem;margin-bottom:8px;">⚠️</div>
+                    <div style="font-weight:700;font-size:1.05rem;margin-bottom:6px;color:#0f172a;">This customer already has an active RO</div>
+                    <div style="color:#475569;font-size:0.9rem;line-height:1.45;margin-bottom:18px;">
+                        <strong>${escapeHtml(existRO.ro_id)}</strong> is currently <strong>${escapeHtml(existRO.status || '')}</strong>.<br>
+                        Is this drop-off part of that job, or a separate new job?
+                    </div>
+                    <button id="attachChoiceAttach" style="display:block;width:100%;margin:8px 0;padding:14px;border-radius:10px;border:none;background:#059669;color:#fff;font-size:1rem;font-weight:600;cursor:pointer;">↩ Same job — attach to ${escapeHtml(existRO.ro_id)}</button>
+                    <button id="attachChoiceNew" style="display:block;width:100%;margin:8px 0;padding:14px;border-radius:10px;border:2px solid #cbd5e1;background:#fff;color:#0f172a;font-size:1rem;font-weight:600;cursor:pointer;">➕ New job — create a separate RO</button>
+                </div>`;
+            document.body.appendChild(ov);
+            ov.querySelector('#attachChoiceAttach').onclick = () => { ov.remove(); resolve('attach'); };
+            ov.querySelector('#attachChoiceNew').onclick   = () => { ov.remove(); resolve('new'); };
+        });
+    }
+
     function escapeHtml(str) {
         const div = document.createElement('div');
         div.textContent = str;
