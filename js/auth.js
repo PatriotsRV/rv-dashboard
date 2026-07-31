@@ -805,6 +805,15 @@ export async function loadSavedToken() {
             window.supabaseSession = session;
             console.log('✅ Supabase session active — loading data');
 
+            // v1.487 (S165): dismiss any One Tap chooser already on screen.
+            // gisLoaded() prompts on !window.supabaseSession, and GSI script
+            // load races THIS probe (up to 8s) — so a healthy restore could
+            // strand the account chooser over a fully-loaded board (Roland,
+            // 7/31, hard refresh). cancel() is a documented no-op when no
+            // prompt is displayed; the fallback card hide is symmetric.
+            try { window.google?.accounts?.id?.cancel?.(); } catch (e) {}
+            hideGoogleSignInFallback();
+
             // Restore user from Supabase session
             if (!window.currentUser) {
                 const u = session.user;
