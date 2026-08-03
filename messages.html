@@ -2,6 +2,21 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.18 (Session 166, 2026-08-03): MARK UNREAD — the inverse of v1.14's
+    Mark read/seen (Roland: "we need both"). New "✉ Mark unread" button in
+    the details Status section, visible only when the convo is open and NOT
+    awaiting a reply (status=open + last_direction=outbound) — i.e. exactly
+    when Mark read is hidden; the two buttons swap. Click flips
+    last_direction -> 'inbound' (conversation stays OPEN; nothing sent),
+    which restores BOTH the Open-awaiting-reply UI state AND tonight's
+    4:30 PM send-unreplied-reminder digest — same predicate as mark read,
+    deliberately symmetric: you cannot re-flag the convo without also
+    re-arming the reminder. MANAGERS+ only (same conversations UPDATE /
+    conversation_events INSERT RLS as v1.14; a non-manager write would
+    silently no-op — S141 204 gotcha). Audited to conversation_events as
+    'marked_unread' (CHECK widened: conversation_events_marked_unread_s166.sql
+    — MUST be run live before this ships or the event INSERT throws).
+
     v1.17 (Session 161, 2026-07-28): LEAD CAPTURE + CREATE RO FROM LEAD.
     The New Contact modal captured only name + phone, so everything learned
     about a lead lived in the thread text. It now also captures EMAIL, RV
@@ -562,6 +577,10 @@
                          state (Thanks / Likes replies) without sending or closing. -->
                     <button class="mini-btn" id="markReadBtn" onclick="markConversationRead()" style="display:none; margin-top:6px;">&#10003; Mark read / seen</button>
                     <div id="markReadInfo" style="display:none; font-size:0.72rem; color:#8FA9C2; margin-top:4px;">Clears the awaiting-reply flag (and tonight's 4:30 reminder) for this conversation only.</div>
+                    <!-- v1.18 (S166): Mark unread — the inverse flip; re-flags the convo
+                         as awaiting a reply (and re-arms tonight's 4:30 reminder). -->
+                    <button class="mini-btn" id="markUnreadBtn" onclick="markConversationUnread()" style="display:none; margin-top:6px;">&#9993; Mark unread</button>
+                    <div id="markUnreadInfo" style="display:none; font-size:0.72rem; color:#8FA9C2; margin-top:4px;">Re-flags this conversation as awaiting a reply (and re-arms tonight's 4:30 reminder).</div>
                 </div>
                 <div class="details-section" id="reviewReqSection"><!-- v1.12 GH#40: manual review request (managers+) -->
                     <div class="details-label">Review</div>
@@ -706,7 +725,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.17';
+const PAGE_VERSION = 'messages v1.18';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -1472,6 +1491,10 @@ async function renderDetails() {
     const awaitingReply = c.status === 'open' && c.last_direction === 'inbound' && isManagerOrAdmin();
     document.getElementById('markReadBtn').style.display = awaitingReply ? '' : 'none';
     document.getElementById('markReadInfo').style.display = awaitingReply ? '' : 'none';
+    // v1.18 (S166): Mark unread — exact complement: open but NOT awaiting a reply.
+    const canMarkUnread = c.status === 'open' && c.last_direction === 'outbound' && isManagerOrAdmin();
+    document.getElementById('markUnreadBtn').style.display = canMarkUnread ? '' : 'none';
+    document.getElementById('markUnreadInfo').style.display = canMarkUnread ? '' : 'none';
 
     // Linked ROs by phone key (same match as webhook routing).
     const roBox = document.getElementById('detailROs');
@@ -1722,6 +1745,40 @@ async function markConversationRead() {
     } catch (err) {
         console.error('markConversationRead error:', err);
         showToast('Mark read failed: ' + (err.message || err), 'error');
+    }
+}
+// ── v1.18 (S166): Mark unread — the inverse of markConversationRead ──
+// Flips last_direction back to 'inbound' so the convo RE-ENTERS the
+// Open-awaiting-reply set AND tonight's send-unreplied-reminder query
+// (status=open + last_direction=inbound) — symmetric by design; you can't
+// re-flag without re-arming the reminder. Conversation stays OPEN, nothing
+// is sent. MANAGERS+ ONLY (same RLS pair as mark read; non-manager writes
+// silently no-op — S141 204 gotcha). Audited as 'marked_unread' (CHECK
+// widened by migration conversation_events_marked_unread_s166.sql — run
+// live BEFORE shipping or the event INSERT throws and rolls the flip's
+// user feedback into the error toast).
+async function markConversationUnread() {
+    const c = _activeConvo;
+    if (!c) return;
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can mark unread.', 'warning'); return; }
+    if (!(c.status === 'open' && c.last_direction === 'outbound')) { showToast('Already awaiting a reply.', 'info'); return; }
+    try {
+        const { error: upErr } = await getSB().from('conversations')
+            .update({ last_direction: 'inbound' }).eq('id', c.id);
+        if (upErr) throw upErr;
+        const { error: evErr } = await getSB().from('conversation_events').insert({
+            conversation_id: c.id,
+            event: 'marked_unread',
+            actor_email: currentUser.email,
+            old_value: 'outbound', new_value: 'inbound',
+        });
+        if (evErr) throw evErr;
+        showToast('Marked unread — flagged as awaiting a reply.', 'success');
+        await refreshAll();
+    } catch (err) {
+        console.error('markConversationUnread error:', err);
+        showToast('Mark unread failed: ' + (err.message || err), 'error');
     }
 }
 async function editCustomerName() {
@@ -2191,6 +2248,7 @@ Object.assign(window, {
     bcCheckAll, bcUpdateCount, saveStaffGroup, deleteStaffGroup, sendBroadcast, // v1.13 S158
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     markConversationRead, // v1.14 S160
+    markConversationUnread, // v1.18 S166
     closeBroadcastView, bcvToggleRecipients, bcvSend, // v1.15/v1.16 S160
     openLeadModal, closeLeadModal, saveLeadInfo, createROFromLead, // v1.17 S161
     editCustomerName, refreshAll, backToList, toggleDetails,
