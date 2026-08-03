@@ -2,6 +2,32 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.19 (Session 166, 2026-08-03): SERVICE CATEGORY FILTER (Roland: filter
+    the board by one or more RV Services, combinable with Open/All/Mine).
+    New 🛠 Service multi-select dropdown at the END of the filter row — NOT a
+    .filter-btn (the chip row's shared click handler is exclusive-select and
+    would clobber _activeFilter). It is an INDEPENDENT second layer: the
+    status chips keep their exact behavior and the service filter ANDs on
+    top (Mine + Roof, All + Solar, …). Checkbox list comes from
+    SERVICE_SILOS/SILO_TO_REPAIR_TYPE in js/config.js (same source as the RO
+    form — do NOT hardcode; labels differ from stored values).
+
+    MATCHING — two sources, deliberately (Roland's "RO not pegged" concern):
+    a convo matches a service if EITHER its own conversations.service_type
+    (lead fields, v1.17) OR any phone-linked live RO's repair_type (same
+    phoneKeyOf match the details panel + webhook routing use) contains it.
+    Both are comma-joined repair_type text; compared case-insensitively.
+    The RO side comes from a new lightweight repair_orders load in
+    loadConversations (phone + repair_type only, deleted_at null,
+    .limit(2000) — S151 gotcha: a bare select is a silent 1000-row window).
+    Convos with NO service from either source are reachable via the
+    "❔ No service tag" option — untagged work is findable, not invisible.
+
+    Search still overrides ALL filters including this one (v1.10b rule:
+    "find this person" beats "show me open work"). Broadcasts chip view
+    ignores the service filter (it renders staff_broadcasts, not convos).
+    Client-side only — no DB change, no migration.
+
     v1.18 (Session 166, 2026-08-03): MARK UNREAD — the inverse of v1.14's
     Mark read/seen (Roland: "we need both"). New "✉ Mark unread" button in
     the details Status section, visible only when the convo is open and NOT
@@ -323,6 +349,33 @@
             border-radius: 14px; padding: 3px 12px; font-size: 0.75rem; cursor: pointer; font-family: inherit;
         }
         .filter-btn.active { background: var(--celeste); color: white; border-color: var(--celeste-deep); }
+        /* v1.19 (S166): Service Category filter — own class, NOT .filter-btn
+           (the chip row's shared handler is exclusive-select). */
+        .svc-filter-wrap { position: relative; display: inline-block; }
+        .svc-filter-btn {
+            background: var(--celeste-mist); color: var(--text-secondary); border: 1px solid var(--border-color);
+            border-radius: 14px; padding: 3px 12px; font-size: 0.75rem; cursor: pointer; font-family: inherit;
+        }
+        .svc-filter-btn.active { background: var(--celeste); color: white; border-color: var(--celeste-deep); }
+        .svc-pop {
+            display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
+            background: white; border: 1px solid var(--border-color); border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(15,42,64,0.18); padding: 8px 10px; min-width: 190px;
+        }
+        .svc-pop.show { display: block; }
+        .svc-pop label {
+            display: flex; align-items: center; gap: 8px; padding: 5px 2px;
+            font-size: 0.82rem; color: var(--text-primary); cursor: pointer; white-space: nowrap;
+        }
+        .svc-pop label input { margin: 0; }
+        .svc-pop .svc-clear {
+            display: block; width: 100%; margin-top: 6px; text-align: center;
+            background: var(--celeste-mist); border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 4px; font-size: 0.75rem; cursor: pointer; font-family: inherit; color: var(--text-secondary);
+        }
+        @media (max-width: 768px) {
+            .svc-pop label { padding: 8px 2px; font-size: 0.9rem; } /* bigger tap targets */
+        }
         .convo-list { flex: 1; overflow-y: auto; }
         .convo-row {
             display: flex; gap: 10px; padding: 10px 12px; cursor: pointer;
@@ -492,6 +545,12 @@
                     <button class="filter-btn" data-filter="mine">Mine</button>
                     <!-- v1.15 (S160): broadcast history chip — managers+ only -->
                     <button class="filter-btn" data-filter="broadcasts" id="bcFilterBtn" style="display:none;">&#128226; Broadcasts</button>
+                    <!-- v1.19 (S166): Service Category multi-select — ANDs with the
+                         status chips above; options populated from js/config.js -->
+                    <span class="svc-filter-wrap" id="svcFilterWrap">
+                        <button class="svc-filter-btn" id="svcFilterBtn" onclick="svcFilterToggle()" title="Filter by RV Service — combines with the status filters">&#128736; Service &#9662;</button>
+                        <div class="svc-pop" id="svcPop"></div>
+                    </span>
                 </div>
             </div>
             <div id="convoList" class="convo-list">
@@ -725,7 +784,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.18';
+const PAGE_VERSION = 'messages v1.19';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -739,6 +798,11 @@ let _conversations = [];
 let _snippets = {};          // phone_key -> last message body
 let _activeConvo = null;
 let _activeFilter = 'open';   // v1.4: "Open" is the default filter
+// v1.19 (S166): Service Category filter — Set of canonical repair_type values
+// (SILO_TO_REPAIR_TYPE), lowercased, plus the special '__untagged__' token.
+// Independent of _activeFilter; empty Set = filter off.
+let _serviceFilter = new Set();
+let _roServicesByPhone = {};  // phone_key -> Set(lowercased repair_type values) from live ROs
 let _pollTimer = null;
 
 function getSB() {
@@ -1060,6 +1124,29 @@ async function loadConversations() {
     if (error) { console.error('loadConversations error:', error); showToast('Error loading conversations: ' + error.message, 'error'); return; }
     _conversations = data || [];
 
+    // v1.19 (S166): live-RO services by phone key, for the Service Category
+    // filter (a convo counts as e.g. Roof if ITS RO is pegged Roof, even when
+    // conversations.service_type is blank — Roland's "RO not pegged" concern
+    // cuts both ways, so we match from both sources). Same phoneKeyOf match
+    // as the details panel + webhook routing. .limit(2000): S151 gotcha —
+    // a bare select is a silent 1000-row window; live ROs are well under this.
+    try {
+        const { data: svcRos, error: svcErr } = await getSB()
+            .from('repair_orders')
+            .select('phone, repair_type')
+            .is('deleted_at', null)
+            .not('phone', 'is', null)
+            .limit(2000);
+        if (svcErr) throw svcErr;
+        _roServicesByPhone = {};
+        (svcRos || []).forEach(r => {
+            const key = phoneKeyOf(r.phone);
+            if (!key || !r.repair_type) return;
+            const set = _roServicesByPhone[key] || (_roServicesByPhone[key] = new Set());
+            String(r.repair_type).split(',').map(s => s.trim().toLowerCase()).filter(Boolean).forEach(v => set.add(v));
+        });
+    } catch (e) { console.error('service-filter RO load failed:', e); /* filter degrades to convo-only matching */ }
+
     // Snippets: newest message body per phone_key (v1 scale — recent 400 rows).
     const { data: msgs, error: mErr } = await getSB()
         .from('messages')
@@ -1087,6 +1174,14 @@ function filteredConversations() {
         if (!searching && _activeFilter === 'unresponded' && !(c.last_direction === 'inbound' && c.status === 'open')) return false;
         if (!searching && _activeFilter === 'unassigned' && (c.assigned_to || c.status !== 'open')) return false;
         if (!searching && _activeFilter === 'mine' && ((c.assigned_to || '').toLowerCase() !== myEmail || c.status !== 'open')) return false;
+        // v1.19 (S166): Service Category layer — ANDs with the status chip
+        // above; search overrides it like every other filter (v1.10b rule).
+        if (!searching && _serviceFilter.size) {
+            const svcs = convoServiceSet(c);
+            const tagMatch = [..._serviceFilter].some(v => v !== '__untagged__' && svcs.has(v));
+            const untaggedMatch = _serviceFilter.has('__untagged__') && svcs.size === 0;
+            if (!tagMatch && !untaggedMatch) return false;
+        }
         if (q) {
             const hay = ((c.customer_name || '') + ' ' + (c.display_phone || '') + ' ' + c.phone_key).toLowerCase();
             if (!hay.includes(q)) return false;
@@ -1094,6 +1189,49 @@ function filteredConversations() {
         return true;
     });
 }
+// v1.19 (S166): a conversation's effective services = its own service_type
+// (lead fields, v1.17) UNION any phone-linked live RO's repair_type.
+// Both are comma-joined repair_type text; normalized to lowercase.
+function convoServiceSet(c) {
+    const set = new Set();
+    if (c.service_type) String(c.service_type).split(',').map(s => s.trim().toLowerCase()).filter(Boolean).forEach(v => set.add(v));
+    const roSet = _roServicesByPhone[c.phone_key];
+    if (roSet) roSet.forEach(v => set.add(v));
+    return set;
+}
+// ── v1.19 (S166): Service Category filter UI ─────────────────────────
+function svcFilterPopulate() {
+    const pop = document.getElementById('svcPop');
+    pop.innerHTML = LEAD_SERVICE_TYPES.map(s => `
+        <label><input type="checkbox" value="${escapeHtml(s.value.toLowerCase())}" onchange="svcFilterChanged(this)"> ${escapeHtml(s.display)}</label>`).join('')
+        + `<label><input type="checkbox" value="__untagged__" onchange="svcFilterChanged(this)"> &#10068; No service tag</label>`
+        + `<button class="svc-clear" onclick="svcFilterClear()">Clear</button>`;
+}
+function svcFilterToggle() {
+    document.getElementById('svcPop').classList.toggle('show');
+}
+function svcFilterChanged(cb) {
+    if (cb.checked) _serviceFilter.add(cb.value); else _serviceFilter.delete(cb.value);
+    svcFilterButtonSync();
+    renderConvoList();
+}
+function svcFilterClear() {
+    _serviceFilter.clear();
+    document.querySelectorAll('#svcPop input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+    svcFilterButtonSync();
+    renderConvoList();
+}
+function svcFilterButtonSync() {
+    const btn = document.getElementById('svcFilterBtn');
+    const n = _serviceFilter.size;
+    btn.innerHTML = n ? `&#128736; Service (${n}) &#9662;` : '&#128736; Service &#9662;';
+    btn.classList.toggle('active', n > 0);
+}
+// Close the popover on any outside click/tap.
+document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('svcFilterWrap');
+    if (wrap && !wrap.contains(e.target)) document.getElementById('svcPop').classList.remove('show');
+});
 function renderConvoList() {
     const list = document.getElementById('convoList');
     // v1.15 (S160): Broadcasts chip renders broadcast history, not conversations.
@@ -2249,11 +2387,13 @@ Object.assign(window, {
     inboxSend, assignConversation, unassignConversation, toggleClosed,
     markConversationRead, // v1.14 S160
     markConversationUnread, // v1.18 S166
+    svcFilterToggle, svcFilterChanged, svcFilterClear, // v1.19 S166
     closeBroadcastView, bcvToggleRecipients, bcvSend, // v1.15/v1.16 S160
     openLeadModal, closeLeadModal, saveLeadInfo, createROFromLead, // v1.17 S161
     editCustomerName, refreshAll, backToList, toggleDetails,
 });
 
+svcFilterPopulate(); // v1.19 (S166): build the Service Category checkboxes from config
 initAuth();
 </script>
 </body>
