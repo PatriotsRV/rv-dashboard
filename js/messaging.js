@@ -79,6 +79,22 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             return `<span style="font-size:0.62rem; color:${color}; font-weight:700;">${escapeHtml(label)}</span>`;
         }
 
+        // S166 (v1.21): make URLs in message bodies clickable — needed so the
+        // staff-side view of a link-based video send is tappable. Escape FIRST,
+        // then wrap URL runs in anchors (matching on the escaped text; the
+        // escaped &amp; inside an href attribute is valid HTML). Video-extension
+        // URLs open in the in-app preview overlay (class msg-prev); everything
+        // else is a normal new-tab link.
+        function _linkifyBody(text) {
+            const esc = escapeHtml(text || '');
+            return esc.replace(/(https?:\/\/[^\s<]+)/g, (u) => {
+                const isVideo = _VIDEO_EXT_RE.test(u.split('?')[0]) || _VIDEO_EXT_RE.test(u);
+                return isVideo
+                    ? `<a href="${u}" target="_blank" rel="noopener" class="msg-prev" data-kind="video" style="color:var(--accent-info); word-break:break-all;">${u}</a>`
+                    : `<a href="${u}" target="_blank" rel="noopener" style="color:var(--accent-info); word-break:break-all;">${u}</a>`;
+            });
+        }
+
         function _bubble(m) {
             const outbound = (m.direction || 'outbound') === 'outbound';
             const when = m.created_at ? new Date(m.created_at).toLocaleString('en-US', { month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
@@ -101,12 +117,18 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                     const name = decodeURIComponent(String(u).split('?')[0].split('/').pop() || 'document.pdf');
                     return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" class="msg-prev" data-kind="pdf" data-name="${escapeHtml(name)}" style="display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.78rem; color:var(--accent-info); text-decoration:none; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\u{1F4C4} ${escapeHtml(name)}</a>`;
                 }
+                // S166 (v1.21): inbound videos (customer texts us a clip — Textly
+                // relays it in media_url) render a ▶ chip, not a broken <img>.
+                if (_VIDEO_EXT_RE.test(String(u).split('?')[0]) || _VIDEO_EXT_RE.test(String(u))) {
+                    const name = decodeURIComponent(String(u).split('?')[0].split('/').pop() || 'video');
+                    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" class="msg-prev" data-kind="video" data-name="${escapeHtml(name)}" style="display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.78rem; color:var(--accent-info); text-decoration:none; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">▶️ ${escapeHtml(name)}</a>`;
+                }
                 return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" class="msg-prev" data-kind="img"><img src="${escapeHtml(u)}" alt="attachment" loading="lazy" style="max-width:200px; max-height:200px; border-radius:8px; display:block; margin-top:6px; cursor:zoom-in;"></a>`;
             }).join('');
             return `
                 <div style="display:flex; justify-content:${align}; margin-bottom:8px;">
                     <div style="max-width:78%; background:${bg}; border:1px solid ${border}; border-radius:12px; padding:8px 11px;">
-                        <div style="font-size:0.85rem; color:var(--text-primary); white-space:pre-wrap; word-break:break-word;">${escapeHtml(m.body || '')}</div>
+                        <div style="font-size:0.85rem; color:var(--text-primary); white-space:pre-wrap; word-break:break-word;">${_linkifyBody(m.body || '')}</div>
                         ${media}
                         <div style="display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:4px;">
                             ${roTag}
@@ -163,6 +185,9 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                 body.innerHTML = `<img src="${escapeHtml(url)}" alt="attachment" style="max-width:92vw; max-height:82vh; border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,0.5);">`;
             } else if (kind === 'pdf') {
                 body.innerHTML = `<iframe src="${escapeHtml(url)}" style="width:min(92vw,900px); height:82vh; border:none; border-radius:10px; background:white;"></iframe>`;
+            } else if (kind === 'video') {
+                // S166 (v1.21): playsinline keeps iOS from hijacking into its own player.
+                body.innerHTML = `<video src="${escapeHtml(url)}" controls autoplay playsinline style="max-width:92vw; max-height:82vh; border-radius:10px; background:black; box-shadow:0 8px 30px rgba(0,0,0,0.5);"></video>`;
             } else {
                 body.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#8FC4EF; font-size:0.95rem;">&#11015; Download attachment</a>`;
             }
@@ -268,6 +293,14 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         const MSG_MEDIA_BUCKET = 'message-media';
         const MSG_MEDIA_MAX_BYTES = 5 * 1024 * 1024; // MMS carrier ceiling; we compress toward ~1MB
         const MSG_MEDIA_MAX_COUNT = 5;               // S158: per-send attachment cap
+        // S166 (messages v1.21): videos are LINK-BASED, never MMS — carriers cap
+        // MMS payload ~1MB (S158a evidence) and a phone video is 10-100MB+. A
+        // video attach uploads to the public message-media bucket and the SEND
+        // puts its public URL in the TEXT BODY (tap-to-watch link; public bucket
+        // = the link never expires, unlike signed URLs). 50MB = Supabase's
+        // default per-file upload cap.
+        const MSG_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+        const _VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|3gp)(\?|#|$)/i;
 
         const COMPOSER_EMOJIS = ['\u{1F44D}','\u{1F44C}','\u{1F64F}','\u{1F44F}','\u{1F4AA}','\u{1F91D}','\u{1F44B}','✅','\u{1F389}','⭐','\u{1F525}','❤️','\u{1F600}','\u{1F601}','\u{1F602}','\u{1F605}','\u{1F642}','\u{1F609}','\u{1F60E}','\u{1F914}','\u{1F62E}','\u{1F622}','⚠️','❗','❓','\u{1F4C5}','⏰','\u{1F4DE}','\u{1F4AC}','\u{1F4B0}','\u{1F9FE}','\u{1F527}','\u{1F529}','\u{1F6E0}️','\u{1F690}','\u{1F3D5}️','☀️','\u{1F327}️','\u{1F4F7}','\u{1F4CE}'];
 
@@ -276,10 +309,10 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         export function composerExtrasHtml() {
             return `
                 <div id="msgExtrasRow" style="position:relative; display:flex; align-items:center; gap:10px; margin:8px 0 10px;">
-                    <button type="button" id="msgAttachBtn" title="Attach photos or PDFs (MMS, up to 5)" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
+                    <button type="button" id="msgAttachBtn" title="Attach photos, PDFs (MMS) or videos (sent as a link) — up to 5" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F4CE}</button>
                     <button type="button" id="msgEmojiBtn" title="Insert emoji" style="background:transparent; border:1px solid var(--border-color); border-radius:6px; padding:3px 9px; font-size:0.85rem; cursor:pointer; color:var(--text-secondary);">\u{1F60A}</button>
                     <span id="msgAttachChip" style="display:none; flex-wrap:wrap; align-items:center; gap:6px; font-size:0.72rem; color:var(--accent-info); max-width:340px;"></span>
-                    <input type="file" id="msgAttach" accept="image/*,application/pdf" multiple style="display:none;">
+                    <input type="file" id="msgAttach" accept="image/*,application/pdf,video/*" multiple style="display:none;">
                     <div id="msgEmojiPop" style="display:none; position:absolute; bottom:34px; left:0; z-index:50; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:10px; padding:8px; width:266px; box-shadow:0 8px 24px rgba(0,0,0,0.45);"></div>
                 </div>
                 <div id="msgSigPreview" style="display:none; font-size:0.7rem; color:var(--text-secondary); border-left:2px solid var(--border-color); padding:2px 0 2px 8px; margin:-2px 0 8px; white-space:pre-wrap;"></div>`;
@@ -319,7 +352,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             if (_msgAttachments.length) {
                 chip.style.display = 'inline-flex';
                 chip.innerHTML = _msgAttachments.map((a, i) => {
-                    const icon = /\.pdf$/i.test(a.name || '') ? '\u{1F4C4}' : '\u{1F5BC}️';
+                    const icon = a.kind === 'video' ? '\u{1F3AC}' : (/\.pdf$/i.test(a.name || '') ? '\u{1F4C4}' : '\u{1F5BC}️');
                     return `<span style="display:inline-flex; align-items:center; gap:4px; border:1px solid rgba(96,165,250,0.4); border-radius:6px; padding:2px 8px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon} ${escapeHtml(a.name)} <a href="#" class="msgAttachRm" data-idx="${i}" title="Remove attachment" style="color:#ef4444; text-decoration:none; font-weight:700;">&times;</a></span>`;
                 }).join('');
                 chip.querySelectorAll('.msgAttachRm').forEach(el => el.addEventListener('click', (e) => {
@@ -373,20 +406,27 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             try {
                 for (const file of files.slice(0, room)) {
                     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+                    // S166 (v1.21): videos are link-based — no compression, own 50MB
+                    // cap, and the SEND treats them as body links, never MMS media.
+                    const isVideo = /^video\//.test(file.type) || _VIDEO_EXT_RE.test(file.name || '');
                     // PDFs pass through untouched; images compress toward MMS size.
-                    const upload = isPdf ? file : await _compressImage(file);
-                    if (upload.size > MSG_MEDIA_MAX_BYTES) {
+                    const upload = (isPdf || isVideo) ? file : await _compressImage(file);
+                    if (isVideo && upload.size > MSG_VIDEO_MAX_BYTES) {
+                        showToast(`"${upload.name}" is over 50MB — too big to upload. Trim the clip and retry. Skipped.`, 'warning', { duration: 8000 });
+                        continue;
+                    }
+                    if (!isVideo && upload.size > MSG_MEDIA_MAX_BYTES) {
                         showToast(`"${upload.name}" is over 5MB${isPdf ? '' : ' even after compression'} - MMS carriers will reject it. Skipped.`, 'warning', { duration: 8000 });
                         continue;
                     }
-                    const safe = (upload.name || (isPdf ? 'document.pdf' : 'photo.jpg')).replace(/[^A-Za-z0-9._-]/g, '_').slice(-60);
-                    const path = `mms/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+                    const safe = (upload.name || (isPdf ? 'document.pdf' : isVideo ? 'video.mp4' : 'photo.jpg')).replace(/[^A-Za-z0-9._-]/g, '_').slice(-60);
+                    const path = `${isVideo ? 'video' : 'mms'}/${new Date().toISOString().slice(0, 7)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
                     const { error: upErr } = await getSB().storage.from(MSG_MEDIA_BUCKET)
                         .upload(path, upload, { contentType: upload.type || (isPdf ? 'application/pdf' : undefined), upsert: false });
                     if (upErr) { showToast(`Upload failed for "${upload.name}": ` + upErr.message, 'error', { duration: 8000 }); continue; }
                     const { data: pub } = getSB().storage.from(MSG_MEDIA_BUCKET).getPublicUrl(path);
                     if (!pub?.publicUrl) { showToast(`"${upload.name}" uploaded but no public URL came back.`, 'error'); continue; }
-                    _msgAttachments.push({ url: pub.publicUrl, name: upload.name || (isPdf ? 'document' : 'photo') });
+                    _msgAttachments.push({ url: pub.publicUrl, name: upload.name || (isPdf ? 'document' : isVideo ? 'video' : 'photo'), kind: isVideo ? 'video' : (isPdf ? 'pdf' : 'img') });
                 }
                 _renderAttachChip();
             } catch (e) {
@@ -499,7 +539,16 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             let body = (bodyEl.value || '').trim();
             if (!phone || phone.length < 11) { showToast('Enter a valid phone number in +1XXXXXXXXXX format.', 'warning'); return; }
             // S151b: a photo with no text is a valid MMS. S158: multi-attach.
-            if (!body && !_msgAttachments.length) { showToast('Type a message (or attach a photo/PDF) first.', 'warning'); return; }
+            if (!body && !_msgAttachments.length) { showToast('Type a message (or attach a photo/PDF/video) first.', 'warning'); return; }
+
+            // S166 (v1.21): videos go as LINKS IN THE BODY, never as MMS media
+            // (carriers cap MMS ~1MB; the public-bucket URL never expires).
+            const videoAtt = _msgAttachments.filter(a => a.kind === 'video');
+            const mmsAtt = _msgAttachments.filter(a => a.kind !== 'video');
+            if (videoAtt.length) {
+                const lines = videoAtt.map(a => '\u{1F3AC} Video: ' + a.url).join('\n');
+                body = body ? body + '\n\n' + lines : lines;
+            }
 
             // S151b: per-user signature (staff.sms_signature) auto-appends —
             // the preview under the composer shows exactly what will be added.
@@ -515,13 +564,15 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                 // and silently strip the rest). So we now chunk like phones do:
                 // send #1 = text (+signature) + first attachment; each remaining
                 // attachment goes as its own media-only follow-up MMS.
+                // (v1.21: only image/PDF attachments chunk as MMS — video links
+                // are already merged into `body` above.)
                 const sends = [];
-                if (_msgAttachments.length === 0) {
+                if (mmsAtt.length === 0) {
                     sends.push({ body, media_url: null });
                 } else {
-                    sends.push({ body, media_url: _msgAttachments[0].url });
-                    for (let i = 1; i < _msgAttachments.length; i++) {
-                        sends.push({ body: '', media_url: _msgAttachments[i].url });
+                    sends.push({ body, media_url: mmsAtt[0].url });
+                    for (let i = 1; i < mmsAtt.length; i++) {
+                        sends.push({ body: '', media_url: mmsAtt[i].url });
                     }
                 }
                 let sentCount = 0;

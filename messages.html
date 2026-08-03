@@ -2,6 +2,25 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.21 (Session 166, 2026-08-03): VIDEO — LINK-BASED SEND + INBOUND RENDER
+    (Roland: "are we able to send videos?"). All in js/messaging.js. MMS is
+    the WRONG PIPE for video (carriers cap payload ~1MB — S158a evidence;
+    phone videos are 10-100MB+), so videos NEVER go as MMS media:
+    • SEND: composer 📎 now accepts video/* (50MB cap = Supabase per-file
+      default; no compression). Upload goes to the PUBLIC message-media
+      bucket under video/ — public URL never expires (signed URLs would die
+      in the customer's thread) — and the send merges "🎬 Video: <url>"
+      lines into the TEXT BODY before the signature. Image/PDF attachments
+      still chunk one-per-MMS exactly as before (S158a); a mixed send =
+      body-with-links + first image, then media-only follow-ups.
+    • INBOUND: media_url entries with video extensions (.mp4/.mov/.m4v/
+      .webm/.3gp) render a ▶ chip instead of a broken <img>, and play in
+      the v1.20 preview overlay (<video controls playsinline>).
+    • BODIES LINKIFY: URLs in message text are now clickable (escape-first,
+      then wrap) — so the staff-side view of a video send is tappable;
+      video-extension links open in the overlay, other links new-tab.
+    No DB change, no edge-fn change (textly-send passes body untouched).
+
     v1.20 (Session 166, 2026-08-03): IN-APP ATTACHMENT PREVIEW (Roland:
     customer attachments required a download to view). Lives ENTIRELY in
     js/messaging.js — bubble attachments (images + 📄 PDF chips) gain class
@@ -796,7 +815,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.20';
+const PAGE_VERSION = 'messages v1.21';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
