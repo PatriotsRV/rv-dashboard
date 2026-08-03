@@ -2,6 +2,18 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.20 (Session 166, 2026-08-03): IN-APP ATTACHMENT PREVIEW (Roland:
+    customer attachments required a download to view). Lives ENTIRELY in
+    js/messaging.js — bubble attachments (images + 📄 PDF chips) gain class
+    msg-prev, and a document-level delegated click handler opens a
+    fullscreen overlay (image inline / PDF iframe / download fallback,
+    "Open in new tab" escape hatch, backdrop/✕/Esc close). Because the
+    handler is delegated and the overlay self-builds on <body>, BOTH render
+    surfaces get it with no markup change here: this board AND the
+    index.html RO thread modal (index.html NOT bumped — JS-only, rides the
+    messages tag like the S158 multi-attach precedent). Anchor hrefs are
+    kept as the no-JS fallback. No DB change.
+
     v1.19 (Session 166, 2026-08-03): SERVICE CATEGORY FILTER (Roland: filter
     the board by one or more RV Services, combinable with Open/All/Mine).
     New 🛠 Service multi-select dropdown at the END of the filter row — NOT a
@@ -784,7 +796,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.19';
+const PAGE_VERSION = 'messages v1.20';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 

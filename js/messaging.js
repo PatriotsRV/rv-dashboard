@@ -94,11 +94,14 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             // S158 (ER d62a26e4): PDFs render as a document chip, not a broken <img>.
             const media = mediaList.filter(Boolean).map(u => {
                 const isPdf = /\.pdf(\?|#|$)/i.test(String(u).split('?')[0]) || /\.pdf(\?|#|$)/i.test(String(u));
+                // S166 (messages v1.20): class msg-prev + data-kind divert the click
+                // to the in-app preview overlay (delegated handler below). The
+                // anchor href stays as the no-JS / handler-failure fallback.
                 if (isPdf) {
                     const name = decodeURIComponent(String(u).split('?')[0].split('/').pop() || 'document.pdf');
-                    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.78rem; color:var(--accent-info); text-decoration:none; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\u{1F4C4} ${escapeHtml(name)}</a>`;
+                    return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" class="msg-prev" data-kind="pdf" data-name="${escapeHtml(name)}" style="display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:0.78rem; color:var(--accent-info); text-decoration:none; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\u{1F4C4} ${escapeHtml(name)}</a>`;
                 }
-                return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener"><img src="${escapeHtml(u)}" alt="attachment" loading="lazy" style="max-width:200px; max-height:200px; border-radius:8px; display:block; margin-top:6px;"></a>`;
+                return `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" class="msg-prev" data-kind="img"><img src="${escapeHtml(u)}" alt="attachment" loading="lazy" style="max-width:200px; max-height:200px; border-radius:8px; display:block; margin-top:6px; cursor:zoom-in;"></a>`;
             }).join('');
             return `
                 <div style="display:flex; justify-content:${align}; margin-bottom:8px;">
@@ -117,6 +120,66 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
 
         // Exported for messages.html (S138 PB inbox) — same renderer, one source.
         export function bubbleHtml(m) { return _bubble(m); }
+
+        // ── S166 (messages v1.20): in-app attachment preview ────────────
+        // Roland: inbound attachments required a download to view. Clicking
+        // any bubble attachment (image or 📄 PDF chip) now opens a fullscreen
+        // overlay INSIDE the app — image at up to 92vw/82vh, PDF in an
+        // <iframe> (Supabase signed URLs serve inline content-disposition, so
+        // iframes render them; iOS Safari shows page 1 only — the header's
+        // "Open in new tab" link is the full-fidelity escape hatch for that
+        // and for any host that force-downloads). Self-contained: overlay is
+        // built on demand and appended to <body>, and the click handler is
+        // DELEGATED at document level, so BOTH render surfaces (messages.html
+        // board + the index.html RO thread modal) get it with zero markup
+        // changes. Backdrop click, ✕, and Esc all close. Unknown types fall
+        // back to a download link.
+        let _mediaPrevOverlay = null;
+        function _ensureMediaPrevOverlay() {
+            if (_mediaPrevOverlay) return _mediaPrevOverlay;
+            const ov = document.createElement('div');
+            ov.id = 'msgMediaPreview';
+            ov.style.cssText = 'display:none; position:fixed; inset:0; z-index:9999; background:rgba(10,20,30,0.82); align-items:center; justify-content:center; flex-direction:column; padding:16px;';
+            ov.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px; width:min(92vw,900px); margin-bottom:8px;">
+                    <div id="msgMediaPrevName" style="flex:1; color:#E4EFF8; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></div>
+                    <a id="msgMediaPrevOpen" href="#" target="_blank" rel="noopener" style="color:#8FC4EF; font-size:0.8rem; text-decoration:none; white-space:nowrap;">&#8599; Open in new tab</a>
+                    <button id="msgMediaPrevClose" style="background:none; border:none; color:#E4EFF8; font-size:1.4rem; cursor:pointer; line-height:1; padding:2px 6px;">&times;</button>
+                </div>
+                <div id="msgMediaPrevBody" style="max-width:92vw; max-height:82vh; display:flex; align-items:center; justify-content:center;"></div>`;
+            document.body.appendChild(ov);
+            ov.addEventListener('click', (e) => { if (e.target === ov) closeMediaPreview(); });
+            ov.querySelector('#msgMediaPrevClose').addEventListener('click', closeMediaPreview);
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMediaPreview(); });
+            _mediaPrevOverlay = ov;
+            return ov;
+        }
+        export function openMediaPreview(url, kind, name) {
+            const ov = _ensureMediaPrevOverlay();
+            ov.querySelector('#msgMediaPrevName').textContent = name || decodeURIComponent(String(url).split('?')[0].split('/').pop() || '');
+            ov.querySelector('#msgMediaPrevOpen').href = url;
+            const body = ov.querySelector('#msgMediaPrevBody');
+            if (kind === 'img') {
+                body.innerHTML = `<img src="${escapeHtml(url)}" alt="attachment" style="max-width:92vw; max-height:82vh; border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,0.5);">`;
+            } else if (kind === 'pdf') {
+                body.innerHTML = `<iframe src="${escapeHtml(url)}" style="width:min(92vw,900px); height:82vh; border:none; border-radius:10px; background:white;"></iframe>`;
+            } else {
+                body.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:#8FC4EF; font-size:0.95rem;">&#11015; Download attachment</a>`;
+            }
+            ov.style.display = 'flex';
+        }
+        export function closeMediaPreview() {
+            if (!_mediaPrevOverlay) return;
+            _mediaPrevOverlay.style.display = 'none';
+            _mediaPrevOverlay.querySelector('#msgMediaPrevBody').innerHTML = ''; // stop iframe/img loads
+        }
+        // Delegated: catches attachment clicks in EVERY thread render surface.
+        document.addEventListener('click', (e) => {
+            const a = e.target.closest && e.target.closest('a.msg-prev');
+            if (!a) return;
+            e.preventDefault();
+            openMediaPreview(a.getAttribute('href'), a.dataset.kind || '', a.dataset.name || '');
+        });
 
         // S142 (Kenect import): media_url entries that aren't http(s) are bare
         // PRIVATE-bucket storage paths ('kenect-media/<convId>/<msgId>-<attId>.ext').
@@ -523,4 +586,5 @@ Object.assign(window, {
   sendCustomerMessage,
   initComposerExtras,      // S151b
   refreshSignaturePreview, // S151b
+  openMediaPreview, closeMediaPreview, // S166 messages v1.20
 });
