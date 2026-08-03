@@ -297,9 +297,14 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         // MMS payload ~1MB (S158a evidence) and a phone video is 10-100MB+. A
         // video attach uploads to the public message-media bucket and the SEND
         // puts its public URL in the TEXT BODY (tap-to-watch link; public bucket
-        // = the link never expires, unlike signed URLs). 50MB = Supabase's
-        // default per-file upload cap.
-        const MSG_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+        // = the link never expires, unlike signed URLs). Cap raised 50MB → 500MB
+        // same session (Roland's first real clip, IMG_3819.mov, blew the 50MB
+        // guess): the PROJECT storage limit is 1GB (verified in dashboard —
+        // message-media shows "Unset (1 GB)"), so this client cap is the only
+        // gate. 500MB ≈ several minutes of 1080p; single-shot upload, so bigger
+        // files on shop Wi-Fi = long ⏳ and a dropped connection restarts —
+        // switch to resumable (TUS) uploads if that starts to bite.
+        const MSG_VIDEO_MAX_BYTES = 500 * 1024 * 1024;
         const _VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|3gp)(\?|#|$)/i;
 
         const COMPOSER_EMOJIS = ['\u{1F44D}','\u{1F44C}','\u{1F64F}','\u{1F44F}','\u{1F4AA}','\u{1F91D}','\u{1F44B}','✅','\u{1F389}','⭐','\u{1F525}','❤️','\u{1F600}','\u{1F601}','\u{1F602}','\u{1F605}','\u{1F642}','\u{1F609}','\u{1F60E}','\u{1F914}','\u{1F62E}','\u{1F622}','⚠️','❗','❓','\u{1F4C5}','⏰','\u{1F4DE}','\u{1F4AC}','\u{1F4B0}','\u{1F9FE}','\u{1F527}','\u{1F529}','\u{1F6E0}️','\u{1F690}','\u{1F3D5}️','☀️','\u{1F327}️','\u{1F4F7}','\u{1F4CE}'];
@@ -412,7 +417,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                     // PDFs pass through untouched; images compress toward MMS size.
                     const upload = (isPdf || isVideo) ? file : await _compressImage(file);
                     if (isVideo && upload.size > MSG_VIDEO_MAX_BYTES) {
-                        showToast(`"${upload.name}" is over 50MB — too big to upload. Trim the clip and retry. Skipped.`, 'warning', { duration: 8000 });
+                        showToast(`"${upload.name}" is over 500MB — too big to upload. Trim the clip and retry. Skipped.`, 'warning', { duration: 8000 });
                         continue;
                     }
                     if (!isVideo && upload.size > MSG_MEDIA_MAX_BYTES) {

@@ -2,6 +2,11 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.21b (Session 166, 2026-08-03, same session): video cap 50MB → 500MB
+    (js/messaging.js MSG_VIDEO_MAX_BYTES). Roland's first real clip
+    (IMG_3819.mov) blew the 50MB guess; the project storage limit is 1GB
+    (dashboard-verified), so the client cap was the only gate. No other change.
+
     v1.21 (Session 166, 2026-08-03): VIDEO — LINK-BASED SEND + INBOUND RENDER
     (Roland: "are we able to send videos?"). All in js/messaging.js. MMS is
     the WRONG PIPE for video (carriers cap payload ~1MB — S158a evidence;
@@ -815,7 +820,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.21';
+const PAGE_VERSION = 'messages v1.21b';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
