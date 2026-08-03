@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!--
+    PRVS short-link redirect — v1.0 (Session 166, 2026-08-03)
+
+    Customer-facing target of the messages v1.22 branded video links:
+    https://patriotsrv.github.io/rv-dashboard/v.html?c=<code>
+
+    Resolves <code> against public.short_links (anon REST — customers are
+    never authenticated; the table is anon-SELECT by design, see migration
+    short_links_s166.sql) and location.replace()s to the stored URL (a
+    public message-media bucket object). NO supabase-js dependency — one
+    bare fetch keeps this page tiny and fast on a phone.
+
+    Kept deliberately dumb: no auth, no analytics, no logging. If the code
+    is missing/unknown or the lookup fails, it says so plainly and asks the
+    customer to reply to the text (staff can always re-send).
+
+    GH Pages gotcha (S146): links here must stay RELATIVE (./js/config.js)
+    — root-relative 404s under the /rv-dashboard/ project path.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Patriots RV Services</title>
+<style>
+    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background:#F0F7FD; color:#0F2A40; display:flex; align-items:center; justify-content:center;
+           min-height:100vh; text-align:center; padding:24px; box-sizing:border-box; }
+    .card { max-width:340px; }
+    .spin { width:28px; height:28px; border:3px solid #C4D9EC; border-top-color:#2E86C1;
+            border-radius:50%; margin:0 auto 14px; animation:s 0.8s linear infinite; }
+    @keyframes s { to { transform:rotate(360deg); } }
+    h1 { font-size:1.05rem; margin:0 0 6px; }
+    p  { font-size:0.85rem; color:#48657E; margin:0; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="spin" id="spin"></div>
+    <h1 id="msg">Opening your video&hellip;</h1>
+    <p id="sub">Patriots RV Services</p>
+</div>
+<script type="module">
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './js/config.js';
+const code = new URLSearchParams(location.search).get('c') || '';
+function fail(text) {
+    document.getElementById('spin').style.display = 'none';
+    document.getElementById('msg').textContent = text;
+    document.getElementById('sub').textContent = 'Please reply to our text message and we’ll send it again.';
+}
+if (!/^[A-Za-z0-9]{4,16}$/.test(code)) {
+    fail('This link looks incomplete.');
+} else {
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/short_links?code=eq.${encodeURIComponent(code)}&select=url`, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+        });
+        const rows = res.ok ? await res.json() : null;
+        if (rows && rows.length && rows[0].url && /^https:\/\//.test(rows[0].url)) {
+            location.replace(rows[0].url);
+        } else {
+            fail('We couldn’t find that video.');
+        }
+    } catch (e) {
+        fail('Something went wrong loading the video.');
+    }
+}
+</script>
+</body>
+</html>

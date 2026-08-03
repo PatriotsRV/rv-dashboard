@@ -306,6 +306,33 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         // switch to resumable (TUS) uploads if that starts to bite.
         const MSG_VIDEO_MAX_BYTES = 500 * 1024 * 1024;
         const _VIDEO_EXT_RE = /\.(mp4|mov|m4v|webm|3gp)(\?|#|$)/i;
+        // S166 (messages v1.22): customer-facing video links are SHORTENED —
+        // the raw storage URL leaks project ref + bucket + path (Roland, first
+        // live send). Self-hosted, not TinyURL/Bitly: public shortener domains
+        // get spam-flagged by SMS carriers, and our own v.html keeps the link
+        // branded (patriotsrv.github.io). Code row goes to public.short_links
+        // (migration short_links_s166.sql — anon SELECT by design, customers
+        // resolve unauthenticated). On ANY failure (table missing, RLS, 3
+        // collisions) the send falls back to the full URL — never blocks.
+        const SHORT_LINK_BASE = 'https://patriotsrv.github.io/rv-dashboard/v.html?c=';
+        const _SHORT_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/l/i
+        async function _shortenUrl(url) {
+            try {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const code = Array.from(crypto.getRandomValues(new Uint8Array(6)))
+                        .map(b => _SHORT_CODE_ALPHABET[b % _SHORT_CODE_ALPHABET.length]).join('');
+                    const { error } = await getSB().from('short_links')
+                        .insert({ code, url, created_by: (typeof currentUser !== 'undefined' && currentUser?.email) || null });
+                    if (!error) return SHORT_LINK_BASE + code;
+                    if (!/duplicate|unique|23505/i.test(error.message || String(error.code || ''))) throw error;
+                    // collision — regenerate and retry
+                }
+                throw new Error('3 code collisions');
+            } catch (e) {
+                console.error('short link failed (sending full URL instead):', e);
+                return url;
+            }
+        }
 
         const COMPOSER_EMOJIS = ['\u{1F44D}','\u{1F44C}','\u{1F64F}','\u{1F44F}','\u{1F4AA}','\u{1F91D}','\u{1F44B}','✅','\u{1F389}','⭐','\u{1F525}','❤️','\u{1F600}','\u{1F601}','\u{1F602}','\u{1F605}','\u{1F642}','\u{1F609}','\u{1F60E}','\u{1F914}','\u{1F62E}','\u{1F622}','⚠️','❗','❓','\u{1F4C5}','⏰','\u{1F4DE}','\u{1F4AC}','\u{1F4B0}','\u{1F9FE}','\u{1F527}','\u{1F529}','\u{1F6E0}️','\u{1F690}','\u{1F3D5}️','☀️','\u{1F327}️','\u{1F4F7}','\u{1F4CE}'];
 
@@ -551,7 +578,9 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             const videoAtt = _msgAttachments.filter(a => a.kind === 'video');
             const mmsAtt = _msgAttachments.filter(a => a.kind !== 'video');
             if (videoAtt.length) {
-                const lines = videoAtt.map(a => '\u{1F3AC} Video: ' + a.url).join('\n');
+                // v1.22: branded short links (full-URL fallback inside _shortenUrl).
+                const shortUrls = await Promise.all(videoAtt.map(a => _shortenUrl(a.url)));
+                const lines = shortUrls.map(u => '\u{1F3AC} Video: ' + u).join('\n');
                 body = body ? body + '\n\n' + lines : lines;
             }
 

@@ -2,6 +2,20 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.22 (Session 166, 2026-08-03, same session): BRANDED SHORT LINKS for
+    video sends (Roland: raw storage URL is unreadable + exposes backend
+    anatomy). js/messaging.js _shortenUrl(): 6-char code (no-lookalike
+    alphabet) inserted into NEW public.short_links (migration
+    short_links_s166.sql — anon SELECT by design, customers resolve
+    unauthenticated; INSERT = any authenticated staff). Customer text now
+    carries https://patriotsrv.github.io/rv-dashboard/v.html?c=<code>;
+    NEW v.html (repo root, v1.0) resolves code -> url via one bare anon
+    REST fetch and location.replace()s to the video. Deliberately
+    self-hosted, NOT TinyURL/Bitly — public shortener domains get
+    spam-flagged by SMS carriers. On ANY shorten failure the send falls
+    back to the full URL (never blocks). Migration MUST be run live before
+    this ships or every send falls back (harmless, just long links).
+
     v1.21b (Session 166, 2026-08-03, same session): video cap 50MB → 500MB
     (js/messaging.js MSG_VIDEO_MAX_BYTES). Roland's first real clip
     (IMG_3819.mov) blew the 50MB guess; the project storage limit is 1GB
@@ -820,7 +834,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.21b';
+const PAGE_VERSION = 'messages v1.22';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
