@@ -2,6 +2,23 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.23 (Session 168, 2026-08-04): CREATE-RO HANDOFF CARRIES RESOLVED
+    EMAIL + ADDRESS (Roland: Kurt Messenger convert came over blank except
+    name/phone while the CUSTOMER panel showed both). Root cause: the panel
+    (renderContactInfo) RESOLVES email/address through a fallback chain —
+    conversation lead email → newest live RO → cashiered archive — for
+    DISPLAY only; createROFromLead() passed only the conversation's own
+    stored c.email, empty for archive-only customers. Now renderContactInfo
+    caches its resolved result (_resolvedContact, keyed by convo id) and
+    createROFromLead() uses it: lead email still WINS over inferred (v1.17
+    rule), address comes from the chain (leads store no address), NEW
+    `address` URL param → index.html v1.489 prefills new_customerAddress.
+    Sync cache, not an await — window.open must stay inside the user
+    gesture or popup blockers eat it; the cache is warm because the Create
+    RO button only renders with the details pane. index.html v1.489 also
+    copies the customer's NOTES history onto the new RO at save (its side,
+    not ours — see applyLeadPrefillFromUrl / copyLeadNotesToRO there).
+
     v1.22 (Session 166, 2026-08-03, same session): BRANDED SHORT LINKS for
     video sends (Roland: raw storage URL is unreadable + exposes backend
     anatomy). js/messaging.js _shortenUrl(): 6-char code (no-lookalike
@@ -834,7 +851,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.22';
+const PAGE_VERSION = 'messages v1.23';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
@@ -1462,14 +1479,28 @@ function createROFromLead() {
     const c = _activeConvo;
     if (!c) return;
     if (!isManagerOrAdmin()) { showToast('Only managers and admins can create ROs.', 'warning'); return; }
+    // v1.23: carry the RESOLVED contact info the CUSTOMER panel shows (lead →
+    // live RO → cashiered chain, cached by renderContactInfo) — not just the
+    // conversation's own columns, which are empty for archive-only customers.
+    // Sync cache read, NOT an await: window.open must stay inside the user
+    // gesture or popup blockers eat the handoff tab.
+    const rc = (_resolvedContact && _resolvedContact.convoId === c.id) ? _resolvedContact : null;
+    const email   = (c.email || '').trim() || rc?.email || '';   // lead email WINS (v1.17 rule)
+    const address = rc?.address || '';                            // leads store no address
     const p = new URLSearchParams({ newro: '1' });
     if (c.customer_name) p.set('name', c.customer_name);
     if (c.display_phone) p.set('phone', c.display_phone);
-    if (c.email)         p.set('email', c.email);
+    if (email)           p.set('email', email);
+    if (address)         p.set('address', address);
     if (c.rv)            p.set('rv', c.rv);              // already RO-shaped (generated)
     if (c.service_type)  p.set('service_type', c.service_type);
     window.open('index.html?' + p.toString(), '_blank');
 }
+
+// v1.23: last resolved email/address per convo, consumed by createROFromLead()
+// so the handoff carries what the panel shows. Display cache only — never
+// written back to the conversation.
+let _resolvedContact = null;
 
 async function renderContactInfo(c, linkedROs) {
     const box = document.getElementById('detailContact');
@@ -1501,6 +1532,7 @@ async function renderContactInfo(c, linkedROs) {
     }
     // Still selected? (async race guard)
     if (_activeConvo?.id !== c.id) return;
+    _resolvedContact = { convoId: c.id, email, address }; // v1.23: cache for createROFromLead
     let html = '';
     if (email) html += _contactRowHtml('Email', email);
     if (address) html += _contactRowHtml('Addr', address);
