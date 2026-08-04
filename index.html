@@ -1,7 +1,17 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.487
+    PRVS Dashboard v1.488
+    v1.488: [S167] LEAD-CONVERTED RO NEW CUSTOMER EMAIL. The "Create RO from this
+    lead" handoff (v1.484) saves through the normal New RO form, which — unlike
+    customer-checkin.html and leads.html — never sent the lead_staff_notify
+    "New Customer" staff email, so converted leads were invisible to the team
+    (found via Thomas Bunch PRVS-14F1-6AF9, 8/3). Fix: applyLeadPrefillFromUrl()
+    marks the modal lead-origin (window._leadOriginPrefill, cleared on modal
+    close/manual open); on a successful save the submit handler fires the SAME
+    lead_staff_notify email as check-in / leads.html (mode 'lead', silos mapped
+    via REPAIR_TYPE_TO_SILO). Non-fatal — a send failure never fails the save.
+    Manual New RO creations are unchanged (no email), matching prior behavior.
     v1.487: [S165] STRANDED ONE TAP CHOOSER FIX. gisLoaded()'s boot prompt races the
     v1.485 session probe (up to 8s): GSI usually loads first, sees no supabaseSession
     yet, and fires One Tap — then a HEALTHY session restore left the account chooser
@@ -816,7 +826,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.487</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.488</span>
           </span>
         </div>
         <header>
@@ -845,7 +855,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.487</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.488</span>
             </div>
         </header>
 
@@ -3591,7 +3601,7 @@
 
         // Initialize
         function init() {
-            log('📦 PRVS Dashboard v1.487 - 2026-07-31 - S165 stranded One Tap chooser fix: loadSavedToken verified-session path now cancels any displayed One Tap prompt (google.accounts.id.cancel, no-op when none shown) + hides the fallback card - the boot prompt races the v1.485 session probe and a healthy restore left the chooser stranded over a loaded board - prior: v1.486 - 2026-07-31 - S165 One Tap suppression fallback (Zak, Firefox/Android): explicit google.accounts.id.renderButton card shown when the token flow has no id_token (definitively-stuck state) or One Tap reports not_displayed/skipped - button flow is a first-party gesture immune to One Tap suppression/cooldowns, feeds the SAME id.initialize callback; all three prompt() sites now log the One Tap moment reason via promptOneTapWithReason (boot / force-reauth / token-flow) so the next suppression names itself in the console; card hidden on credential arrival; additive only, no control-flow change to the working login path - prior: v1.485 - 2026-07-29 - S163 "connected badge over an empty board" - TWO causes. (1) COOPER 7/29 (Safari PRIVATE tab, normal tab fixed it - the initial stale-session diagnosis was WRONG and is documented as such): One Tap is blocked in private browsing, so there is no id_token, and the tokenClient resp NEVER carries one - the old code called signInWithIdToken with an empty token anyway, a guaranteed failure swallowed as non-fatal while the badge already read Connected. Now: never make the doomed call, prompt One Tap, toast the user naming private browsing; One Tap backfill extended to time logs + parts + custom fields. (2) S146 WEDGE (Lynn, independently real): boot now VERIFIES the session server-side via auth.getUser() - not a staff table probe, which is anon-readable and would eventually report a dead session as healthy (S143 false-negative trap); GoTrue 4xx = dead -> forceReauth (signOut + explicit storageKey removeItem + One Tap re-prompt); offline/timeout/408/429/5xx = unreachable -> session left ALONE (no logging techs out on bad lot signal); 8s timeout so the probe cannot hang boot. BOTH enabled by a lying badge: updateAuthStatus(connected, verified) now shows "Reconnecting" without a live Supabase session - prior: v1.484 - 2026-07-28 - S161 Create RO from lead (receiver): applyLeadPrefillFromUrl() opens the New RO modal prefilled from messages.html v1.17 lead fields (name/phone/email/rv/service_type via URL params, params stripped on arrival, waits for auth, nothing auto-saves) - prior: v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
+            log('📦 PRVS Dashboard v1.488 - 2026-08-04 - S167 lead-converted RO New Customer email: the v1.484 Create-RO-from-lead handoff saved through the New RO form which never sent lead_staff_notify (unlike check-in/leads.html) - converted leads were invisible to staff (Thomas Bunch PRVS-14F1-6AF9, 8/3); prefill now marks lead origin and a successful save fires the same New Customer email (mode lead, silos via REPAIR_TYPE_TO_SILO, non-fatal); manual New RO creations unchanged - prior: v1.487 - 2026-07-31 - S165 stranded One Tap chooser fix: loadSavedToken verified-session path now cancels any displayed One Tap prompt (google.accounts.id.cancel, no-op when none shown) + hides the fallback card - the boot prompt races the v1.485 session probe and a healthy restore left the chooser stranded over a loaded board - prior: v1.486 - 2026-07-31 - S165 One Tap suppression fallback (Zak, Firefox/Android): explicit google.accounts.id.renderButton card shown when the token flow has no id_token (definitively-stuck state) or One Tap reports not_displayed/skipped - button flow is a first-party gesture immune to One Tap suppression/cooldowns, feeds the SAME id.initialize callback; all three prompt() sites now log the One Tap moment reason via promptOneTapWithReason (boot / force-reauth / token-flow) so the next suppression names itself in the console; card hidden on credential arrival; additive only, no control-flow change to the working login path - prior: v1.485 - 2026-07-29 - S163 "connected badge over an empty board" - TWO causes. (1) COOPER 7/29 (Safari PRIVATE tab, normal tab fixed it - the initial stale-session diagnosis was WRONG and is documented as such): One Tap is blocked in private browsing, so there is no id_token, and the tokenClient resp NEVER carries one - the old code called signInWithIdToken with an empty token anyway, a guaranteed failure swallowed as non-fatal while the badge already read Connected. Now: never make the doomed call, prompt One Tap, toast the user naming private browsing; One Tap backfill extended to time logs + parts + custom fields. (2) S146 WEDGE (Lynn, independently real): boot now VERIFIES the session server-side via auth.getUser() - not a staff table probe, which is anon-readable and would eventually report a dead session as healthy (S143 false-negative trap); GoTrue 4xx = dead -> forceReauth (signOut + explicit storageKey removeItem + One Tap re-prompt); offline/timeout/408/429/5xx = unreachable -> session left ALONE (no logging techs out on bad lot signal); 8s timeout so the probe cannot hang boot. BOTH enabled by a lying badge: updateAuthStatus(connected, verified) now shows "Reconnecting" without a live Supabase session - prior: v1.484 - 2026-07-28 - S161 Create RO from lead (receiver): applyLeadPrefillFromUrl() opens the New RO modal prefilled from messages.html v1.17 lead fields (name/phone/email/rv/service_type via URL params, params stripped on arrival, waits for auth, nothing auto-saves) - prior: v1.483 - 2026-07-25 - S159 Sidebar card reorg round 2 + audit fix: Edit RO no-op audit rows fixed (blanket updateROInSupabase audit removed; inline diff is the single writer, numeric-aware dollarValue), RO STATUS click opens a READ+ADD history modal, sidebar regroup per Roland (TYPE/RV/VIN/TECH/ADDRESS + Manage Photos -> RO MANAGEMENT w/ TYPE under the status dropdown; progress bar + WO chips top of renamed WORK ORDERS; parking badge to header chip row; Delete RO -> card ADMIN dropdown in sidebar, classic modal keeps it), labels RO Status Updates + CUSTOMER INFO AND COMMS, photo dead-bar + button font + mobile silo dropdown fixes - prior: v1.482 - 2026-07-25 - S158 Messages bundle: composer MULTI-ATTACH up to 5 photos/PDFs (ER d62a26e4, js/messaging.js), Make-a-Wish categories for EVERY page (ER ac394468, 7 new options x 6 pages + pageDefaults), notes load paginated in ro-crud.js (1000-row window fix); ships with messages.html v1.13 staff broadcast + textly-webhook v1.3 reopen/notify + send-unreplied-reminder cron - prior: v1.481 - 2026-07-22 - Sidebar Layout (built S147, merged with Textly-era pre-prod + renumbered S153): team-approved sidebar-mockup v0.7 design as a fully-functional per-user layout via DOM relocation (js/layout.js + css/sidebar-layout.css, scoped html.layout-sidebar); localStorage prvs_layout; all modules/writes work in both layouts - prior: v1.451 WO Estimated Hours field (Session 109): basic-WO fallback estimated_hours on service_work_orders + WO modal input; effective WO estimate = task est_hours rollup when present, else WO-level (no double-count); enables actual-vs-estimate labor efficiency. Migration wo_estimated_hours.sql - prior: v1.450 Removed dead parts_status=outstanding render alias (Session 106): 4 fallbacks in render.js + 3 in parts.js; value backfilled to ordered + CHECK-forbidden since v1.449 Phase 2, 0 live rows. No DB/behavior change - prior: v1.449 WEEKLY P&L Phase 3 (Session 99): manager Done-Done button on silo WOs (revenue recognition for weekly_pnl RPC + worklist-report v1.15 Weekly P&L), tech-done chips, parts Service Silo dropdown; checkin.html v1.35 tech-lead Our-work-is-done button (mark_wo_tech_done RPC); v1.448 reserved by feature/sendblue-poc - prior: v1.447 [ER BUGFIX S94] n33 currency inputs show 2 decimals on blur + edit-populate (cosmetic, no data change, Bobby Thatcher); checkin.html v1.34 n22 Return to Dashboard button after clock-out (Tipton Scott) - prior: v1.446 Parts Requested->Ordered state machine (Session 93): tech request sets parts_status=requested (was outstanding, labeled Ordered - the conflation fix); manager-gated Requested->Ordered via Set Parts Status modal; renamed outstanding->ordered (legacy renders as Ordered + one-time SQL backfill); deleted orphaned markPartsOrdered/_doMarkPartsOrdered (now setPartsStatus(ordered)); send-parts-report split Needs Ordering vs On Order - prior: v1.445 Kenect + Slack dead-code teardown (Session 92): dead Kenect UI/JS removed (was calling the deleted kenect-proxy edge fn); notifySlack helper + 5 call sites removed + slack-notify edge fn deleted from repo - prior: v1.444 Phase 19 CSS extraction (Session 91): 3,381-line embedded style block moved VERBATIM to css/dashboard.css (byte-identical inner CSS, zero rule changes, zero JS changes); index.html 10,858 -> 7,490 lines - prior: v1.443 DELETE-INLINE cleanup Phases 13/14/15/17/18 (40 fns; modules SOLE owners; greppable [PHASE N DELETED v1.443 S91] markers) - prior: v1.442 Phase 18 enhancement.js (11 fns) - prior: v1.441 Phase 17 duplicates.js (5 fns) - prior: v1.440 Phase 15 insurance.js (8 fns) - prior: v1.439 Phase 14 work-list.js (13 fns) - prior: v1.438 Phase 13 qr.js (3 fns) - prior: v1.437 DELETE-INLINE cleanup Phases 6-12 (73 fns)');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -6133,10 +6143,106 @@
                 if (wanted.length && matched < wanted.length) {
                     console.warn('lead prefill: unmatched service types', { wanted, matched });
                 }
+                // v1.488 (S167): mark the modal lead-origin so the save fires
+                // the New Customer staff email. Cleared on modal close and on
+                // a manual New RO open, so it can never leak onto an
+                // unrelated RO created later.
+                window._leadOriginPrefill = true;
                 log('✅ Lead prefill applied from messages.html');
                 showToast('Prefilled from the lead — review, add a description, then Save RO.', 'info', { duration: 8000 });
             };
             tryFill();
+        }
+
+        // ── v1.488 (S167): New Customer staff email for lead-converted ROs ───
+        // Mirrors leads.html sendLeadStaffNotification / customer-checkin.html:
+        // same edge fn (send-quote-email, type 'lead_staff_notify'), same
+        // recipient, same payload shape — so a lead converted on the messages
+        // board produces the identical "🚨 New Customer" email the team already
+        // knows from front-desk entries. Called ONLY when the New RO modal was
+        // opened by the messages-board handoff (window._leadOriginPrefill).
+        // Non-fatal by contract: the caller catches — a send failure must
+        // never fail (or appear to fail) the RO save itself.
+        const STAFF_NOTIFY_TO = 'repair@patriotsrvservices.com';
+        async function sendLeadStaffNotification(ro, formData) {
+            // ⚠️ Everything read from mutable page state (currentROType) must be
+            // captured BEFORE the first await: the caller fires-and-forgets and
+            // closeModal() → setROType('standard') runs before any await resumes.
+            const workType = (currentROType === 'warranty' || currentROType === 'warranty_repair')
+                ? 'warranty' : 'standard';
+
+            // repairType arrives comma-joined in RO vocabulary ('Roof, Repairs')
+            // — map through REPAIR_TYPE_TO_SILO to canonical silo chips.
+            const silosPayload = String(formData.repairType || '').split(',')
+                .map(s => REPAIR_TYPE_TO_SILO[s.trim().toLowerCase()])
+                .filter(Boolean)
+                .map(key => SERVICE_SILOS.find(s => s.key === key))
+                .filter(Boolean)
+                .map(s => ({ key: s.key, label: s.label, emoji: s.emoji }));
+
+            // Look up submitter from the staff table (friendly name + role).
+            let createdByName = null;
+            let createdByRole = null;
+            const createdByEmail = supabaseSession?.user?.email || currentUser?.email || null;
+            if (createdByEmail) {
+                try {
+                    const { data: staffRec } = await getSB()
+                        .from('staff').select('name, role').eq('email', createdByEmail).maybeSingle();
+                    if (staffRec) {
+                        createdByName = staffRec.name || null;
+                        const roleMap = {
+                            'sr_manager':    'Sr Manager',
+                            'manager':       'Manager',
+                            'parts_manager': 'Parts Manager',
+                            'tech':          'Tech',
+                            'admin':         'Admin',
+                        };
+                        createdByRole = roleMap[staffRec.role] || staffRec.role || null;
+                    }
+                } catch (e) { /* staff record may not exist — fall back to email */ }
+            }
+
+            const dashboardLink = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(ro.ro_id)}`;
+            const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
+
+            const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
+                    'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                },
+                body: JSON.stringify({
+                    type:                 'lead_staff_notify',
+                    to:                   STAFF_NOTIFY_TO,
+                    roId:                 ro.ro_id,
+                    mode:                 'lead',
+                    customerName:         formData.customerName,
+                    customerType:         formData.customerType || 'New',
+                    customerPhone:        formData.customerPhone || null,
+                    customerEmail:        formData.customerEmail || null,
+                    customerAddress:      formData.customerAddress || null,
+                    rv:                   formData.rv || null,
+                    vin:                  formData.vin || null,
+                    silos:                silosPayload,
+                    workType:             workType,
+                    workDescription:      formData.repairDescription || null,
+                    warrantyDescription:  null,
+                    warrantyOrigRO:       null,
+                    plannedDropoff:       formData.plannedDropoffDate || null,
+                    promisedDate:         formData.promisedDate || null,
+                    leadNotes:            'Converted from a Messages-board lead ("Create RO from this lead").',
+                    createdByName:        createdByName,
+                    createdByRole:        createdByRole,
+                    createdByEmail:       createdByEmail,
+                    createdAt:            new Date().toISOString(),
+                    dashboardLink:        dashboardLink,
+                }),
+            });
+            if (!resp.ok) {
+                const errText = await resp.text().catch(() => '');
+                throw new Error(`Staff notify send failed (HTTP ${resp.status}): ${errText}`);
+            }
         }
 
                 function setupModalListeners() {
@@ -6177,6 +6283,10 @@
             newROBtn.addEventListener('click', () => {
                 // Reset for new RO
                 editingROIndex = null;
+                // v1.488: a fresh open is NOT lead-origin. The lead prefill
+                // path sets the flag AFTER programmatically clicking this
+                // button, so the ordering keeps it accurate for both paths.
+                window._leadOriginPrefill = false;
                 const modalTitle = document.querySelector('#modalOverlay h2');
                 const submitBtn = document.getElementById('newROSubmitBtn');
                 modalTitle.textContent = 'New Repair Order';
@@ -6194,6 +6304,7 @@
                 newROForm.reset();
                 window._lastEstimateScan = null;
                 window._pendingEstimateDoc = null;
+                window._leadOriginPrefill = false; // v1.488: cancel/close ends the lead handoff
                 clearAllSuggestions('new');
                 setROType('standard');
             };
@@ -6253,6 +6364,11 @@
                 const submitBtn = document.getElementById('newROSubmitBtn');
                 if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '⏳ Saving...'; }
 
+                // v1.488 (S167): capture lead-origin BEFORE the save — closeModal()
+                // clears the flag, and it runs before the notify below on success.
+                // On a failed save the flag survives, so a retry still notifies.
+                const fromLead = !!window._leadOriginPrefill;
+
                 let success = false;
                 try {
                     success = await appendToSheets(data);
@@ -6290,6 +6406,20 @@
                         window._pendingEstimateDoc = null;
                     }
                     window._lastEstimateScan = null;
+
+                    // v1.488 (S167): lead-converted ROs fire the same New Customer
+                    // staff email as check-in / leads.html. Fire-and-forget +
+                    // non-fatal — the RO is already saved either way. Sent BEFORE
+                    // closeModal() so currentROType is still the saved RO's type.
+                    if (fromLead && success && success.ro_id) {
+                        window._leadOriginPrefill = false;
+                        sendLeadStaffNotification(success, data)
+                            .then(() => showToast(`Staff notified: New Customer email sent to ${STAFF_NOTIFY_TO}.`, 'success'))
+                            .catch(err => {
+                                console.error('Lead staff notify failed (non-fatal):', err);
+                                showToast('RO saved, but the New Customer email failed: ' + (err.message || err), 'warning');
+                            });
+                    }
 
                     closeModal();
                     showToast('Repair Order saved successfully!', 'success');
