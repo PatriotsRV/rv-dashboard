@@ -9,6 +9,11 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 169 — Review request Kenect parity (process-review-requests v1.1, Case B, tag `review-v1.1`, ship promote `47c2c94`).**
+  - **The ask (Roland, screenshot of the retired Kenect review message):** logo image, 'tiny URL', Kenect wording. Delivered with the S166 self-hosted short links instead of TinyURL (carriers spam-flag public shortener domains) and a resized logo — NEW `logo-sms.png` 600×600 116KB (root logo.png is 1.25MB, over the ~1MB MMS cap).
+  - **v1.1:** {name} placeholder (customer_name as stored — Roland call; 'there' fallback), service-role clone of `_shortenUrl` (created_by 'review-request-automation', full-URL fallback never blocks the send), `media_url` logo attach (one media per S158a). Copy migration `review_request_text_kenect_s169.sql` run live by Roland — NO STOP line (Roland call; STOP keyword still gated server-side in textly-webhook).
+  - **Live-proven same session:** Roland ⭐ self-test — MMS with logo + wording + `v.html?c=HwDJ7D`; DB-verified: short_links row present, review_requests 'sent', no error.
+  - Also verified read-only: leads.html Promote has fired `lead_staff_notify` since its v1.0 — unaffected by the S167 messages-path gap.
 - ✅ **Session 168 — Lead convert carries contact info + notes (v1.489 + messages-v1.23 → v1.490 → v1.491, Case B x3, final prod main `324c3e2`).**
   - **The gap (Roland report, live from Kurt Messenger):** "Create RO from this lead" arrived blank except name/phone while the messages CUSTOMER panel showed email + address. Root cause: `renderContactInfo` RESOLVES contact info for display (lead → newest live RO → cashiered archive, never written back); `createROFromLead()` passed only the conversation's own stored columns — empty for archive-only customers. Same asymmetry explained the Lead Info editor showing blank email.
   - **messages v1.23:** `renderContactInfo` caches its resolved result (`_resolvedContact`, keyed by convo id, written after the race guard); `createROFromLead()` reads the cache SYNC (no await — `window.open` must stay in the user gesture) and passes resolved email (lead-typed still wins, v1.17 rule) + NEW `address` param.
@@ -314,6 +319,7 @@
 
 | Version | Date | Summary |
 |---|---|---|
+| review-v1.1 | 2026-08-05 | **Session 169.** Review request Kenect parity: process-review-requests v1.1 — {name} greeting, branded short link (short_links, full-URL fallback), logo MMS (NEW logo-sms.png 600×600). app_config copy → Kenect wording, no STOP line. index.html untouched (v1.491). |
 | v1.491 | 2026-08-04 | **S168 lead notes back to `ro_status`.** Roland reversed the v1.490 retarget within minutes ("leave the notes in the RO status"). No converts ran on v1.490 — no data to migrate. Net S168 target: RO Status Updates timeline. |
 | v1.490 | 2026-08-04 | **S168 lead notes → `customer_comm` (REVERTED by v1.491 same day).** One-line retarget of `copyLeadNotesToRO()`; lived ~minutes on prod. |
 | v1.489 + messages-v1.23 | 2026-08-04 | **S168 lead convert carries contact info + notes.** messages v1.23: handoff passes the CUSTOMER-panel-resolved email/address (lead → live RO → cashiered chain, `_resolvedContact` cache; sync read — popup-blocker constraint) + NEW `address` param. v1.489: `new_customerAddress` prefill; `copyLeadNotesToRO()` copies the full `customer_note_entries` history onto the RO as ONE 📋 LEAD NOTES `ro_status` note (lead phone stash, fire-and-forget, non-fatal). Found + proven live on Kurt Messenger `PRVS-747B-F06E`. |
