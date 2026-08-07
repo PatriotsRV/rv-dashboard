@@ -1,4 +1,7 @@
 // js/ro-crud.js — Phase 7 (ADDITIVE): repair-order CRUD + Supabase read/write layer.
+// v1.492 (Session 170, 2026-08-07): GH#36 Phase 1 auto-refresh — focus/visibility
+//   + periodic board re-load with _uiBusy modal/typing guard. See block at the
+//   bottom of this file (above the window bridge).
 // v1.431 (Session 84, 2026-05-31).
 //
 // Extracted VERBATIM from the index.html inline <script>:
@@ -146,6 +149,7 @@
 
                 currentData = data;
                 log('✅ Loaded', data.length, 'repair orders from Supabase');
+                _lastBoardLoadAt = Date.now(); // v1.492 GH#36 Phase 1: staleness clock
                 renderBoard();
 
                 // Load custom fields config
@@ -1222,6 +1226,91 @@
             }
         }
 
+
+// ════════════════════════════════════════════════════════════════════
+// GH#36 Phase 1 — AUTO-REFRESH (v1.492, Session 170, 2026-08-07)
+// ════════════════════════════════════════════════════════════════════
+// Bobby's report: techs upload photos/docs/updates and other staff's open
+// tabs never see them without a manual reload — the board loaded once at
+// boot and only re-loaded after the CURRENT user's own writes. Two fixes:
+//   (1) FOCUS/VISIBILITY refresh — switching back to the dashboard tab
+//       re-loads if the data is >30s old (Bobby's exact workflow).
+//   (2) PERIODIC refresh — a 30s tick re-loads when data is >2.5 min old
+//       and the tab is visible.
+// GUARD (_uiBusy): NEVER auto-reload while any modal/overlay/slide-in
+// panel is open or the user is focused in a form control — several modals
+// (Edit RO, editField) reference currentData/currentFilteredData by INDEX,
+// and a reload that reorders currentData under an open modal could write
+// to the WRONG RO. Skipped refreshes are not queued; the next eligible
+// trigger picks it up.
+// rAF deliberately NOT used (S147 gotcha: paused in background tabs).
+// Phase 2 (Supabase Realtime, per the GH#36 spec) supersedes this later.
+
+let _lastBoardLoadAt = 0;     // ms epoch of last successful board load (0 = boot load not done)
+let _autoRefreshBusy = false;
+
+const AUTO_REFRESH_TICK_MS   = 30_000;   // tick cadence
+const AUTO_REFRESH_STALE_MS  = 150_000;  // interval trigger: reload if older than 2.5 min
+const FOCUS_REFRESH_STALE_MS = 30_000;   // focus/visible trigger: reload if older than 30s
+
+/** True when a modal, overlay, slide-in panel, or focused form control means a reload could disrupt (or corrupt) user work. */
+function _uiBusy() {
+    // Classed modal overlays: New RO, Edit RO, Recently Deleted, parts/messaging dynamic modals
+    if (document.querySelector('.modal-overlay.active')) return true;
+    // Known modal roots — dynamic ones exist in the DOM only while open;
+    // static ones (ER modals) flip display. Present + not display:none = open.
+    const MODAL_IDS = ['partsModal', 'photoLibraryModal', 'photoMigrateModal',
+        'manageFieldsModal', 'voiceNotesModal', 'customViewModalOverlay',
+        'adminSettingsModalOverlay', 'codeExportModalOverlay',
+        'erModalOverlay', 'erAdminOverlay'];
+    for (const id of MODAL_IDS) {
+        const el = document.getElementById(id);
+        if (el && el.style.display !== 'none') return true;
+    }
+    // Slide-in panels (work list / shop tasks): backdrop visible = open
+    for (const id of ['workListBackdrop', 'shopTasksBackdrop']) {
+        const el = document.getElementById(id);
+        if (el && el.style.display !== 'none') return true;
+    }
+    // Anonymous body-child overlays (WO modals, photo viewer, confirms):
+    // appended on open / removed on close; inline position:fixed, z >= 10000.
+    // (workListPanel/shopTasksPanel are persistent but HAVE ids — not matched.)
+    for (const el of document.body.children) {
+        if (el.tagName !== 'DIV' || el.id) continue;
+        if (el.style.position === 'fixed' && (parseInt(el.style.zIndex, 10) || 0) >= 10000) return true;
+    }
+    // Typing in any form control except the board search box (search state
+    // survives a re-render; modal inputs are covered above anyway)
+    const ae = document.activeElement;
+    if (ae && ae.id !== 'customerSearch' &&
+        (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return true;
+    return false;
+}
+
+async function _autoRefreshBoard(trigger) {
+    try {
+        if (document.hidden) return;
+        if (_autoRefreshBusy) return;
+        if (_lastBoardLoadAt === 0) return;                       // boot load hasn't run — never preempt it
+        if (typeof getSB !== 'function' || !getSB() || !supabaseSession) return; // auth guard (canonical pattern)
+        const staleMs = trigger === 'interval' ? AUTO_REFRESH_STALE_MS : FOCUS_REFRESH_STALE_MS;
+        if (Date.now() - _lastBoardLoadAt < staleMs) return;
+        if (_uiBusy()) return;                                    // skipped, not queued — next trigger retries
+        _autoRefreshBusy = true;
+        log('🔄 Auto-refresh (' + trigger + ') — reloading board data');
+        await loadDataFromSupabase();
+    } catch (e) {
+        warn('Auto-refresh failed (non-fatal):', e);
+    } finally {
+        _autoRefreshBusy = false;
+    }
+}
+
+// Install once at module load (app.js imports this module exactly once).
+// All triggers self-guard on auth + boot-load, so early installation is safe.
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _autoRefreshBoard('visible'); });
+window.addEventListener('focus', () => _autoRefreshBoard('focus'));
+setInterval(() => _autoRefreshBoard('interval'), AUTO_REFRESH_TICK_MS);
 
 // ---- Window bridge (Phase 7 additive) ----
 Object.assign(window, {
