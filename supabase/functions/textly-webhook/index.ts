@@ -1,6 +1,14 @@
 // ============================================================
 // textly-webhook (GH#39 Textly pivot, Session 151, 2026-07-21) - capture + routing
 // ============================================================
+// v1.4 (Session 170, 2026-08-07): UNASSIGNED SILO BLAST DISABLED (Roland call).
+//   The unassigned-conversation notify fork (source 'inbound_message_notify' —
+//   silo managers + admin_report_recipients, 1/RO/hour) is switched OFF via
+//   UNASSIGNED_BLAST_ENABLED=false. Now that the Messages board is fully
+//   staffed, unassigned replies surface on the board (❔ / Open filters)
+//   instead of emailing the shop. The assigned-owner notify (email+SMS,
+//   needs-reply flip) and the 4:30 PM unreplied digest are UNCHANGED.
+//   Flip the constant back to true + redeploy to restore the old behavior.
 // v1.3 (Session 158, 2026-07-25): INBOUND REOPEN + NEEDS-REPLY NOTIFY (ER 93b00023).
 //   (a) A non-keyword inbound message now sets conversations.status='open' —
 //       previously a closed conversation receiving a customer text STAYED
@@ -86,6 +94,11 @@
 // ============================================================
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+
+// v1.4 (S170): unassigned-conversation silo/admin email blast kill switch.
+// false = unassigned inbound replies notify NOBODY (board is the surface).
+// Assigned-owner notify + 4:30 digest are unaffected. See header.
+const UNASSIGNED_BLAST_ENABLED = false;
 
 // Mirrors js/config.js REPAIR_TYPE_TO_SILO (repair_type label -> staff.service_silo key).
 const REPAIR_TYPE_TO_SILO: Record<string, string> = {
@@ -665,8 +678,10 @@ Deno.serve(async (req: Request) => {
     } catch (e) {
       console.error("assigned inbound notify failed (message already logged):", e);
     }
-  } else if (direction === "inbound" && !keywordAction && routedRO) {
-    // ── UNASSIGNED fallback: existing silo-manager/admin blast ───────
+  } else if (UNASSIGNED_BLAST_ENABLED && direction === "inbound" && !keywordAction && routedRO) {
+    // ── UNASSIGNED fallback: silo-manager/admin blast — DISABLED v1.4 ──
+    // (S170, Roland call — board is fully staffed; flip the constant at the
+    // top of the file to re-enable.)
     try {
       const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { data: recent } = await supabase
