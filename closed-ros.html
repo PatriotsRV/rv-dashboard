@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <!--
-    PRVS Closed RO Archive v1.2
-    Released: 2026-05-23
+    PRVS Closed RO Archive v1.3
+    Released: 2026-08-08
+    v1.3 (Session 171, ER 09084bc5 — restore the 7 dropped columns):
+        Reactivation now restores photo_library (the photo/doc library),
+        planned_dropoff_date, pickup_date, key_status, keypad_code,
+        keep_plugged_in and urgent_update — the 7 repair_orders columns the
+        archive allowlist used to drop. Columns added to `cashiered` by
+        supabase/migrations/cashiered_full_detail_s171.sql; rows archived
+        before that migration carry NULLs and restore degrades gracefully.
     v1.2 (Session 73, Archive Detail Preservation):
         Reactivation now restores the full RO detail — parts, time_logs,
         notes, audit_log, insurance_scans, and the service_work_orders +
@@ -872,6 +879,17 @@ async function reactivateRO(cashieredId) {
                 ro_type:         ro.ro_type || 'standard',
                 photo_url:       ro.photo_url,
                 insurance_data:  ro.insurance_data || null,
+                // v1.3 (S171, ER 09084bc5): restore the 7 columns the archive
+                // used to drop (columns added to cashiered by
+                // cashiered_full_detail_s171.sql). Rows archived BEFORE that
+                // migration have NULLs here — restore degrades gracefully.
+                photo_library:        ro.photo_library || null,
+                planned_dropoff_date: ro.planned_dropoff_date || null,
+                pickup_date:          ro.pickup_date || null,
+                key_status:           ro.key_status || null,
+                keypad_code:          ro.keypad_code || null,
+                keep_plugged_in:      (ro.keep_plugged_in === true || ro.keep_plugged_in === false) ? ro.keep_plugged_in : null,
+                urgent_update:        ro.urgent_update || null,
             })
             .select()
             .single();

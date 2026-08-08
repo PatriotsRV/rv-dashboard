@@ -660,48 +660,27 @@
         }
 
         export async function archiveROInSupabase(originalIndex) {
+            // v1.494 (S171, ER 09084bc5): the old client-side insert+delete pair
+            // duplicated the cron's cashiered allowlist — and BOTH dropped 7
+            // columns (photo_library, planned_dropoff_date, pickup_date,
+            // key_status, keypad_code, keep_plugged_in, urgent_update). Worse,
+            // this client path never wrote the cashiered_* child mirrors at all
+            // (those lived only in archive_cashiered_ros()), so a manual
+            // ⚙️ Archive silently lost parts / time logs / notes / audit / WOs.
+            // Now ONE server-side body (archive_one_ro, migration
+            // cashiered_full_detail_s171.sql) serves both paths; the client
+            // calls the manager-gated archive_single_ro RPC. Full column set +
+            // child mirrors, transactionally.
             const ro = currentData[originalIndex];
             const supabaseId = ro._supabaseId;
             if (!supabaseId) throw new Error('No Supabase ID for RO');
 
-            const daysOnLot = calculateDaysOnLot(ro) || 0;
+            const { data: archived, error } = await getSB()
+                .rpc('archive_single_ro', { p_ro_id: supabaseId });
+            if (error) throw error;
+            if (!archived) throw new Error('RO not found or already archived');
 
-            // Insert into cashiered
-            const { error: cashErr } = await getSB().from('cashiered').insert({
-                original_ro_id: supabaseId,
-                ro_id:          ro.roId,
-                customer_name:  ro.customerName,
-                phone:          ro.customerPhone,
-                email:          ro.customerEmail,
-                address:        ro.customerAddress,
-                rv:             ro.rv,
-                vin:            ro.vin,
-                repair_type:    ro.repairType,
-                description:    ro.repairDescription,
-                technician:     ro.technicianAssigned,
-                date_received:  ro.dateReceived || null,
-                date_arrived:   ro.dateArrived || null,
-                promised_date:  ro.promisedDate || null,
-                pct_complete:   ro.percentComplete || 0,
-                dollar_value:   ro.dollarValue || null,
-                status:         ro.status,
-                urgency:        ro.urgency,
-                customer_type:  ro.customerType,
-                ro_type:        ro.roType || 'standard',
-                photo_url:      ro.rvPhotoUrl,
-                insurance_data: ro.insuranceData ? JSON.parse(ro.insuranceData) : null,
-                days_on_lot:    daysOnLot,
-                date_closed:    new Date().toISOString().slice(0,10),
-                week_label:     getWeekLabel(),
-                archived_at:    new Date().toISOString(),
-            });
-            if (cashErr) throw cashErr;
-
-            // Delete from repair_orders
-            const { error: delErr } = await getSB().from('repair_orders').delete().eq('id', supabaseId);
-            if (delErr) throw delErr;
-
-            log('✅ RO archived to cashiered in Supabase');
+            log('✅ RO archived to cashiered in Supabase (full detail + child mirrors)');
         }
 
         export async function loadCustomFieldConfigFromSupabase() {
