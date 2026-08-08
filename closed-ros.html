@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <!--
-    PRVS Closed RO Archive v1.3
+    PRVS Closed RO Archive v1.3b
     Released: 2026-08-08
+    v1.3b (Session 171 hotfix, same session): pre-migration cashiered rows
+        carry NULLs in the 7 new columns; v1.3 passed those nulls explicitly
+        and keep_plugged_in (NOT NULL DEFAULT false) rejected the insert —
+        "Error reactivating RO: null value in column keep_plugged_in"
+        (Roland, live, reactivating Roland Shepard Jr). Fix: omit the key
+        (undefined) when no archived value exists so column defaults apply;
+        same for photo_library's {"docs":[],"photos":[]} default.
     v1.3 (Session 171, ER 09084bc5 — restore the 7 dropped columns):
         Reactivation now restores photo_library (the photo/doc library),
         planned_dropoff_date, pickup_date, key_status, keypad_code,
@@ -883,12 +890,17 @@ async function reactivateRO(cashieredId) {
                 // used to drop (columns added to cashiered by
                 // cashiered_full_detail_s171.sql). Rows archived BEFORE that
                 // migration have NULLs here — restore degrades gracefully.
-                photo_library:        ro.photo_library || null,
+                // v1.3b hotfix: use undefined (key OMITTED from the insert) when
+                // there is no archived value, so column DEFAULTS apply —
+                // keep_plugged_in is NOT NULL DEFAULT false and an explicit
+                // null violated the constraint (Roland hit it live);
+                // photo_library defaults to {"docs":[],"photos":[]}.
+                photo_library:        ro.photo_library ?? undefined,
                 planned_dropoff_date: ro.planned_dropoff_date || null,
                 pickup_date:          ro.pickup_date || null,
                 key_status:           ro.key_status || null,
                 keypad_code:          ro.keypad_code || null,
-                keep_plugged_in:      (ro.keep_plugged_in === true || ro.keep_plugged_in === false) ? ro.keep_plugged_in : null,
+                keep_plugged_in:      (ro.keep_plugged_in === true || ro.keep_plugged_in === false) ? ro.keep_plugged_in : undefined,
                 urgent_update:        ro.urgent_update || null,
             })
             .select()
