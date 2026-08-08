@@ -24,7 +24,19 @@ import json
 import os
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+# S171 (2026-08-08): grace window for the re-triage predicate. The write-back
+# stamps triage_run_at CLIENT-SIDE before its PATCH, and the table's updated_at
+# trigger(s) bump updated_at to the DB's now() DURING that same PATCH — so
+# triage_run_at always lands a few seconds BEFORE updated_at, and the bare
+# `run_at < upd_at` predicate re-flagged every ER every night (96/97 flagged,
+# all by a sub-5-min gap; nightly "delta" passes were full 90+-ER passes and
+# run #60 died on the --max-turns cliff). An ER now needs re-triage only when
+# updated_at is more than GRACE after triage_run_at. Edge case accepted: an ER
+# edited within 10 min of its own triage write waits for its next edit or a
+# full_pass.
+TRIAGE_GRACE = timedelta(minutes=10)
 
 TEST_ENTRY_MARKERS = ("testing dictation", "testing make-a-wish", "test test")
 
@@ -75,7 +87,8 @@ def main():
         upd_at = parse_ts(er.get("updated_at"))
         if full_pass:
             needs.append(er["id"])
-        elif run_at is None or (upd_at is not None and run_at < upd_at):
+        elif run_at is None or (upd_at is not None
+                                and upd_at - run_at > TRIAGE_GRACE):
             needs.append(er["id"])
 
     out = {
