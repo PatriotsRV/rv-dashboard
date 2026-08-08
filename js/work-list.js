@@ -1,5 +1,9 @@
 // js/work-list.js - Phase 14 (ADDITIVE): Manager Work List sidebar (GH#16).
 // v1.439 (Session 89, 2026-06-03).
+// v1.493 (Session 171, 2026-08-08): view-only honesty — viewing another
+//   manager's list disables drag + hides the remove button (RLS "Users manage
+//   own work list" blocked both writes anyway, but SILENTLY — S141 204-gotcha);
+//   _saveWorkListOrder destructures { error } per the non-negotiable write rule.
 //
 // Extracted VERBATIM from the index.html inline <script> (13 functions):
 //   daysSinceAddedToWorkList, toggleWorkListPanel, _populateManagerPicker, loadWorkList, addToWorkList, _showSiloPickerForAdd, _addToWorkListWithSilo, removeFromWorkList, _saveWorkListOrder, _initWorkListBtn, _renderWorkListSiloTabs, _setWorkListSilo, renderWorkList.
@@ -208,10 +212,21 @@
         }
 
         export async function _saveWorkListOrder() {
+            // v1.493 (S171): destructure { error } per the non-negotiable Supabase-write
+            // rule (was a bare await — RLS/API failures were indistinguishable from
+            // success). Note: an RLS-filtered UPDATE returns 204 with NO error (S141
+            // gotcha), so this alone cannot catch cross-list writes — that class is
+            // prevented upstream: renderWorkList() no longer attaches drag handlers in
+            // view-only mode (_workListViewEmail set).
             for (let i = 0; i < _workListData.length; i++) {
-                await getSB().from('manager_work_lists')
+                const { error } = await getSB().from('manager_work_lists')
                     .update({ priority: i + 1 })
                     .eq('id', _workListData[i].id);
+                if (error) {
+                    console.error('[WorkList] order save error:', error);
+                    showToast('Error saving Work List order: ' + (error.message || error), 'error');
+                    return;
+                }
             }
         }
 
@@ -287,6 +302,13 @@
                 return;
             }
 
+            // v1.493 (S171): viewing ANOTHER manager's list is VIEW-ONLY — RLS
+            // ("Users manage own work list", email-matched ALL policy) already blocks
+            // the writes server-side, but silently (204 no-op, S141 gotcha): a drag
+            // visually reordered and a × visually removed, then reverted on reload.
+            // Honest UI: no drag, no remove button when _workListViewEmail is set.
+            const viewOnly = !!_workListViewEmail;
+
             // Build rows from filtered data — use DOM construction to avoid inline onclick quoting issues
             body.innerHTML = '';
             filteredData.forEach((item, displayIdx) => {
@@ -301,11 +323,11 @@
 
                 const row = document.createElement('div');
                 row.className = 'wl-row';
-                row.draggable = true;
+                row.draggable = !viewOnly; // v1.493: no drag on someone else's list
                 row.dataset.idx = displayIdx;
                 row.dataset.id = item.id;
                 row.dataset.roId = item.ro_id;
-                row.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:grab;display:flex;align-items:center;gap:8px;';
+                row.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:8px;margin-bottom:8px;padding:10px 12px;cursor:' + (viewOnly ? 'default' : 'grab') + ';display:flex;align-items:center;gap:8px;';
 
                 // Priority number
                 const numSpan = document.createElement('span');
@@ -340,13 +362,16 @@
                     }
                 }
 
-                // Remove button
-                const removeBtn = document.createElement('button');
-                removeBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;';
-                removeBtn.title = 'Remove from list';
-                removeBtn.textContent = '×';
-                removeBtn.addEventListener('click', () => removeFromWorkList(item.id));
-                row.appendChild(removeBtn);
+                // Remove button — hidden in view-only mode (v1.493: the RLS DELETE
+                // would no-op silently on someone else's row; don't offer the lie)
+                if (!viewOnly) {
+                    const removeBtn = document.createElement('button');
+                    removeBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:1.1rem;padding:2px 6px;line-height:1;';
+                    removeBtn.title = 'Remove from list';
+                    removeBtn.textContent = '×';
+                    removeBtn.addEventListener('click', () => removeFromWorkList(item.id));
+                    row.appendChild(removeBtn);
+                }
 
                 body.appendChild(row);
             });
@@ -357,6 +382,7 @@
             // is why drag-drop "didn't work on the phone"). Both paths funnel into the
             // shared _reorderWorkList() so behavior stays identical.
             const rows = body.querySelectorAll('.wl-row');
+            if (viewOnly) return; // v1.493: view-only — no reorder handlers at all
             let dragSrcIdx = null;
             let dragSrcId = null;
             let touchDestIdx = null;
