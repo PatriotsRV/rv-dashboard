@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-08-08 | headless runner | vs index.html v1.492 (HEAD 0223cb3) | 27 open Needed ERs shown below | 5 open Bugs tracked separately in docs/ER_TRIAGE_2026-08-08.md</div>
+  <div class="sub">2026-08-09 | headless runner | vs index.html v1.494 (HEAD 65fdb97) | 27 open Needed ERs shown below | 4 open Bugs tracked separately in docs/ER_TRIAGE_2026-08-09.md | Needed verdicts carried from the 2026-08-08 pass (verified at HEAD 0223cb3); only the 7 changed rows were re-verified at HEAD 65fdb97, and the LARGE cash-out bug 09084bc5 is now fixed (v1.494)</div>
 
   <div class="cards" id="stats"></div>
 
@@ -59,7 +59,7 @@ const ERS = [
   verdict:"Partial at HEAD 0223cb3: js/duplicates.js has an RO-level merge/delete engine (getBaseROId L35, findDuplicateGroups L40) but it groups strictly on the PRVS-XXXX-XXXX base RO id (regex L36, keying L44), so two ROs under different spellings of one customer are never detected. Needs name/phone account dedup plus a verify-which-is-correct merge step. One-off cleanup for the Huebert case is 3f254929."},
  {id:"5fbfa299",by:"Brandon",date:"06-30",cat:"RO Management",loe:"M",theme:"RO Fields & Status",
   desc:"Archive customers/units that were only quoted and never moved forward.",
-  verdict:"Confirmed absent at HEAD 0223cb3: the only archive path is the cashiered one (js/ro-crud.js archiveROInSupabase L662); a case-insensitive grep for archived / abandoned in js/render.js and js/config.js returns zero hits. Needs a soft-archive flag, a board filter and an un-archive path. Pairs with 972af03c."},
+  verdict:"Confirmed absent at HEAD 0223cb3: the only archive path is the cashiered one (js/ro-crud.js archiveROInSupabase L662, which as of v1.494 is a single archive_single_ro RPC call); a case-insensitive grep for archived / abandoned in js/render.js and js/config.js returns zero hits. Needs a soft-archive flag, a board filter and an un-archive path. Pairs with 972af03c."},
  {id:"972af03c",by:"Lynn",date:"07-17",cat:"RO Management",loe:"S",theme:"RO Fields & Status",
   desc:"Add an RO status of CANCELED that keeps the record and all notes.",
   verdict:"Confirmed absent at HEAD 0223cb3: js/config.js STATUS_PROGRESS_MAP (L151-164) ends at Delivered/Cashed Out; the only cancelled hits in the repo are the scheduled_notifications and review_requests CHECKs. Add the status plus color/priority maps and exclude it from the on-lot and queue counts. Canonical for duplicate eb00a68d; pairs with 3e746c18."},
@@ -100,8 +100,8 @@ const ERS = [
   desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
   verdict:"Confirmed absent at HEAD 0223cb3: js/shop-tasks.js is a non-customer shop checklist with no ro_id / customer link and no reminder column, and grep for ro_tasks / customer_task / task_tracker across js and supabase returns zero hits. Needs a per-RO tasks table, an add/complete UI and a daily open-task reminder. Pairs with 5925fc01."},
  {id:"a03677e6",by:"Brandon",date:"08-07",cat:"General UI/UX",loe:"S",theme:"Notifications & Task-Tracking",
-  desc:"NEW 08-07. Move notification-sent / customer-reply lines out of RO Status Updates into the Customer Comms section.",
-  verdict:"NEW ER, confirmed at HEAD 0223cb3: machine audit lines write as notes type ro_status and so crowd RO Status Updates (js/render.js L553) - NOTIFICATION SENT/FAILED (process-scheduled-notifications L187/L215), SCHEDULED/CANCELLED (index.html L3116/L3154), key-date and urgent rows (js/ro-crud.js L302/L344/L379/L571/L582), parts notes (js/parts.js L654/L855). A customer_comm stream already renders separately (L563). Small: retarget the type. NOTE Roland reversed exactly this retarget for LEAD NOTES in v1.491 - confirm scope first."},
+  desc:"Move notification-sent / customer-reply lines out of RO Status Updates into the Customer Comms section.",
+  verdict:"Confirmed at HEAD 0223cb3: machine audit lines write as notes type ro_status and so crowd RO Status Updates (js/render.js L553) - NOTIFICATION SENT/FAILED (process-scheduled-notifications L187/L215), SCHEDULED/CANCELLED (index.html L3142/L3180, anchors shifted +26 by v1.494), key-date and urgent rows (js/ro-crud.js L302/L344/L379/L571/L582), parts notes (js/parts.js L654/L855). A customer_comm stream already renders separately (L563). Small: retarget the type. NOTE Roland reversed exactly this retarget for LEAD NOTES in v1.491 - confirm scope first."},
  {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
   desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to searchable priced stock.",
   verdict:"Confirmed absent at HEAD 0223cb3: a word-boundary grep for inventory / on_hand / in_stock / stock_qty across js, supabase/migrations and supabase/functions returns zero hits. Parts remain per-RO line items only (js/parts.js). New subsystem: inventory table, receive/consume/adjust flows, a searchable priced stock view, and links from the parts-request path. Largest item on the board."},
