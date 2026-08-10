@@ -137,6 +137,13 @@ When Claude asks Roland to run a command, test, or query (DevTools console, SQL,
 
 Persisted to both CLAUDE_CONTEXT.md AND Claude's auto-memory ([[one-step-at-a-time]]) so the rule survives a memory wipe.
 
+### Rule: Always paste runnable commands directly in chat — never point Roland at a file
+
+When Roland needs to run something (SQL, shell, DevTools, anything), paste the FULL runnable content directly in the chat message so he can copy → paste in seconds. Never say "run the migration at supabase/migrations/x.sql" or otherwise make him navigate directories and open files to retrieve a command. The repo file still gets written (it's the record); the chat paste is the delivery.
+
+**Added 2026-08-10 (Session 172)** after Claude wrote `off_lot_returning_status_check_s172.sql` and asked Roland to run it by filename:
+> *"Always give the commands you want me to run, so I don't have to go through directories and open files to get to the command. I'd much rather copy from Claude and paste in seconds."*
+
 ---
 
 ## 🌿 BRANCH MODEL
