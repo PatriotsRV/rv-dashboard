@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-08-08 | headless runner | vs index.html v1.492 (HEAD 0223cb3) | 27 open Needed ERs shown below | 5 open Bugs tracked separately in docs/ER_TRIAGE_2026-08-08.md</div>
+  <div class="sub">2026-08-13 | headless runner | vs index.html v1.494 (HEAD a405b7a) | 28 open Needed ERs shown below | 4 open Bugs tracked separately in docs/ER_TRIAGE_2026-08-13.md</div>
 
   <div class="cards" id="stats"></div>
 
@@ -54,6 +54,9 @@
 
 <script>
 const ERS = [
+ {id:"44419de9",by:"Lynn",date:"08-12",cat:"General UI/UX",loe:"S",theme:"RO Fields & Status",
+  desc:"NEW 08-12. Add four RO statuses: NEED ESTIMATE, AWAITING ESTIMATE, ESTIMATE DECLINED, JOB DECLINED/CLOSE.",
+  verdict:"NEW ER, confirmed absent at HEAD a405b7a (v1.494): a case-insensitive grep for Awaiting Estimate / Estimate Declined / Need Estimate across the repo returns zero hits outside the ER snapshot itself. The canonical set is the 12 values in js/config.js STATUS_PROGRESS_MAP L151-164, hardcoded in 9 spots - index.html select L7038-7051, filter buttons L1085-1096, inline progress map L1579, inline ES map L4489, js/config.js ES map L253-262, js/render.js compact select L253, standard select L451, statusColorMap L727-739, ALL_STATUSES L741-745 - plus BOTH DB CHECK constraints (repair_orders_status_check and the cashiered twin, template off_lot_returning_status_check_s172.sql) or every save throws 23514, which is exactly the S172 defect. Awaiting Approval is the nearest existing value and JOB DECLINED/CLOSE overlaps 972af03c CANCELED, and the two terminal values need the same on-lot / queue count exclusions (js/render.js L656-658, L718-721). Small in code, but confirm the four names with Lynn first. Build together with 972af03c + 3e746c18."},
  {id:"0e172b2c",by:"Sofia",date:"07-16",cat:"RO Management",loe:"M",theme:"RO Fields & Status",
   desc:"Merge duplicate customer accounts created under different spellings of the same name.",
   verdict:"Partial at HEAD 0223cb3: js/duplicates.js has an RO-level merge/delete engine (getBaseROId L35, findDuplicateGroups L40) but it groups strictly on the PRVS-XXXX-XXXX base RO id (regex L36, keying L44), so two ROs under different spellings of one customer are never detected. Needs name/phone account dedup plus a verify-which-is-correct merge step. One-off cleanup for the Huebert case is 3f254929."},
