@@ -23,6 +23,21 @@ import nodemailer from "npm:nodemailer@6";
 //        (migration stamp_date_received_on_parts.sql) that stamps date_received=today the moment a part becomes
 //        Received on any path, since the quick Received button never set it. Also fixed the stale box instruction
 //        ("Mark it Received..." -> "Text the tech their part is in..."). Fixes Roland's Todd Lintzen report 2026-07-08.
+// v1.12: (S174) Katrina Kirkendall seam-tape report — an ALREADY-Received part kept demanding to be received.
+//        Three fixes, none of which touched the data (the row was correct the whole time):
+//        (a) BOX TITLE was still the imperative "CAME IN - RECEIVE THEM" while listing parts whose status is
+//            already 'Received'. v1.11 fixed the footer instruction but left the title behind, so the heading
+//            still described the pre-v1.11 behavior. Retitled "CAME IN - TEXT THE TECH" to match the action.
+//        (b) LINE RENDER said a bare "arrived", giving no signal the receiving work was done. Now renders
+//            "received Aug 17 by bobby" (falls back to the v1.10 "ordered by" tag when received_by is null on
+//            older rows). Requires received_by in the select.
+//        (c) REPEAT WINDOW was date_received BETWEEN yesterday AND today — calendar dates, not a rolling 24h.
+//            With the 8 AM + 3 PM weekday cron that surfaced one receipt in up to FOUR sends. Now the morning
+//            send keeps the yesterday lower bound (so late-afternoon/overnight receipts are not dropped between
+//            the 3 PM and 8 AM runs) and the afternoon send shows today only. Max appearances 4 -> 2.
+//        Also: RECIPIENTS never filtered staff.active, so deactivated staff kept receiving the report forever
+//        (Kevin McHenry, active=false, was still getting both sends daily). send-checkin-reminder and
+//        send-unreplied-reminder already did .eq("active", true); this function was the lone outlier.
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
 const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
@@ -128,12 +143,21 @@ Deno.serve(async (req: Request) => {
     // DB trigger (migration: stamp_date_received_on_parts.sql) so every receive
     // path — the quick Received button, the parts form, console check-in —
     // records a date.
+    // v1.12: the window was ALWAYS yesterday..today, which is a ~48h calendar span, not the
+    // "last day" the comment claims. Against the 8 AM + 3 PM weekday cron that meant a single
+    // receipt surfaced in up to FOUR consecutive sends, reading each time as an unmet demand
+    // (Katrina Kirkendall seam tape, S174: received 8/17, still being nagged 8/18).
+    // Now the lower bound depends on which send this is:
+    //   MORNING (8 AM)   -> yesterday. Nothing received after the 3 PM run gets dropped in the gap.
+    //   AFTERNOON (3 PM) -> today only. Everything from yesterday was already shown this morning.
+    // A part therefore appears at most twice: the send after it landed, and the next morning.
     const yDate = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10); // YYYY-MM-DD, yesterday
+    const cameInFrom = isMorning ? yDate : todayStr;
     const { data: receivedParts, error: e4 } = await sb
       .from("parts")
-      .select("id, part_name, part_number, eta, status, ordered_by, date_received, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
+      .select("id, part_name, part_number, eta, status, ordered_by, received_by, date_received, updated_at, ro_id, repair_orders(ro_id, customer_name, rv)")
       .eq("status", "Received")
-      .gte("date_received", yDate)
+      .gte("date_received", cameInFrom)
       .lte("date_received", todayStr)   // upper bound: ignore future-dated receipt typos (a part cannot "come in" tomorrow)
       .order("date_received", { ascending: false });
     if (e4) console.error("Error fetching received parts:", e4);
@@ -142,7 +166,12 @@ Deno.serve(async (req: Request) => {
     const { data: staff, error: e5 } = await sb
       .from("staff")
       .select("name, email, role")
-      .in("role", ["sr_manager", "manager", "parts_manager"]);
+      .in("role", ["sr_manager", "manager", "parts_manager"])
+      // v1.12: deactivating someone in staff (active=false) pulls them out of every UI dropdown,
+      // so they LOOK offboarded — but this query only ever filtered on role, so they kept receiving
+      // the report twice a day indefinitely (Kevin McHenry, S174). The two reminder functions already
+      // guard on active; this one did not.
+      .eq("active", true);
     if (e5) console.error("Error fetching staff:", e5);
 
     const recipients = [...new Set(
@@ -184,7 +213,7 @@ Deno.serve(async (req: Request) => {
     const needsOrderingROs = (openROs || []).filter((ro: any) => !isOnOrderPs(ro.parts_status));
 
     // 2) CALL THE SUPPLIER = overdue (ETA passed) + ordered-with-no-ETA past a 3-business-day grace
-    // 3) CAME IN = receivedParts (last 24h)   [overdue + received already fetched]
+    // 3) CAME IN = receivedParts (v1.12 window: morning=yesterday+today, afternoon=today only)
 
     // 3-business-day grace before an ordered part with no ETA becomes a "call the supplier" to-do
     const NO_ETA_GRACE_BIZ_DAYS = 3;
@@ -228,9 +257,16 @@ Deno.serve(async (req: Request) => {
       li(`<strong>${p.part_name || "Part"}</strong> &mdash; ${p.repair_orders?.customer_name || "—"} &mdash; <span style="color:#b45309;font-weight:700">no delivery date yet</span>${p.date_ordered ? ` (ordered ${fmtShort(p.date_ordered)})` : ""}${byTag("ordered by", p.ordered_by || "")}`)
     ).join("");
     const callItems = lateItems + staleItems;
-    const cameInItems = (receivedParts || []).map((p: any) =>
-      li(`<strong>${p.part_name || "Part"}</strong> &mdash; ${p.repair_orders?.customer_name || "—"} &mdash; arrived${byTag("ordered by", p.ordered_by || "")}`)
-    ).join("");
+    // v1.12: was a bare "arrived", which carried no signal that the receiving work was already done —
+    // in a box titled "RECEIVE THEM" it read as an instruction, not a status. Now states the receipt
+    // plainly, in green, with the date and the person who did it. received_by is null on rows predating
+    // the trg_stamp_date_received era, so fall back to the v1.10 "ordered by" tag in that case.
+    const cameInItems = (receivedParts || []).map((p: any) => {
+      const when = p.date_received ? fmtShort(p.date_received) : "";
+      const who  = (p.received_by || "").trim();
+      const done = `<span style="color:#15803d;font-weight:700">&#10003; received${when ? " " + when : ""}${who ? " by " + esc(who) : ""}</span>`;
+      return li(`<strong>${p.part_name || "Part"}</strong> &mdash; ${p.repair_orders?.customer_name || "—"} &mdash; ${done}${who ? "" : byTag("ordered by", p.ordered_by || "")}`);
+    }).join("");
 
     // ── box renderer: colored when there is work, green "all clear" when empty ──
     const box = (emoji: string, title: string, count: number, items: string, todo: string, emptyMsg: string, color: string, bg: string) => {
@@ -243,7 +279,10 @@ Deno.serve(async (req: Request) => {
 
     const orderBox  = box("&#128722;", "ORDER THESE PARTS", needsOrderingROs.length, orderItems, `Call the supplier, place the order, then tap "Parts Ordered" on the screen.`, "Nothing to order right now.", "#b45309", "#fffbeb");
     const callBox   = box("&#128222;", "CALL THE SUPPLIER", callCount, callItems, "Call the supplier, get a delivery date, and put it on the screen.", "Nobody to chase right now.", "#b91c1c", "#fef2f2");
-    const cameInBox = box("&#128229;", "CAME IN &mdash; RECEIVE THEM", receivedParts?.length || 0, cameInItems, "Text the tech their part is in and ready to install.", "Nothing came in.", "#15803d", "#f0fdf4");
+    // v1.12: title was "CAME IN — RECEIVE THEM" while every row in it is already status='Received'.
+    // v1.11 corrected the footer instruction but not the heading, so the box still commanded an action
+    // that had already been taken. Title now matches what the reader is actually being asked to do.
+    const cameInBox = box("&#128229;", "CAME IN &mdash; TEXT THE TECH", receivedParts?.length || 0, cameInItems, "Text the tech their part is in and ready to install.", "Nothing came in.", "#15803d", "#f0fdf4");
 
     // ── top verdict banner ──
     const verdict = toDoCount === 0
@@ -297,8 +336,13 @@ Deno.serve(async (req: Request) => {
       `[ ] CALL THE SUPPLIER: ${callCount}`,
       ...(overdueParts || []).map((p: any) => `      - ${p.part_name} (${p.repair_orders?.customer_name || "-"}) was due ${p.eta}${byText("ordered by", p.ordered_by || "")}`),
       ...staleNoEta.map((p: any) => `      - ${p.part_name} (${p.repair_orders?.customer_name || "-"}) no date yet${byText("ordered by", p.ordered_by || "")}`),
-      `[ ] CAME IN - RECEIVE THEM: ${receivedParts?.length || 0}`,
-      ...(receivedParts || []).map((p: any) => `      - ${p.part_name} (${p.repair_orders?.customer_name || "-"})${byText("ordered by", p.ordered_by || "")}`),
+      // v1.12: plaintext fallback carried the same stale imperative as the HTML box title.
+      `[ ] CAME IN - TEXT THE TECH: ${receivedParts?.length || 0}`,
+      ...(receivedParts || []).map((p: any) => {
+        const when = p.date_received ? fmtShort(p.date_received) : "";
+        const who  = (p.received_by || "").trim();
+        return `      - ${p.part_name} (${p.repair_orders?.customer_name || "-"}) received${when ? " " + when : ""}${who ? " by " + who : byText("ordered by", p.ordered_by || "")}`;
+      }),
       ``,
       `${waitingParts.length} more on order, not due yet - nothing to do.`,
       ``,
