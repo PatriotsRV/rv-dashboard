@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-08-08 | headless runner | vs index.html v1.492 (HEAD 0223cb3) | 27 open Needed ERs shown below | 5 open Bugs tracked separately in docs/ER_TRIAGE_2026-08-08.md</div>
+  <div class="sub">2026-08-19 | headless runner | vs index.html v1.494 | 29 open Needed ERs shown below | 4 open Bugs tracked separately in docs/ER_TRIAGE_2026-08-19.md</div>
 
   <div class="cards" id="stats"></div>
 
@@ -66,6 +66,9 @@ const ERS = [
  {id:"3e746c18",by:"Lynn",date:"08-03",cat:"RO Management",loe:"S",theme:"RO Fields & Status",
   desc:"Add an RO status of TOTALED OUT.",
   verdict:"Confirmed absent at HEAD 0223cb3: a case-insensitive grep for totaled / totalled across js/config.js and js/render.js returns zero hits. A distinct value from 972af03c's Canceled, but ONE build should add both terminal statuses and exclude both from the queue / on-lot counts (js/render.js L656-658, L718-721)."},
+ {id:"44419de9",by:"Lynn",date:"08-12",cat:"RO Management",loe:"S",theme:"RO Fields & Status",
+  desc:"Add RO statuses: NEED ESTIMATE, AWAITING ESTIMATE, ESTIMATE DECLINED, JOB DECLINED/CLOSE.",
+  verdict:"Confirmed absent at HEAD a405b7a (v1.494): none of the 4 values exist; the canonical set is the 12 in js/config.js STATUS_PROGRESS_MAP L151-164. Each add must hit 9 hardcoded spots (index.html select L7038-7051, filter btns L1085-1096, inline maps L1579/L4489, config.js ES L253-262, render.js L253/L451, statusColorMap L727-739, ALL_STATUSES L741-745) PLUS both DB CHECKs per the S172 lesson, or saves throw 23514. Overlaps 972af03c CANCELED - confirm scope with Lynn; bundle with 972af03c + 3e746c18."},
  {id:"ac8265c8",by:"Lynn",date:"08-05",cat:"RO Management",loe:"S",theme:"RO Fields & Status",
   desc:"Add mileage to the repair order.",
   verdict:"Confirmed absent at HEAD 0223cb3: a case-insensitive grep for mileage / odometer across every *.js, *.html and *.sql in the repo returns zero hits - the RO records rv / vin but never the unit's mileage. One repair_orders.mileage column plus the New/Edit RO inputs (js/ro-crud.js create L413-419 / edit L490-495) and an optional card readout. Bundle with 3e746c18 and 972af03c."},
@@ -98,10 +101,10 @@ const ERS = [
   verdict:"PARTIAL, re-verified at HEAD 0223cb3. The daily in-progress digest half ships as supabase/functions/send-manager-report, and single-event notifies exist (service_added_notify js/work-orders.js L293; urgent_update_notify js/ro-crud.js L374). Still absent: notify-on-every-RO-update and to-do scraping from status notes - grep for ro_tasks / task_tracker / customer_task returns zero hits. Anchor of this theme."},
  {id:"af14b3cb",by:"Lynn",date:"05-21",cat:"Task-Tracking",loe:"L",theme:"Notifications & Task-Tracking",
   desc:"Per-customer task tracker with a daily reminder; each task stays on the list until marked complete.",
-  verdict:"Confirmed absent at HEAD 0223cb3: js/shop-tasks.js is a non-customer shop checklist with no ro_id / customer link and no reminder column, and grep for ro_tasks / customer_task / task_tracker across js and supabase returns zero hits. Needs a per-RO tasks table, an add/complete UI and a daily open-task reminder. Pairs with 5925fc01."},
+  verdict:"Confirmed absent at HEAD 0223cb3: js/shop-tasks.js is a non-customer shop checklist with no ro_id / customer link and no reminder column, and grep for ro_tasks / customer_task / task_tracker across js and supabase returns zero hits. Needs a per-RO tasks table, an add/complete UI and a daily open-task reminder. Lynn re-filed this 08-17 as ece91cba (duplicate), which folds in a NEW spec detail: render it as a third note box beside repair description and RO status, capturing who and when on both add and complete. Pairs with 5925fc01."},
  {id:"a03677e6",by:"Brandon",date:"08-07",cat:"General UI/UX",loe:"S",theme:"Notifications & Task-Tracking",
   desc:"NEW 08-07. Move notification-sent / customer-reply lines out of RO Status Updates into the Customer Comms section.",
-  verdict:"NEW ER, confirmed at HEAD 0223cb3: machine audit lines write as notes type ro_status and so crowd RO Status Updates (js/render.js L553) - NOTIFICATION SENT/FAILED (process-scheduled-notifications L187/L215), SCHEDULED/CANCELLED (index.html L3116/L3154), key-date and urgent rows (js/ro-crud.js L302/L344/L379/L571/L582), parts notes (js/parts.js L654/L855). A customer_comm stream already renders separately (L563). Small: retarget the type. NOTE Roland reversed exactly this retarget for LEAD NOTES in v1.491 - confirm scope first."},
+  verdict:"NEW ER, confirmed at HEAD 0223cb3: machine audit lines write as notes type ro_status and so crowd RO Status Updates (js/render.js L553) - NOTIFICATION SENT/FAILED (process-scheduled-notifications L187/L215), SCHEDULED/CANCELLED (index.html L3116/L3154), key-date and urgent rows (js/ro-crud.js L302/L344/L379/L571/L582), parts notes (js/parts.js L654/L855). A customer_comm stream already renders separately (L563). Small: retarget the type. Lynn re-filed this 08-13 as 2deb8f30 (duplicate) but asks for a SEPARATE view rather than the existing comm stream - settle that difference first. NOTE Roland reversed exactly this retarget for LEAD NOTES in v1.491 - confirm scope first."},
  {id:"14f35f95",by:"Lynn",date:"04-09",cat:"Parts",loe:"XL",theme:"Parts & Inventory",
   desc:"In-house parts inventory: order a box of 25, use 5, remaining 20 go to searchable priced stock.",
   verdict:"Confirmed absent at HEAD 0223cb3: a word-boundary grep for inventory / on_hand / in_stock / stock_qty across js, supabase/migrations and supabase/functions returns zero hits. Parts remain per-RO line items only (js/parts.js). New subsystem: inventory table, receive/consume/adjust flows, a searchable priced stock view, and links from the parts-request path. Largest item on the board."},
@@ -111,6 +114,9 @@ const ERS = [
  {id:"8d885331",by:"Lynn",date:"04-09",cat:"Parts",loe:"S",theme:"Parts & Inventory",
   desc:"Rework the field order on the parts-entry / ordering screen.",
   verdict:"Parts-entry form exists and is unchanged at HEAD 0223cb3: js/parts.js pf_supplier L181, pf_partName L190, pf_serviceSilo L208, pf_returnDeadline L226. The ask is only to reorder those fields, which is quick once Lynn supplies the target layout or a mockup. BLOCKED on detail, not on effort."},
+ {id:"fa35e3df",by:"Lynn",date:"08-18",cat:"General UI/UX",loe:"S",theme:"Board & Navigation UX",
+  desc:"NEW 08-18. Get rid of the blue font - too hard to see.",
+  verdict:"NEW this run, mapped against index.html v1.494. Real but a styling change, not a functional defect, so Needed not Bug. Small bold blue text sits at or below the WCAG AA 4.5:1 floor: #3b82f6 on the parts-estimate chip (css/dashboard.css L557-560, compact chip L3020, Parts Estimate filter button index.html L1028) and on .comm-thread-link L1210; #0a84ff on the Drop key-date chip and key-dates row (js/render.js L395, L363); #667eea on .log-duration L1911. About 4.6:1 on --bg-surface #1a1d24, about 4.0:1 on --bg-elevated #252930, and only about 3.7:1 for the same blues on the light parts-modal backgrounds (js/parts.js L161, L216, L613). Fix is a palette swap to a #93c5fd-class blue (already used in js/work-list.js L267/L272), not a rewrite. UNDERSPECIFIED - Lynn did not say which screen; confirm before recoloring, since doing all of them is a board-wide visual change."},
  {id:"29654af7",by:"Lynn",date:"07-06",cat:"General UI/UX",loe:"S",theme:"Board & Navigation UX",
   desc:"A button that jumps back to the top of the page / the search bar after scrolling to a tile.",
   verdict:"Confirmed absent at HEAD 0223cb3: grep for backToTop / back-to-top / scroll-to-top / scrollToTop across index.html, js and css returns nothing, and the board has only targeted scrollIntoView calls. Add a scroll-triggered back-to-top / jump-to-search control, ideally present in the sidebar layout too. Canonical for duplicate 2b78696c."},
