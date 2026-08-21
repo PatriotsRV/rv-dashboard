@@ -9,6 +9,10 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 177 — SCHEDULED MESSAGES shipped (messages v1.24, Sync Gate Case B, tag `messages-v1.24`, prod main `a432163`).**
+  - NEW `scheduled_messages` table (managers+ RLS, pending-only UPDATE) + 1-min pg_cron + NEW edge fn `send-scheduled-messages` v1.0 (through textly-send — STOP gate at fire time; broadcast fires log staff_broadcasts "(scheduled)" rows; pending→sending claim; >2h missed-window fail).
+  - **messages v1.24:** composer 🕑 schedule modal (signature at schedule time, text-only v1), Broadcast 🕑 Send-later row (roster snapshot), 🕑 Scheduled queue modal (edit body/time + cancel). Managers+ only.
+  - Live-proven same session: Roland self-broadcast fired 1 second after target; edit path exercised; SMS + DB chain MCP-verified.
 - ✅ **Session 176 — Kain/Ivins wrong-RO overwrite: reverted live + v1.496 SHIPPED (Sync Gate Case B, tag `v1.496`, prod main `f2bfab7`).**
   - **Incident:** receptionist reported Eric Kain's RO "duplicated" with Connie Ivins' docs. audit_log forensics: Brandon's Edit-RO save wrote Eric's form onto Connie's `PRVS-CO07-7005` — date_received sort tie (no tie-break) + an in-flight board reload completing under the reopened modal + index-based save targeting. First read wrongly blamed Brandon; his account of the UI sequence reopened it and the code proved the race. Reverted live from audit old_values (13 fields), MCP-verified; Connie's files/notes/parts never moved.
   - **v1.496:** UUID-resolved modal writes (`editingROSupabaseId`: Edit-RO save, editField, soft-delete, insurance scans), `.order('id')` board tie-break, in-flight reload discard (started-idle/finished-busy), NEW `version.json` + new-version refresh banner (visible tab: pinned Refresh-now, never forced; hidden idle tab: silent self-reload).
@@ -362,6 +366,7 @@
 
 | Version | Date | Summary |
 |---|---|---|
+| messages-v1.24 | 2026-08-21 | **Session 177.** Scheduled messages (managers+): composer 🕑 + Broadcast Send-later + Scheduled queue (edit/cancel). NEW scheduled_messages table + 1-min pg_cron + send-scheduled-messages edge fn v1.0 through textly-send (STOP gate at fire time). Text-only v1. |
 | v1.496 | 2026-08-21 | **Session 176.** Kain/Ivins wrong-RO write fix: modal-adjacent writes resolve by `editingROSupabaseId` (UUID at modal open), never array index at save time; board sort `.order('id')` tie-break; in-flight reload discard closes the `_uiBusy` hole; NEW `version.json` poll + refresh banner (visible: pinned Refresh-now; hidden idle: silent self-reload). version.json + APP_VERSION are new bump sites. |
 | v1.495 + checkin-v1.39 | 2026-08-20 | **Session 175 (backfilled S176).** RO status approval breakout: 'Awaiting Approval' → 6 source-specific Awaiting/Approved statuses (canonical 17); CHECK twins widened live; optgroup dropdowns + grouped filter chips; Approved-trio clock-in flippable; `_notifyApprovalStatus` manager+tech notifications. |
 | parts-report-v1.12 | 2026-08-18 | **Session 174.** CAME-IN box retitled `RECEIVE THEM` -> `TEXT THE TECH` (v1.11 fixed the footer instruction but left the heading, so an already-Received part kept reading as a demand — Katrina Kirkendall seam tape); lines now render `✓ received <date> by <who>` instead of a bare `arrived`, adding `received_by` to the select with a fallback to the v1.10 'ordered by' tag; receipt window made send-aware (`cameInFrom = isMorning ? yesterday : today`) so one receipt appears in at most 2 sends instead of 4; plaintext checklist wording matched; recipient query gains `.eq("active", true)` (Kevin McHenry, deactivated, had been receiving both daily sends). Edge-fn only, deployed by Roland; `index.html` untouched at v1.494. |
