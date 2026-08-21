@@ -30,13 +30,21 @@
 
         export async function loadDataFromSupabase() {
             log('=== loadDataFromSupabase called ===');
+            // [v1.496 S176] Snapshot UI-busy state at load START. If a modal opens
+            // while this load is in flight, committing the new (possibly reordered)
+            // array under it would break index-based modal writes — the exact
+            // mechanism of the Kain/Ivins wrong-RO overwrite (2026-08-21). The
+            // _uiBusy guard only stops loads from STARTING; this closes the
+            // in-flight window: started-idle + finished-busy = discard, retry later.
+            const _busyAtLoadStart = _uiBusy();
             try {
                 // Load repair orders — GH#30: exclude soft-deleted rows
                 const { data: ros, error } = await getSB()
                     .from('repair_orders')
                     .select('*')
                     .is('deleted_at', null)
-                    .order('date_received', { ascending: false });
+                    .order('date_received', { ascending: false })
+                    .order('id', { ascending: true }); // [v1.496 S176] stable tie-break — equal date_received rows must NOT swap positions between loads (index-based modal writes; Kain/Ivins incident 2026-08-21)
 
                 if (error) throw error;
 
@@ -147,6 +155,11 @@
                     return rowToRO(row);
                 });
 
+                // [v1.496 S176] Commit guard — see note at function top.
+                if (!_busyAtLoadStart && _uiBusy()) {
+                    log('⏸ Board load DISCARDED — a modal/form opened while the load was in flight (retry on next eligible trigger)');
+                    return;
+                }
                 currentData = data;
                 log('✅ Loaded', data.length, 'repair orders from Supabase');
                 _lastBoardLoadAt = Date.now(); // v1.492 GH#36 Phase 1: staleness clock
@@ -1120,14 +1133,22 @@
                     if (edited === null) return; // cancelled
                     const newValue = edited.trim();
 
+                    // [v1.496 S176] Re-resolve the index AFTER the modal await — the user
+                    // may have sat in the modal across a board reload; a stale index
+                    // writes to the WRONG RO (Kain/Ivins incident, 2026-08-21).
+                    const liveIndex = ro._supabaseId
+                        ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                        : originalIndex;
+                    if (liveIndex === -1) { showToast('This repair order is no longer on the board — refresh and try again. Nothing was saved.', 'error'); return; }
+
                     // Capture old value BEFORE mutation (ro still points to unmodified object)
                     const oldValue = ro.repairDescription || '';
 
                     // Update local data
-                    currentData[originalIndex].repairDescription = newValue;
+                    currentData[liveIndex].repairDescription = newValue;
 
                     // Write to Supabase (full replace of description column)
-                    await updateFieldInSupabase(originalIndex, 'repairDescription', newValue);
+                    await updateFieldInSupabase(liveIndex, 'repairDescription', newValue);
 
                     // Audit log — before & after
                     await writeAuditLog(ro.roId, [{ field: 'Repair Description', oldValue, newValue }]);
@@ -1158,11 +1179,17 @@
                     updatedValue = decodedValue + '\n---\n[' + timestamp + ' - ' + userName + '] ' + newUpdate.trim();
                 }
 
-                currentData[originalIndex][fieldName] = updatedValue;
+                // [v1.496 S176] Re-resolve the index AFTER the modal await (see repairDescription note above).
+                const liveIndex = ro._supabaseId
+                    ? currentData.findIndex(item => item._supabaseId === ro._supabaseId)
+                    : originalIndex;
+                if (liveIndex === -1) { showToast('This repair order is no longer on the board — refresh and try again. Nothing was saved.', 'error'); return; }
+
+                currentData[liveIndex][fieldName] = updatedValue;
                 log('Updated', fieldName, 'for:', ro.customerName);
 
                 const noteText = '[' + new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' - ' + (currentUser?.name || 'Unknown') + '] ' + newUpdate.trim();
-                await updateFieldInSupabase(originalIndex, fieldName, noteText);
+                await updateFieldInSupabase(liveIndex, fieldName, noteText);
 
                 log('✓ Field updated in Supabase');
                 renderBoard();
@@ -1185,6 +1212,9 @@
                         item.customerName === ro.customerName &&
                         item.dateReceived === ro.dateReceived
                     );
+                // [v1.496 S176] UUID captured at open = the save-time source of truth.
+                // Array indexes can go stale under an open modal; the uuid cannot.
+                editingROSupabaseId = ro._supabaseId || null;
 
                 document.getElementById('editRoId').textContent = ro.roId || '';
                 document.getElementById('editCustomerName').value = ro.customerName || '';
@@ -1291,6 +1321,7 @@
         export function closeEditModal() {
             document.getElementById('editROOverlay').classList.remove('active');
             editingROIndex = null;
+            editingROSupabaseId = null; // [v1.496 S176]
             setROType('standard', 'edit');
             // Keep _lastEstimateScan — so adding new fields and reopening still
             // auto-populates from the scan. Cleared only on save or new scan.
@@ -1407,9 +1438,49 @@ async function _autoRefreshBoard(trigger) {
 
 // Install once at module load (app.js imports this module exactly once).
 // All triggers self-guard on auth + boot-load, so early installation is safe.
-document.addEventListener('visibilitychange', () => { if (!document.hidden) _autoRefreshBoard('visible'); });
+document.addEventListener('visibilitychange', () => { _checkAppVersion(); if (!document.hidden) _autoRefreshBoard('visible'); });
 window.addEventListener('focus', () => _autoRefreshBoard('focus'));
-setInterval(() => _autoRefreshBoard('interval'), AUTO_REFRESH_TICK_MS);
+setInterval(() => { _checkAppVersion(); _autoRefreshBoard('interval'); }, AUTO_REFRESH_TICK_MS);
+
+// ── [v1.496 S176] NEW-VERSION DETECTION ──────────────────────────────────
+// Polls version.json (bumped with every release) and compares it to the
+// version this tab is RUNNING. Visible tab: pinned banner + Refresh button —
+// never a forced reload, which could destroy in-progress form work. Hidden
+// tab: silent location.reload() when idle (_uiBusy false), so stale
+// overnight tabs self-heal (S171 gotcha: auto-refresh reloads data, not code).
+const APP_VERSION = '1.496'; // BUMP SITE: keep in sync with version.json + index.html comment/badge/console.log
+const VERSION_CHECK_EVERY_MS = 5 * 60_000; // poll cadence (rides the 30s tick)
+let _lastVersionCheckAt = 0;
+
+async function _checkAppVersion() {
+    try {
+        if (Date.now() - _lastVersionCheckAt < VERSION_CHECK_EVERY_MS) return;
+        _lastVersionCheckAt = Date.now();
+        // Relative path (GitHub Pages project path — S146 gotcha) + cache-bust
+        // query param (S102 gotcha: hard refresh alone may not beat the CDN).
+        const resp = await fetch('version.json?ts=' + Date.now(), { cache: 'no-store' });
+        if (!resp.ok) return;
+        const j = await resp.json();
+        const latest = j && j.version;
+        if (!latest || latest === APP_VERSION) return;
+        if (document.hidden && !_uiBusy()) {
+            log('🔄 New version ' + latest + ' detected in hidden tab — reloading');
+            location.reload();
+            return;
+        }
+        _showUpdateBanner(latest);
+    } catch (e) { /* non-fatal — offline lot signal, CDN hiccup; next poll retries */ }
+}
+
+function _showUpdateBanner(latest) {
+    if (document.getElementById('appUpdateBanner')) return;
+    const bar = document.createElement('div');
+    bar.id = 'appUpdateBanner'; // has an id → _uiBusy()'s anonymous-overlay check ignores it
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:20000;background:#1d4ed8;color:#fff;padding:10px 16px;text-align:center;font-weight:700;font-size:0.95rem;box-shadow:0 2px 8px rgba(0,0,0,0.35);';
+    bar.innerHTML = '🔄 A new version of the dashboard is available (v' + String(latest).replace(/[^0-9.]/g, '') + ').' +
+        '<button onclick="location.reload()" style="margin-left:12px;padding:6px 14px;border:none;border-radius:8px;background:#fff;color:#1d4ed8;font-weight:800;cursor:pointer;">Refresh now</button>';
+    document.body.appendChild(bar);
+}
 
 // ---- Window bridge (Phase 7 additive) ----
 Object.assign(window, {

@@ -118,10 +118,18 @@
                 window._lastEstimateScan = { mode, extracted, timestamp: new Date().toISOString() };
 
                 // Step 6: If in Edit mode and we have an RO index, write insurance data now
+                // [v1.496 S176] Re-resolve the index by the open-modal UUID — a board
+                // reload during the scan awaits could leave editingROIndex stale.
                 if (mode === 'edit' && editingROIndex !== null) {
-                    const ro = currentData[editingROIndex];
-                    const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-                    writeInsuranceData(roId, extracted, editingROIndex);
+                    const liveIdx = (typeof editingROSupabaseId === 'string' && editingROSupabaseId)
+                        ? currentData.findIndex(x => x._supabaseId === editingROSupabaseId)
+                        : editingROIndex;
+                    if (liveIdx === -1) { warn('Insurance write skipped — edited RO no longer on the board'); }
+                    else {
+                        const ro = currentData[liveIdx];
+                        const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
+                        writeInsuranceData(roId, extracted, liveIdx);
+                    }
                 }
 
                 btn.textContent = '✅ Scan Complete — Review Suggestions Below';
@@ -134,9 +142,16 @@
                 if (driveUrl) {
                     log('✅ Estimate stored in Drive:', driveUrl);
                     if (mode === 'edit' && editingROIndex !== null) {
-                        const docName = 'Insurance_Estimate_' + new Date().toISOString().slice(0,10) + '.pdf';
-                        await addDocToLibrary(editingROIndex, driveUrl, docName, 'pdf');
-                        log('✅ Estimate added to document library');
+                        // [v1.496 S176] Same UUID re-resolution as Step 6 above.
+                        const liveIdx2 = (typeof editingROSupabaseId === 'string' && editingROSupabaseId)
+                            ? currentData.findIndex(x => x._supabaseId === editingROSupabaseId)
+                            : editingROIndex;
+                        if (liveIdx2 === -1) { warn('Estimate doc-library add skipped — edited RO no longer on the board'); }
+                        else {
+                            const docName = 'Insurance_Estimate_' + new Date().toISOString().slice(0,10) + '.pdf';
+                            await addDocToLibrary(liveIdx2, driveUrl, docName, 'pdf');
+                            log('✅ Estimate added to document library');
+                        }
                     } else if (mode === 'new') {
                         // Store for later — will be added after RO is saved
                         window._pendingEstimateDoc = { url: driveUrl, name: 'Insurance_Estimate_' + new Date().toISOString().slice(0,10) + '.pdf', type: 'pdf' };

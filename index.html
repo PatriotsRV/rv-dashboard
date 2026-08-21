@@ -1,7 +1,20 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.495
+    PRVS Dashboard v1.496
+    v1.496: [S176] WRONG-RO WRITE FIX + NEW-VERSION REFRESH BANNER (Kain/Ivins
+    incident 2026-08-21: an in-flight board reload reordered currentData under an
+    open Edit-RO modal — the two ROs tied on date_received — and the index-based
+    save wrote Eric Kain's form onto Connie Ivins' RO). Four parts: (1) Edit-RO
+    save, editField, soft-delete, and insurance-scan writes all resolve their
+    target by editingROSupabaseId (UUID captured at modal open) — never by array
+    index at save time; abort with a toast if the row is gone. (2) Board query
+    gains .order('id') tie-break so equal date_received rows can't swap between
+    loads. (3) loadDataFromSupabase discards its result if a modal opened while
+    the load was in flight (closes the _uiBusy guard's in-flight hole). (4) NEW
+    version.json + poll on the auto-refresh tick: visible tabs get a pinned
+    "new version — Refresh now" banner (never a forced reload); hidden idle tabs
+    silently self-reload. version.json is a NEW bump site on every release.
     v1.495: [S175] RO STATUS APPROVAL BREAKOUT. 'Awaiting Approval' retired, split
     into 6 source-specific statuses: Awaiting/Approved x Insurance/Customer/
     Extended Warranty (canonical list 12 -> 17; DB CHECKs widened via migration
@@ -902,7 +915,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.495</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.496</span>
           </span>
         </div>
         <header>
@@ -931,7 +944,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.495</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.496</span>
             </div>
         </header>
 
@@ -1842,8 +1855,10 @@
                 showToast('Admin access required to delete ROs.', 'warning');
                 return;
             }
-            const idx = (typeof explicitIdx === 'number') ? explicitIdx
-                : ((typeof editingROIndex === 'number') ? editingROIndex : -1);
+            // [v1.496 S176] Prefer the open-modal UUID over the stored index.
+            let idx = (typeof explicitIdx === 'number') ? explicitIdx : -1;
+            if (idx < 0 && editingROSupabaseId) idx = currentData.findIndex(x => x._supabaseId === editingROSupabaseId);
+            if (idx < 0 && typeof editingROIndex === 'number' && editingROIndex !== null) idx = editingROIndex;
             if (idx < 0 || idx >= currentData.length) {
                 showToast('Could not identify the RO to delete — reopen the modal and try again.', 'danger');
                 return;
@@ -3696,7 +3711,7 @@
 
         // Initialize
         function init() {
-                        log('📦 PRVS Dashboard v1.495 - 2026-08-20 - S175 RO status approval breakout: Awaiting Approval retired, 6 source-specific Awaiting/Approved statuses (Insurance/Customer/Extended Warranty), optgroup dropdowns, grouped filter chips + source sub-chips, DB CHECKs widened both twins');
+                        log('📦 PRVS Dashboard v1.496 - 2026-08-21 - S176 wrong-RO write fix (Kain/Ivins): Edit-RO/editField/soft-delete/insurance writes resolve by UUID not array index, board sort id tie-break, in-flight reload discard under open modals, + version.json new-version refresh banner');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -5888,6 +5903,18 @@
         // Modal Controls
         // PHASE 3 MIGRATED — also schema-documented in js/state.js.
         let editingROIndex = null; // Track which RO is being edited
+        // [v1.496 S176] UUID of the RO being edited, captured at modal open. This —
+        // not the array index — is the save-time source of truth: a background board
+        // reload can reorder currentData under an open modal, and an index-based
+        // write then hits the WRONG RO (Kain/Ivins incident, 2026-08-21).
+        let editingROSupabaseId = null;
+        function _getEditingRO() {
+            if (editingROSupabaseId) {
+                const r = currentData.find(x => x._supabaseId === editingROSupabaseId);
+                if (r) return r;
+            }
+            return (typeof editingROIndex === 'number' && editingROIndex !== null) ? currentData[editingROIndex] : null;
+        }
 
         // [PHASE 11 DELETED v1.437 S88] openTimeLogsModal() -> js/time-tracking.js (module-owned via window bridge; byte-identical extraction verified)
         
@@ -6456,6 +6483,7 @@
             newROBtn.addEventListener('click', () => {
                 // Reset for new RO
                 editingROIndex = null;
+                editingROSupabaseId = null; // [v1.496 S176]
                 // v1.488: a fresh open is NOT lead-origin. The lead prefill
                 // path sets the flag AFTER programmatically clicking this
                 // button, so the ordering keeps it accurate for both paths.
@@ -6632,7 +6660,21 @@
                         return;
                     }
 
+                    // [v1.496 S176] Resolve the save target by the UUID captured at
+                    // modal open — NEVER trust the array index at save time.
+                    if (editingROSupabaseId) {
+                        const liveIdx = currentData.findIndex(r => r._supabaseId === editingROSupabaseId);
+                        if (liveIdx === -1) {
+                            showToast('This repair order is no longer on the board — refresh and try again. Nothing was saved.', 'error');
+                            return;
+                        }
+                        editingROIndex = liveIdx;
+                    }
                     const existing = currentData[editingROIndex];
+                    if (editingROSupabaseId && existing._supabaseId !== editingROSupabaseId) {
+                        showToast('Save aborted — the board changed underneath the form. Please refresh and try again.', 'error');
+                        return;
+                    }
                     const data = {
                         customerName: document.getElementById('editCustomerName').value,
                         customerPhone: document.getElementById('editCustomerPhone').value,
@@ -7552,7 +7594,7 @@ function toggleWOTasks(tasksId, chevId) {
                         <label class="form-label">Customer Phone</label>
                         <input type="tel" class="form-input" id="editCustomerPhone">
                         <div id="sug_edit_customerPhone"></div>
-                        <button type="button" onclick="(typeof editingROIndex==='number' &amp;&amp; currentData[editingROIndex]) ? openMessagesModal(currentData[editingROIndex]) : showToast('Open the repair order first.','warning')" style="margin-top:8px; width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid rgba(59,130,246,0.45); background:rgba(59,130,246,0.10); color:#3b82f6; cursor:pointer; font-size:0.82rem; font-weight:700;">&#128172; Message Customer</button>
+                        <button type="button" onclick="var _ero=_getEditingRO(); _ero ? openMessagesModal(_ero) : showToast('Open the repair order first.','warning')" style="margin-top:8px; width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid rgba(59,130,246,0.45); background:rgba(59,130,246,0.10); color:#3b82f6; cursor:pointer; font-size:0.82rem; font-weight:700;">&#128172; Message Customer</button>
                     </div>
                     <div class="form-field shop-hide">
                         <label class="form-label">Customer Email</label>
