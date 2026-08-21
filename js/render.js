@@ -251,7 +251,16 @@
                                         <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>Not On Lot</option>
                                         <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>On Lot</option>
                                         <option value="Off Lot - Returning" ${ro.status === 'Off Lot - Returning' ? 'selected' : ''}>Off Lot - Returning</option>
-                                        <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>Awaiting Approval</option>
+                                        <optgroup label="⏳ Awaiting Approval">
+                                            <option value="Awaiting Insurance" ${ro.status === 'Awaiting Insurance' ? 'selected' : ''}>Awaiting Insurance</option>
+                                            <option value="Awaiting Customer" ${ro.status === 'Awaiting Customer' ? 'selected' : ''}>Awaiting Customer</option>
+                                            <option value="Awaiting Extended Warranty" ${ro.status === 'Awaiting Extended Warranty' ? 'selected' : ''}>Awaiting Ext. Warranty</option>
+                                        </optgroup>
+                                        <optgroup label="✅ Approved">
+                                            <option value="Approved Insurance" ${ro.status === 'Approved Insurance' ? 'selected' : ''}>Approved Insurance</option>
+                                            <option value="Approved Customer" ${ro.status === 'Approved Customer' ? 'selected' : ''}>Approved Customer</option>
+                                            <option value="Approved Extended Warranty" ${ro.status === 'Approved Extended Warranty' ? 'selected' : ''}>Approved Ext. Warranty</option>
+                                        </optgroup>
                                         <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>Awaiting Parts</option>
                                         <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>Scheduled</option>
                                         <option value="Ready to Work" ${ro.status === 'Ready to Work' ? 'selected' : ''}>Ready to Work</option>
@@ -449,7 +458,16 @@
                                 <option value="Not On Lot" ${ro.status === 'Not On Lot' ? 'selected' : ''}>${t('Not On Lot')}</option>
                                 <option value="On Lot" ${ro.status === 'On Lot' ? 'selected' : ''}>${t('On Lot')}</option>
                                 <option value="Off Lot - Returning" ${ro.status === 'Off Lot - Returning' ? 'selected' : ''}>${t('Off Lot - Returning')}</option>
-                                <option value="Awaiting Approval" ${ro.status === 'Awaiting Approval' ? 'selected' : ''}>${t('Awaiting Approval')}</option>
+                                <optgroup label="⏳ ${t('Awaiting Approval')}">
+                                    <option value="Awaiting Insurance" ${ro.status === 'Awaiting Insurance' ? 'selected' : ''}>${t('Awaiting Insurance')}</option>
+                                    <option value="Awaiting Customer" ${ro.status === 'Awaiting Customer' ? 'selected' : ''}>${t('Awaiting Customer')}</option>
+                                    <option value="Awaiting Extended Warranty" ${ro.status === 'Awaiting Extended Warranty' ? 'selected' : ''}>${t('Awaiting Extended Warranty')}</option>
+                                </optgroup>
+                                <optgroup label="✅ ${t('Approved')}">
+                                    <option value="Approved Insurance" ${ro.status === 'Approved Insurance' ? 'selected' : ''}>${t('Approved Insurance')}</option>
+                                    <option value="Approved Customer" ${ro.status === 'Approved Customer' ? 'selected' : ''}>${t('Approved Customer')}</option>
+                                    <option value="Approved Extended Warranty" ${ro.status === 'Approved Extended Warranty' ? 'selected' : ''}>${t('Approved Extended Warranty')}</option>
+                                </optgroup>
                                 <option value="Awaiting parts" ${ro.status === 'Awaiting parts' ? 'selected' : ''}>${t('Awaiting Parts')}</option>
                                 <option value="Scheduled" ${ro.status === 'Scheduled' ? 'selected' : ''}>${t('Scheduled')}</option>
                                 <option value="Ready to Work" ${ro.status === 'Ready to Work' ? 'selected' : ''}>${t('Ready to Work')}</option>
@@ -728,7 +746,14 @@
                 'Not On Lot':        '#9ca3af',
                 'On Lot':            '#34c759',
                 'Off Lot - Returning': '#0ea5e9',
-                'Awaiting Approval': '#ffcc00',
+                // [S175] Awaiting trio share the old Awaiting Approval amber;
+                // Approved trio share violet (matches WO customer_approved #8b5cf6).
+                'Awaiting Insurance': '#ffcc00',
+                'Awaiting Customer': '#ffcc00',
+                'Awaiting Extended Warranty': '#ffcc00',
+                'Approved Insurance': '#8b5cf6',
+                'Approved Customer': '#8b5cf6',
+                'Approved Extended Warranty': '#8b5cf6',
                 'Awaiting parts':    '#ff9500',
                 'Ready to Work':     '#84cc16',
                 'In progress':       '#0a84ff',
@@ -739,7 +764,10 @@
             };
 
             const ALL_STATUSES = [
-                'Not On Lot', 'On Lot', 'Awaiting Approval', 'Awaiting parts',
+                'Not On Lot', 'On Lot',
+                'Awaiting Insurance', 'Awaiting Customer', 'Awaiting Extended Warranty',
+                'Approved Insurance', 'Approved Customer', 'Approved Extended Warranty',
+                'Awaiting parts',
                 'Ready to Work', 'In progress', 'Repairs Completed', 'Waiting for QA/QC',
                 'Ready for pickup', 'Delivered/Cashed Out'
             ];

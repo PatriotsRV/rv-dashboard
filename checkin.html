@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.38
+    PRVS Tech Check-In v1.39
+    v1.39: [S175] STATUS APPROVAL BREAKOUT support. 'Awaiting Approval' retired in
+           favor of 6 source-specific statuses (Awaiting/Approved x Insurance/
+           Customer/Extended Warranty, dashboard v1.495 + migration
+           status_approval_breakout_s175.sql). FLIPPABLE_STATUSES gains the three
+           Approved statuses (Roland decision S175: approval = work authorized, so
+           a tech clock-in advances them to In progress, same as Ready to Work).
+           The three Awaiting statuses stay preserved per the S105 rule.
+    Released: 2026-08-20
     v1.38: [ER 0b2e128c S120] On clock-out, the tech's typed work notes are copied into
            the RO update timeline as a notes-table 'ro_status' line ("📝 TECH NOTES (service): ...")
            so managers see what was worked on from the dashboard. Online only, non-fatal,
@@ -357,7 +365,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.38</div>
+    <div class="version">v1.39</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -1337,7 +1345,12 @@ async function clockIn() {
         // is lost when we leave a preserved status in place. Blank = brand-new RO with no
         // manager signal yet, safe to advance. (Roland decision, Session 105: preserve
         // both Awaiting states; leave completed ROs put.)
-        const FLIPPABLE_STATUSES = ['', 'Not On Lot', 'On Lot', 'Scheduled', 'Ready to Work'];
+        // v1.39 [S175]: 'Awaiting Approval' split into Awaiting/Approved x Insurance/
+        // Customer/Extended Warranty. The Awaiting trio stays PRESERVED (S105 rule);
+        // the Approved trio is flippable — approval means work is authorized, so a
+        // clock-in advances it like Ready to Work (Roland decision S175).
+        const FLIPPABLE_STATUSES = ['', 'Not On Lot', 'On Lot', 'Scheduled', 'Ready to Work',
+                                    'Approved Insurance', 'Approved Customer', 'Approved Extended Warranty'];
         if (isOnline && roData.status !== IN_PROGRESS
                      && FLIPPABLE_STATUSES.includes(roData.status || '')) {
             const priorStatus = roData.status || '';

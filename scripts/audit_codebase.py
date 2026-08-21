@@ -148,9 +148,13 @@ UPDATED_AT_TABLES: set[str] = {
     "solar_project_store", "solar_settings", "wo_task_templates",
 }
 
-# 11 canonical status values per Session 72 CHECK constraint
+# 17 canonical status values per the S175 CHECK constraint
+# (status_approval_breakout_s175.sql — 'Awaiting Approval' retired S175,
+# 'Off Lot - Returning' added S172)
 CANONICAL_STATUSES: set[str] = {
-    "Not On Lot", "On Lot", "Scheduled", "Awaiting Approval",
+    "Not On Lot", "On Lot", "Scheduled", "Off Lot - Returning",
+    "Awaiting Insurance", "Awaiting Customer", "Awaiting Extended Warranty",
+    "Approved Insurance", "Approved Customer", "Approved Extended Warranty",
     "Awaiting parts", "Ready to Work", "In progress", "Repairs Completed",
     "Waiting for QA/QC", "Ready for pickup", "Delivered/Cashed Out",
 }

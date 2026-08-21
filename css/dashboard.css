@@ -1388,10 +1388,29 @@
             border-color: var(--status-ready);
         }
 
-        .status-dropdown.status-awaiting-approval {
+        /* [S175] 'Awaiting Approval' split into 3 source-specific statuses — all share the legacy amber */
+        .status-dropdown.status-awaiting-insurance,
+        .status-dropdown.status-awaiting-customer,
+        .status-dropdown.status-awaiting-extended-warranty {
             background: rgba(255, 204, 0, 0.2);
             color: var(--status-approval);
             border-color: var(--status-approval);
+        }
+
+        /* [S175] NEW Approved trio — violet, matches WO customer_approved (#8b5cf6) */
+        .status-dropdown.status-approved-insurance,
+        .status-dropdown.status-approved-customer,
+        .status-dropdown.status-approved-extended-warranty {
+            background: rgba(139, 92, 246, 0.2);
+            color: #8b5cf6;
+            border-color: #8b5cf6;
+        }
+
+        /* [S175] Grouped status-filter chips: chevron hint (CSS content stays out of
+           textContent so the i18n key lookup on the button label keeps working) */
+        .filter-btn.filter-group-btn::after {
+            content: ' ▾';
+            opacity: 0.7;
         }
 
         .status-dropdown.status-repairs-completed {

@@ -383,6 +383,118 @@
             } catch (e) { warn('Urgent-update notify failed (non-fatal):', e); }
         }
 
+        // [S175] Approved-status notification (Roland directive S175): when an RO
+        // enters any 'Approved …' status, notify (1) the manager(s) of the RO's
+        // service silo(s) and (2) every tech who has logged time on the RO —
+        // approval means they are clear to move forward with the repairs.
+        // Email queues as a scheduled_notifications row (source 'approval_notify'
+        // — migration approval_notify_source_s175.sql; delivered by the every-15-min
+        // process-scheduled-notifications cron). Staff SMS goes direct through
+        // textly-send with the suppression-exempt 'staff_notify' context (same
+        // context textly-webhook + send-unreplied-reminder use for staff texts —
+        // no customer conversations row created). Non-fatal throughout:
+        // a status flip never fails because of notifications.
+        async function _notifyApprovalStatus(supabaseId, ro, newStatus) {
+            try {
+                // Fresh staff fetch — never depend on the lazily-loaded _staffCache
+                const { data: staff, error: staffErr } = await getSB()
+                    .from('staff')
+                    .select('email, name, role, service_silo, phone_number, active')
+                    .eq('active', true);
+                if (staffErr) throw staffErr;
+
+                // (1) Managers of the RO's silo(s) — null-silo sr_managers included
+                //     (same catch-all as _keyDateRecipients)
+                const silos = String(ro.repairType || '').split(',')
+                    .map(s => REPAIR_TYPE_TO_SILO[s.trim().toLowerCase()]).filter(Boolean);
+                const managers = (staff || []).filter(s => s.email
+                    && (s.role === 'manager' || s.role === 'sr_manager')
+                    && (silos.includes(s.service_silo) || (s.service_silo == null && s.role === 'sr_manager')));
+
+                // (2) Techs with time logged on this RO
+                const { data: logs, error: logErr } = await getSB()
+                    .from('time_logs').select('tech_email').eq('ro_id', supabaseId);
+                if (logErr) throw logErr;
+                const techEmails = [...new Set((logs || []).map(l => (l.tech_email || '').toLowerCase()).filter(Boolean))];
+                const techs = (staff || []).filter(s => s.email && techEmails.includes(s.email.toLowerCase()));
+
+                // Dedupe (a silo manager may also have time on the RO)
+                const byEmail = new Map();
+                [...managers, ...techs].forEach(s => byEmail.set(s.email.toLowerCase(), s));
+                const recipients = [...byEmail.values()];
+                if (!recipients.length) {
+                    warn('Approval notify: no recipients resolved for', ro.roId, '— silos:', silos);
+                    return;
+                }
+
+                const who = currentUser?.name || currentUser?.email || 'staff';
+
+                // Email — queued, delivered by the 15-min cron
+                const subject = `✅ Approved — ${ro.customerName} (${ro.roId}): ${newStatus}`;
+                const body = [
+                    `${ro.customerName}'s RO has been approved: ${newStatus}.`,
+                    '',
+                    `You are clear to move forward with the repairs.`,
+                    '',
+                    `RV: ${ro.rv || 'N/A'}`,
+                    `RO ID: ${ro.roId || ''}`,
+                    `Services: ${ro.repairType || 'TBD'}`,
+                    `Status set by: ${who}`,
+                    '',
+                    `You're receiving this as a silo manager or as a tech with time logged on this RO.`,
+                ].join('\n');
+                const { error: qErr } = await getSB().from('scheduled_notifications').insert({
+                    ro_id:            supabaseId,
+                    scheduled_at:     new Date().toISOString(),
+                    recipient_emails: recipients.map(s => s.email),
+                    subject:          subject,
+                    body:             body,
+                    source:           'approval_notify',
+                    status:           'pending',
+                    created_by_email: currentUser?.email || 'approval-notify',
+                });
+                if (qErr) throw qErr;
+
+                // Staff SMS — direct, one per staff phone (skip rows without a number)
+                const smsBody = `✅ PRVS: ${ro.customerName}'s RO ${ro.roId} is APPROVED (${newStatus}). You're clear to move forward with the repairs.`;
+                let smsCount = 0;
+                for (const s of recipients) {
+                    const phone = String(s.phone_number || '').trim();
+                    if (!phone) continue;
+                    try {
+                        const res = await fetch(`${SUPABASE_URL}/functions/v1/textly-send`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': supabaseSession?.access_token ? `Bearer ${supabaseSession.access_token}` : `Bearer ${SUPABASE_ANON_KEY}`,
+                                'Content-Type': 'application/json',
+                                'X-PRVS-Secret': PRVS_FUNCTION_SECRET,
+                            },
+                            body: JSON.stringify({
+                                action:  'send',
+                                to:      phone,
+                                body:    smsBody,
+                                ro_id:   supabaseId,
+                                ro_code: ro.roId || null,
+                                sent_by: currentUser?.email || null,
+                                context: 'staff_notify',
+                            }),
+                        });
+                        if (res.ok) smsCount++;
+                        else warn('Approval notify SMS non-OK (non-fatal):', s.email, res.status);
+                    } catch (smsErr) { warn('Approval notify SMS failed (non-fatal):', s.email, smsErr); }
+                }
+
+                // RO timeline note
+                const ts = new Date().toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+                const { error: noteErr } = await getSB().from('notes').insert({
+                    ro_id: supabaseId, type: 'ro_status',
+                    body: `[${ts} - ${who}] ✅ APPROVAL NOTICE SENT (${newStatus}): ${recipients.length} recipient(s) — ${managers.length} manager(s), ${techs.length} tech(s) with time on the RO; ${smsCount} SMS sent + email queued. Clear to move forward with repairs.`,
+                });
+                if (noteErr) warn('Approval notify note failed (non-fatal):', noteErr);
+                log(`✅ Approval notify: ${recipients.length} recipient(s), ${smsCount} SMS`);
+            } catch (e) { warn('Approval notification failed (non-fatal):', e); }
+        }
+
         export async function appendToSupabase(formData) {
             const today = new Date().toISOString().slice(0, 10);
             const candidates = generateROIdCandidates(formData.customerName, formData.rv || '', today);
@@ -774,6 +886,14 @@
                     if (autoProgress !== ro.percentComplete) auditChanges.push({ field: 'percentComplete', oldValue: ro.percentComplete, newValue: autoProgress });
                     if (autoDateArrived) auditChanges.push({ field: 'dateArrived', oldValue: '', newValue: autoDateArrived });
                     await writeAuditLog(ro.roId, auditChanges);
+
+                    // [S175] Entering any Approved status (from a non-Approved one)
+                    // notifies silo managers + techs with time on the RO that they're
+                    // clear to move forward. Fire-and-forget; never blocks the flip.
+                    if (newStatus.startsWith('Approved ')
+                            && !String(ro.status || '').startsWith('Approved ')) {
+                        _notifyApprovalStatus(supabaseId, ro, newStatus);
+                    }
                 }
                 log('✓ Status and progress updated in Supabase');
 
