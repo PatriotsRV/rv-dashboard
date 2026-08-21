@@ -2,6 +2,27 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.24 (Session 177, 2026-08-21): SCHEDULED MESSAGES (Roland directive —
+    "build the message, schedule it to send later at a very specific time",
+    e.g. remind a tech at 4:35 PM, or a team-lunch broadcast set up hours
+    ahead). Managers+ only. (1) Customer composer gains a 🕒 button →
+    schedule modal (datetime-local, min +2 min, max 30 days); signature is
+    appended AT SCHEDULE TIME (WYSIWYG — what you see in the modal is what
+    fires). TEXT-ONLY v1: attachments live in messaging.js module scope and
+    don't schedule yet. (2) Broadcast modal gains a 🕒 Schedule-for-later
+    row — snapshot of the checked roster at schedule time, fired with the
+    same 📢 sender prefix + staff_broadcasts history row (group name gets
+    " (scheduled)" suffix). (3) NEW 🕒 Scheduled header button (managers+)
+    → queue modal: pending rows editable (body + time) + cancellable;
+    recent sent/failed/cancelled shown below. Rows live in NEW
+    scheduled_messages table (migration scheduled_messages_s177.sql,
+    managers+ RLS, pending-only UPDATE); fired by NEW edge fn
+    send-scheduled-messages on a 1-MINUTE pg_cron through textly-send —
+    so the customer STOP gate runs at FIRE time, and the sent message
+    lands in the conversation thread exactly like a live send. Scheduled
+    customer messages do NOT appear in the thread until they fire — the
+    queue modal is the pending view.
+
     v1.23 (Session 168, 2026-08-04): CREATE-RO HANDOFF CARRIES RESOLVED
     EMAIL + ADDRESS (Roland: Kurt Messenger convert came over blank except
     name/phone while the CUSTOMER panel showed both). Root cause: the panel
@@ -590,6 +611,7 @@
         </div>
         <div class="header-right">
             <button id="broadcastBtn" class="mini-btn" style="display:none;" onclick="openBroadcastModal()" title="Text a team or group of staff at once">&#128226; Broadcast</button>
+            <button id="schedQueueBtn" class="mini-btn" style="display:none;" onclick="openSchedQueue()" title="View, edit, or cancel scheduled messages">&#128337; Scheduled</button>
             <button class="mini-btn details-toggle" onclick="toggleDetails()">&#8505; Details</button>
             <span id="userBadge" class="badge-role badge-user"></span>
             <span id="verBadge" style="font-size:0.65rem; color:#8FB8DC; font-family:'JetBrains Mono',monospace;"></span>
@@ -646,7 +668,11 @@
             <div class="composer">
                 <textarea id="msgBody" class="form-input" rows="2" placeholder="Type a message to the customer&hellip;"></textarea>
                 <div id="composerExtrasSlot"></div><!-- S151b: filled by composerExtrasHtml() at boot -->
-                <button id="msgSendBtn" class="send-btn" onclick="inboxSend()" disabled>&#128228; Send</button>
+                <div style="display:flex; gap:8px;">
+                    <button id="msgSendBtn" class="send-btn" onclick="inboxSend()" disabled style="flex:1;">&#128228; Send</button>
+                    <!-- v1.24 (S177): schedule-for-later — managers+ only -->
+                    <button id="msgSchedBtn" class="send-btn" onclick="openSchedCompose()" disabled style="display:none; flex:0 0 auto; width:auto; padding:10px 14px;" title="Schedule this message to send at a specific time">&#128337;</button>
+                </div>
             </div>
         </div>
 
@@ -811,6 +837,12 @@
         </div>
         <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin:10px 0 4px;">Message — each person gets an individual text, prefixed "&#128226; <span id="bcSenderName"></span>:"</label>
         <textarea id="bcBody" class="assign-input" rows="3" placeholder="Type the broadcast&hellip;" style="width:100%; resize:vertical; margin-bottom:10px;"></textarea>
+        <!-- v1.24 (S177): schedule-for-later row -->
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; font-size:0.78rem; color:var(--text-secondary);">
+            &#128337; Send later:
+            <input id="bcSchedAt" type="datetime-local" class="assign-input" style="flex:0 1 auto; margin-bottom:0; font-size:0.8rem;">
+            <button id="bcSchedBtn" class="mini-btn" onclick="scheduleBroadcast()" title="Queue this broadcast to send at the chosen time">&#128337; Schedule</button>
+        </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
             <span id="bcProgress" style="font-size:0.75rem; color:var(--text-secondary); margin-right:auto;"></span>
             <button class="mini-btn" onclick="closeBroadcastModal()">Cancel</button>
@@ -842,6 +874,38 @@
     </div>
 </div>
 
+<!-- v1.24 (S177): schedule a customer-composer message (managers+) -->
+<div id="schedComposeModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:210; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(94vw, 480px); box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:6px;">&#128337; Schedule message</div>
+        <div id="schedComposeTo" style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:8px;"></div>
+        <textarea id="schedComposeBody" class="assign-input" rows="4" style="width:100%; resize:vertical; margin-bottom:4px;"></textarea>
+        <div style="font-size:0.68rem; color:var(--text-secondary); margin-bottom:8px;">Your signature is already included above — this is exactly what will send. Attachments can't be scheduled yet (send those live).</div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Send at</label>
+        <input id="schedComposeAt" type="datetime-local" class="assign-input" style="margin-bottom:12px;">
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="mini-btn" onclick="closeSchedCompose()">Cancel</button>
+            <button id="schedComposeSaveBtn" class="mini-btn primary" onclick="scheduleCustomerMessage()">&#128337; Schedule</button>
+        </div>
+    </div>
+</div>
+
+<!-- v1.24 (S177): scheduled-messages queue — edit/cancel pending (managers+) -->
+<div id="schedQueueModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:205; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(94vw, 640px); height:min(88vh, 680px); display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+            <div style="font-weight:700; font-size:1.05rem;">&#128337; Scheduled messages</div>
+            <span style="display:flex; gap:6px;">
+                <button class="mini-btn" onclick="loadSchedQueue()" title="Refresh the list">&#128260;</button>
+                <button class="mini-btn" onclick="closeSchedQueue()">Close</button>
+            </span>
+        </div>
+        <div id="schedQueueList" style="flex:1 1 auto; overflow-y:auto; padding-right:4px;">
+            <div class="empty-note">Loading&hellip;</div>
+        </div>
+    </div>
+</div>
+
 <div id="toastBox"></div>
 
 <script type="module">
@@ -851,8 +915,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/conf
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.23';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S160)');
+const PAGE_VERSION = 'messages v1.24';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S177)');
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
@@ -1043,6 +1107,8 @@ function showApp() {
     if (isManagerOrAdmin()) document.getElementById('broadcastBtn').style.display = '';
     // v1.15 (S160): Broadcasts history chip (managers+, matches staff_broadcasts RLS).
     if (isManagerOrAdmin()) document.getElementById('bcFilterBtn').style.display = '';
+    if (isManagerOrAdmin()) document.getElementById('schedQueueBtn').style.display = ''; // v1.24 S177
+    if (isManagerOrAdmin()) document.getElementById('msgSchedBtn').style.display = '';   // v1.24 S177
     // S151b: attach/emoji/signature composer extras (shared with the RO modal).
     const slot = document.getElementById('composerExtrasSlot');
     if (slot && !slot.innerHTML) { slot.innerHTML = composerExtrasHtml(); initComposerExtras(); }
@@ -1349,6 +1415,7 @@ async function selectConversation(id) {
     document.getElementById('threadSub').textContent = c.display_phone || '';
     document.getElementById('msgPhone').value = c.display_phone || ('+1' + c.phone_key);
     document.getElementById('msgSendBtn').disabled = !!c.opted_out_at;
+    document.getElementById('msgSchedBtn').disabled = !!c.opted_out_at; // v1.24 S177
     document.getElementById('optoutBanner').style.display = c.opted_out_at ? 'block' : 'none';
     renderConvoList();
     await Promise.all([renderThread(), renderDetails()]);
@@ -2223,6 +2290,7 @@ async function openBroadcastModal() {
     document.getElementById('bcSenderName').textContent = currentUser?.name || currentUser?.email || '';
     document.getElementById('bcBody').value = '';
     document.getElementById('bcGroupName').value = '';
+    document.getElementById('bcSchedAt').value = ''; // v1.24 S177
     document.getElementById('bcProgress').textContent = '';
     document.getElementById('broadcastModal').style.display = 'flex';
     broadcastTeamChanged();
@@ -2407,6 +2475,7 @@ async function refreshAll() {
     if (_activeConvo) {
         _activeConvo = _conversations.find(x => x.id === _activeConvo.id) || _activeConvo;
         document.getElementById('msgSendBtn').disabled = !!_activeConvo.opted_out_at;
+        document.getElementById('msgSchedBtn').disabled = !!_activeConvo.opted_out_at; // v1.24 S177
         document.getElementById('optoutBanner').style.display = _activeConvo.opted_out_at ? 'block' : 'none';
         await Promise.all([renderThread(), renderDetails()]);
     }
@@ -2459,6 +2528,252 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
     });
 });
 
+// ── v1.24 (S177): SCHEDULED MESSAGES (managers+) ────────────────────
+// Rows in scheduled_messages (migration scheduled_messages_s177.sql);
+// fired by send-scheduled-messages edge fn (1-min pg_cron) via textly-send.
+let _schedRows = []; // last-loaded queue rows (for the edit view)
+
+function _schedPad(n) { return String(n).padStart(2, '0'); }
+function _schedToLocalInput(d) { // Date -> datetime-local value (LOCAL time)
+    return `${d.getFullYear()}-${_schedPad(d.getMonth() + 1)}-${_schedPad(d.getDate())}T${_schedPad(d.getHours())}:${_schedPad(d.getMinutes())}`;
+}
+function _schedFmt(iso) { // ISO -> compact local display
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+           d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function _schedValidate(d) {
+    if (!d || isNaN(d.getTime())) { showToast('Pick a date and time first.', 'warning'); return false; }
+    const ms = d.getTime() - Date.now();
+    if (ms < 2 * 60000) { showToast('Schedule at least 2 minutes in the future.', 'warning'); return false; }
+    if (ms > 30 * 86400000) { showToast('Schedule within the next 30 days.', 'warning'); return false; }
+    return true;
+}
+function _schedToE164(raw) { // mirror _toE164 (messaging.js, not exported)
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (digits.length === 10) return '+1' + digits;
+    if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+    return String(raw || '').trim();
+}
+
+// ── Customer composer path ──────────────────────────────────────────
+async function openSchedCompose() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can schedule messages.', 'warning'); return; }
+    const c = _activeConvo;
+    if (!c) { showToast('Pick a conversation first.', 'warning'); return; }
+    if (c.opted_out_at) { showToast('\u{1F6D1} This customer opted out (STOP) — scheduling is blocked.', 'error'); return; }
+    const body = (document.getElementById('msgBody').value || '').trim();
+    if (!body) { showToast('Type the message first, then schedule it.', 'warning'); return; }
+    // Signature at SCHEDULE time (WYSIWYG — the modal shows exactly what fires).
+    let sig = '';
+    try {
+        const { data, error } = await getSB().from('staff').select('sms_signature')
+            .eq('email', currentUser?.email || '').maybeSingle();
+        if (error) throw error;
+        sig = (data?.sms_signature || '').trim();
+    } catch (e) { console.error('signature lookup failed (scheduling unsigned):', e); }
+    document.getElementById('schedComposeBody').value =
+        sig && !body.endsWith(sig) ? body + '\n\n' + sig : body;
+    document.getElementById('schedComposeTo').textContent =
+        'To: ' + (c.customer_name || '') + ' ' + (c.display_phone || '+1' + c.phone_key);
+    // Default: top of the next hour (at least 2 min out).
+    const def = new Date(Date.now() + 60 * 60000); def.setMinutes(0, 0, 0);
+    document.getElementById('schedComposeAt').value = _schedToLocalInput(def);
+    document.getElementById('schedComposeModal').style.display = 'flex';
+}
+function closeSchedCompose() { document.getElementById('schedComposeModal').style.display = 'none'; }
+async function scheduleCustomerMessage() {
+    const c = _activeConvo;
+    if (!c) return;
+    const body = (document.getElementById('schedComposeBody').value || '').trim();
+    if (!body) { showToast('Message is empty.', 'warning'); return; }
+    const at = new Date(document.getElementById('schedComposeAt').value);
+    if (!_schedValidate(at)) return;
+    const phone = _schedToE164(document.getElementById('msgPhone').value || c.display_phone || ('+1' + c.phone_key));
+    const btn = document.getElementById('schedComposeSaveBtn');
+    btn.disabled = true;
+    try {
+        const { error } = await getSB().from('scheduled_messages').insert({
+            kind: 'customer',
+            recipients: [{ name: c.customer_name || '', phone }],
+            body,
+            send_at: at.toISOString(),
+            created_by: currentUser?.email || 'unknown',
+        });
+        if (error) throw error;
+        document.getElementById('msgBody').value = '';
+        closeSchedCompose();
+        showToast(`\u{1F551} Scheduled for ${_schedFmt(at.toISOString())}. It will appear in the thread when it sends.`, 'success', { duration: 7000 });
+    } catch (err) {
+        console.error('scheduleCustomerMessage error:', err);
+        showToast('Schedule failed: ' + (err.message || err), 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── Broadcast path (roster snapshot at schedule time) ───────────────
+async function scheduleBroadcast() {
+    if (!getSB() || !supabaseSession) { showToast('Not signed in.', 'warning'); return; }
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can broadcast.', 'warning'); return; }
+    const bodyRaw = (document.getElementById('bcBody').value || '').trim();
+    if (!bodyRaw) { showToast('Type the broadcast message first.', 'warning'); return; }
+    const at = new Date(document.getElementById('bcSchedAt').value);
+    if (!_schedValidate(at)) return;
+    const emails = _bcCheckedEmails();
+    if (!emails.length) { showToast('Check at least one recipient.', 'warning'); return; }
+    const phoneByEmail = new Map(_allStaff.map(s => [s.email?.toLowerCase(), (s.phone_number || '').trim()]));
+    const nameByEmail = new Map(_allStaff.map(s => [s.email?.toLowerCase(), s.name || s.email]));
+    const targets = emails
+        .map(e => ({ email: e, name: nameByEmail.get(e.toLowerCase()) || e, phone: phoneByEmail.get(e.toLowerCase()) || '' }))
+        .filter(t => t.phone);
+    if (!targets.length) { showToast('None of the checked staff have a mobile number.', 'warning'); return; }
+    const teamSel = document.getElementById('bcTeamSelect');
+    const groupLabel = (teamSel?.options[teamSel.selectedIndex]?.textContent || 'All staff').trim();
+    if (!confirm(`Schedule this text to ${targets.length} staff member${targets.length === 1 ? '' : 's'} for ${_schedFmt(at.toISOString())}?`)) return;
+    const btn = document.getElementById('bcSchedBtn');
+    btn.disabled = true;
+    try {
+        const { error } = await getSB().from('scheduled_messages').insert({
+            kind: 'broadcast',
+            recipients: targets,
+            group_label: groupLabel,
+            body: bodyRaw,
+            send_at: at.toISOString(),
+            created_by: currentUser?.email || 'unknown',
+        });
+        if (error) throw error;
+        closeBroadcastModal();
+        showToast(`\u{1F551} Broadcast scheduled for ${_schedFmt(at.toISOString())} (${targets.length} recipients).`, 'success', { duration: 7000 });
+    } catch (err) {
+        console.error('scheduleBroadcast error:', err);
+        showToast('Schedule failed: ' + (err.message || err), 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── Queue modal: list + edit + cancel ───────────────────────────────
+async function openSchedQueue() {
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can view scheduled messages.', 'warning'); return; }
+    document.getElementById('schedQueueModal').style.display = 'flex';
+    await loadSchedQueue();
+}
+function closeSchedQueue() { document.getElementById('schedQueueModal').style.display = 'none'; }
+async function loadSchedQueue() {
+    const box = document.getElementById('schedQueueList');
+    try {
+        const { data, error } = await getSB().from('scheduled_messages')
+            .select('*')
+            .order('send_at', { ascending: true })
+            .limit(200);
+        if (error) throw error;
+        _schedRows = data || [];
+        renderSchedQueue();
+    } catch (err) {
+        console.error('loadSchedQueue error:', err);
+        box.innerHTML = `<div class="empty-note">Load failed: ${escapeHtml(err.message || String(err))}</div>`;
+    }
+}
+function _schedRecipSummary(r) {
+    const list = Array.isArray(r.recipients) ? r.recipients : [];
+    if (r.kind === 'broadcast') {
+        return `\u{1F4E2} ${escapeHtml(r.group_label || 'Broadcast')} — ${list.length} recipient${list.length === 1 ? '' : 's'}`;
+    }
+    const c = list[0] || {};
+    return `\u{1F4AC} ${escapeHtml((c.name || '').trim() || c.phone || '?')}`;
+}
+function renderSchedQueue() {
+    const box = document.getElementById('schedQueueList');
+    const pending = _schedRows.filter(r => r.status === 'pending');
+    const done = _schedRows.filter(r => r.status !== 'pending')
+        .sort((a, b) => new Date(b.send_at) - new Date(a.send_at)).slice(0, 15);
+    const statusChip = (s) => ({
+        pending:   '<span style="color:#B45309; font-weight:700;">⏳ pending</span>',
+        sending:   '<span style="color:#B45309; font-weight:700;">\u{1F4E4} sending…</span>',
+        sent:      '<span style="color:#15803D; font-weight:700;">✅ sent</span>',
+        cancelled: '<span style="color:#64748b; font-weight:700;">\u{1F6AB} cancelled</span>',
+        failed:    '<span style="color:#B42318; font-weight:700;">❌ failed</span>',
+    }[s] || escapeHtml(s));
+    const rowHtml = (r, editable) => `
+        <div style="border:1px solid var(--border-color); border-radius:10px; padding:10px 12px; margin-bottom:8px; background:var(--bg-primary);">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:0.8rem;">
+                <span>${_schedRecipSummary(r)}</span>
+                <span>${statusChip(r.status)}</span>
+            </div>
+            <div style="font-size:0.72rem; color:var(--text-secondary); margin:2px 0 6px;">
+                \u{1F551} ${_schedFmt(r.send_at)} &middot; by ${escapeHtml(r.created_by)}${r.error ? ' &middot; <span style="color:#B42318;">' + escapeHtml(r.error) + '</span>' : ''}
+            </div>
+            <div id="schedBody_${r.id}" style="font-size:0.82rem; white-space:pre-wrap; word-break:break-word;">${escapeHtml(r.body)}</div>
+            ${editable ? `
+            <div id="schedEdit_${r.id}" style="display:none; margin-top:8px;">
+                <textarea id="schedEditBody_${r.id}" class="assign-input" rows="3" style="width:100%; resize:vertical; margin-bottom:6px;"></textarea>
+                <input id="schedEditAt_${r.id}" type="datetime-local" class="assign-input" style="margin-bottom:6px;">
+            </div>
+            <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:6px;">
+                <button class="mini-btn" style="padding:2px 10px; font-size:0.72rem;" onclick="schedEditToggle('${r.id}')" id="schedEditBtn_${r.id}">✏️ Edit</button>
+                <button class="mini-btn" style="display:none; padding:2px 10px; font-size:0.72rem;" onclick="schedSaveEdit('${r.id}')" id="schedSaveBtn_${r.id}">\u{1F4BE} Save</button>
+                <button class="mini-btn" style="padding:2px 10px; font-size:0.72rem; color:#B42318;" onclick="schedCancel('${r.id}')">\u{1F6AB} Cancel send</button>
+            </div>` : ''}
+        </div>`;
+    box.innerHTML =
+        `<div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin-bottom:6px;">PENDING (${pending.length})</div>` +
+        (pending.length ? pending.map(r => rowHtml(r, true)).join('') : '<div class="empty-note" style="padding:8px 0;">Nothing scheduled.</div>') +
+        (done.length ? `<div style="font-size:0.72rem; font-weight:700; color:var(--text-secondary); margin:12px 0 6px;">RECENT</div>` + done.map(r => rowHtml(r, false)).join('') : '');
+}
+function schedEditToggle(id) {
+    const r = _schedRows.find(x => x.id === id);
+    if (!r) return;
+    const editBox = document.getElementById('schedEdit_' + id);
+    const opening = editBox.style.display === 'none';
+    editBox.style.display = opening ? '' : 'none';
+    document.getElementById('schedBody_' + id).style.display = opening ? 'none' : '';
+    document.getElementById('schedSaveBtn_' + id).style.display = opening ? '' : 'none';
+    document.getElementById('schedEditBtn_' + id).textContent = opening ? '↩ Discard' : '✏️ Edit';
+    if (opening) {
+        document.getElementById('schedEditBody_' + id).value = r.body;
+        document.getElementById('schedEditAt_' + id).value = _schedToLocalInput(new Date(r.send_at));
+    }
+}
+async function schedSaveEdit(id) {
+    const body = (document.getElementById('schedEditBody_' + id).value || '').trim();
+    if (!body) { showToast('Message is empty.', 'warning'); return; }
+    const at = new Date(document.getElementById('schedEditAt_' + id).value);
+    if (!_schedValidate(at)) return;
+    try {
+        // RLS restricts UPDATE to pending rows; the .select() proves a row
+        // actually changed (0 rows = it fired or was cancelled meanwhile).
+        const { data, error } = await getSB().from('scheduled_messages')
+            .update({ body, send_at: at.toISOString() })
+            .eq('id', id).eq('status', 'pending')
+            .select('id');
+        if (error) throw error;
+        if (!data || !data.length) { showToast('Too late — that message already sent or was cancelled.', 'warning'); }
+        else showToast('\u{1F4BE} Scheduled message updated.', 'success');
+        await loadSchedQueue();
+    } catch (err) {
+        console.error('schedSaveEdit error:', err);
+        showToast('Update failed: ' + (err.message || err), 'error');
+    }
+}
+async function schedCancel(id) {
+    if (!confirm('Cancel this scheduled send? It will NOT go out.')) return;
+    try {
+        const { data, error } = await getSB().from('scheduled_messages')
+            .update({ status: 'cancelled' })
+            .eq('id', id).eq('status', 'pending')
+            .select('id');
+        if (error) throw error;
+        if (!data || !data.length) { showToast('Too late — that message already sent or was cancelled.', 'warning'); }
+        else showToast('\u{1F6AB} Scheduled send cancelled.', 'success');
+        await loadSchedQueue();
+    } catch (err) {
+        console.error('schedCancel error:', err);
+        showToast('Cancel failed: ' + (err.message || err), 'error');
+    }
+}
+
 // Inline onclick bridge.
 Object.assign(window, {
     openNewConvoModal, closeNewConvoModal, createNewConversation, // S151d
@@ -2473,6 +2788,9 @@ Object.assign(window, {
     closeBroadcastView, bcvToggleRecipients, bcvSend, // v1.15/v1.16 S160
     openLeadModal, closeLeadModal, saveLeadInfo, createROFromLead, // v1.17 S161
     editCustomerName, refreshAll, backToList, toggleDetails,
+    openSchedCompose, closeSchedCompose, scheduleCustomerMessage, // v1.24 S177
+    scheduleBroadcast, openSchedQueue, closeSchedQueue, loadSchedQueue, // v1.24 S177
+    schedEditToggle, schedSaveEdit, schedCancel, // v1.24 S177
 });
 
 svcFilterPopulate(); // v1.19 (S166): build the Service Category checkboxes from config
