@@ -396,6 +396,48 @@
             } catch (e) { warn('Urgent-update notify failed (non-fatal):', e); }
         }
 
+        // [ER 50175fce v1.498 S178, Lynn] Edit the urgent update DIRECTLY FROM THE TILE
+        // (banner click, or the 🚨 card action) instead of digging into Edit RO.
+        // Reuses the exact Edit-RO semantics: UUID-resolved write (v1.496 discipline),
+        // audit row, and _notifyUrgentUpdate on set/change to a non-empty value
+        // (never on clear) — which also drops the RO timeline note.
+        export async function editUrgentUpdate(index) {
+            if (!getSB() || !supabaseSession) {
+                showToast('Please connect to the PRVS database first.', 'warning');
+                return;
+            }
+            const ro = currentFilteredData[index];
+            if (!ro || !ro._supabaseId) { showToast('Error: Could not find the repair order.', 'error'); return; }
+            const supabaseId = ro._supabaseId;
+            const oldVal = (ro.urgentUpdate || '').trim();
+            const entered = await showVoiceNotesModal('🚨 Urgent Update — shown on the card and notifies silo managers. Save empty to clear it:', oldVal);
+            if (entered === null) return; // cancelled
+            const newVal = entered.trim() || null;
+            if ((newVal || '') === oldVal) return; // no change
+
+            const { error } = await getSB().from('repair_orders')
+                .update({ urgent_update: newVal })
+                .eq('id', supabaseId);
+            if (error) { showToast('Failed to save urgent update: ' + error.message, 'error'); return; }
+
+            // Audit — oldVal captured BEFORE the local mutation below.
+            await writeAuditLog(ro.roId, [{ field: 'Urgent Update', oldValue: oldVal, newValue: newVal || '' }]);
+
+            if (newVal && newVal !== oldVal) {
+                await _notifyUrgentUpdate(supabaseId, ro.roId, {
+                    customerName: ro.customerName,
+                    rv:           ro.rv,
+                    repairType:   ro.repairType,
+                    text:         newVal,
+                });
+            }
+
+            const origIdx = currentData.findIndex(d => d._supabaseId === supabaseId);
+            if (origIdx !== -1) currentData[origIdx].urgentUpdate = newVal || '';
+            renderBoard();
+            showToast(newVal ? 'Urgent update saved — silo managers notified.' : 'Urgent update cleared.', 'success');
+        }
+
         // [S175] Approved-status notification (Roland directive S175): when an RO
         // enters any 'Approved …' status, notify (1) the manager(s) of the RO's
         // service silo(s) and (2) every tech who has logged time on the RO —
@@ -522,6 +564,8 @@
                     address:        formData.customerAddress || null,
                     rv:             formData.rv || null,
                     vin:            formData.vin || null,
+                mileage:        formData.mileage || null, // [ER ac8265c8 v1.498 S178]
+                    mileage:        formData.mileage || null, // [ER ac8265c8 v1.498 S178]
                     repair_type:    formData.repairType || null,
                     description:    formData.repairDescription || null,
                     technician:     formData.technicianAssigned || null,
@@ -1247,6 +1291,7 @@
                 document.getElementById('editDateArrived').value = ro.dateArrived || '';
                 document.getElementById('editParkingSpot').value = ro.parkingSpot || '';
                 document.getElementById('editVin').value = ro.vin || '';
+                document.getElementById('editMileage').value = ro.mileage || ''; // [ER ac8265c8 v1.498 S178]
                 document.getElementById('editRepairDescription').value = ro.repairDescription || '';
 
                 // Restore RO type and insurance fields from Column W JSON
@@ -1503,6 +1548,7 @@ Object.assign(window, {
   updateROUrgency,
   updateROProgress,
   editField,
+  editUrgentUpdate, // [ER 50175fce v1.498 S178]
   openEditRO,
   closeEditModal,
   writeAuditLog,

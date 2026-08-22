@@ -1,7 +1,23 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.497
+    PRVS Dashboard v1.498
+    v1.498: [S178] ER QUICK-WIN BATCH — five small ERs in one release.
+    (1) ER d432863a (Brandon): Patriots-logo favicon on every page (13 pages;
+    also silences the S139 favicon-404 console noise).
+    (2) ER fa35e3df (Lynn): low-contrast blue text lightened for the dark card
+    surface — parts-estimate chips #3b82f6->#7eb3ff, comm Thread pill, key-date
+    Drop chip #0a84ff->#5cadff, time-log duration #667eea->#a5b4fc.
+    (3) ER 29654af7 (Lynn): back-to-top button (bottom-left, appears after
+    scrolling; bottom-right stays clear for toasts).
+    (4) ER ac8265c8 (Lynn): NEW repair_orders.mileage (free text, Keys/Power
+    precedent) — Edit-RO input + card readout + audit; migration
+    add_mileage_s178.sql ALSO adds cashiered.mileage + recreates archive_one_ro
+    so cash-out carries it (S171 lesson). MIGRATION MUST RUN BEFORE PROMOTE.
+    (5) ER 50175fce (Lynn): Urgent Update editable from the tile — banner click
+    or the new 🚨 action (all 3 action rows) opens edit/clear; reuses the
+    Edit-RO semantics (UUID write, audit, notify-on-set/change via
+    urgent_update_notify, timeline note).
     v1.497: [S178] ER BUG BATCH — four fixes from the 2026-08-22 ER triage.
     (1) ER 225a2535 (Brandon, DATA-INTEGRITY): insurance estimate scans no longer
     bleed between customers — window._lastEstimateScan now carries roKey (the
@@ -243,7 +259,10 @@
     Return path: ↩ Classic View (sidebar footer). The header 🧭 Sidebar View
     toggle button was REMOVED S152 — the tester page is the single entry point;
     persisted in localStorage prvs_layout. Implementation
-    is DOM RELOCATION, not duplication: an early <head> script sets
+    is DOM RELOCATION, not duplication: an early <head>
+    <!-- [ER d432863a v1.498 S178] Patriots-logo favicon (also fixes the S139 favicon-404 console noise) -->
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png"> script sets
     html.layout-sidebar before paint; js/layout.js (new, plain script) then moves
     the existing header/search/filter/stats nodes into the #sbShell slots — ids,
     inline handlers, and listeners survive the move, so every module (render,
@@ -930,7 +949,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.497</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.498</span>
           </span>
         </div>
         <header>
@@ -959,7 +978,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.497</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.498</span>
             </div>
         </header>
 
@@ -1067,7 +1086,7 @@
                             <button class="filter-btn" data-filter="ps-sourcing" data-type="parts" onclick="togglePartsFilter('ps-sourcing')" style="color:#ff6a00; border-color:rgba(255,106,0,0.4);">🔍 Part Sourcing</button>
                             <button class="filter-btn" data-filter="ps-ordered" data-type="parts" onclick="togglePartsFilter('ps-ordered')" style="color:#f59e0b; border-color:rgba(245,158,11,0.4);">📦 Parts Ordered</button>
                             <button class="filter-btn" data-filter="ps-received" data-type="parts" onclick="togglePartsFilter('ps-received')" style="color:#22c55e; border-color:rgba(34,197,94,0.4);">✅ Parts Received</button>
-                            <button class="filter-btn" data-filter="ps-estimate" data-type="parts" onclick="togglePartsFilter('ps-estimate')" style="color:#3b82f6; border-color:rgba(59,130,246,0.4);">📋 Parts Estimate</button>
+                            <button class="filter-btn" data-filter="ps-estimate" data-type="parts" onclick="togglePartsFilter('ps-estimate')" style="color:#7eb3ff; border-color:rgba(59,130,246,0.4);">📋 Parts Estimate</button>
                             <button class="filter-btn" data-filter="backordered" data-type="parts" onclick="togglePartsFilter('backordered')">🔴 Backordered</button>
                         </div>
                     </div>
@@ -3726,7 +3745,7 @@
 
         // Initialize
         function init() {
-                        log('📦 PRVS Dashboard v1.497 - 2026-08-22 - S178 ER bug batch: insurance-scan cache keyed by RO (no cross-customer bleed), note previews reverse entries not lines, desktop worklist drag fixed, worklist/messages RO links land on the card');
+                        log('📦 PRVS Dashboard v1.498 - 2026-08-22 - S178 ER quick-win batch: favicons everywhere, blue-text contrast pass, back-to-top button, RO mileage field, urgent update editable from the tile');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -3946,6 +3965,7 @@
                     case 'time-logs':         openTimeLogsModal(idx);             break;
                     case 'refresh-logs':      manualRefreshTimeLogs();            break;
                     case 'edit-ro':           openEditRO(idx);                    break;
+                    case 'edit-urgent':       editUrgentUpdate(idx);              break; // [ER 50175fce v1.498 S178]
                     case 'manage-parts':      openPartsModal(idx);                break;
                     case 'request-parts':     openPartsRequestModal(idx);         break;
                     case 'work-orders':       openWorkOrderModal(idx);            break;
@@ -6720,6 +6740,7 @@
                         parkingSpot: document.getElementById('editParkingSpot').value,
                         repairType: repairTypes.join(', '),
                         vin: document.getElementById('editVin').value.toUpperCase(),
+                        mileage: document.getElementById('editMileage').value.trim(), // [ER ac8265c8 v1.498 S178]
                         repairDescription: document.getElementById('editRepairDescription').value,
                         isTraining: !!document.getElementById('editIsTraining')?.checked,
                     };
@@ -6742,6 +6763,7 @@
                         keypadCode: 'Keypad Code', // [ER BUGFIX v1.458 S118]
                         keepPluggedIn: 'Keep Plugged In', // [ER BUGFIX v1.458 S118]
                         urgentUpdate: 'Urgent Update', // [ER a7d1474e v1.466 S127]
+                        mileage: 'Mileage', // [ER ac8265c8 v1.498 S178]
                         plannedDropoffDate: 'Planned Drop-Off Date', // [S159] was only covered by the removed updateROInSupabase blanket audit
                         pickupDate: 'Pickup Date',                   // [S159] ditto
                         isTraining: 'Training RO',                   // [S159] ditto
@@ -7643,6 +7665,11 @@ function toggleWOTasks(tasksId, chevId) {
                         <input type="text" class="form-input" id="editVin" placeholder="17-character VIN" maxlength="17" style="font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; text-transform:uppercase;">
                         <div id="sug_edit_vin"></div>
                     </div>
+                    <div class="form-group shop-hide">
+                        <label class="form-label">Mileage</label>
+                        <!-- [ER ac8265c8 v1.498 S178, Lynn] free text like Keys/Power (S118 precedent) -->
+                        <input type="text" class="form-input" id="editMileage" placeholder="e.g. 48,250" maxlength="20">
+                    </div>
                     <div class="form-field full-width shop-hide">
                         <label class="form-label">Customer Address</label>
                         <input type="text" class="form-input" id="editCustomerAddress">
@@ -8182,5 +8209,23 @@ let _erFilterCategory = 'all';
         <div id="erAdminBody" style="flex:1;overflow-y:auto;padding:16px 24px;"></div>
     </div>
 </div>
+    <!-- [ER 29654af7 v1.498 S178, Lynn] Back-to-top / jump-to-search -->
+    <button id="backToTopBtn" title="Back to top" aria-label="Back to top" onclick="window.scrollTo({top:0,behavior:'smooth'});">&#11014;&#65039;</button>
+    <script>
+        // [ER 29654af7 v1.498 S178] show the back-to-top button after meaningful scroll
+        (function() {
+            var btn = document.getElementById('backToTopBtn');
+            if (!btn) return;
+            var ticking = false;
+            window.addEventListener('scroll', function() {
+                if (ticking) return;
+                ticking = true;
+                setTimeout(function() {
+                    btn.classList.toggle('show', window.scrollY > 500);
+                    ticking = false;
+                }, 150);
+            }, { passive: true });
+        })();
+    </script>
 </body>
 </html>

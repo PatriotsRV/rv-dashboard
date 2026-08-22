@@ -23,6 +23,7 @@
             return tileVisibility[element] === true;
         }
 
+        // [ER fa35e3df v1.498 S178] key-date Drop chip text #0a84ff -> #5cadff (contrast on dark).
         // [ER BUGFIX v1.497 S178, ER d94a418a] Newest-ENTRY-first note preview that
         // keeps multi-line entries intact. Entries are delimited by \n---\n (the
         // editField append separator) or a newline followed by a [MM/DD/YY timestamp
@@ -241,6 +242,7 @@
                         <div class="compact-col-chips">${chips || '<span style="color:var(--text-secondary);font-size:0.7rem;">—</span>'}</div>
                         <div class="compact-col-actions">
                             <button class="compact-action-btn" data-action="edit-ro" data-idx="${index}" title="Edit RO">✏️</button>
+                            <button class="compact-action-btn" data-action="edit-urgent" data-idx="${index}" title="Urgent Update">🚨</button>
                             <button class="compact-action-btn" data-action="manage-parts" data-idx="${index}" title="Manage Parts">🔩</button>
                             <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
                             <button class="compact-action-btn" data-action="schedule-notification" data-idx="${index}" title="Schedule Notification">🔔</button>
@@ -308,6 +310,7 @@
                             </div>
                             <div class="cep-actions">
                                 <button class="cep-action-btn" data-action="edit-ro" data-idx="${index}">✏️ Edit RO</button>
+                                <button class="cep-action-btn" data-action="edit-urgent" data-idx="${index}">🚨 Urgent</button>
                                 <button class="cep-action-btn" data-action="manage-parts" data-idx="${index}">🔩 Parts</button>
                                 <button class="cep-action-btn" data-action="work-orders" data-idx="${index}">🔧 WO</button>
                                 ${ro.roType !== 'shop' ? '<button class="cep-action-btn" data-action="message-customer" data-idx="' + index + '">💬 Message</button>' : ''}
@@ -344,7 +347,7 @@
                             🔔 ${t('Schedule Important Tasks or Update Notifications')}
                         </button>
                         ${woMissingBadge(ro)}
-                        ${ro.urgentUpdate ? `<div class="urgent-update-banner" title="Urgent update — change it via Edit RO">🚨 <span class="uub-label">URGENT:</span> ${escapeHtml(ro.urgentUpdate)}</div>` : ''}
+                        ${ro.urgentUpdate ? `<div class="urgent-update-banner" data-action="edit-urgent" data-idx="${index}" style="cursor:pointer;" title="Urgent update — click to edit or clear">🚨 <span class="uub-label">URGENT:</span> ${escapeHtml(ro.urgentUpdate)}</div>` : ''}
                         ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"
@@ -383,7 +386,7 @@
                             // [ER BUGFIX v1.465 S127] Hover panel by the customer name listing all key dates in full (ER b06a285f, Lynn)
                             const full = (d) => { if (!d) return ''; const dt = new Date(String(d).slice(0,10) + 'T00:00:00'); return isNaN(dt) ? String(d).slice(0,10) : dt.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'}); };
                             const rows = [];
-                            if (ro.plannedDropoffDate) rows.push('<span class="kd-pop-row"><span style="color:#0a84ff;">📅 Drop-off</span><b>' + full(ro.plannedDropoffDate) + '</b></span>');
+                            if (ro.plannedDropoffDate) rows.push('<span class="kd-pop-row"><span style="color:#5cadff;">📅 Drop-off</span><b>' + full(ro.plannedDropoffDate) + '</b></span>');
                             if (ro.promisedDate) rows.push('<span class="kd-pop-row"><span style="color:#f59e0b;">⏰ Promised</span><b>' + full(ro.promisedDate) + '</b></span>');
                             if (ro.pickupDate) rows.push('<span class="kd-pop-row"><span style="color:#16a34a;">🚚 Pickup</span><b>' + full(ro.pickupDate) + '</b></span>');
                             if (!rows.length) return '';
@@ -415,7 +418,7 @@
                             const todayStr = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD
                             const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Ready for pickup';
                             const chips = [];
-                            if (ro.plannedDropoffDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#0a84ff1a;color:#0a84ff;border:1px solid #0a84ff44;">📅 Drop ' + fmt(ro.plannedDropoffDate) + '</span>');
+                            if (ro.plannedDropoffDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#0a84ff1a;color:#5cadff;border:1px solid #0a84ff44;">📅 Drop ' + fmt(ro.plannedDropoffDate) + '</span>');
                             if (ro.promisedDate) { const overdue = !doneish && String(ro.promisedDate).slice(0,10) < todayStr; const c = overdue ? '#ef4444' : '#f59e0b'; chips.push('<span title="Promised date" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:10px;font-size:0.78rem;font-weight:800;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '55;">⏰ Promised ' + fmt(ro.promisedDate) + (overdue ? ' !' : '') + '</span>'); }
                             if (ro.pickupDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#16a34a1a;color:#16a34a;border:1px solid #16a34a44;">🚚 Pickup ' + fmt(ro.pickupDate) + '</span>');
                             return chips.length ? '<div class="key-dates-row" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0;">' + chips.join('') + '</div>' : '';
@@ -515,6 +518,12 @@
                             <div class="info-row">
                                 <span class="info-label">${t('VIN:')}</span>
                                 <span class="info-value" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; letter-spacing:0.04em;">${escapeHtml(ro.vin)}</span>
+                            </div>
+                            ` : ''}
+                            ${ro.mileage ? `
+                            <div class="info-row">
+                                <span class="info-label">${t('Mileage:')}</span>
+                                <span class="info-value">${escapeHtml(ro.mileage)}</span>
                             </div>
                             ` : ''}
                             ` : ''}
@@ -628,6 +637,7 @@
                         <button class="edit-ro-btn" data-action="edit-ro" data-idx="${index}">
                             ${t('✏️ Edit RO')}
                         </button>
+                        <button class="edit-ro-btn" data-action="edit-urgent" data-idx="${index}" title="Urgent Update">🚨 ${t('Urgent')}</button>
                         <button class="parts-btn" data-action="manage-parts" data-idx="${index}">
                             ${t('🔩 Manage Parts')}
                         </button>

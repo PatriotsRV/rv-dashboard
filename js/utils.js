@@ -221,6 +221,7 @@ export function rowToRO(row) {
         customerAddress:          row.address || '',
         rv:                       row.rv || '',
         vin:                      row.vin || '',
+        mileage:                  row.mileage || '', // [ER ac8265c8 v1.498 S178]
         rvPhotoUrl:               row.photo_url || '',
         repairType:               row.repair_type || '',
         repairDescription:        row.description || '',
