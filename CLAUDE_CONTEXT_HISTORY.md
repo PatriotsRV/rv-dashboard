@@ -9,6 +9,12 @@
 > Older completed TODO items relocated to CLAUDE_CONTEXT_ARCHIVE.md (Session 107).
 ## ✅ Completed Work
 
+- ✅ **Session 178 — ER triage full pass (37→26 unreviewed) + v1.497 ER BUG BATCH + v1.498 ER QUICK-WIN BATCH (Sync Gate Case B ×2, tags `v1.497` @ `91377b5` + `v1.498` @ `900dead`).**
+  - **Triage:** all 37 unreviewed ERs verified against current HEAD, grouped by function then LOE/risk (`docs/ER_TRIAGE_2026-08-22.md` + dashboard). 2 duplicates declined w/ pointers. Re-verified nothing was silently delivered by S175–S177.
+  - **v1.497 (4 bugs):** `225a2535` insurance-scan cache keyed by RO UUID + all consumers gated + chips cleared at Edit open (🔴 data-integrity, Kain/Ivins family); `d94a418a` note previews reverse entries not lines; `5ca724ff` desktop worklist drag (dataTransfer.setData); `d4d0eeba` worklist/messages RO links land on the card (retry + guarded deep-link filter-clear).
+  - **v1.498 (5 quick wins):** Patriots favicon on 13 pages; low-contrast blues lightened for the dark card surface; back-to-top button (bottom-left); RO mileage field (migration `add_mileage_s178.sql` run live — repair_orders + cashiered + archive_one_ro recreated); Urgent Update editable from the tile (`editUrgentUpdate` — UUID write, audit, notify, timeline note).
+  - **Close-outs:** 9 ERs → done w/ completion emails (Brandon ×4, Lynn ×5); Hubert/Huebert cleanup (misspelled RO soft-deleted; real RO confirmed archived); GitHub Releases v1.497 + v1.498 published via API (v1.498 Latest).
+  - version.json refresh poller field-proven twice (idle-tab silent self-reload on both promotes).
 - ✅ **Session 177 — SCHEDULED MESSAGES shipped (messages v1.24, Sync Gate Case B, tag `messages-v1.24`, prod main `a432163`).**
   - NEW `scheduled_messages` table (managers+ RLS, pending-only UPDATE) + 1-min pg_cron + NEW edge fn `send-scheduled-messages` v1.0 (through textly-send — STOP gate at fire time; broadcast fires log staff_broadcasts "(scheduled)" rows; pending→sending claim; >2h missed-window fail).
   - **messages v1.24:** composer 🕑 schedule modal (signature at schedule time, text-only v1), Broadcast 🕑 Send-later row (roster snapshot), 🕑 Scheduled queue modal (edit body/time + cancel). Managers+ only.
@@ -366,6 +372,8 @@
 
 | Version | Date | Summary |
 |---|---|---|
+| v1.498 | 2026-08-22 | **Session 178.** ER quick-win batch: favicon on all 13 pages (S139 404 killed); dark-surface contrast pass (#3b82f6→#7eb3ff, #0a84ff→#5cadff, #667eea→#a5b4fc); back-to-top button; NEW repair_orders.mileage (Edit-RO input + card readout + audit; migration adds cashiered twin + recreates archive_one_ro); Urgent Update editable from the tile via new editUrgentUpdate (banner click + 🚨 in all 3 action rows). |
+| v1.497 | 2026-08-22 | **Session 178.** ER bug batch: insurance-scan cache keyed by RO UUID — cross-customer data bleed killed (ER 225a2535, Kain/Ivins family); multi-line RO Status/Comm notes reverse ENTRIES not lines; desktop worklist drag-reorder engages (dataTransfer.setData); worklist/messages RO links land on the card (Clear-Filters retry + guarded ?ro= deep-link filter-clear). |
 | messages-v1.24 | 2026-08-21 | **Session 177.** Scheduled messages (managers+): composer 🕑 + Broadcast Send-later + Scheduled queue (edit/cancel). NEW scheduled_messages table + 1-min pg_cron + send-scheduled-messages edge fn v1.0 through textly-send (STOP gate at fire time). Text-only v1. |
 | v1.496 | 2026-08-21 | **Session 176.** Kain/Ivins wrong-RO write fix: modal-adjacent writes resolve by `editingROSupabaseId` (UUID at modal open), never array index at save time; board sort `.order('id')` tie-break; in-flight reload discard closes the `_uiBusy` hole; NEW `version.json` poll + refresh banner (visible: pinned Refresh-now; hidden idle: silent self-reload). version.json + APP_VERSION are new bump sites. |
 | v1.495 + checkin-v1.39 | 2026-08-20 | **Session 175 (backfilled S176).** RO status approval breakout: 'Awaiting Approval' → 6 source-specific Awaiting/Approved statuses (canonical 17); CHECK twins widened live; optgroup dropdowns + grouped filter chips; Approved-trio clock-in flippable; `_notifyApprovalStatus` manager+tech notifications. |
