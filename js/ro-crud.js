@@ -1216,6 +1216,11 @@
                 // Array indexes can go stale under an open modal; the uuid cannot.
                 editingROSupabaseId = ro._supabaseId || null;
 
+                // [ER BUGFIX v1.497 S178, ER 225a2535] A prior RO's scan chips must not
+                // survive into this modal — clear any stale suggestion chips at open.
+                // (The scan CACHE itself is now roKey-gated at every consumer.)
+                clearAllSuggestions('edit');
+
                 document.getElementById('editRoId').textContent = ro.roId || '';
                 document.getElementById('editCustomerName').value = ro.customerName || '';
                 document.getElementById('editCustomerPhone').value = ro.customerPhone || '';
@@ -1325,6 +1330,9 @@
             setROType('standard', 'edit');
             // Keep _lastEstimateScan — so adding new fields and reopening still
             // auto-populates from the scan. Cleared only on save or new scan.
+            // [ER BUGFIX v1.497 S178, ER 225a2535] Keeping it is now SAFE: the cache
+            // carries roKey and every consumer checks it, so it can only ever apply
+            // to the same RO it was scanned for.
         }
 
         export async function writeAuditLog(roId, changes) {

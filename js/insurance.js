@@ -39,9 +39,15 @@
                 return;
             }
 
-            // Auto-populate from last scan if available and mode matches
-            const scanVals = (window._lastEstimateScan && window._lastEstimateScan.mode === mode)
-                ? window._lastEstimateScan.extracted : null;
+            // Auto-populate from last scan if available and mode matches.
+            // [ER BUGFIX v1.497 S178, ER 225a2535] The scan cache is now keyed by
+            // RO identity: in edit mode it only applies to the SAME RO it was
+            // scanned for (roKey === editingROSupabaseId). Prevents RO A's scan
+            // auto-populating RO B's custom fields (wrong-customer data bleed).
+            const _scan = window._lastEstimateScan;
+            const _scanOk = _scan && _scan.mode === mode &&
+                (mode !== 'edit' || _scan.roKey === (typeof editingROSupabaseId === 'string' ? editingROSupabaseId : null));
+            const scanVals = _scanOk ? _scan.extracted : null;
 
             grid.innerHTML = customInsuranceFields.map(field => {
                 const id = mode + '_custom_' + field.key;
@@ -115,7 +121,13 @@
                 renderSuggestions(mode, extracted);
 
                 // Step 5: Store extracted data for saving when RO is submitted
-                window._lastEstimateScan = { mode, extracted, timestamp: new Date().toISOString() };
+                // [ER BUGFIX v1.497 S178, ER 225a2535] Stamp the scan with the RO it
+                // was taken for (edit mode: the open modal's UUID; new mode: null).
+                // Every consumer now checks this key before using the extracted data.
+                window._lastEstimateScan = {
+                    mode, extracted, timestamp: new Date().toISOString(),
+                    roKey: (mode === 'edit' && typeof editingROSupabaseId === 'string') ? editingROSupabaseId : null
+                };
 
                 // Step 6: If in Edit mode and we have an RO index, write insurance data now
                 // [v1.496 S176] Re-resolve the index by the open-modal UUID — a board

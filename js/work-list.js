@@ -412,9 +412,18 @@
 
             rows.forEach(row => {
                 // ── Desktop (mouse) ──
-                row.addEventListener('dragstart', () => {
+                // [ER BUGFIX v1.497 S178, ER 5ca724ff] The drag never started on
+                // desktop: dragstart set no dataTransfer payload, and Firefox (and
+                // some Chromium paths) abort an HTML5 drag whose dataTransfer is
+                // empty. setData + effectAllowed makes the reorder actually engage
+                // (same pattern the WO drag already uses).
+                row.addEventListener('dragstart', (e) => {
                     dragSrcIdx = parseInt(row.dataset.idx);
                     dragSrcId = row.dataset.id;
+                    if (e.dataTransfer) {
+                        e.dataTransfer.setData('text/plain', row.dataset.id || String(dragSrcIdx));
+                        e.dataTransfer.effectAllowed = 'move';
+                    }
                     row.style.opacity = '0.4';
                 });
                 row.addEventListener('dragend', () => { row.style.opacity = '1'; });

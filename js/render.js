@@ -23,6 +23,20 @@
             return tileVisibility[element] === true;
         }
 
+        // [ER BUGFIX v1.497 S178, ER d94a418a] Newest-ENTRY-first note preview that
+        // keeps multi-line entries intact. Entries are delimited by \n---\n (the
+        // editField append separator) or a newline followed by a [MM/DD/YY timestamp
+        // prefix — the SAME split showStatusHistoryModal (S159) uses. The old
+        // .split('\n').map(escapeHtml).reverse() reversed every LINE, so one
+        // multi-line note displayed bottom-line-first (Brandon's report).
+        function formatNotesNewestFirst(text) {
+            return String(text)
+                .split(/\n---\n|\n(?=\[\d{2}\/\d{2}\/\d{2})/)
+                .map(s => s.trim()).filter(Boolean)
+                .map(escapeHtml)
+                .reverse().join('\n---\n');
+        }
+
         export function renderBoard() {
             const grid = document.getElementById('boardGrid');
             
@@ -568,7 +582,7 @@
                                     <span class="note-icon">🔧</span>
                                     <span class="note-title">${t('RO Status Updates')}</span>
                                 </div>
-                                <div class="note-content">${ro.roStatusNotes ? ro.roStatusNotes.split('\n').map(escapeHtml).reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
+                                <div class="note-content">${ro.roStatusNotes ? formatNotesNewestFirst(ro.roStatusNotes) : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                             </div>
                             ` : ''}
                             ${shouldShow('customerCommNotes') ? `
@@ -578,7 +592,7 @@
                                     <span class="note-title">${t('Customer Comm')}</span>
                                     ${ro.roType !== 'shop' ? `<button class="comm-thread-link" data-action="message-customer" data-idx="${index}" title="Open the live text/iMessage thread with this customer">💬 ${t('Thread')}</button>` : ''}
                                 </div>
-                                <div class="note-content">${ro.customerCommunicationNotes ? ro.customerCommunicationNotes.split('\n').map(escapeHtml).reverse().join('\n') : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
+                                <div class="note-content">${ro.customerCommunicationNotes ? formatNotesNewestFirst(ro.customerCommunicationNotes) : '<span class="placeholder-text">' + t('Click Here To Update') + '</span>'}</div>
                             </div>
                             ` : ''}
                         </div>

@@ -195,6 +195,10 @@
             printWindow.document.close();
         }
 
+        // [ER BUGFIX v1.497 S178, ER d4d0eeba] one-shot guard so the filter-clear
+        // recovery below cannot loop if the card still fails to appear.
+        let _deepLinkClearedFilters = false;
+
         export function handleDeepLink() {
             if (!_deepLinkRoId) return;
             const target = _deepLinkRoId;
@@ -204,7 +208,31 @@
                 const id = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
                 return id === target;
             });
-            if (idx === -1) return;          // not in current filter view — wait for next render
+            if (idx === -1) {
+                // [ER BUGFIX v1.497 S178, ER d4d0eeba] "Wait for next render" stranded
+                // the deep link FOREVER when the user's active filters exclude the RO
+                // (Brandon: messages ?ro= links never landed). Now: if the data is
+                // loaded and the RO exists but is filtered out, clear the filters once
+                // and re-render — renderBoard's tail call re-enters here and scrolls.
+                // If the data is loaded and the RO isn't in it, say so and stop.
+                if (!currentData.length) return;   // data still loading — genuinely wait
+                const exists = currentData.some(ro => {
+                    const id = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
+                    return id === target;
+                });
+                if (exists && !_deepLinkClearedFilters) {
+                    _deepLinkClearedFilters = true;
+                    currentStatusFilters = []; currentRepairFilter = 'all'; currentPartsFilter = 'all';
+                    currentROTypeFilter = 'all'; currentDaysFilter = null; currentSearchFilter = '';
+                    const cs = document.getElementById('customerSearch'); if (cs) cs.value = '';
+                    showToast('Filters cleared to show the linked RO.', 'info');
+                    renderBoard();
+                } else {
+                    _deepLinkRoId = null;
+                    if (!exists) showToast('Linked RO ' + target + ' is not on the board — it may be archived.', 'warning', { duration: 8000 });
+                }
+                return;
+            }
 
             const card = document.querySelector(`[data-ro-index="${idx}"]`);
             if (!card) return;

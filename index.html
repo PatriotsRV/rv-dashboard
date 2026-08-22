@@ -1,7 +1,22 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.496
+    PRVS Dashboard v1.497
+    v1.497: [S178] ER BUG BATCH — four fixes from the 2026-08-22 ER triage.
+    (1) ER 225a2535 (Brandon, DATA-INTEGRITY): insurance estimate scans no longer
+    bleed between customers — window._lastEstimateScan now carries roKey (the
+    open modal's UUID) and EVERY consumer (renderCustomFields auto-populate, the
+    New-RO save merge, the Edit-RO save merge) checks mode + roKey before using
+    it; openEditRO also clears stale suggestion chips at modal open.
+    (2) ER d94a418a (Brandon): multi-line RO Status / Customer Comm notes no
+    longer render bottom-line-first — card preview now reverses note ENTRIES
+    (same \n---\n / [MM/DD/YY split as the S159 history modal), not raw lines.
+    (3) ER 5ca724ff (Lynn): desktop work-list drag-reorder engages — dragstart
+    now sets dataTransfer payload + effectAllowed (Firefox aborts empty drags).
+    (4) ER d4d0eeba (Brandon): worklist/messages RO links land on the card —
+    Clear-Filters toast action retries the scroll after re-render, and the
+    messages ?ro= deep link clears filters once (guarded) when the RO exists
+    but is filtered out, instead of silently waiting forever.
     v1.496: [S176] WRONG-RO WRITE FIX + NEW-VERSION REFRESH BANNER (Kain/Ivins
     incident 2026-08-21: an in-flight board reload reordered currentData under an
     open Edit-RO modal — the two ROs tied on date_received — and the index-based
@@ -915,7 +930,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.496</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.497</span>
           </span>
         </div>
         <header>
@@ -944,7 +959,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.496</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.497</span>
             </div>
         </header>
 
@@ -3711,7 +3726,7 @@
 
         // Initialize
         function init() {
-                        log('📦 PRVS Dashboard v1.496 - 2026-08-21 - S176 wrong-RO write fix (Kain/Ivins): Edit-RO/editField/soft-delete/insurance writes resolve by UUID not array index, board sort id tie-break, in-flight reload discard under open modals, + version.json new-version refresh banner');
+                        log('📦 PRVS Dashboard v1.497 - 2026-08-22 - S178 ER bug batch: insurance-scan cache keyed by RO (no cross-customer bleed), note previews reverse entries not lines, desktop worklist drag fixed, worklist/messages RO links land on the card');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
@@ -4304,7 +4319,10 @@
 
         // [PHASE 14 DELETED v1.443 S91] renderWorkList() -> js/work-list.js
 
-        function scrollToROInBoard(roId) {
+        // [ER BUGFIX v1.497 S178, ER d4d0eeba] Clear Filters used to re-render and
+        // STOP — the user still had to hunt for the card. It now retries the scroll
+        // after the re-render; a second miss (RO truly gone/archived) says so.
+        function scrollToROInBoard(roId, _retried) {
             const cards = document.querySelectorAll('.ro-card[data-ro-index], .ro-card-compact[data-ro-index]');
             for (const card of cards) {
                 const idx = parseInt(card.dataset.roIndex);
@@ -4319,7 +4337,11 @@
                     return;
                 }
             }
-            showToast('RO not visible — it may be filtered out.', 'warning', { duration: 12000, actionLabel: 'Clear Filters', actionCallback: function() { currentStatusFilters = []; currentRepairFilter = 'all'; currentPartsFilter = 'all'; currentROTypeFilter = 'all'; currentDaysFilter = null; currentSearchFilter = ''; document.getElementById('customerSearch').value = ''; renderBoard(); } });
+            if (_retried) {
+                showToast('RO not found on the board — it may be archived or deleted.', 'warning', { duration: 8000 });
+                return;
+            }
+            showToast('RO not visible — it may be filtered out.', 'warning', { duration: 12000, actionLabel: 'Clear Filters', actionCallback: function() { currentStatusFilters = []; currentRepairFilter = 'all'; currentPartsFilter = 'all'; currentROTypeFilter = 'all'; currentDaysFilter = null; currentSearchFilter = ''; document.getElementById('customerSearch').value = ''; renderBoard(); setTimeout(function() { scrollToROInBoard(roId, true); }, 100); } });
         }
 
         // Post-render search highlight — walks text nodes, wraps matches in <mark>
@@ -6588,7 +6610,11 @@
                 if (success) {
                     // Merge insurance fields + scan data, write to Insurance Data tab + Column W
                     const insuranceFields = collectInsuranceFields();
-                    const scanData = window._lastEstimateScan ? window._lastEstimateScan.extracted : null;
+                    // [ER BUGFIX v1.497 S178, ER 225a2535] Only consume a scan taken in
+                    // NEW mode — an edit-mode scan left over from another RO must never
+                    // ride into a freshly created RO.
+                    const _scanNew = window._lastEstimateScan;
+                    const scanData = (_scanNew && _scanNew.mode === 'new') ? _scanNew.extracted : null;
                     const combinedData = Object.assign({}, scanData || {}, insuranceFields || {});
 
                     if (Object.keys(combinedData).length > 0) {
@@ -6759,10 +6785,16 @@
                     // Write insurance/hybrid data if RO type is not standard
                     const insuranceFields = collectInsuranceFields('edit');
                     if (insuranceFields) {
-                        const scanData = window._lastEstimateScan ? window._lastEstimateScan.extracted : null;
+                        // [ER BUGFIX v1.497 S178, ER 225a2535] Only consume a scan taken in
+                        // EDIT mode FOR THIS RO (roKey === the open modal's UUID). This was
+                        // the wrong-customer bleed: scan RO A, close unsaved, open RO B,
+                        // save -> A's extracted data merged onto B.
+                        const _scanEdit = window._lastEstimateScan;
+                        const scanData = (_scanEdit && _scanEdit.mode === 'edit' && _scanEdit.roKey === editingROSupabaseId)
+                            ? _scanEdit.extracted : null;
                         const combinedData = Object.assign({}, scanData || {}, insuranceFields);
                         writeInsuranceData(roId, combinedData, editingROIndex);
-                        window._lastEstimateScan = null;
+                        if (scanData) window._lastEstimateScan = null;
                     }
                     closeEditModal();
                     await loadDataFromSupabase();
