@@ -1,7 +1,18 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.498
+    PRVS Dashboard v1.499
+    v1.499: [S179] 🚨 PROD HOTFIX — the dashboard rendered as raw changelog text.
+    v1.498's favicon insert (ER d432863a) targeted the FIRST literal head tag in
+    the file, which lives inside THIS changelog comment (the v1.481 sidebar
+    write-up). The injected block carried its own comment terminator, which
+    closed this comment ~630 lines early: everything from there to the real
+    document became visible body text, and the real head never got the favicon.
+    Fix: block removed from the comment, favicon relocated into the real head,
+    and the literal head tag in the v1.481 prose reworded to "head-level script"
+    so no future blind insert can match inside the changelog again. The S178
+    audit's 3 Class F BLOCKING "changelog-comment" findings were REAL, not the
+    header-line-shift false positives they were logged as. No DB change.
     v1.498: [S178] ER QUICK-WIN BATCH — five small ERs in one release.
     (1) ER d432863a (Brandon): Patriots-logo favicon on every page (13 pages;
     also silences the S139 favicon-404 console noise).
@@ -259,10 +270,7 @@
     Return path: ↩ Classic View (sidebar footer). The header 🧭 Sidebar View
     toggle button was REMOVED S152 — the tester page is the single entry point;
     persisted in localStorage prvs_layout. Implementation
-    is DOM RELOCATION, not duplication: an early <head>
-    <!-- [ER d432863a v1.498 S178] Patriots-logo favicon (also fixes the S139 favicon-404 console noise) -->
-    <link rel="icon" type="image/png" href="logo.png">
-    <link rel="apple-touch-icon" href="logo.png"> script sets
+    is DOM RELOCATION, not duplication: an early head-level script sets
     html.layout-sidebar before paint; js/layout.js (new, plain script) then moves
     the existing header/search/filter/stats nodes into the #sbShell slots — ids,
     inline handlers, and listeners survive the move, so every module (render,
@@ -894,6 +902,14 @@
 -->
 <html lang="en">
 <head>
+    <!-- [ER d432863a v1.498 S178, relocated v1.499 S179] Patriots-logo favicon
+         (also fixes the S139 favicon-404 console noise). v1.498 injected this
+         block into the first head-tag TEXT MATCH in the file, which sat inside
+         the header changelog comment; the injected block's comment terminator
+         then closed that changelog comment ~630 lines early and broke prod.
+         Keep this note free of comment terminators and literal head tags. -->
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -949,7 +965,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.498</span>
+            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.499</span>
           </span>
         </div>
         <header>
@@ -978,7 +994,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.498</span>
+                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.499</span>
             </div>
         </header>
 
@@ -3745,7 +3761,7 @@
 
         // Initialize
         function init() {
-                        log('📦 PRVS Dashboard v1.498 - 2026-08-22 - S178 ER quick-win batch: favicons everywhere, blue-text contrast pass, back-to-top button, RO mileage field, urgent update editable from the tile');
+                        log('📦 PRVS Dashboard v1.499 - 2026-08-23 - S179 PROD HOTFIX: header changelog comment was closed early by the v1.498 favicon insert, dumping the changelog into the body; favicon relocated to the real head');
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
