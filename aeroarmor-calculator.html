@@ -132,6 +132,25 @@
   <p>Internal costing tool. Sr Manager or Admin sign-in required.</p>
   <div id="g_id_onload"></div>
   <div id="notAuthorized">Your account does not have Sr Manager or Admin access.</div>
+  <div id="fileProtoWarn" style="display:none; max-width:560px; text-align:left;
+       background:rgba(245,158,11,.12); border:1px solid #f59e0b; color:#fde68a;
+       padding:16px 18px; border-radius:10px; font-size:13.5px; line-height:1.6">
+    <b style="font-size:15px">⚠️ Serve this page — don't open it from Finder.</b>
+    <p style="color:#fde68a; margin:10px 0 0; max-width:none">
+      You opened it as a <code>file://</code> URL, so the browser reports the page origin as
+      <code>null</code>. Google Sign-In rejects that with
+      <i>“Access blocked: Authorization Error — Error 400: invalid_request”</i>,
+      because <code>null</code> can never be an authorized JavaScript origin.
+    </p>
+    <p style="color:#fde68a; margin:10px 0 0; max-width:none">Start your standing local server:</p>
+    <pre style="background:#0f172a; border:1px solid #334155; border-radius:7px; padding:10px 12px;
+                overflow-x:auto; margin:8px 0 0; color:#e2e8f0; font-size:12.5px"><code>cd ~/rv-dashboard &amp;&amp; python3 -m http.server 8765</code></pre>
+    <p style="color:#fde68a; margin:10px 0 0; max-width:none">
+      then open
+      <a href="http://localhost:8765/aeroarmor-calculator.html" style="color:#93c5fd">http://localhost:8765/aeroarmor-calculator.html</a>.
+      Port <b>8765</b> is the standing PRVS dev port and is already an authorized origin.
+    </p>
+  </div>
 </div>
 
 <div id="app">
@@ -359,6 +378,14 @@ function isAllowed() { return userRoles.includes('Admin') || userRoles.includes(
 
 // ── Auth ─────────────────────────────────────────────────
 async function initAuth() {
+  // file:// has origin "null", which Google Identity Services always rejects
+  // (Error 400: invalid_request). Explain it here rather than bouncing the user
+  // to an opaque Google error page. Standing PRVS dev port is 8765.
+  if (location.protocol === 'file:') {
+    document.getElementById('g_id_onload').style.display = 'none';
+    document.getElementById('fileProtoWarn').style.display = 'block';
+    return;
+  }
   getSB().auth.onAuthStateChange((event, session) => {
     if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') supabaseSession = session;
     else if (event === 'SIGNED_OUT') { supabaseSession = null; currentUser = null; }
