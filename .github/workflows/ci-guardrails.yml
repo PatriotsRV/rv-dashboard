@@ -1,0 +1,73 @@
+# ci-guardrails.yml — Session 179 (2026-08-23)
+#
+# LAYER 2 of 3: ENFORCE.
+#
+# v1.498 shipped a production outage that audit_codebase.py had actually
+# flagged (3 Class F BLOCKING findings). Nothing enforced that result — the
+# audit was advisory, run by hand, and the findings were dismissed in prose as
+# "false positives from header line shift". They were not false positives.
+#
+# This workflow makes the gate real: a BLOCKING finding or a structural failure
+# fails the run. Dismissing one now requires an explicit, reviewable change,
+# not a sentence in the session log.
+#
+# Layer 1 = scripts/check_html_structure.py (prevent — direct detection)
+# Layer 3 = .github/workflows/prod-smoke.yml (detect — watches production)
+
+name: CI Guardrails
+
+on:
+  push:
+    branches: [pre-prod, main]
+  pull_request:
+    branches: [pre-prod, main]
+  workflow_dispatch:
+
+jobs:
+  guardrails:
+    name: HTML structure + codebase audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install html5lib
+
+      # ── LAYER 1: structural sanity ───────────────────────────────────
+      # Asserts the invariants v1.498 violated: balanced comment delimiters,
+      # no nested comment starts, <head> keeps its <title>, no changelog prose
+      # leaking into <body>, no literal <head>/<body> token inside a comment.
+      - name: HTML structure check (BLOCKING)
+        run: python3 scripts/check_html_structure.py
+
+      # ── Codebase audit ───────────────────────────────────────────────
+      # Exits 1 on any BLOCKING finding. Baseline at the time this was added
+      # was 0 BLOCKING / 120 total, so a failure here means something new.
+      - name: Codebase audit (BLOCKING findings fail the build)
+        run: python3 scripts/audit_codebase.py
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codebase-audit
+          path: docs/qa/CODEBASE_AUDIT.md
+          if-no-files-found: ignore
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error::A guardrail failed. Do NOT dismiss this as a false positive without proof."
+          echo ""
+          echo "S179 precedent: the v1.498 outage was flagged by exactly these checks,"
+          echo "recorded as 'changelog-comment false positives', and shipped broken."
+          echo "Production was unusable until a human found it by hand."
+          echo ""
+          echo "If you are certain a finding is wrong, change the check or add an"
+          echo "explicit suppression with a written reason, and commit that."
+          echo "A finding waved off in conversation leaves no trace and repeats."
+          exit 1

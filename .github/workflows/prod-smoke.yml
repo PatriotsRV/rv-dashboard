@@ -1,0 +1,70 @@
+# prod-smoke.yml — Session 179 (2026-08-23)
+#
+# LAYER 3 of 3: DETECT.
+#
+# Roland's requirement after the v1.498 outage: "if it does happen, it's fixed
+# immediately instead of me or a worker finding out the hard way."
+#
+# S178's post-deploy check was a curl. A curl returns HTTP 200 for a completely
+# broken page, which is why v1.498's check passed while the dashboard was
+# unusable. This one fetches the live page and asserts it is actually a working
+# dashboard — head intact, no changelog leaking into the body, expected content
+# present, version.json agreeing with the served HTML.
+#
+# A failure fails the workflow, which sends Roland the standard GitHub Actions
+# failure email. Detection goes from "a worker tells you" to a few minutes.
+#
+# Schedule note: every 15 min during shop hours (11:00-01:00 UTC ~= 6am-8pm CT),
+# hourly otherwise. GitHub may delay scheduled runs under load; that is fine for
+# a watchdog.
+
+name: Production Smoke Test
+
+on:
+  schedule:
+    - cron: '*/15 11-23,0-1 * * *'
+    - cron: '0 * * * *'
+  push:
+    branches: [main]          # immediately after every promote
+  workflow_dispatch:
+
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Is production actually working?
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install html5lib
+
+      # GitHub Pages needs a moment to rebuild after a push to main.
+      - name: Wait for Pages to rebuild
+        if: github.event_name == 'push'
+        run: sleep 90
+
+      - name: Smoke test production
+        run: python3 scripts/smoke_prod.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error::PRODUCTION IS BROKEN — https://patriotsrv.github.io/rv-dashboard/"
+          echo ""
+          echo "The live dashboard failed a structural check. Staff are probably"
+          echo "looking at a broken page right now."
+          echo ""
+          echo "First thing to check: the index.html header changelog comment."
+          echo "A stray '-->' or an insert landing inside it closes the comment"
+          echo "early and dumps ~630 lines of changelog into the page body."
+          echo "That was the v1.498 outage (S179 fixed it in v1.499)."
+          echo ""
+          echo "Reproduce locally:  python3 scripts/check_html_structure.py"
+          exit 1
