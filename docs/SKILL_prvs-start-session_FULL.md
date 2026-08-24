@@ -156,7 +156,7 @@ Start with the highest-priority open TODO item unless Roland redirects.
 - Use `.maybeSingle()` not `.single()` for any lookup where 0 rows is valid
 - Parts request notes: `type:'ro_status'` + body prefix `🔩 PARTS REQUESTED:` — NEVER `type:'parts_request'`
 - `uploadDocument` uses Supabase Storage only — never revert to Google Drive
-- Bump version in `index.html` (comment + badge + `console.log`) with every release
+- Bump the version in exactly TWO places per release (S182): the `window.APP_VERSION` declaration in `index.html` and `version.json`. The badges, the boot `console.log` and the update poller all DERIVE from the declaration — do not hand-edit them, and never let a module declare its own copy. `scripts/check_version_sync.py` enforces this and is BLOCKING in CI
 - Commit and push after every meaningful change
 - **If context window is getting full → run the End Session skill immediately, do not wait**
 

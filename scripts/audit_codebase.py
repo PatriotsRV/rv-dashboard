@@ -689,6 +689,29 @@ RETIRED_RULES = [
         near=re.compile(r"osascript|do\s+shell\s+script|host-side|SANDBOX\s+CANNOT", re.I),
         near_lines=40,
     ),
+    dict(
+        id="K7", severity="HIGH",
+        # The retired instruction, in the shapes it actually appears in: naming
+        # ro-crud.js / a module as a version bump site, or telling someone to
+        # bump an APP_VERSION constant. `window.APP_VERSION` is the live single
+        # source and must never match.
+        pattern=re.compile(
+            r"(?:bump\w*|sync|update|keep)\b(?:(?!\n\n).){0,120}?(?<!window\.)\bAPP_VERSION\b"
+            r"|\bAPP_VERSION\b(?:(?!\n\n).){0,80}?\bbump\s+site\b"
+            r"|ro-crud\.js(?:(?!\n\n).){0,80}?\bbump\s+site\b",
+            re.I | re.S,
+        ),
+        message=("Retired bump site (S182): `js/ro-crud.js` no longer declares its own APP_VERSION, and no "
+                 "module may. The running version has ONE declaration -- `window.APP_VERSION` in index.html -- "
+                 "which feeds both badges, the boot log and the version poller. The old module-local constant "
+                 "sat stale at 1.496 through v1.497/v1.498/v1.499 because a code comment was the only thing "
+                 "marking it: the whole shop got an undismissable refresh banner and every idle tab reloaded "
+                 "itself every 5 minutes for two days. Bump index.html's declaration + version.json; nothing "
+                 "else. Enforced per-release by scripts/check_version_sync.py (BLOCKING in CI)."),
+        allow=re.compile(r"window\.APP_VERSION|\bretired\b|\bno\s+longer\b|\bNOT\s+a\s+bump\s+site\b|"
+                         r"\bsingle\s+(?:bump\s+)?site\b|\bstale\b|\bdrift\w*\b|\bdeleted\b|\bused\s+to\b|"
+                         r"\bcheck_version_sync\b|\bre-grown\b|\bhardcode\w*\b", re.I),
+    ),
 ]
 
 DOC_SKIP_RE = re.compile(r"(^|/)(\.git|\.backups|node_modules|docs/qa|docs/releases)(/|$)|(^|/)PASTE_ME_[^/]*$")
