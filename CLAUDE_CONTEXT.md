@@ -888,21 +888,26 @@ Keychain, so `git push` from bash now fails 100% of the time** with `Please make
 S181 hit this at the Sync Gate. **This is NOT a transient error, NOT a credentials bug, and NOT something to retry or debug** — it is the expected
 steady state, and it will recur every single session.
 
-**The commit still works from the sandbox** (it writes to the mounted folder). Only the push needs the host. **Do not present this to Roland as a
-failure** — expect it, and paste him the push block as a normal part of End Session:
+**The commit still works from the sandbox** (it writes to the mounted folder). Only the push needs the host.
+
+✅ **THE FIX — host-side `osascript`, and it needs NOTHING from Roland (PROVEN S181, second commit `7e0bcf3`).** `do shell script` runs as Roland's
+user, inherits his `SSH_AUTH_SOCK`, and the Keychain supplies the passphrase — **no prompt, no paste, fully non-interactive.** Do this FIRST; do not
+default to asking Roland:
 
 ```
-cd ~/rv-dashboard
-rm -f .git/index.lock
-git push origin pre-prod
-git rev-parse pre-prod
-git rev-parse origin/pre-prod
-git log pre-prod..main --oneline
+do shell script "cd ~/rv-dashboard && /usr/bin/git push origin pre-prod 2>&1; echo '---LOCAL---'; /usr/bin/git rev-parse pre-prod; echo '---ORIGIN---'; /usr/bin/git rev-parse origin/pre-prod; echo '---INVARIANT---'; /usr/bin/git log pre-prod..main --oneline; echo '---END---'"
 ```
 
-The `rm -f .git/index.lock` is not optional: the sandbox routinely leaves a lock it cannot unlink (`Operation not permitted`, FUSE), plus
-`warning: unable to unlink .git/objects/**/tmp_obj_*` noise which is harmless. Roland's Terminal has the agent loaded, so the push itself is
-non-interactive for him. Host-side `osascript` git is the other fallback (S177) but a Terminal paste is simpler and always works.
+That one call pushes AND returns the full Sync Gate assertion in real host output. Use absolute `/usr/bin/git` — `do shell script` has a minimal PATH.
+This confirms and sharpens S177's "host-side osascript git is the reliable fallback": it is not just a fallback, it is the primary path now.
+
+**Terminal paste is the BACKUP** if osascript is unavailable — same commands, plus `rm -f .git/index.lock` first.
+
+⚠️ **The `.git/index.lock` trap (S181, and S177/S180 called it unclearable — that was WRONG).** Sandbox `git add`/`commit` routinely leaves a lock it
+cannot unlink (`Operation not permitted`, FUSE), and the next git call dies with *"another git process seems to be running… remove the file manually."*
+**It IS clearable: call the `allow_cowork_file_delete` tool on `<RV>/.git/index.lock`, then `rm -f` works.** S181 needed `rm -f .git/index.lock
+.git/HEAD.lock` plus a `sleep 1` before `commit` succeeded. The `warning: unable to unlink .git/objects/**/tmp_obj_*` noise is harmless — filter it,
+do not chase it.
 
 ⚠️ **The Sync Gate assertion is therefore ALWAYS Roland-pasted output, never sandbox output.** Do not write "branches synced" from a sandbox
 `rev-parse` — after a failed push the sandbox's `origin/pre-prod` ref is STALE and will happily disagree, or worse, a later fetch could make it
@@ -2399,7 +2404,7 @@ Kenect refused to supply API keys. Edge Function deleted, all UI code removed. S
 
 > Sessions 103 and earlier -> see the Session Log in CLAUDE_CONTEXT_ARCHIVE.md.
 
-*Session 181 addendum: NEW 🔴 Known Issue — **the sandbox can no longer `git push` at all.** S180's SSH migration means every End Session push must be pasted by Roland in Terminal; the sandbox commit still works. Expect it, do not debug it, and never assert the Sync Gate from sandbox `rev-parse` output.*
+*Session 181 addendum: NEW 🔴 Known Issue — **the sandbox can no longer `git push` at all** (S180's SSH migration; expect it, do not debug it, never assert the Sync Gate from sandbox `rev-parse`). **The fix needs NOTHING from Roland: push via host-side `osascript`, proven S181** — it inherits his ssh-agent and Keychain, runs non-interactively, and returns the full hash assertion in one call. Also corrected here: `.git/index.lock` **IS** clearable via the `allow_cowork_file_delete` tool, contradicting S177/S180.*
 
 *Last updated: 2026-08-23 — **Session 181 End** (ACCESS/IDENTITY session, NO release, Sync Gate Case A, `index.html` stays v1.499). **Closed:** trainer `pages.dev` gated (`d0ecf50` in `prvshepard/prvs-sales-trainer`, verified 404/404/302 — last ungateable Pages URL); `PatriotsRV` second Owner added (`roshepard`, a recovered 2016 account, 2FA'd); `solar-Riley` Write→Read on `rv-dashboard` (unplanned find — he had push rights to production `main`); `prvshepard` given a non-Workspace backup email (unplanned find — the Workspace-severance plan would have killed its password-reset path); Will Read verified four layers, closing the S174 retest. **Two reader-facing guides** written to the PRIVATE `prvs-internal-tools/docs/`, kept out of this public repo. **Left open deliberately:** (1) 🟠 the `roshepard` break-glass still needs ONE PRINTED page in the safe — codes/TOTP/passkey all sit in Roland's Apple domain, the same domain as `prvshepard`; (2) 🟠 calculator-vs-Will — Will clears `isAllowed()`, obscurity is the only control, Admin-only vs email allow-list undecided; (3) 🟡 outside-collaborator + org-wide 2FA posture pass (⚠️ enabling 2FA enforcement auto-ejects members who lack it); (4) 🟠 review this session's two guides next session (Roland directive).*
 
