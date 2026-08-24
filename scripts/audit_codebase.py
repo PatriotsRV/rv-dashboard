@@ -668,18 +668,25 @@ RETIRED_RULES = [
     ),
     dict(
         id="K6", severity="HIGH",
-        pattern=re.compile(r"^[^\n#>]*?\bgit\s+push\s+origin\s+(?:pre-prod|main)\b", re.M),
+        # Match only BARE command lines (code blocks), never prose that merely mentions a push.
+        # Prose describing the model is fine; a copy-pasteable `git push` line is what breaks.
+        pattern=re.compile(r"^\s*git\s+push\s+origin\s+(?:pre-prod|main)\b", re.M),
         message=("Bare sandbox `git push` (retired S181). S180 moved the repo to SSH with the passphrase "
                  "in the macOS Keychain, so pushing from the sandbox bash fails 100% of the time. Push "
                  "host-side via osascript `do shell script \"cd ~/rv-dashboard && /usr/bin/git push ...\"` "
                  "-- non-interactive, needs nothing from Roland. The hash assertion must come from HOST "
                  "output; a stale sandbox origin/ ref will lie."),
-        allow=re.compile(r"osascript|do\s+shell\s+script|host-side|\bretired\b|\bWRONG\b|\bfails\b|\bbackup\s+only\b|"
-                         r"\bNOT\s+this\s+line\b|\bcannot\b|\bRoland\b", re.I),
+        allow=re.compile(r"osascript|do\s+shell\s+script|host-side|\bNOT\s+this\s+line\b", re.I),
         # A single osascript callout at the top of a Sync Gate section covers both CASE A and CASE B,
         # which sit ~35 lines apart -- hence the wide radius. Narrower and K6 re-fires on correct text,
         # which is how a rule becomes noise and then gets ignored (S181).
-        near=re.compile(r"osascript|do\s+shell\s+script|host-side|SANDBOX\s+CANNOT|\bRoland\b", re.I),
+        #
+        # 🔴 DO NOT add \bRoland\b (or any other common word) to allow/near. S181 did exactly that and
+        # SILENTLY NEUTERED THIS RULE: the prvs-* skills say "Roland" on nearly every screen, so the
+        # live skills -- the most drift-prone copy, the whole reason Class K exists -- were excused
+        # while the repo docs were policed. An escape hatch wide enough to be convenient is wide
+        # enough to disable the check. Only osascript/host-side wording may suppress K6.
+        near=re.compile(r"osascript|do\s+shell\s+script|host-side|SANDBOX\s+CANNOT", re.I),
         near_lines=40,
     ),
 ]
