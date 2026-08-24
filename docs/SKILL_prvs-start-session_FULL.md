@@ -91,6 +91,27 @@ for what happens next.** Execute its START OF SESSION checklist in full — ever
 This skill deliberately does **not** restate those steps. If this skill and § SESSION PROTOCOL ever
 disagree, **§ SESSION PROTOCOL wins** — and this skill is the thing to fix.
 
+> ⚠️ **If ANY git command here fails with "another git process seems to be running" — `.git/index.lock` IS clearable (S181).**
+> `git status` and `git checkout pre-prod` both write the index, and the sandbox routinely leaves a lock it cannot unlink
+> (`Operation not permitted`, FUSE). **Fix: call the `allow_cowork_file_delete` tool on `<RV>/.git/index.lock`, then
+> `rm -f .git/index.lock .git/HEAD.lock`, then retry.** S177/S180 recorded this as unclearable and were WRONG — do not tell
+> Roland it is impossible, and do not burn the start of a session debugging it. The
+> `warning: unable to unlink .git/objects/**/tmp_obj_*` noise is harmless; filter it.
+
+> 🔵 **The drift check reads LOCAL refs — that is CORRECT here, and here is the one condition that changes it (S181).**
+> Since S180's SSH migration, pushes run host-side (see the End/Pause skills), so the sandbox never fetches and its
+> `origin/*` refs go stale. That is harmless: Roland works from one Mac, this Cowork session is the only writer, and local
+> IS the source of truth. **Do NOT add a routine `git fetch` — it fails from the sandbox anyway and would only slow every
+> session start.** ⚠️ **The single trigger to reconsider:** if Roland ever mentions committing or pushing from another
+> machine, or directly on the host outside a session, then local may be BEHIND origin and the drift check would compare
+> stale refs and wrongly report clean. Only then, verify host-side first:
+>
+> ```
+> do shell script "cd ~/rv-dashboard && /usr/bin/git fetch origin 2>&1; echo '---AHEAD/BEHIND pre-prod vs origin---'; /usr/bin/git rev-list --left-right --count pre-prod...origin/pre-prod"
+> ```
+>
+> Output `0	0` means in sync. Anything else — resolve before any other work.
+
 ---
 
 ## STEP 3 — Ask for iPhone Updates
