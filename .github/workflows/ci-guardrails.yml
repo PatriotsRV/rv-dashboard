@@ -44,6 +44,15 @@ jobs:
       - name: HTML structure check (BLOCKING)
         run: python3 scripts/check_html_structure.py
 
+      # ── Version sync ─────────────────────────────────────────────────
+      # Asserts version.json and index.html agree, and that no js/ module has
+      # re-grown a private hardcoded copy of the running version. S182: that
+      # duplicate (js/ro-crud.js APP_VERSION) sat stale through three releases
+      # and left the whole shop with an undismissable "please refresh" banner
+      # plus every idle tab reloading itself every 5 minutes for two days.
+      - name: Version sync check (BLOCKING)
+        run: python3 scripts/check_version_sync.py
+
       # ── Codebase audit ───────────────────────────────────────────────
       # Exits 1 on any BLOCKING finding. Baseline at the time this was added
       # was 0 BLOCKING / 120 total, so a failure here means something new.

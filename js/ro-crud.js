@@ -1501,7 +1501,14 @@ setInterval(() => { _checkAppVersion(); _autoRefreshBoard('interval'); }, AUTO_R
 // never a forced reload, which could destroy in-progress form work. Hidden
 // tab: silent location.reload() when idle (_uiBusy false), so stale
 // overnight tabs self-heal (S171 gotcha: auto-refresh reloads data, not code).
-const APP_VERSION = '1.496'; // BUMP SITE: keep in sync with version.json + index.html comment/badge/console.log
+// [v1.500 S182] NOT a bump site any more. A module-local APP_VERSION constant
+// used to be declared here, pinned at 1.496, hand-edited alongside
+// version.json and index.html. It was missed on v1.497, v1.498 AND v1.499,
+// so every client compared version.json's 1.499 against a baked-in 1.496:
+// the banner could never be satisfied by refreshing (the reload served the
+// same stale constant), and the hidden-tab branch below reloaded every idle
+// tab in the shop every 5 minutes for two days. The running version now
+// comes from the ONE declaration in index.html; there is nothing to forget.
 const VERSION_CHECK_EVERY_MS = 5 * 60_000; // poll cadence (rides the 30s tick)
 let _lastVersionCheckAt = 0;
 
@@ -1509,14 +1516,32 @@ async function _checkAppVersion() {
     try {
         if (Date.now() - _lastVersionCheckAt < VERSION_CHECK_EVERY_MS) return;
         _lastVersionCheckAt = Date.now();
+        // FAIL SAFE: if we cannot establish what version this tab is running,
+        // do nothing at all. An unknown running version must never be allowed
+        // to banner or — far worse — force a reload; that is the exact loop
+        // this block caused S176-S181. Silence is the safe failure mode.
+        const running = window.APP_VERSION;
+        if (!running) return;
         // Relative path (GitHub Pages project path — S146 gotcha) + cache-bust
         // query param (S102 gotcha: hard refresh alone may not beat the CDN).
         const resp = await fetch('version.json?ts=' + Date.now(), { cache: 'no-store' });
         if (!resp.ok) return;
         const j = await resp.json();
         const latest = j && j.version;
-        if (!latest || latest === APP_VERSION) return;
+        if (!latest || String(latest) === String(running)) return;
         if (document.hidden && !_uiBusy()) {
+            // [v1.500 S182] RELOAD ONCE PER TARGET VERSION, not once per tick.
+            // Reloading is only useful if it actually changes the running code.
+            // If it does not — CDN skew serving old HTML beside a new
+            // version.json, a bad deploy, a cache that will not turn over — the
+            // unguarded version of this line reloaded the tab every 5 minutes
+            // indefinitely. One attempt per target version is enough to
+            // self-heal an honestly stale tab; the banner covers the rest.
+            try {
+                const k = 'prvs_reloaded_for_' + latest;
+                if (sessionStorage.getItem(k)) { _showUpdateBanner(latest); return; }
+                sessionStorage.setItem(k, '1');
+            } catch (e) { /* private mode / storage blocked — fall through to one reload */ }
             log('🔄 New version ' + latest + ' detected in hidden tab — reloading');
             location.reload();
             return;

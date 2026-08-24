@@ -1,7 +1,23 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.499
+    PRVS Dashboard v1.500
+    v1.500: [S182] STUCK "NEW VERSION AVAILABLE" BANNER — fixed at the shape.
+    Root cause: js/ro-crud.js hardcoded its own copy of the running version
+    (APP_VERSION = '1.496') and that bump site was named nowhere in the release
+    checklist. It was missed on v1.497, v1.498 and v1.499, so every client
+    compared version.json's 1.499 against a baked-in 1.496 — permanently
+    unequal. The banner could not be dismissed by refreshing, because the
+    reload served the same stale constant; and the hidden-tab branch, which
+    calls location.reload() outright, reloaded every idle tab in the shop every
+    5 minutes from 8/22 until now. Fix: ONE declaration of the running version
+    (window.APP_VERSION, declared head-level) feeds both badges, the boot log
+    and the poller, so the duplicate that drifted no longer exists. Poller now
+    fails closed when the running version is unknown (never banners, never
+    reloads) and reloads at most once per target version, so CDN skew or a bad
+    deploy can no longer produce an endless reload. NEW
+    scripts/check_version_sync.py asserts version.json and index.html agree and
+    that no module has re-grown a hardcoded copy; BLOCKING in CI. No DB change.
     v1.499: [S179] 🚨 PROD HOTFIX — the dashboard rendered as raw changelog text.
     v1.498's favicon insert (ER d432863a) targeted the FIRST literal head tag in
     the file, which lives inside THIS changelog comment (the v1.481 sidebar
@@ -928,6 +944,23 @@
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="css/sidebar-layout.css">
+    <!-- ============================================================== -->
+    <!-- [v1.500 S182] THE VERSION BUMP SITE. Change the number HERE.   -->
+    <!--                                                                -->
+    <!-- Only two places carry the version now: this line and           -->
+    <!-- version.json. Both badges, the boot log, and the new-version   -->
+    <!-- poller in js/ro-crud.js all read this value at runtime, so     -->
+    <!-- they cannot drift out of sync the way they did S176-S181.      -->
+    <!--                                                                -->
+    <!-- History: js/ro-crud.js used to hardcode its own copy of the    -->
+    <!-- running version. It was missed on v1.497, v1.498 and v1.499,   -->
+    <!-- so every client compared version.json 1.499 against a baked-in -->
+    <!-- 1.496, showed the update banner forever, and every idle tab    -->
+    <!-- reloaded itself every 5 minutes for two days.                  -->
+    <!--                                                                -->
+    <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
+    <!-- ============================================================== -->
+    <script>window.APP_VERSION = '1.500';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
@@ -965,7 +998,7 @@
         <div id="sbHdrStrip">
           <span class="sb-ttl">🚐 PRVS RO DASHBOARD</span>
           <span class="sb-hdr-right">
-            <span style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;">v1.499</span>
+            <span id="verBadgeSidebar" style="font-size:0.7rem;color:#6b7280;font-family:'JetBrains Mono',monospace;"></span>
           </span>
         </div>
         <header>
@@ -994,7 +1027,7 @@
             <div style="text-align: right; margin-top: 8px; display:flex; justify-content:flex-end; align-items:center; gap:12px;">
                 <button id="langToggleBtn" onclick="setLang(getLang()==='es'?'en':'es')" title="Toggle Spanish / English" style="background:transparent;border:1px solid #d1d5db;border-radius:6px;padding:3px 10px;font-size:0.75rem;color:#6b7280;cursor:pointer;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;">🌐 ES</button>
                 <a id="sidebarTesterLink" href="sidebar-mockup.html" title="Open the new sidebar layout tester" style="background:rgba(47,129,247,0.15); color:#93c5fd; border:1px solid rgba(47,129,247,0.5); border-radius:8px; padding:4px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; text-decoration:none; display:inline-block;">🧪 New RO DB Tester</a>
-                <span style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;">v1.499</span>
+                <span id="verBadgeHeader" style="font-size: 0.7rem; color: #6b7280; font-family: 'JetBrains Mono', monospace;"></span>
             </div>
         </header>
 
@@ -3761,7 +3794,14 @@
 
         // Initialize
         function init() {
-                        log('📦 PRVS Dashboard v1.499 - 2026-08-23 - S179 PROD HOTFIX: header changelog comment was closed early by the v1.498 favicon insert, dumping the changelog into the body; favicon relocated to the real head');
+            // [v1.500 S182] Version is read from the single bump site (window.APP_VERSION,
+            // declared head-level). Both badges are painted from it too, so the number a
+            // user reads on screen is by construction the number the update poller compares.
+            log('📦 PRVS Dashboard v' + window.APP_VERSION + ' - 2026-08-24 - S182: single version source + BLOCKING sync guardrail; fixes the stuck "new version available" banner and the hidden-tab reload loop');
+            ['verBadgeHeader', 'verBadgeSidebar'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = 'v' + window.APP_VERSION;
+            });
 
             // [ER BUGFIX v1.447 S94] n33 (Bobby Thatcher): currency inputs show 2 decimals on blur.
             // Cosmetic only - parseFloat already preserved the value; the parts table already shows $X.00.
