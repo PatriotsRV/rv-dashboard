@@ -881,6 +881,33 @@ session. Local helper `.claude/launch.json` (static server, port 5599) left untr
 
 ## ⚠️ Known Issues & Gotchas
 
+### 🔴 THE SANDBOX CAN NO LONGER `git push` AT ALL — S180's SSH migration made every End Session a two-party operation (Session 181, 2026-08-23)
+S180 eliminated the plaintext PAT and moved both repos to SSH (`git@github.com:PatriotsRV/rv-dashboard.git`, passphrase in the macOS Keychain).
+That was the right security call, and it has a permanent side effect nobody wrote down: **the Cowork sandbox has no path to Roland's SSH key or
+Keychain, so `git push` from bash now fails 100% of the time** with `Please make sure you have the correct access rights and the repository exists.`
+S181 hit this at the Sync Gate. **This is NOT a transient error, NOT a credentials bug, and NOT something to retry or debug** — it is the expected
+steady state, and it will recur every single session.
+
+**The commit still works from the sandbox** (it writes to the mounted folder). Only the push needs the host. **Do not present this to Roland as a
+failure** — expect it, and paste him the push block as a normal part of End Session:
+
+```
+cd ~/rv-dashboard
+rm -f .git/index.lock
+git push origin pre-prod
+git rev-parse pre-prod
+git rev-parse origin/pre-prod
+git log pre-prod..main --oneline
+```
+
+The `rm -f .git/index.lock` is not optional: the sandbox routinely leaves a lock it cannot unlink (`Operation not permitted`, FUSE), plus
+`warning: unable to unlink .git/objects/**/tmp_obj_*` noise which is harmless. Roland's Terminal has the agent loaded, so the push itself is
+non-interactive for him. Host-side `osascript` git is the other fallback (S177) but a Terminal paste is simpler and always works.
+
+⚠️ **The Sync Gate assertion is therefore ALWAYS Roland-pasted output, never sandbox output.** Do not write "branches synced" from a sandbox
+`rev-parse` — after a failed push the sandbox's `origin/pre-prod` ref is STALE and will happily disagree, or worse, a later fetch could make it
+look correct while the remote never moved.
+
 ### 🔴 AUDIT THE OWNER LIST AND YOU MISS THE COLLABORATORS — the real prod write-path was one tab over (Session 181, 2026-08-23)
 S180 logged "org may have a SINGLE owner" as the org risk and nothing else. S181 opened `?query=role%3Aowner`, confirmed it, and **only saw
 `solar-Riley` because the People sidebar happened to show `Outside collaborators 1` next to `Members 1`.** He held **Write on
@@ -2371,6 +2398,8 @@ Kenect refused to supply API keys. Edge Function deleted, all UI code removed. S
 | 2026-06-12 | **Session 104** (End — P&L training docs SHIPPED to docs/, docs-only session, index.html stays v1.449) | **Roland's queued S102 directive cleared: the P&L/WO training guide.** Built TWO docs in "STEP N — WHEN-trigger" colored-banner format (Roland: make it ADHD-friendly — very specific, one action per line, anchored to WHEN). **(1) `PRVS_Tech_and_Lead_RO_Check_In_Procedure.docx/.pdf`** — tech + tech-lead time-clock card, 1 page English + 1 page Spanish (Roland decided YES Spanish now): STEP 1 every morning (Dashboard-direct OR QR check-in — Roland: techs don't scan QR today but keep the wording; ONE RO Service pick = which department gets the hours; Clock In), STEP 2 every RO/RV switch (new-RO clock-in auto-closes the prior session — CODE-VERIFIED against the GH#33 trigger + amber toast before printing it), STEP 3 end of every job (Work Notes + Clock Out), STEP 4 end of every day (phantom-hours warning, Mauricio 9.5h example), STEP 5 tech leads (green OUR WORK IS DONE on the Clocked Out screen; manager does the final ✓). Roland marked up a PDF by hand mid-session — all his edits incorporated + mirrored into the Spanish page (one typo fixed: "your are"→"you are"); every button label matches checkin.html v1.35 strings incl. the exact ES translations. **(2) `PRVS_PnL_Manager_Guide.docx/.pdf`** — 2 pages, same STEP format per Roland's request: SILO MANAGERS (job scoped → build WO w/ real Dollar Value+right silo; every day → techs' time clean; blue Tech-done chip → QA/QC + inform customer; same week work finishes → ✓ Mark Completed = THE revenue event, ↩ Reopen) + PARTS MANAGERS (Service Silo on EVERY part — blank = Unattributed, $19,068 June week example; wholesale-per-unit + freight fields; tech requests arrive silo-less, tag at processing; re-tag old parts) + READING THE FLAGS table. **DESIGN CALL:** Roland asked whether sub-service WO-level clock-in should be built now for finer tech time — decided DEFER (silo-level is sufficient for current P&L; compliance is the bottleneck, not granularity; gate on data trust >90%) — new 🟡 TODO, pairs with estimated_hours. Generator scripts committed to `scripts/docgen/`. Old PRVS_PnL_Tech_QuickCard.* removed. Sync Gate Case A. |
 
 > Sessions 103 and earlier -> see the Session Log in CLAUDE_CONTEXT_ARCHIVE.md.
+
+*Session 181 addendum: NEW 🔴 Known Issue — **the sandbox can no longer `git push` at all.** S180's SSH migration means every End Session push must be pasted by Roland in Terminal; the sandbox commit still works. Expect it, do not debug it, and never assert the Sync Gate from sandbox `rev-parse` output.*
 
 *Last updated: 2026-08-23 — **Session 181 End** (ACCESS/IDENTITY session, NO release, Sync Gate Case A, `index.html` stays v1.499). **Closed:** trainer `pages.dev` gated (`d0ecf50` in `prvshepard/prvs-sales-trainer`, verified 404/404/302 — last ungateable Pages URL); `PatriotsRV` second Owner added (`roshepard`, a recovered 2016 account, 2FA'd); `solar-Riley` Write→Read on `rv-dashboard` (unplanned find — he had push rights to production `main`); `prvshepard` given a non-Workspace backup email (unplanned find — the Workspace-severance plan would have killed its password-reset path); Will Read verified four layers, closing the S174 retest. **Two reader-facing guides** written to the PRIVATE `prvs-internal-tools/docs/`, kept out of this public repo. **Left open deliberately:** (1) 🟠 the `roshepard` break-glass still needs ONE PRINTED page in the safe — codes/TOTP/passkey all sit in Roland's Apple domain, the same domain as `prvshepard`; (2) 🟠 calculator-vs-Will — Will clears `isAllowed()`, obscurity is the only control, Admin-only vs email allow-list undecided; (3) 🟡 outside-collaborator + org-wide 2FA posture pass (⚠️ enabling 2FA enforcement auto-ejects members who lack it); (4) 🟠 review this session's two guides next session (Roland directive).*
 
