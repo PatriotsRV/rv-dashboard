@@ -655,6 +655,33 @@ RETIRED_RULES = [
                  "read-only copy of the context files, never the git repo. Never read context from it."),
         allow=re.compile(r"\bnever\b|\bstale\b|\bdo\s+not\b|\bforbid\w*\b|\bNO SUBSTITUTE\b|\btrap\b|\bread-only\b", re.I),
     ),
+    dict(
+        id="K5", severity="HIGH",
+        pattern=re.compile(r"index\.lock\b(?:(?!\n\n).){0,140}?\b(?:not\s+clearable|unclearable|cannot\s+be\s+clear|"
+                           r"could\s+not\s+be\s+clear|was\s+NOT\s+clearable|impossible)", re.I | re.S),
+        message=("Retired claim (S177/S180, DISPROVEN S181): '.git/index.lock is not clearable from the "
+                 "sandbox'. It IS clearable -- call the `allow_cowork_file_delete` tool on "
+                 "<RV>/.git/index.lock, then `rm -f .git/index.lock .git/HEAD.lock`, then `sleep 1` "
+                 "before retrying the commit. Do not tell Roland it is impossible."),
+        allow=re.compile(r"\bIS\s+clearable\b|allow_cowork_file_delete|\bWRONG\b|\bdisproven\b|\bcorrected\b|"
+                         r"\bretired\b|\bwere\s+wrong\b", re.I),
+    ),
+    dict(
+        id="K6", severity="HIGH",
+        pattern=re.compile(r"^[^\n#>]*?\bgit\s+push\s+origin\s+(?:pre-prod|main)\b", re.M),
+        message=("Bare sandbox `git push` (retired S181). S180 moved the repo to SSH with the passphrase "
+                 "in the macOS Keychain, so pushing from the sandbox bash fails 100% of the time. Push "
+                 "host-side via osascript `do shell script \"cd ~/rv-dashboard && /usr/bin/git push ...\"` "
+                 "-- non-interactive, needs nothing from Roland. The hash assertion must come from HOST "
+                 "output; a stale sandbox origin/ ref will lie."),
+        allow=re.compile(r"osascript|do\s+shell\s+script|host-side|\bretired\b|\bWRONG\b|\bfails\b|\bbackup\s+only\b|"
+                         r"\bNOT\s+this\s+line\b|\bcannot\b|\bRoland\b", re.I),
+        # A single osascript callout at the top of a Sync Gate section covers both CASE A and CASE B,
+        # which sit ~35 lines apart -- hence the wide radius. Narrower and K6 re-fires on correct text,
+        # which is how a rule becomes noise and then gets ignored (S181).
+        near=re.compile(r"osascript|do\s+shell\s+script|host-side|SANDBOX\s+CANNOT|\bRoland\b", re.I),
+        near_lines=40,
+    ),
 ]
 
 DOC_SKIP_RE = re.compile(r"(^|/)(\.git|\.backups|node_modules|docs/qa|docs/releases)(/|$)|(^|/)PASTE_ME_[^/]*$")

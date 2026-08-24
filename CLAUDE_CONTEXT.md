@@ -74,6 +74,14 @@ Claude must complete ALL of these before the session ends (context limit, user s
 
 **Run the matching case. Paste the REAL output of every `rev-parse` — never declare the session complete from memory.**
 
+> 🔴 **THE SANDBOX CANNOT RUN THE `git push` LINES BELOW — RUN THEM HOST-SIDE VIA `osascript` (S181, 2026-08-23).** S180 moved the repo to SSH (`git@github.com:PatriotsRV/rv-dashboard.git`, passphrase in the macOS Keychain). The sandbox has no path to that key, so **`git push` from `bash` fails 100% of the time**, permanently — not a transient error, not a credentials bug. `git add` and `git commit` still work from the sandbox; only the push needs the host. **This one call pushes AND returns the whole assertion, non-interactively, needing nothing from Roland:**
+>
+> ```
+> do shell script "cd ~/rv-dashboard && /usr/bin/git push origin pre-prod 2>&1; echo '---LOCAL---'; /usr/bin/git rev-parse pre-prod; echo '---ORIGIN---'; /usr/bin/git rev-parse origin/pre-prod; echo '---INVARIANT---'; /usr/bin/git log pre-prod..main --oneline; echo '---END---'"
+> ```
+>
+> Absolute `/usr/bin/git` is required — `do shell script` has a minimal PATH. For Case B run the same pattern for `main` and the tag. A Terminal paste to Roland is the BACKUP only. **The hash assertion must come from HOST output** — after a failed push the sandbox's `origin/` ref is STALE and will disagree, or look right while the remote never moved. ⚠️ If `.git/index.lock` blocks the commit, call `allow_cowork_file_delete` on it then `rm -f .git/index.lock .git/HEAD.lock` and `sleep 1` — S177/S180 called it unclearable and were WRONG (corrected S181).
+
 **CASE A — NO release shipped this session** (work stayed on pre-prod; main untouched):
 ```
 git checkout pre-prod

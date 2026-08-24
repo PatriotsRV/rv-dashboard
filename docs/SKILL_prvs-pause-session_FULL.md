@@ -70,11 +70,23 @@ Save the file to the local workspace folder.
 **The mandatory invariant:** `git log pre-prod..main --oneline` MUST always be empty —
 `main` must never contain a commit `pre-prod` lacks.
 
+> 🔴 **THE SANDBOX CANNOT `git push` (S181).** S180 moved the repo to SSH with the passphrase in the macOS Keychain; the sandbox has no path to it,
+> so `git push` from `bash` fails EVERY time. `git add`/`commit` still work from the sandbox — **only the push must run host-side via `osascript`,
+> which is non-interactive and needs nothing from Roland:**
+>
+> ```
+> do shell script "cd ~/rv-dashboard && /usr/bin/git push origin pre-prod 2>&1; echo '---LOCAL---'; /usr/bin/git rev-parse pre-prod; echo '---ORIGIN---'; /usr/bin/git rev-parse origin/pre-prod; echo '---INVARIANT---'; /usr/bin/git log pre-prod..main --oneline; echo '---END---'"
+> ```
+>
+> Absolute `/usr/bin/git` is required (minimal PATH). The hash assertion must come from HOST output — a stale sandbox `origin/pre-prod` ref will lie.
+> If `.git/index.lock` blocks the commit, call `allow_cowork_file_delete` on it, then `rm -f`; S177/S180's "unclearable" claim was WRONG (S181).
+
 ```bash
 cd "$RV"
 git checkout pre-prod
 git add CLAUDE_CONTEXT.md
 git commit -m "Pause checkpoint - Session [N] - [brief description of work so far]"
+# Push runs host-side via osascript -- see the callout above, NOT this line:
 git push origin pre-prod
 # HARD ASSERTION - these two MUST print identical hashes:
 git rev-parse pre-prod

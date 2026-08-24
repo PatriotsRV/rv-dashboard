@@ -142,6 +142,29 @@ commit violates this. That was the Session 83 drift.)
 
 **Paste the REAL output of every `rev-parse`. Never report the sync done from memory.**
 
+> 🔴 **THE SANDBOX CANNOT `git push` — USE HOST-SIDE `osascript` (S181, 2026-08-23).** S180 moved both repos to SSH
+> (`git@github.com:PatriotsRV/rv-dashboard.git`, passphrase in the macOS Keychain). The Cowork sandbox has no path to that key, so **every
+> `git push` from `bash` fails with `Please make sure you have the correct access rights and the repository exists.`** This is the permanent
+> steady state — not a transient error, not a credentials bug. Do NOT retry it, do NOT debug it, and do NOT default to asking Roland to paste it.
+>
+> **`git add` and `git commit` still work from the sandbox** (they write to the mounted folder). Only the push needs the host. Run this ONE call —
+> it pushes AND returns the entire Sync Gate assertion in real host output, non-interactively, requiring nothing from Roland:
+>
+> ```
+> do shell script "cd ~/rv-dashboard && /usr/bin/git push origin pre-prod 2>&1; echo '---LOCAL---'; /usr/bin/git rev-parse pre-prod; echo '---ORIGIN---'; /usr/bin/git rev-parse origin/pre-prod; echo '---INVARIANT---'; /usr/bin/git log pre-prod..main --oneline; echo '---END---'"
+> ```
+>
+> Use absolute `/usr/bin/git` — `do shell script` has a minimal PATH. For Case B, run the same pattern for `main` and the tag.
+> A Terminal paste to Roland is the BACKUP only, if osascript is unavailable.
+>
+> ⚠️ **`.git/index.lock` IS clearable — S177 and S180 both said otherwise and were WRONG (corrected S181).** Sandbox `git add`/`commit` routinely
+> leaves a lock it cannot unlink (`Operation not permitted`, FUSE) and the next git call dies with *"another git process seems to be running."*
+> **Fix: call the `allow_cowork_file_delete` tool on `<RV>/.git/index.lock`, then `rm -f .git/index.lock .git/HEAD.lock`, then `sleep 1` before
+> retrying `commit`.** The `warning: unable to unlink .git/objects/**/tmp_obj_*` noise is harmless — filter it, do not chase it.
+>
+> ⚠️ **The hash assertion must come from HOST output** (osascript or Roland's Terminal), never from sandbox `git rev-parse`. After a failed push
+> the sandbox's `origin/pre-prod` ref is STALE and will disagree — or worse, look right while the remote never moved.
+
 ### CASE A — NO release shipped this session (work stayed on pre-prod):
 
 ```bash
