@@ -713,6 +713,32 @@ RETIRED_RULES = [
                          r"\bsingle\s+(?:bump\s+)?site\b|\bstale\b|\bdrift\w*\b|\bdeleted\b|\bused\s+to\b|"
                          r"\bcheck_version_sync\b|\bre-grown\b|\bhardcode\w*\b", re.I),
     ),
+    dict(
+        id="K8", severity="HIGH",
+        # Retired S183. Two separate claims die here, both provably wrong now:
+        #   (a) that the review request is enqueued when an RO is ARCHIVED, and
+        #   (b) that the archive sweep runs on SATURDAY.
+        # The trigger moved to the repair_orders status change, and the cron is
+        # `0 22 * * 0` -- cron day 0 is SUNDAY. The "Saturday" wording was in
+        # three places and had been copied forward unchallenged for months.
+        pattern=re.compile(
+            r"Saturday\s+5\s*PM"
+            r"|(?:trg_)?enqueue_review_request\b(?:(?!\n\n).){0,100}?\bcashiered\b"
+            r"|review\s+request(?:(?!\n\n).){0,80}?\b(?:on|at|when)\b(?:(?!\n\n).){0,40}?\barchiv",
+            re.I | re.S,
+        ),
+        message=("Retired review-request wiring (S183). TWO dead claims: (1) the review request is NO LONGER "
+                 "enqueued on INSERT into `cashiered` -- `trg_enqueue_review_request` was DROPPED and replaced "
+                 "by `trg_enqueue_review_request_status` on `repair_orders` (AFTER INSERT OR UPDATE OF status), "
+                 "so the 24h clock starts when the RO is actually cashed out, not when the weekly sweep files "
+                 "it. Keying it to the archive meant a Tuesday pickup was asked the FOLLOWING MONDAY, up to 7 "
+                 "days cold. (2) The archive cron `archive-cashiered-ros` is `0 22 * * 0` -- cron day 0 is "
+                 "SUNDAY, not Saturday; the wrong day was documented in three places. Also note "
+                 "`Closed - No Charge` never enqueues a review at all."),
+        allow=re.compile(r"\bretired\b|\bno\s+longer\b|\bdropped\b|\breplaced\b|\bwas\s+wrong\b|\bcorrected\b|"
+                         r"\bSunday\b|\bstatus\s+change\b|\btrg_enqueue_review_request_status\b|\bused\s+to\b|"
+                         r"\bformerly\b|\bpre-S183\b|\bmoved\b", re.I),
+    ),
 ]
 
 DOC_SKIP_RE = re.compile(r"(^|/)(\.git|\.backups|node_modules|docs/qa|docs/releases)(/|$)|(^|/)PASTE_ME_[^/]*$")

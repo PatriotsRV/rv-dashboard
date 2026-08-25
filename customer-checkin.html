@@ -1391,7 +1391,7 @@
     // ── RETURNING CUSTOMER SEARCH ─────────────────────────────────
     // v1.8: Searches BOTH repair_orders (active ROs) and cashiered (archived
     // ROs). Without this, any customer whose last RO has been moved to
-    // `cashiered` (Saturday 5 PM archiver OR manual Delivered/Cashed Out
+    // `cashiered` (Sunday 5 PM archiver OR manual Delivered/Cashed Out
     // archive) is invisible to the returning-customer flow, which makes them
     // look like a New Customer every time they come back. The two queries run
     // in parallel via Promise.all; if both fail, the user sees a toast
