@@ -65,7 +65,7 @@ import nodemailer from "npm:nodemailer@6";
 // Prior versions (GH#23 per-silo morning report) -> git history.
 // ============================================================
 
-const FN_VERSION = "v2.4-P2c";
+const FN_VERSION = "v2.5-S183";
 
 const ALLOWED_ORIGIN = "https://patriotsrv.github.io";
 function getCorsHeaders(req: Request) {
@@ -100,6 +100,17 @@ const siloName = (k: string | null | undefined) =>
 // insurance, warranty). Without it here, a closed RO keeps showing up in Fire
 // Watch and idle detection forever.
 const DONE_STATUSES = new Set(["Delivered/Cashed Out", "Closed - No Charge", "Ready for pickup"]);
+
+// [S183] Statuses where the unit is NOT physically on the lot, so "no tech time"
+// is the EXPECTED state and flagging it idle is a false positive. Same set the
+// dashboard uses for its on-lot count (js/render.js:774) — kept identical on
+// purpose; if one moves, move both.
+//
+// Found via Russell Sumpter (PRVS-213B-E517): sat at 'In progress' when it was
+// really off lot and returning. Under the old check it read as a stale RO with
+// no labor; the actual defect was a blown promised date, which is Fire Watch's
+// job, not idle detection's.
+const OFF_LOT_STATUSES = new Set(["Not On Lot", "Scheduled", "Off Lot - Returning"]);
 
 const MANAGER_ROLES = ["sr_manager", "manager", "parts_manager"];
 
@@ -427,8 +438,12 @@ Deno.serve(async (req: Request) => {
         tl?.techsToday.forEach((t) => techsToday.add(t));
         const active = tl && tl.lastDate >= idleCutoff;
         const done = DONE_STATUSES.has(ro.status);
+        // [S183] An off-lot unit cannot accrue tech time — counting it idle
+        // trains people to skim the section. Excluded, not silently dropped:
+        // if it has a blown promised date, Fire Watch still fires on it.
+        const offLot = OFF_LOT_STATUSES.has(ro.status);
         if (active) { worked++; workedList.push({ ro, tl: tl! }); }
-        else if (!done) { idle++; idleList.push(ro); }
+        else if (!done && !offLot) { idle++; idleList.push(ro); }
       }
 
       // Readiness checks — accumulate pass/applicable + failing items
@@ -732,6 +747,112 @@ Deno.serve(async (req: Request) => {
     const managersWithList = rendered.length;
     const sections = rendered.map((x) => x.card).join("");
 
+    // ══════════════════════════════════════════════════════════════════════
+    // [S183] 🚨 UNWATCHED ROs — the lot-wide catch-all (Roland directive).
+    //
+    // THE GAP THIS CLOSES: every other section of this report iterates a
+    // MANAGER'S WORK LIST. Idle detection and all five Fire Watch rules run
+    // inside computeManager() over `ros`, which is that manager's list and
+    // nothing else. So an RO on NOBODY's work list is invisible to the entire
+    // report — no idle flag, no overdue-promised flag, no late-part flag.
+    // Nothing. It can sit for months and never appear.
+    //
+    // Found chasing Greg Seay (PRVS-78B8-161D, $27,000, no tech time since
+    // 7/30): Lynn expected it and it was absent from her card because it sits
+    // on Ryan's and Brandon's lists, not hers. Checking the lot-wide picture
+    // turned up 39 of 88 active ROs (44%, ~$190,852) on no list at all.
+    // Roland: "It's a big process crack that these ROs land in and turn into
+    // major issues."
+    //
+    // TWO TIERS, deliberately. Listing all 39 every morning would be wallpaper
+    // inside a week and the section would get skimmed like any other wall of
+    // names. So:
+    //   Tier 1 — unwatched AND tripping a real rule. Listed individually with
+    //            the reason. These need action today.
+    //   Tier 2 — the remaining unwatched ROs as a COUNT plus the largest few
+    //            by dollar value. A coverage number, not a task list.
+    // Russell Sumpter is the case that proves Tier 2 earns its place: off lot,
+    // returning 9/8, promised date correctly cleared — so it trips no rule and
+    // Tier 1 will never show it. It is still $17,565 that no manager owns.
+    // ══════════════════════════════════════════════════════════════════════
+    const listedRoIds = new Set<string>();
+    for (const arr of Object.values(listByManager)) for (const id of arr) listedRoIds.add(id);
+
+    const unwatchedRisk: { ro: any; reasons: string[]; sev: number }[] = [];
+    const unwatchedQuiet: any[] = [];
+
+    for (const ro of Object.values(roById) as any[]) {
+      if (listedRoIds.has(ro.id)) continue;               // someone owns it
+      if (DONE_STATUSES.has(ro.status)) continue;         // closed out
+      if (shopRoIds.has(ro.id)) continue;                 // shop ops, not a customer unit
+
+      const reasons: string[] = [];
+      let sev = 2;
+
+      const hasPromised = ro.promised_date && validDate(ro.promised_date);
+      if (hasPromised && ro.promised_date <= todayCT) {
+        reasons.push(`promised ${esc(ro.promised_date)} (due/overdue)`);
+        sev = 0;
+      }
+
+      const openParts = (partsByRo[ro.id] || []).filter((p: any) => !p.date_received);
+      const pastEta = openParts.filter((p: any) => p.eta && validDate(p.eta) && p.eta < todayCT);
+      if (pastEta.length) {
+        reasons.push(`${pastEta.length} part${pastEta.length > 1 ? "s" : ""} past ETA`);
+        sev = Math.min(sev, 1);
+      }
+
+      // Idle only counts when the unit is actually here — same rule as above.
+      const tl = tlByRo[ro.id];
+      if (!OFF_LOT_STATUSES.has(ro.status) && !(tl && tl.lastDate >= idleCutoff)) {
+        reasons.push(`no tech time in ${IDLE_WORKING_DAYS} work days`);
+        sev = Math.min(sev, 1);
+      }
+
+      // "No work order" is deliberately NOT a Tier 1 trigger. It is a P&L
+      // Readiness problem (rule R1 already reports it per-manager), not a sign
+      // the RO is being forgotten — and it is far too common to promote
+      // anything. Measured at build time: 27 of 39 unwatched ROs had no WO, and
+      // 21 of them tripped NOTHING else. Letting it into Tier 1 pushed the list
+      // from 13 real risks to 34 and buried the ones that matter 3:1.
+      // It rides along as a tag so the context is there without the noise.
+      const noWo = !(wosByRo[ro.id] || []).length;
+      if (noWo) reasons.push("no work order");
+
+      // Tier 1 requires a REAL risk signal — an overdue promise, a late part,
+      // or a unit sitting here untouched. sev is only lowered by those three.
+      if (sev < 2) unwatchedRisk.push({ ro, reasons, sev });
+      else unwatchedQuiet.push(ro);
+    }
+
+    unwatchedRisk.sort((a, b) =>
+      a.sev - b.sev || (Number(b.ro.dollar_value) || 0) - (Number(a.ro.dollar_value) || 0));
+    unwatchedQuiet.sort((a, b) => (Number(b.dollar_value) || 0) - (Number(a.dollar_value) || 0));
+
+    const totalUnwatched = unwatchedRisk.length + unwatchedQuiet.length;
+    const unwatchedDollars = [...unwatchedRisk.map((u) => u.ro), ...unwatchedQuiet]
+      .reduce((s, r) => s + (Number(r.dollar_value) || 0), 0);
+    const money = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
+
+    const unwatchedBox = totalUnwatched === 0 ? "" : `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:18px;">
+        <div style="font-size:13px;font-weight:800;color:#991b1b;margin-bottom:3px;">🚨 Unwatched ROs — on no manager's work list (${totalUnwatched} · ${money(unwatchedDollars)})</div>
+        <div style="font-size:11px;color:#7f1d1d;margin-bottom:9px;line-height:1.5;">
+          Every other section of this report only looks at ROs that are on someone's work list. These are on <b>nobody's</b>, so nothing else in this email can flag them. This section is the same for every manager — if you recognize one as yours, add it to your work list and it will start showing up in your own sections tomorrow.
+        </div>
+        ${unwatchedRisk.length ? `
+          <div style="font-size:12px;font-weight:800;color:#991b1b;margin:0 0 5px;">Needs attention now (${unwatchedRisk.length})</div>
+          ${unwatchedRisk.slice(0, 20).map((u) => `<div style="font-size:12px;margin-bottom:3px;line-height:1.45;">${u.sev === 0 ? "🔴" : "🟠"} ${roLink(u.ro.ro_id, u.ro.customer_name || u.ro.ro_id)}${u.ro.dollar_value ? ` <span style="color:#94a3b8;">${money(Number(u.ro.dollar_value))}</span>` : ""} — ${u.reasons.join(" · ")}</div>`).join("")}
+          ${unwatchedRisk.length > 20 ? `<div style="font-size:11px;color:#7f1d1d;margin-top:4px;">…and ${unwatchedRisk.length - 20} more.</div>` : ""}
+        ` : `<div style="font-size:12px;color:#15803d;margin-bottom:6px;">✅ None of the unwatched ROs are tripping a rule today.</div>`}
+        ${unwatchedQuiet.length ? `
+          <div style="font-size:12px;font-weight:800;color:#92400e;margin:10px 0 4px;">Unowned but quiet (${unwatchedQuiet.length} · ${money(unwatchedQuiet.reduce((s, r) => s + (Number(r.dollar_value) || 0), 0))})</div>
+          <div style="font-size:11px;color:#78350f;margin-bottom:5px;line-height:1.45;">No deadline missed and nothing late — they simply have no owner. Largest first:</div>
+          ${unwatchedQuiet.slice(0, 8).map((r) => `<div style="font-size:12px;margin-bottom:2px;line-height:1.45;">⚪ ${roLink(r.ro_id, r.customer_name || r.ro_id)}${r.dollar_value ? ` <span style="color:#94a3b8;">${money(Number(r.dollar_value))}</span>` : ""} — ${esc(r.status)}${!(wosByRo[r.id] || []).length ? ` <span style="color:#b45309;">· no work order</span>` : ""}</div>`).join("")}
+          ${unwatchedQuiet.length > 8 ? `<div style="font-size:11px;color:#78350f;margin-top:4px;">…and ${unwatchedQuiet.length - 8} more with no owner.</div>` : ""}
+        ` : ""}
+      </div>`;
+
     // ── Assemble preview email ──────────────────────────────────────────
     const th = `padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#555;border-bottom:1px solid #e5e7eb;background:#f9fafb;`;
     const summaryTable = `<table style="width:100%;border-collapse:collapse;margin-bottom:18px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
@@ -750,6 +871,7 @@ Deno.serve(async (req: Request) => {
         <b>✅ Active work</b> — the ROs on your list getting hands-on tech time, with hours logged and a quick progress read (status, work-order progress, who's on it today). Start here — this is what's moving.<br>
         <b>🕒 Idle ROs</b> — on your work list but no tech time in ${IDLE_WORKING_DAYS} work days. Get an RO off the list by: (1) making sure a tech clocks in; (2) if it is a placeholder, opening the RO and using the <b>Schedule</b> button to put it on the calendar; (3) if it is waiting on parts or an approval, setting the status correctly (Awaiting parts / Awaiting Approval); or (4) removing it from the list if it is not yours right now.<br>
         <b>🔥 Fire Watch</b> — a promised date has passed or a part is late. <b style="color:#dc2626;">🔴 = handle today</b>, <b style="color:#d97706;">🟠 = handle this week</b>. The <b>↳</b> note under each line is the exact fix.<br>
+        <b>🚨 Unwatched ROs</b> — on <b>no</b> manager's work list, so no other section of this report can see them. Identical for every manager. Recognize one as yours? Add it to your work list and it starts appearing in your own sections tomorrow.<br>
         <b>📋 P&L Readiness</b> — The RO(s) Work Order estimated value data that is used to calculate P&L has not been set yet. The <b>↳</b> note under each line says exactly where to click. A higher % means the team's numbers can be trusted.
       </div>
     </div>`;
@@ -806,6 +928,7 @@ Deno.serve(async (req: Request) => {
   ${legend}
   <h2 style="color:#1e3a5f;font-size:15px;margin:0 0 6px;">Summary — ${managersWithList} manager${managersWithList !== 1 ? "s" : ""}</h2>
   ${summaryTable}
+  ${unwatchedBox}
   ${shopBox}
   ${sections || `<p style="font-size:13px;color:#64748b;">No managers with active work lists.</p>`}
   ${footerHtml}
@@ -836,6 +959,7 @@ Deno.serve(async (req: Request) => {
   <p style="font-size:13px;color:#334155;margin:0 0 14px;">Good morning, ${esc(x.m.name)} — here's where your work list stands this morning, in priority order. Each flag links straight to the RO, and the <b>↳</b> note under it is the exact fix.</p>
   ${legend}
   ${x.card}
+  ${unwatchedBox}
   ${footerHtml}
 </body></html>`;
         try {
