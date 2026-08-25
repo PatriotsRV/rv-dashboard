@@ -167,7 +167,11 @@ export const STATUS_PROGRESS_MAP = {
     'Repairs Completed': 80,
     'Waiting for QA/QC': 85,
     'Ready for pickup': 95,
-    'Delivered/Cashed Out': 100
+    'Delivered/Cashed Out': 100,
+    // [S183] Terminal, but NOT a cash-out. For ROs closed with nothing billed —
+    // totaled-out insurance claims paying an admin fee, warranty closes, etc.
+    // Archives exactly like Delivered/Cashed Out; suppresses the review request.
+    'Closed - No Charge': 100
 };
 
 // ── Work Order Statuses ─────────────────────────────────────────────
@@ -282,6 +286,7 @@ export const TRANSLATIONS_ES = {
     'Ready for pickup': 'Listo para Recoger',
     'Ready for Pickup': 'Listo para Recoger',
     'Delivered/Cashed Out': 'Entregado/Cerrado',
+    'Closed - No Charge': 'Cerrado - Sin Cargo',
     // Urgency
     'CRITICAL': 'CRÍTICO',
     'HIGH': 'ALTO',

@@ -157,6 +157,7 @@ CANONICAL_STATUSES: set[str] = {
     "Approved Insurance", "Approved Customer", "Approved Extended Warranty",
     "Awaiting parts", "Ready to Work", "In progress", "Repairs Completed",
     "Waiting for QA/QC", "Ready for pickup", "Delivered/Cashed Out",
+    "Closed - No Charge",   # [S183] terminal, unbilled — archives like a cash-out, no review request
 }
 
 # Files to scan

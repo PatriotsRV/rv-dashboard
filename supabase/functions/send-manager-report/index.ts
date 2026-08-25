@@ -96,7 +96,10 @@ const siloName = (k: string | null | undefined) =>
 
 // Statuses where the RO is no longer "in the shop needing work" —
 // excluded from Fire Watch (F1) and idle detection.
-const DONE_STATUSES = new Set(["Delivered/Cashed Out", "Ready for pickup"]);
+// [S183] 'Closed - No Charge' is terminal too (unbilled close: totaled-out
+// insurance, warranty). Without it here, a closed RO keeps showing up in Fire
+// Watch and idle detection forever.
+const DONE_STATUSES = new Set(["Delivered/Cashed Out", "Closed - No Charge", "Ready for pickup"]);
 
 const MANAGER_ROLES = ["sr_manager", "manager", "parts_manager"];
 

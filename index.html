@@ -1,7 +1,28 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.500
+    PRVS Dashboard v1.501
+    v1.501: [S183] NEW TERMINAL STATUS "Closed - No Charge" + REVIEW REQUEST
+    RE-TIMED + CASH-OUT DOLLAR GATE.
+    (1) 18th RO status for ROs closed with nothing billed — totaled-out insurance
+    claims paying an admin fee, warranty closes. Archives identically to a
+    cash-out (photo_library, docs, insurance_data, notes, parts, time logs, WOs
+    all carry via archive_one_ro) but NEVER asks the customer for a review.
+    Seven such texts went out 7/27-8/24 under the old behavior.
+    (2) The review request was keyed to the Sunday archive sweep, so the ask
+    landed up to 7 days after the customer actually drove off. It now fires on
+    the RO status CHANGE, keeping the same 24h delay — next-day, not next-week.
+    A pending ask is auto-cancelled if the RO is moved back off the status.
+    (3) SOFT-LAUNCH gate: cashing out an RO with no dollar value warns and offers
+    "Enter dollar value" / "Switch to Closed - No Charge" / "Cash out anyway" /
+    Cancel. Bypasses are audit-logged as 'cashout_no_dollar_bypass' so the soft
+    period is measurable before it hardens. 47% of active ROs had no dollar
+    value the day this shipped, which is why day one is a warning and not a wall.
+    Migration: supabase/migrations/closed_no_charge_s183.sql (both status CHECK
+    constraints widened 17 to 18 — repair_orders AND cashiered).
+    Edge fns redeployed: send-manager-report, projectblue-webhook,
+    projectblue-reconcile, textly-webhook.
+
     v1.500: [S182] STUCK "NEW VERSION AVAILABLE" BANNER — fixed at the shape.
     Root cause: js/ro-crud.js hardcoded its own copy of the running version
     (APP_VERSION = '1.496') and that bump site was named nowhere in the release
@@ -960,7 +981,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.500';</script>
+    <script>window.APP_VERSION = '1.501';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
@@ -1205,6 +1226,7 @@
                             <button class="filter-btn" data-filter="Waiting for QA/QC" data-type="status">Waiting for QA/QC</button>
                             <button class="filter-btn" data-filter="Ready for pickup" data-type="status">Ready for Pickup</button>
                             <button class="filter-btn" data-filter="Delivered/Cashed Out" data-type="status">Delivered/Cashed Out</button>
+                            <button class="filter-btn" data-filter="Closed - No Charge" data-type="status">Closed - No Charge</button>
                         </div>
                         <!-- [S175] Source sub-chips — shown while their group chip is active; narrow the group to one approval source -->
                         <div class="filter-group status-subchips" id="subchips-awaiting" style="display:none;padding-top:4px;">
@@ -1714,7 +1736,8 @@
             'Repairs Completed': 80,
             'Waiting for QA/QC': 85,
             'Ready for pickup': 95,
-            'Delivered/Cashed Out': 100
+            'Delivered/Cashed Out': 100,
+            'Closed - No Charge': 100   // [S183] terminal, unbilled
         };
 
         // Update RO Urgency
@@ -3797,7 +3820,7 @@
             // [v1.500 S182] Version is read from the single bump site (window.APP_VERSION,
             // declared head-level). Both badges are painted from it too, so the number a
             // user reads on screen is by construction the number the update poller compares.
-            log('📦 PRVS Dashboard v' + window.APP_VERSION + ' - 2026-08-24 - S182: single version source + BLOCKING sync guardrail; fixes the stuck "new version available" banner and the hidden-tab reload loop');
+            log('📦 PRVS Dashboard v' + window.APP_VERSION + ' - 2026-08-25 - S183: NEW terminal status "Closed - No Charge" (archives like a cash-out, never asks for a review), review request re-timed off the Sunday sweep onto the RO status change, and a soft-launch cash-out dollar gate.');
             ['verBadgeHeader', 'verBadgeSidebar'].forEach(function (id) {
                 const el = document.getElementById(id);
                 if (el) el.textContent = 'v' + window.APP_VERSION;
@@ -4216,6 +4239,7 @@
             if (ro.isTraining) return false;
             if (ro.status === 'Not On Lot') return false;
             if (ro.status === 'Delivered/Cashed Out') return false;
+            if (ro.status === 'Closed - No Charge') return false;   // [S183] terminal, unbilled
             if (ro.status === 'Ready for pickup') return false;
             return true;
         }
@@ -4682,6 +4706,7 @@
             'Ready for pickup': 'Listo para Recoger',
             'Ready for Pickup': 'Listo para Recoger',
             'Delivered/Cashed Out': 'Entregado/Cerrado',
+            'Closed - No Charge': 'Cerrado - Sin Cargo',
             // Urgency
             'CRITICAL': 'CRÍTICO',
             'HIGH': 'ALTO',
@@ -7279,6 +7304,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Waiting for QA/QC">Waiting for QA/QC</option>
                             <option value="Ready for pickup">Ready for pickup</option>
                             <option value="Delivered/Cashed Out">Delivered/Cashed Out</option>
+                            <option value="Closed - No Charge">Closed - No Charge</option>
                         </select>
                     </div>
                     <div class="form-field shop-hide">

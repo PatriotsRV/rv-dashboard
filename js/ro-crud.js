@@ -871,6 +871,58 @@
             renderCustomFields('edit');
         }
 
+        // ── [S183] CASH-OUT DOLLAR GATE ──────────────────────────────────────
+        // An RO must carry a total dollar value to be cashed out — otherwise what
+        // was done? ROs closed with nothing billed (totaled-out insurance paying
+        // an admin fee, warranty closes) belong in 'Closed - No Charge', which
+        // archives identically but never asks the customer for a review.
+        //
+        // 🔶 SOFT LAUNCH (Roland call S183): this WARNS and still lets the RO
+        // through. 47% of active ROs had no dollar value the day this shipped, so
+        // a hard block on day one would have walled off every other cash-out.
+        // Every bypass is written to audit_log as field 'cashout_no_dollar_bypass'
+        // so the soft period is MEASURABLE — count them before flipping to hard:
+        //
+        //   select count(*), max(changed_at) from audit_log
+        //    where field_changed = 'cashout_no_dollar_bypass';
+        //
+        // TO GO HARD LATER: delete the 'anyway' button from the markup below and
+        // drop its branch in the caller. Nothing else changes.
+        function _confirmCashOutNoDollars(ro, woCount) {
+            return new Promise(resolve => {
+                const wrap = document.createElement('div');
+                wrap.id = 'cashOutGateModal';
+                wrap.className = 'modal-overlay';
+                wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+                const msg = woCount > 0
+                    ? 'This RO has ' + woCount + ' work order' + (woCount === 1 ? '' : 's') + ' but no total dollar value. Enter the total before cashing out.'
+                    : 'There are no dollar values or work orders tied to this RO. Did you mean to use Closed - No Charge?';
+
+                wrap.innerHTML =
+                    '<div style="background:#1a1d24;border:1px solid #3a3f4b;border-radius:14px;max-width:520px;width:100%;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,0.55);">'
+                  +   '<div style="font-size:1.05rem;font-weight:800;color:#f59e0b;margin-bottom:10px;">⚠️ No dollar value on this RO</div>'
+                  +   '<div style="color:#cbd5e1;font-size:0.93rem;line-height:1.5;margin-bottom:6px;">' + escapeHtml(msg) + '</div>'
+                  +   '<div style="color:#94a3b8;font-size:0.82rem;line-height:1.45;margin-bottom:18px;">'
+                  +     escapeHtml(ro.customerName || '(no name)') + ' &middot; ' + escapeHtml(ro.roId || '') + '</div>'
+                  +   '<div style="display:flex;flex-direction:column;gap:8px;">'
+                  +     '<button data-choice="enter" style="padding:11px 14px;border-radius:9px;border:none;background:#0a84ff;color:#fff;font-weight:700;font-size:0.9rem;cursor:pointer;">💵 Enter dollar value</button>'
+                  +     '<button data-choice="no-charge" style="padding:11px 14px;border-radius:9px;border:1px solid #94a3b8;background:transparent;color:#cbd5e1;font-weight:700;font-size:0.9rem;cursor:pointer;">📋 Switch to Closed - No Charge</button>'
+                  +     '<button data-choice="anyway" style="padding:11px 14px;border-radius:9px;border:1px solid #f59e0b55;background:transparent;color:#f59e0b;font-weight:600;font-size:0.86rem;cursor:pointer;">Cash out anyway</button>'
+                  +     '<button data-choice="cancel" style="padding:9px 14px;border-radius:9px;border:none;background:transparent;color:#64748b;font-weight:600;font-size:0.84rem;cursor:pointer;">Cancel</button>'
+                  +   '</div>'
+                  + '</div>';
+
+                const done = (choice) => { wrap.remove(); resolve(choice); };
+                wrap.addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-choice]');
+                    if (btn) { done(btn.getAttribute('data-choice')); return; }
+                    if (e.target === wrap) done('cancel');   // click the backdrop = cancel
+                });
+                document.body.appendChild(wrap);
+            });
+        }
+
         export async function updateROStatus(index, newStatus) {
             if (!getSB()) {
                 showToast('Please connect to the PRVS database first.', 'warning');
@@ -896,6 +948,41 @@
                 }
 
                 const userName = currentUser ? currentUser.name : 'Unknown User';
+
+                // [S183] CASH-OUT DOLLAR GATE — fires only on the TRANSITION into
+                // 'Delivered/Cashed Out', never on a re-save of a row already there.
+                // This is the single status writer for existing ROs, so one hook
+                // covers both card dropdowns (see index.html delegation ~L4053).
+                let _bypassedNoDollar = false;
+                if (newStatus === 'Delivered/Cashed Out' && ro.status !== 'Delivered/Cashed Out') {
+                    const dollars = parseFloat(ro.dollarValue) || 0;
+                    if (dollars <= 0) {
+                        const woCount = (ro._woSummary && ro._woSummary.total_wos) || 0;
+                        const choice = await _confirmCashOutNoDollars(ro, woCount);
+
+                        if (choice === 'cancel') {
+                            dropdown.value = ro.status;      // put the dropdown back
+                            dropdown.style.opacity = '1';
+                            dropdown.disabled = false;
+                            return;
+                        }
+                        if (choice === 'enter') {
+                            dropdown.value = ro.status;
+                            dropdown.style.opacity = '1';
+                            dropdown.disabled = false;
+                            openEditRO(index);               // land them on the $ field
+                            return;
+                        }
+                        if (choice === 'no-charge') {
+                            newStatus = 'Closed - No Charge';
+                            dropdown.value = newStatus;
+                        }
+                        if (choice === 'anyway') {
+                            _bypassedNoDollar = true;        // audit-logged after the write
+                        }
+                    }
+                }
+
                 log('Updating status for:', ro.customerName, 'from', ro.status, 'to', newStatus, 'by', userName);
 
                 // Get automatic progress for this status
@@ -942,6 +1029,17 @@
                     const auditChanges = [{ field: 'status', oldValue: ro.status, newValue: newStatus }];
                     if (autoProgress !== ro.percentComplete) auditChanges.push({ field: 'percentComplete', oldValue: ro.percentComplete, newValue: autoProgress });
                     if (autoDateArrived) auditChanges.push({ field: 'dateArrived', oldValue: '', newValue: autoDateArrived });
+                    // [S183] Soft-launch telemetry — one row per "Cash out anyway".
+                    // This is the ONLY record that the gate was overridden; without
+                    // it the soft period is unmeasurable and we can never justify
+                    // flipping it to a hard stop. Do not remove when hardening.
+                    if (_bypassedNoDollar) {
+                        auditChanges.push({
+                            field: 'cashout_no_dollar_bypass',
+                            oldValue: '',
+                            newValue: 'cashed out with no dollar value by ' + userName,
+                        });
+                    }
                     await writeAuditLog(ro.roId, auditChanges);
 
                     // [S175] Entering any Approved status (from a non-Approved one)

@@ -23,6 +23,16 @@
             return tileVisibility[element] === true;
         }
 
+        // [S183] SINGLE definition of "this RO is closed out". Two statuses are
+        // terminal now — 'Delivered/Cashed Out' (billed) and 'Closed - No Charge'
+        // (unbilled: totaled-out insurance, warranty, admin-fee-only). Every gate
+        // that used to compare against the one literal calls this instead, so
+        // adding a third terminal status later is a one-line change here and not
+        // a scavenger hunt. (S182 lesson: a duplicated constant WILL drift.)
+        export function isTerminalStatus(s) {
+            return s === 'Delivered/Cashed Out' || s === 'Closed - No Charge';
+        }
+
         // [ER fa35e3df v1.498 S178] key-date Drop chip text #0a84ff -> #5cadff (contrast on dark).
         // [ER BUGFIX v1.497 S178, ER d94a418a] Newest-ENTRY-first note preview that
         // keeps multi-line entries intact. Entries are delimited by \n---\n (the
@@ -247,7 +257,7 @@
                             <button class="compact-action-btn" data-action="work-orders" data-idx="${index}" title="Work Orders">🔧</button>
                             <button class="compact-action-btn" data-action="schedule-notification" data-idx="${index}" title="Schedule Notification">🔔</button>
                             ${ro.roType !== 'shop' ? '<button class="compact-action-btn" data-action="message-customer" data-idx="' + index + '" title="Message Customer">💬</button>' : ''}
-                            ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
+                            ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && !isTerminalStatus(ro.status) ? '<button class="compact-action-btn" data-action="schedule" data-idx="' + index + '" title="Schedule">📅</button>' : ''}
                         </div>
                         <div class="compact-mobile-summary">
                             <span class="compact-mobile-name">${escapeHtml(ro.customerName) || t('Unknown')}</span>
@@ -285,6 +295,7 @@
                                         <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>Waiting for QA/QC</option>
                                         <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>Ready for Pickup</option>
                                         <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
+                                        <option value="Closed - No Charge" ${ro.status === 'Closed - No Charge' ? 'selected' : ''}>Closed - No Charge</option>
                                     </select>
                                     `}
                                 </div>
@@ -314,7 +325,7 @@
                                 <button class="cep-action-btn" data-action="manage-parts" data-idx="${index}">🔩 Parts</button>
                                 <button class="cep-action-btn" data-action="work-orders" data-idx="${index}">🔧 WO</button>
                                 ${ro.roType !== 'shop' ? '<button class="cep-action-btn" data-action="message-customer" data-idx="' + index + '">💬 Message</button>' : ''}
-                                ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? '<button class="cep-action-btn" data-action="schedule" data-idx="' + index + '">📅 Schedule</button>' : ''}
+                                ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && !isTerminalStatus(ro.status) ? '<button class="cep-action-btn" data-action="schedule" data-idx="' + index + '">📅 Schedule</button>' : ''}
                             </div>
                         </div>
                     </div>`;
@@ -330,7 +341,7 @@
                             // Rendered ALWAYS but display-gated to html.layout-sidebar in
                             // css/sidebar-layout.css (.sb-dalert) — zero classic-mode impact.
                             const todayStr = new Date().toLocaleDateString('en-CA');
-                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Ready for pickup';
+                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Closed - No Charge' || ro.status === 'Ready for pickup';
                             const d = (v) => v ? String(v).slice(0, 10) : '';
                             const banners = [];
                             if (!doneish && d(ro.promisedDate) && d(ro.promisedDate) < todayStr) banners.push('<div class="sb-dalert red">🚨 ' + t('PROMISED DATE PASSED') + '</div>');
@@ -416,7 +427,7 @@
                             // [Key Dates P1 S117] Colored key-date chips (ER 1aeb3f58 promised prominence, 2b814250 date buttons, d2561e11 pickup)
                             const fmt = (d) => { if (!d) return ''; const p = String(d).slice(0,10).split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) : d; };
                             const todayStr = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD
-                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Ready for pickup';
+                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Closed - No Charge' || ro.status === 'Ready for pickup';
                             const chips = [];
                             if (ro.plannedDropoffDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#0a84ff1a;color:#5cadff;border:1px solid #0a84ff44;">📅 Drop ' + fmt(ro.plannedDropoffDate) + '</span>');
                             if (ro.promisedDate) { const overdue = !doneish && String(ro.promisedDate).slice(0,10) < todayStr; const c = overdue ? '#ef4444' : '#f59e0b'; chips.push('<span title="Promised date" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:10px;font-size:0.78rem;font-weight:800;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '55;">⏰ Promised ' + fmt(ro.promisedDate) + (overdue ? ' !' : '') + '</span>'); }
@@ -493,6 +504,7 @@
                                 <option value="Waiting for QA/QC" ${ro.status === 'Waiting for QA/QC' ? 'selected' : ''}>${t('Waiting for QA/QC')}</option>
                                 <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>${t('Ready for Pickup')}</option>
                                 <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>${t('Delivered/Cashed Out')}</option>
+                                <option value="Closed - No Charge" ${ro.status === 'Closed - No Charge' ? 'selected' : ''}>${t('Closed - No Charge')}</option>
                             </select>
                         </div>
                         ` : ''}
@@ -662,11 +674,11 @@
                             ${t('🔩 Set Parts Status')}
                         </button>
                         ` : ''}
-                        ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && ro.status !== 'Delivered/Cashed Out' ? `
+                        ${(isAdmin() || hasRole('Manager') || hasRole('Sr Manager')) && !isTerminalStatus(ro.status) ? `
                         <button class="schedule-ro-btn" data-action="schedule" data-idx="${index}">
                             📅 ${ro.status === 'Scheduled' ? t('Reschedule') : t('Schedule')}
                         </button>` : ''}
-                        ${isAdmin() && (ro.status === 'Delivered/Cashed Out') ? `
+                        ${isAdmin() && isTerminalStatus(ro.status) ? `
                         <button class="archive-ro-btn visible" data-action="archive" data-idx="${index}">
                             ${t('📦 Archive to Cashiered')}
                         </button>
@@ -784,7 +796,10 @@
                 'Repairs Completed': '#5e5ce6',
                 'Waiting for QA/QC': '#FF1493',
                 'Ready for pickup':  '#34c759',
-                'Delivered/Cashed Out': '#6b7280'
+                'Delivered/Cashed Out': '#6b7280',
+                // [S183] Terminal but unbilled — slate, one step off the cash-out grey
+                // so the two terminal states read as related but distinguishable.
+                'Closed - No Charge': '#94a3b8'
             };
 
             const ALL_STATUSES = [
@@ -793,7 +808,7 @@
                 'Approved Insurance', 'Approved Customer', 'Approved Extended Warranty',
                 'Awaiting parts',
                 'Ready to Work', 'In progress', 'Repairs Completed', 'Waiting for QA/QC',
-                'Ready for pickup', 'Delivered/Cashed Out'
+                'Ready for pickup', 'Delivered/Cashed Out', 'Closed - No Charge'
             ];
 
             const isCondensedOrRegular = (currentViewMode === 'condensed' || currentViewMode === 'regular');

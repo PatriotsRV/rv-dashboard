@@ -379,8 +379,10 @@ Deno.serve(async (req: Request) => {
           const matches = ros.filter((r) => phoneKey(r.phone) === key);
           // Tiebreak: prefer not-yet-delivered, then most recent activity.
           matches.sort((a, b) => {
-            const aDone = a.status === "Delivered/Cashed Out" ? 1 : 0;
-            const bDone = b.status === "Delivered/Cashed Out" ? 1 : 0;
+            // [S183] both terminal statuses count as "done" for the tiebreak
+            const _term = (s: string) => s === "Delivered/Cashed Out" || s === "Closed - No Charge";
+            const aDone = _term(a.status) ? 1 : 0;
+            const bDone = _term(b.status) ? 1 : 0;
             if (aDone !== bDone) return aDone - bDone;
             return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
           });
