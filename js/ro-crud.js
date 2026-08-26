@@ -76,6 +76,34 @@
                     .select('ro_id, status')
                     .in('ro_id', roIds);
 
+                // [S185] Open receivables for the 💵 badge. Same non-fatal shape as
+                // the WO summary below — a failure here must never block the board,
+                // and it default-safes to "no badge" rather than to a wrong number.
+                let receivableMap = {};
+                try {
+                    const { data: rcvs, error: rcvErr } = await getSB()
+                        .from('ro_receivables')
+                        .select('ro_id, amount_expected, expected_by, payer_type, payer_name')
+                        .in('ro_id', roIds)
+                        .eq('status', 'open');
+                    if (rcvErr) throw rcvErr;
+                    const _today = new Date().toISOString().split('T')[0];
+                    (rcvs || []).forEach(r => {
+                        const m = receivableMap[r.ro_id]
+                            || (receivableMap[r.ro_id] = { count: 0, total: 0, overdue: false, oldest: null, payer: null });
+                        m.count += 1;
+                        m.total += Number(r.amount_expected || 0);
+                        if (r.expected_by) {
+                            if (r.expected_by < _today) m.overdue = true;
+                            if (!m.oldest || r.expected_by < m.oldest) m.oldest = r.expected_by;
+                        }
+                        if (!m.payer) m.payer = r.payer_name || r.payer_type;
+                    });
+                } catch (rcvLoadErr) {
+                    warn('Receivable load failed (S185 — non-fatal):', rcvLoadErr);
+                    receivableMap = {};
+                }
+
                 // v1.414 WO Redesign Phase A1+A2 — Load WO + task summary per RO.
                 // Single round-trip extension. Wrapped in try/catch so a failure here
                 // never blocks the rest of the load (default-safe to "no badge / no chip").
@@ -152,6 +180,7 @@
                     row._comm_notes = (nm.customer_comm || []).join('\n');
                     row._parts_json = partsMap[row.id] ? JSON.stringify(partsMap[row.id]) : '';
                     row._wo_summary = woSummaryMap[row.id] || null; // v1.414 Phase A1+A2
+                    row._receivable = receivableMap[row.id] || null; // [S185] open balance
                     return rowToRO(row);
                 });
 
@@ -923,6 +952,313 @@
             });
         }
 
+        // ── [S185] CASH-OUT BALANCE GATE ─────────────────────────────────────
+        // Roland + service manager, S185: ROs are routinely cashed out and the RV
+        // delivered while an insurance or extended-warranty check is still in the
+        // mail. Nothing recorded that, so collection depended on somebody
+        // remembering.
+        //
+        // 🔷 WHY THIS IS NOT A 19th STATUS — see the long rationale at the head of
+        // supabase/migrations/ro_receivables_s185.sql. Short version: a status
+        // either archives on Sunday (receivable lands on an archived RO) or never
+        // archives (RO rots on the active board), AND it would silently stop the
+        // review request, which keys on `status = 'Delivered/Cashed Out'` exactly.
+        // The RO keeps its status; the money gets its own record.
+        //
+        // 🔶 THIS ASKS ON EVERY BILLED CASH-OUT. That is deliberate — the counter
+        // is the only moment anyone reliably knows the answer, and a checkbox
+        // buried in the edit modal is a checkbox nobody ticks. It is ONE click for
+        // the common case: "Paid in full" is the primary button and is Enter-bound.
+        // To retire the prompt later, set app_config.cashout_balance_prompt=false
+        // and this whole gate short-circuits (checked in updateROStatus).
+        // Kill switch for both balance prompts: app_config.cashout_balance_prompt.
+        //
+        // `_appConfig` is a top-level `let` in the classic index.html script, so it
+        // lives in the GLOBAL LEXICAL environment — a bare reference resolves from
+        // module scope (same as currentData), but it is NOT a window property, and
+        // `typeof` does NOT shield a TDZ binding. Hence try/catch, not a typeof
+        // guard. Fail-safe default is ON: if the config cannot be read we ask,
+        // rather than silently stop tracking money.
+        function _balancePromptEnabled() {
+            try {
+                return String(_appConfig?.cashout_balance_prompt ?? 'true') !== 'false';
+            } catch (_cfgErr) {
+                return true;   // not initialised yet — keep the prompt on
+            }
+        }
+
+        // `mode` — 'billed'   : a normal cash-out with a dollar value.
+        //          'nocharge' : 'Closed - No Charge'. Nothing was billed, but the
+        //                       claim can still owe money. Roland S185: a totaled-out
+        //                       insurance job pays PRVS storage + admin fees for
+        //                       working the claim even though the RV is a write-off.
+        //                       "Collected in full?" is the wrong question there, so
+        //                       the copy flips to "anything still owed?".
+        function _confirmCashOutBalance(ro, mode) {
+            return new Promise(resolve => {
+                const wrap = document.createElement('div');
+                wrap.id = 'cashOutBalanceModal';
+                wrap.className = 'modal-overlay';
+                wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+                const noCharge = mode === 'nocharge';
+                const total = parseFloat(ro.dollarValue) || 0;
+                const totalStr = '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                const heading = noCharge ? '💵 Anything still owed?' : '💵 Collected in full?';
+                const blurb = noCharge
+                    ? 'This RO is closing with <strong>nothing billed</strong>. If the claim still owes storage or '
+                      + 'admin fees — a totaled-out unit, for instance — record it now so it gets chased.'
+                    : 'RO total is <strong>' + escapeHtml(totalStr) + '</strong>. If an insurance or extended-warranty '
+                      + 'check is still coming, record it now so it gets chased.';
+                const clearLabel = noCharge ? '✅ Nothing owed — close it' : '✅ Paid in full — cash out';
+                const balanceLabel = noCharge ? '📮 Fees still coming →' : '📮 Balance still coming →';
+
+                wrap.innerHTML =
+                    '<div style="background:#1a1d24;border:1px solid #3a3f4b;border-radius:14px;max-width:520px;width:100%;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,0.55);">'
+                  +   '<div style="font-size:1.05rem;font-weight:800;color:#34c759;margin-bottom:10px;">' + heading + '</div>'
+                  +   '<div style="color:#cbd5e1;font-size:0.93rem;line-height:1.5;margin-bottom:6px;">' + blurb + '</div>'
+                  +   '<div style="color:#94a3b8;font-size:0.82rem;line-height:1.45;margin-bottom:18px;">'
+                  +     escapeHtml(ro.customerName || '(no name)') + ' &middot; ' + escapeHtml(ro.roId || '') + '</div>'
+                  +   '<div style="display:flex;flex-direction:column;gap:8px;">'
+                  +     '<button data-choice="full" style="padding:12px 14px;border-radius:9px;border:none;background:#34c759;color:#0b1220;font-weight:800;font-size:0.95rem;cursor:pointer;">' + clearLabel + '</button>'
+                  +     '<button data-choice="balance" style="padding:11px 14px;border-radius:9px;border:1px solid #f59e0b;background:transparent;color:#f59e0b;font-weight:700;font-size:0.9rem;cursor:pointer;">' + balanceLabel + '</button>'
+                  +     '<button data-choice="cancel" style="padding:9px 14px;border-radius:9px;border:none;background:transparent;color:#64748b;font-weight:600;font-size:0.84rem;cursor:pointer;">Cancel</button>'
+                  +   '</div>'
+                  +   '<div style="color:#64748b;font-size:0.75rem;margin-top:12px;text-align:center;">Press Enter for “' + (noCharge ? 'Nothing owed' : 'Paid in full') + '”</div>'
+                  + '</div>';
+
+                const onKey = (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); done('full'); }
+                    else if (e.key === 'Escape') { e.preventDefault(); done('cancel'); }
+                };
+                const done = (choice) => {
+                    document.removeEventListener('keydown', onKey, true);
+                    wrap.remove();
+                    resolve(choice);
+                };
+                wrap.addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-choice]');
+                    if (btn) { done(btn.getAttribute('data-choice')); return; }
+                    if (e.target === wrap) done('cancel');
+                });
+                document.addEventListener('keydown', onKey, true);
+                document.body.appendChild(wrap);
+                setTimeout(() => wrap.querySelector('[data-choice="full"]')?.focus(), 0);
+            });
+        }
+
+        // Detail capture. Returns a receivable draft, or null if the user backed out.
+        // `expected_by` is REQUIRED: enqueue_receivable_reminders() only chases rows
+        // that have one, so a blank date would create a silent, un-chased receivable
+        // — the exact failure this feature exists to prevent.
+        function _collectReceivableDetails(ro, mode) {
+            return new Promise(resolve => {
+                const noCharge = mode === 'nocharge';
+                const total = parseFloat(ro.dollarValue) || 0;
+                const due = new Date();
+                due.setDate(due.getDate() + 14);
+                const dueStr = due.toISOString().split('T')[0];
+
+                const wrap = document.createElement('div');
+                wrap.id = 'receivableDetailModal';
+                wrap.className = 'modal-overlay';
+                wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto;';
+
+                const fld = 'width:100%;padding:9px 10px;border-radius:8px;border:1px solid #3a3f4b;background:#11141a;color:#e2e8f0;font-size:0.9rem;box-sizing:border-box;';
+                const lbl = 'display:block;color:#94a3b8;font-size:0.78rem;font-weight:700;margin:0 0 4px;text-transform:uppercase;letter-spacing:0.03em;';
+
+                wrap.innerHTML =
+                    '<div style="background:#1a1d24;border:1px solid #3a3f4b;border-radius:14px;max-width:540px;width:100%;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,0.55);margin:auto;">'
+                  +   '<div style="font-size:1.05rem;font-weight:800;color:#f59e0b;margin-bottom:6px;">'
+                  +     (noCharge ? '📮 Fees still coming' : '📮 Balance still coming') + '</div>'
+                  +   '<div style="color:#94a3b8;font-size:0.82rem;margin-bottom:16px;">'
+                  +     escapeHtml(ro.customerName || '(no name)') + ' &middot; ' + escapeHtml(ro.roId || '')
+                  +     ' &middot; ' + (noCharge
+                        ? 'closed with no charge'
+                        : 'RO total $' + escapeHtml(total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))) + '</div>'
+                  +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">'
+                  +     '<div><label style="' + lbl + '">Owed by *</label>'
+                  +       '<select id="rcvPayerType" style="' + fld + '">'
+                  +         '<option value="insurance">Insurance</option>'
+                  +         '<option value="extended_warranty">Extended warranty</option>'
+                  +         '<option value="customer">Customer</option>'
+                  +         '<option value="other">Other</option>'
+                  +       '</select></div>'
+                  +     '<div><label style="' + lbl + '">Company name</label>'
+                  +       '<input id="rcvPayerName" type="text" placeholder="Progressive, Good Sam…" style="' + fld + '"></div>'
+                  +     '<div><label style="' + lbl + '">Amount due *</label>'
+                  +       '<input id="rcvAmount" type="number" step="0.01" min="0.01" value="' + (total > 0 ? total.toFixed(2) : '') + '" style="' + fld + '"></div>'
+                  +     '<div><label style="' + lbl + '">Expected by *</label>'
+                  +       '<input id="rcvExpectedBy" type="date" value="' + dueStr + '" style="' + fld + '"></div>'
+                  +     '<div style="grid-column:1 / -1;"><label style="' + lbl + '">How it is coming</label>'
+                  +       '<input id="rcvMethod" type="text" value="mailed check" style="' + fld + '"></div>'
+                  +     '<div style="grid-column:1 / -1;"><label style="' + lbl + '">Notes</label>'
+                  +       '<textarea id="rcvNotes" rows="2" placeholder="' + (noCharge ? 'Claim #, adjuster, storage days, admin fee…' : 'Claim #, adjuster, what was promised…') + '" style="' + fld + 'resize:vertical;"></textarea></div>'
+                  +   '</div>'
+                  +   '<div id="rcvErr" style="color:#ef4444;font-size:0.83rem;margin-top:10px;display:none;"></div>'
+                  +   '<div style="color:#64748b;font-size:0.78rem;line-height:1.45;margin-top:14px;padding:10px;background:#11141a;border-radius:8px;">'
+                  +     'This RO will be <strong>held out of the weekly archive</strong> until the balance clears, and '
+                  +     'info@ gets a reminder every 7 days once it is due.</div>'
+                  +   '<div style="display:flex;gap:8px;margin-top:16px;">'
+                  +     '<button data-act="save" style="flex:1;padding:11px 14px;border-radius:9px;border:none;background:#f59e0b;color:#0b1220;font-weight:800;font-size:0.9rem;cursor:pointer;">Record & cash out</button>'
+                  +     '<button data-act="back" style="padding:11px 14px;border-radius:9px;border:1px solid #3a3f4b;background:transparent;color:#94a3b8;font-weight:600;font-size:0.9rem;cursor:pointer;">Back</button>'
+                  +   '</div>'
+                  + '</div>';
+
+                const done = (val) => { wrap.remove(); resolve(val); };
+
+                wrap.addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-act]');
+                    if (!btn) { if (e.target === wrap) done(null); return; }
+                    if (btn.getAttribute('data-act') === 'back') { done(null); return; }
+
+                    const amount = parseFloat(wrap.querySelector('#rcvAmount').value);
+                    const expectedBy = wrap.querySelector('#rcvExpectedBy').value;
+                    const errBox = wrap.querySelector('#rcvErr');
+                    const fail = (m) => { errBox.textContent = m; errBox.style.display = 'block'; };
+
+                    if (!(amount > 0)) return fail('Enter the amount still owed.');
+                    if (amount > total * 1.5 && total > 0) return fail('That is more than the RO total — check the amount.');
+                    if (!expectedBy) return fail('Pick the date you expect it by — reminders need it.');
+
+                    done({
+                        payer_type:      wrap.querySelector('#rcvPayerType').value,
+                        payer_name:      wrap.querySelector('#rcvPayerName').value.trim() || null,
+                        amount_expected: amount,
+                        expected_by:     expectedBy,
+                        method:          wrap.querySelector('#rcvMethod').value.trim() || null,
+                        notes:           wrap.querySelector('#rcvNotes').value.trim() || null,
+                    });
+                });
+                document.body.appendChild(wrap);
+                setTimeout(() => wrap.querySelector('#rcvPayerName')?.focus(), 0);
+            });
+        }
+
+        // [S185] Clearing panel. This is the release valve for the archive hold —
+        // an RO with an open receivable NEVER files in the Sunday sweep, so if this
+        // path is unreachable the RO sits on the books forever. Reachable from the
+        // 💵 badge on the RO card (js/render.js).
+        export async function openReceivablePanel(roSupabaseId) {
+            if (!getSB() || !supabaseSession) {
+                showToast('Please connect to the PRVS database first.', 'warning');
+                return;
+            }
+
+            const { data, error } = await getSB()
+                .from('ro_receivables')
+                .select('*')
+                .eq('ro_id', roSupabaseId)
+                .eq('status', 'open')
+                .order('expected_by', { ascending: true });
+
+            if (error) {
+                console.error('Receivable load failed:', error);
+                showToast('Could not load the outstanding balance: ' + error.message, 'error');
+                return;
+            }
+            if (!data || !data.length) {
+                showToast('No outstanding balance on this RO.', 'info');
+                return;
+            }
+
+            const money = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const today = new Date().toISOString().split('T')[0];
+
+            const wrap = document.createElement('div');
+            wrap.className = 'modal-overlay';
+            wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto;';
+
+            const rows = data.map(r => {
+                const overdue = r.expected_by && r.expected_by < today;
+                const age = r.expected_by
+                    ? Math.round((new Date(today) - new Date(r.expected_by)) / 86400000)
+                    : null;
+                return ''
+                  + '<div style="border:1px solid ' + (overdue ? '#ef444455' : '#3a3f4b') + ';border-radius:10px;padding:14px;margin-bottom:10px;background:#11141a;">'
+                  +   '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;">'
+                  +     '<span style="font-size:1.15rem;font-weight:800;color:#f59e0b;">' + escapeHtml(money(r.amount_expected)) + '</span>'
+                  +     (overdue
+                        ? '<span style="color:#ef4444;font-size:0.8rem;font-weight:700;">' + age + ' days overdue</span>'
+                        : '<span style="color:#94a3b8;font-size:0.8rem;">due ' + escapeHtml(r.expected_by || '—') + '</span>')
+                  +   '</div>'
+                  +   '<div style="color:#cbd5e1;font-size:0.86rem;line-height:1.6;">'
+                  +     '<div>Owed by: <strong>' + escapeHtml(r.payer_name || r.payer_type || '—') + '</strong></div>'
+                  +     '<div>Method: ' + escapeHtml(r.method || 'not recorded') + '</div>'
+                  +     '<div>Opened: ' + escapeHtml((r.opened_at || '').split('T')[0]) + ' by ' + escapeHtml(r.opened_by_email || '—') + '</div>'
+                  +     '<div>Reminders sent: ' + (r.reminder_count || 0) + '</div>'
+                  +     (r.notes ? '<div style="margin-top:6px;color:#94a3b8;">' + escapeHtml(r.notes) + '</div>' : '')
+                  +   '</div>'
+                  +   '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">'
+                  +     '<button data-act="paid" data-id="' + escapeHtml(r.id) + '" data-amt="' + escapeHtml(String(r.amount_expected)) + '" style="flex:1;min-width:130px;padding:10px 12px;border-radius:8px;border:none;background:#34c759;color:#0b1220;font-weight:800;font-size:0.87rem;cursor:pointer;">✅ Payment received</button>'
+                  +     '<button data-act="writeoff" data-id="' + escapeHtml(r.id) + '" style="padding:10px 12px;border-radius:8px;border:1px solid #ef444455;background:transparent;color:#ef4444;font-weight:700;font-size:0.87rem;cursor:pointer;">Write off</button>'
+                  +   '</div>'
+                  + '</div>';
+            }).join('');
+
+            const totalOpen = data.reduce((s, r) => s + Number(r.amount_expected || 0), 0);
+
+            wrap.innerHTML =
+                '<div style="background:#1a1d24;border:1px solid #3a3f4b;border-radius:14px;max-width:540px;width:100%;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,0.55);margin:auto;">'
+              +   '<div style="font-size:1.05rem;font-weight:800;color:#f59e0b;margin-bottom:4px;">💵 Outstanding balance</div>'
+              +   '<div style="color:#94a3b8;font-size:0.82rem;margin-bottom:16px;">'
+              +     escapeHtml(data[0].customer_name || '') + ' &middot; ' + escapeHtml(data[0].ro_display_id || '')
+              +     ' &middot; ' + escapeHtml(money(totalOpen)) + ' open</div>'
+              +   rows
+              +   '<div style="color:#64748b;font-size:0.78rem;line-height:1.45;margin:4px 0 14px;padding:10px;background:#11141a;border-radius:8px;">'
+              +     'Clearing the last open balance releases this RO to file in the next weekly archive.</div>'
+              +   '<button data-act="close" style="width:100%;padding:10px 14px;border-radius:9px;border:1px solid #3a3f4b;background:transparent;color:#94a3b8;font-weight:600;font-size:0.88rem;cursor:pointer;">Close</button>'
+              + '</div>';
+
+            wrap.addEventListener('click', async (e) => {
+                const btn = e.target.closest('[data-act]');
+                if (!btn) { if (e.target === wrap) wrap.remove(); return; }
+                const act = btn.getAttribute('data-act');
+                if (act === 'close') { wrap.remove(); return; }
+
+                const id = btn.getAttribute('data-id');
+                const isPaid = act === 'paid';
+
+                if (!isPaid && !confirm('Write this balance off? The RO will archive normally and nobody will chase it again.')) return;
+
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+
+                const patch = {
+                    status:           isPaid ? 'paid' : 'written_off',
+                    cleared_by_email: (currentUser && currentUser.email) || 'unknown',
+                    cleared_at:       new Date().toISOString(),
+                };
+                if (isPaid) patch.amount_received = parseFloat(btn.getAttribute('data-amt')) || null;
+
+                const { error: clrErr } = await getSB()
+                    .from('ro_receivables').update(patch).eq('id', id);
+
+                if (clrErr) {
+                    console.error('Receivable clear failed:', clrErr);
+                    showToast('Could not clear the balance: ' + clrErr.message, 'error');
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    return;
+                }
+
+                const roDisplay = data.find(r => r.id === id);
+                await writeAuditLog(roDisplay?.ro_display_id || roSupabaseId, [{
+                    field: isPaid ? 'receivable_paid' : 'receivable_written_off',
+                    oldValue: 'open ' + money(roDisplay?.amount_expected),
+                    newValue: (isPaid ? 'paid' : 'written off') + ' by '
+                        + ((currentUser && currentUser.name) || 'Unknown User'),
+                }]);
+
+                showToast(isPaid ? '✅ Payment recorded.' : 'Balance written off.', 'success');
+                wrap.remove();
+                renderBoard();
+            });
+
+            document.body.appendChild(wrap);
+        }
+
         export async function updateROStatus(index, newStatus) {
             if (!getSB()) {
                 showToast('Please connect to the PRVS database first.', 'warning');
@@ -954,8 +1290,33 @@
                 // This is the single status writer for existing ROs, so one hook
                 // covers both card dropdowns (see index.html delegation ~L4053).
                 let _bypassedNoDollar = false;
+                let _pendingReceivable = null;   // [S185] written after the status write lands
                 if (newStatus === 'Delivered/Cashed Out' && ro.status !== 'Delivered/Cashed Out') {
                     const dollars = parseFloat(ro.dollarValue) || 0;
+
+                    // [S185] BALANCE GATE — billed ROs only. A $0 RO falls through to
+                    // the S183 no-dollar gate below instead; asking "collected in
+                    // full?" about nothing would be noise.
+                    if (dollars > 0 && _balancePromptEnabled()) {
+                        const paid = await _confirmCashOutBalance(ro, 'billed');
+                        if (paid === 'cancel') {
+                            dropdown.value = ro.status;
+                            dropdown.style.opacity = '1';
+                            dropdown.disabled = false;
+                            return;
+                        }
+                        if (paid === 'balance') {
+                            const draft = await _collectReceivableDetails(ro, 'billed');
+                            if (!draft) {                    // backed out of the detail form
+                                dropdown.value = ro.status;  // → no status change at all
+                                dropdown.style.opacity = '1';
+                                dropdown.disabled = false;
+                                return;
+                            }
+                            _pendingReceivable = draft;
+                        }
+                    }
+
                     if (dollars <= 0) {
                         const woCount = (ro._woSummary && ro._woSummary.total_wos) || 0;
                         const choice = await _confirmCashOutNoDollars(ro, woCount);
@@ -980,6 +1341,39 @@
                         if (choice === 'anyway') {
                             _bypassedNoDollar = true;        // audit-logged after the write
                         }
+                    }
+                }
+
+                // [S185] NO-CHARGE receivable. Roland S185: a totaled-out insurance
+                // job bills nothing for repairs but still owes PRVS storage + admin
+                // fees for working the claim. So "no charge" does NOT mean "no money".
+                //
+                // Deliberately its own block, NOT folded into the cash-out branch
+                // above: 'Closed - No Charge' is reachable two ways — picked straight
+                // off the status dropdown, or via "Switch to Closed - No Charge" in
+                // the S183 no-dollar gate. Only a check on the RESOLVED newStatus
+                // catches both. Guarding on the original ro.status would miss the
+                // second path entirely, because newStatus was rewritten mid-flight.
+                if (newStatus === 'Closed - No Charge'
+                        && ro.status !== 'Closed - No Charge'
+                        && !_pendingReceivable
+                        && _balancePromptEnabled()) {
+                    const owed = await _confirmCashOutBalance(ro, 'nocharge');
+                    if (owed === 'cancel') {
+                        dropdown.value = ro.status;
+                        dropdown.style.opacity = '1';
+                        dropdown.disabled = false;
+                        return;
+                    }
+                    if (owed === 'balance') {
+                        const draft = await _collectReceivableDetails(ro, 'nocharge');
+                        if (!draft) {
+                            dropdown.value = ro.status;
+                            dropdown.style.opacity = '1';
+                            dropdown.disabled = false;
+                            return;
+                        }
+                        _pendingReceivable = draft;
                     }
                 }
 
@@ -1041,6 +1435,45 @@
                         });
                     }
                     await writeAuditLog(ro.roId, auditChanges);
+
+                    // [S185] Open the receivable AFTER the status write lands, so a
+                    // failed status flip can never leave an orphan balance chasing a
+                    // customer who was never actually cashed out.
+                    if (_pendingReceivable) {
+                        const { error: rcvErr } = await getSB()
+                            .from('ro_receivables')
+                            .insert({
+                                ro_id:           supabaseId,
+                                ro_display_id:   ro.roId || null,
+                                customer_name:   ro.customerName || null,
+                                payer_type:      _pendingReceivable.payer_type,
+                                payer_name:      _pendingReceivable.payer_name,
+                                amount_expected: _pendingReceivable.amount_expected,
+                                expected_by:     _pendingReceivable.expected_by,
+                                method:          _pendingReceivable.method,
+                                notes:           _pendingReceivable.notes,
+                                opened_by_email: (currentUser && currentUser.email) || 'unknown',
+                            });
+                        if (rcvErr) {
+                            // Loud on purpose. The status already flipped; if the
+                            // balance did NOT record, the whole point of the feature
+                            // is gone and the person at the counter must know NOW.
+                            console.error('Receivable insert failed:', rcvErr);
+                            showToast('⚠️ RO cashed out, but the outstanding balance did NOT save: '
+                                + rcvErr.message + ' — record it manually.', 'error');
+                        } else {
+                            await writeAuditLog(ro.roId, [{
+                                field: 'receivable_opened',
+                                oldValue: '',
+                                newValue: '$' + _pendingReceivable.amount_expected
+                                    + ' from ' + (_pendingReceivable.payer_name || _pendingReceivable.payer_type)
+                                    + ', expected ' + _pendingReceivable.expected_by
+                                    + ', by ' + userName,
+                            }]);
+                            showToast('📮 Balance of $' + _pendingReceivable.amount_expected
+                                + ' recorded — this RO is held out of the archive until it clears.', 'success');
+                        }
+                    }
 
                     // [S175] Entering any Approved status (from a non-Approved one)
                     // notifies silo managers + techs with time on the RO that they're

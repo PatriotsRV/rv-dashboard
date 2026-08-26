@@ -253,6 +253,7 @@ export function rowToRO(row) {
         keepPluggedIn:            !!row.keep_plugged_in,    // [ER BUGFIX v1.458 S118]
         urgentUpdate:             row.urgent_update || null, // [ER a7d1474e v1.466 S127] always-visible urgent-update banner
         _woSummary:               row._wo_summary || null,  // v1.414 Phase A1+A2
+        _receivable:              row._receivable || null,  // [S185] open outstanding balance summary
         _supabaseId:              row.id,  // keep uuid for updates
     };
 }

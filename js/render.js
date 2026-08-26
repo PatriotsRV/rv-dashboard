@@ -23,6 +23,41 @@
             return tileVisibility[element] === true;
         }
 
+        // [S185] Outstanding-balance banner. An RO carrying an open receivable was
+        // cashed out and delivered with an insurance / extended-warranty check still
+        // in the mail, and is being HELD out of the weekly archive until it clears.
+        // Clicking opens the clearing panel (RoCrud.openReceivablePanel) — that panel
+        // is the ONLY release valve for the hold, so this banner must stay reachable.
+        // Module-scope on purpose: renderBoard is the sole caller and lives here too.
+        function receivableBanner(ro, index) {
+            const r = ro && ro._receivable;
+            if (!r || !r.count) return '';
+
+            const amount = '$' + Number(r.total || 0).toLocaleString('en-US', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const days = r.oldest
+                ? Math.round((new Date(new Date().toISOString().split('T')[0]) - new Date(r.oldest)) / 86400000)
+                : null;
+
+            const tone = r.overdue
+                ? { bg: 'rgba(239,68,68,0.12)', bd: '#ef4444', fg: '#ef4444' }
+                : { bg: 'rgba(245,158,11,0.12)', bd: '#f59e0b', fg: '#f59e0b' };
+
+            const tail = r.overdue && days > 0
+                ? ` &middot; <strong>${days} ${days === 1 ? 'day' : 'days'} overdue</strong>`
+                : (r.oldest ? ` &middot; due ${escapeHtml(r.oldest)}` : '');
+
+            const plural = r.count > 1 ? ` (${r.count} balances)` : '';
+
+            return `<div class="receivable-banner" data-action="open-receivable" data-idx="${index}"
+                style="cursor:pointer;margin:8px 0;padding:9px 12px;border-radius:9px;
+                       background:${tone.bg};border:1px solid ${tone.bd}55;color:${tone.fg};
+                       font-size:0.86rem;font-weight:700;line-height:1.45;"
+                title="Payment still outstanding — click to mark it received or write it off. This RO will not archive until it clears.">
+                💵 AWAITING ${escapeHtml(amount)}${plural} from ${escapeHtml(r.payer || 'payer')}${tail}
+            </div>`;
+        }
+
         // [S183] SINGLE definition of "this RO is closed out". Two statuses are
         // terminal now — 'Delivered/Cashed Out' (billed) and 'Closed - No Charge'
         // (unbilled: totaled-out insurance, warranty, admin-fee-only). Every gate
@@ -236,7 +271,7 @@
                     <div class="ro-card-compact ro-card-status-${statusClass}${ro.hasOpenPartsRequest ? ' has-parts-request' : ''}" data-ro-index="${index}" data-compact-row="1">
                         <div class="compact-col-photo">${ro.rvPhotoUrl ? '<img src="' + ro.rvPhotoUrl + '" alt="RV" onerror="this.style.opacity=\'0.3\'">' : '<span class="compact-no-photo">No Photo</span>'}</div>
                         <div class="compact-col-id">
-                            <span class="compact-customer">${ro.urgentUpdate ? '<span class="uub-compact" title="' + escapeHtml(ro.urgentUpdate) + '">🚨</span> ' : ''}${escapeHtml(ro.customerName) || t('Unknown')}</span>
+                            <span class="compact-customer">${ro.urgentUpdate ? '<span class="uub-compact" title="' + escapeHtml(ro.urgentUpdate) + '">🚨</span> ' : ''}${ro._receivable && ro._receivable.count ? '<span class="rcv-compact" data-action="open-receivable" data-idx="' + index + '" style="cursor:pointer;" title="Payment outstanding — $' + Number(ro._receivable.total || 0).toFixed(2) + ' from ' + escapeHtml(ro._receivable.payer || 'payer') + '">💵</span> ' : ''}${escapeHtml(ro.customerName) || t('Unknown')}</span>
                             ${ro.roId ? '<span class="compact-ro-id">' + escapeHtml(ro.roId) + '</span>' : ''}
                             <span class="compact-rv">${escapeHtml(ro.rv) || t('RV not specified')}</span>
                         </div>
@@ -359,6 +394,7 @@
                         </button>
                         ${woMissingBadge(ro)}
                         ${ro.urgentUpdate ? `<div class="urgent-update-banner" data-action="edit-urgent" data-idx="${index}" style="cursor:pointer;" title="Urgent update — click to edit or clear">🚨 <span class="uub-label">URGENT:</span> ${escapeHtml(ro.urgentUpdate)}</div>` : ''}
+                        ${receivableBanner(ro, index)}
                         ${shouldShow('urgencySelector') && ro.roType !== 'shop' ? `
                         <div class="urgency-selector-badge">
                             <select class="urgency-dropdown urgency-${(ro.urgency || 'Medium').toLowerCase()}"

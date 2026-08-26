@@ -1,7 +1,41 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.501
+    PRVS Dashboard v1.502
+    v1.502: [S185] OUTSTANDING PAYMENTS — cashed out with a check still coming.
+    ROs are routinely cashed out and the RV delivered while an insurance or
+    extended-warranty check is still in the mail. Nothing recorded that, so
+    collection depended on somebody remembering.
+    DELIBERATELY NOT A 19th STATUS. A status either archives on Sunday (the
+    receivable lands on an archived RO, which has no doc UI) or never archives
+    (the RO rots on the active board) — and it would silently stop the review
+    request, which keys on status = 'Delivered/Cashed Out' exactly. Service
+    state and financial state are orthogonal and are now modelled that way.
+    (1) NEW ro_receivables table — amount, payer, expected-by date, method.
+    An RO can carry two (insurance + extended warranty on one claim), which a
+    status column could never represent.
+    (2) ARCHIVE HOLD: archive_cashiered_ros() skips any RO with an open
+    receivable. This is the load-bearing piece; everything else is reporting.
+    Clearing the balance releases it to file in the next sweep.
+    (3) Counter prompt on every BILLED cash-out: "Collected in full?" — one
+    Enter-bound click for the common case, or a detail form for the balance.
+    Toggle off without a release via app_config.cashout_balance_prompt='false'.
+    (3b) "Closed - No Charge" gets its own prompt: "Anything still owed?" — a
+    totaled-out insurance job bills nothing for repairs but still owes PRVS
+    storage + admin fees for working the claim, so no-charge does NOT mean
+    no-money. Keyed on the RESOLVED status so it fires whether the manager
+    picks it off the dropdown or lands there via the S183 no-dollar gate.
+    (4) 💵 banner on the RO card opens the clearing panel (payment received /
+    write off) — the ONLY release valve for the hold, so it must stay reachable.
+    (5) info@ is re-nudged every 7 days once a balance is due, via the existing
+    scheduled_notifications engine; recipient and interval live in app_config.
+    (6) NEW "Outstanding payments" aging section in the 7 AM manager report —
+    a one-off reminder gets dismissed, a list that visibly ages does not.
+    Migration: supabase/migrations/ro_receivables_s185.sql (scheduled_
+    notifications.source CHECK widened 13 to 14; the 13 existing values were
+    read LIVE from pg_constraint, not copied from the newest migration file).
+    Edge fn redeployed: send-manager-report.
+
     v1.501: [S183] NEW TERMINAL STATUS "Closed - No Charge" + REVIEW REQUEST
     RE-TIMED + CASH-OUT DOLLAR GATE.
     (1) 18th RO status for ROs closed with nothing billed — totaled-out insurance
@@ -981,7 +1015,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.501';</script>
+    <script>window.APP_VERSION = '1.502';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
@@ -4052,6 +4086,13 @@
                     // [KENECT TEARDOWN v1.445 S92] case 'messages' removed (openKenectModal deleted)
                     // [GH#39 v1.471 S132] card-level Project Blue messaging (js/messaging.js window bridge)
                     case 'message-customer':  openMessagesModal(currentFilteredData[idx]); break;
+                    // [S185] Outstanding-balance clearing panel. Reached from the 💵
+                    // banner (full card) and the 💵 marker (compact row). This is the
+                    // ONLY release valve for the archive hold — an RO with an open
+                    // receivable never files in the Sunday sweep.
+                    case 'open-receivable':
+                        window.PRVS_RoCrud.openReceivablePanel(currentFilteredData[idx]?._supabaseId);
+                        break;
                     case 'set-parts-status':  openPartsStatusModal(idx);          break;
                     case 'schedule':          openScheduleModal(idx);             break;
                     case 'schedule-notification': openScheduleNotificationModal(idx); break;

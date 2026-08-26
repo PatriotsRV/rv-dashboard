@@ -295,6 +295,15 @@ Deno.serve(async (req: Request) => {
       .select("ro_id, tech_email, clock_in, duration_seconds")
       .gte("clock_in", eightDaysAgo);
 
+    // [S185] Open receivables — money owed on ROs already cashed out and delivered.
+    // These ROs are HELD out of the weekly archive until they clear, so without a
+    // standing list they would sit on the books unseen. Deliberately lot-wide and
+    // identical for every manager, same as the S183 unwatched section: a receivable
+    // belongs to whoever chases carriers, not to the silo that did the work.
+    const { data: rcvRows } = await sb.from("ro_receivables")
+      .select("id, ro_id, ro_display_id, customer_name, payer_type, payer_name, amount_expected, expected_by, method, opened_by_email, opened_at, reminder_count")
+      .eq("status", "open");
+
     // ── Staff lookups ───────────────────────────────────────────────────
     const staffName: Record<string, string> = {};
     const staffRate: Record<string, number | null> = {};
@@ -853,6 +862,54 @@ Deno.serve(async (req: Request) => {
         ` : ""}
       </div>`;
 
+    // [S185] 💵 OUTSTANDING PAYMENTS — the aging list.
+    //
+    // Why a standing list and not just the 7-day reminder email: a one-off nudge
+    // gets dismissed and forgotten, and the RO it points at is invisible on the
+    // board (it is cashed out — every other section here treats it as done). This
+    // is the only surface where an uncollected check gets visibly older every day.
+    const todayISO = new Date().toISOString().split("T")[0];
+    const ageOf = (d: string | null) =>
+      d ? Math.round((Date.parse(todayISO) - Date.parse(d)) / 86_400_000) : 0;
+
+    const receivables = (rcvRows || [])
+      .map((r: any) => ({ ...r, _age: ageOf(r.expected_by) }))
+      .sort((a: any, b: any) => b._age - a._age);
+
+    const rcvOverdue = receivables.filter((r: any) => r._age > 0);
+    const rcvPending = receivables.filter((r: any) => r._age <= 0);
+    const rcvTotal = receivables.reduce((s: number, r: any) => s + (Number(r.amount_expected) || 0), 0);
+    const rcvOverdueTotal = rcvOverdue.reduce((s: number, r: any) => s + (Number(r.amount_expected) || 0), 0);
+
+    const rcvLine = (r: any, overdue: boolean) =>
+      `<div style="font-size:12px;margin-bottom:3px;line-height:1.45;">${
+        overdue ? (r._age >= 30 ? "🔴" : "🟠") : "⚪"
+      } ${roLink(r.ro_display_id, r.customer_name || r.ro_display_id || "RO")} <b>${
+        money(Number(r.amount_expected) || 0)
+      }</b> — ${esc(r.payer_name || r.payer_type)}${
+        overdue
+          ? ` · <span style="color:#991b1b;font-weight:700;">${r._age} ${r._age === 1 ? "day" : "days"} overdue</span>`
+          : ` · due ${esc(r.expected_by || "—")}`
+      }${r.reminder_count ? ` · ${r.reminder_count} reminder${r.reminder_count === 1 ? "" : "s"} sent` : ""}</div>`;
+
+    const receivableBox = receivables.length === 0 ? "" : `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;margin-bottom:18px;">
+        <div style="font-size:13px;font-weight:800;color:#92400e;margin-bottom:3px;">💵 Outstanding payments — cashed out, money not in (${receivables.length} · ${money(rcvTotal)})</div>
+        <div style="font-size:11px;color:#78350f;margin-bottom:9px;line-height:1.5;">
+          These RVs were delivered with an insurance or extended-warranty check still coming. Each one is <b>held out of the weekly archive</b> until it clears. Mark it received (or write it off) on the RO to release it.
+        </div>
+        ${rcvOverdue.length ? `
+          <div style="font-size:12px;font-weight:800;color:#991b1b;margin:0 0 5px;">Overdue (${rcvOverdue.length} · ${money(rcvOverdueTotal)})</div>
+          ${rcvOverdue.slice(0, 20).map((r: any) => rcvLine(r, true)).join("")}
+          ${rcvOverdue.length > 20 ? `<div style="font-size:11px;color:#7f1d1d;margin-top:4px;">…and ${rcvOverdue.length - 20} more overdue.</div>` : ""}
+        ` : `<div style="font-size:12px;color:#15803d;margin-bottom:6px;">✅ Nothing overdue — every outstanding payment is still inside its expected window.</div>`}
+        ${rcvPending.length ? `
+          <div style="font-size:12px;font-weight:800;color:#92400e;margin:10px 0 4px;">Not due yet (${rcvPending.length})</div>
+          ${rcvPending.slice(0, 8).map((r: any) => rcvLine(r, false)).join("")}
+          ${rcvPending.length > 8 ? `<div style="font-size:11px;color:#78350f;margin-top:4px;">…and ${rcvPending.length - 8} more not yet due.</div>` : ""}
+        ` : ""}
+      </div>`;
+
     // ── Assemble preview email ──────────────────────────────────────────
     const th = `padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#555;border-bottom:1px solid #e5e7eb;background:#f9fafb;`;
     const summaryTable = `<table style="width:100%;border-collapse:collapse;margin-bottom:18px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
@@ -929,6 +986,7 @@ Deno.serve(async (req: Request) => {
   <h2 style="color:#1e3a5f;font-size:15px;margin:0 0 6px;">Summary — ${managersWithList} manager${managersWithList !== 1 ? "s" : ""}</h2>
   ${summaryTable}
   ${unwatchedBox}
+  ${receivableBox}
   ${shopBox}
   ${sections || `<p style="font-size:13px;color:#64748b;">No managers with active work lists.</p>`}
   ${footerHtml}
@@ -960,6 +1018,7 @@ Deno.serve(async (req: Request) => {
   ${legend}
   ${x.card}
   ${unwatchedBox}
+  ${receivableBox}
   ${footerHtml}
 </body></html>`;
         try {

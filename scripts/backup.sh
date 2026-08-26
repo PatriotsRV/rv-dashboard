@@ -58,15 +58,35 @@ done
 # while the bulk of the codebase was never in a single snapshot. A hardcoded list
 # WILL drift (S138 spotted a piece of this and the list still wasn't fixed).
 # Globs are self-maintaining: a new module is covered the moment it exists.
+#
+# S185: the S144 globs still had four holes, and every one of them was a file
+# whose loss would actually hurt:
+#   • supabase/migrations/*.sql — a migration lives ONLY in the working tree
+#     between being written and being committed. Session 185 wrote one and it
+#     was in no snapshot at all.
+#   • scripts/ — including THIS script and check_version_sync.py, which is the
+#     thing that blocks a bad version from shipping.
+#   • .github/workflows/ — the nightly backup + CI guardrails built S179.
+#   • *.md at root — CLAUDE_CONTEXT.md is Claude's entire cross-session memory
+#     and was never snapshotted. *.json catches version.json, the file whose
+#     drift caused the v1.500 undismissable-banner incident.
+# Also widened supabase/functions to ALL .ts, not just index.ts, so an edge fn
+# with a helper module is covered whole rather than half.
 cd "$REPO_ROOT"
 FILES=()
 while IFS= read -r f; do FILES+=("$f"); done < <(
   {
     ls -1 *.html 2>/dev/null
+    ls -1 *.json 2>/dev/null
+    ls -1 *.md 2>/dev/null
     ls -1 js/*.js 2>/dev/null
     ls -1 css/*.css 2>/dev/null
-    ls -1 supabase/functions/*/index.ts 2>/dev/null
-  } | grep -vE '^(index\.draft\.html|prvs_ro_dashboard_mockup\.html)$' | sort
+    find supabase/functions -type f -name '*.ts' 2>/dev/null
+    ls -1 supabase/migrations/*.sql 2>/dev/null
+    find scripts -type f 2>/dev/null
+    find .github -type f 2>/dev/null
+    ls -1 docs/specs/*.md 2>/dev/null
+  } | grep -vE '^(index\.draft\.html|prvs_ro_dashboard_mockup\.html)$' | sort -u
 )
 if [ ${#FILES[@]} -eq 0 ]; then
   echo "🔴 backup.sh: matched ZERO files — refusing to write an empty snapshot."
