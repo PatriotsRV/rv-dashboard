@@ -20,8 +20,12 @@ Goals, in order:
 1. Manual task create/assign with due dates and a nag loop that does not stop until done.
 2. Lynn's board (all tasks) + a My Tasks view per staff member. Mobile-first — techs are on phones.
 3. Two-stage completion: assignee marks done → assigner validates (when the task requires it).
-4. Auto-generated tasks from RO lifecycle events (drop-off, pickup, close-out, sales-call follow-up).
-5. Tie-ins to the Messages board (a task can point at a conversation, and vice versa).
+4. **RO Activity feed (added S186, Lynn):** surface all RO-embedded updates/reminders —
+   parts requests, pickup/drop-off dates, callbacks, receivables, status changes — for all
+   active/on-lot ROs on this same board, WITHOUT re-entry, with a per-user selector for
+   which RO functions show. Solves "the update gets buried inside the RO." See §6a.
+5. Auto-generated tasks from RO lifecycle events (drop-off, pickup, close-out, sales-call follow-up).
+6. Tie-ins to the Messages board (a task can point at a conversation, and vice versa).
 
 Non-goal for v1: recurrence, projects/labels hierarchy, comments threads. Todoist is the
 UX model, not the feature checklist.
@@ -150,6 +154,63 @@ mark-done button. Techs get no assign UI.
 count, linking to tasks.html filtered by `ro_id`. Keep index.html's footprint minimal —
 the page is large; the manager already gets cache-busting risk per the S182 open TODO.
 
+## 6a. RO Activity feed (added S186)
+
+**Design rule: read-through, never copy.** The feed is a queryable view over data the RO
+workflows already write. Copying items into `tasks` would create a second copy of every
+fact, and two copies drift with nothing checking (S183: status vs. physical location).
+The board reads the same rows the RO wrote, so it is correct by construction.
+
+### Two lanes on tasks.html
+
+- **Lane 1 — Tasks**: obligations with assignee + lifecycle (§3–§4).
+- **Lane 2 — RO Activity**: everything happening across active ROs, filterable by kind.
+
+### `ro_activity_feed` view
+
+One SQL view UNIONing per-kind subqueries into a common shape:
+`(kind, ro_id, ro_number, customer, title, event_at, due_at, actor, ref_table, ref_id)`.
+
+| Kind | Source |
+|---|---|
+| `parts` | `notes` where `type='ro_status'` and body prefix `🔩 PARTS REQUESTED:` (NEVER `type:'parts_request'`); received-state per send-parts-report logic |
+| `pickup` / `dropoff` | scheduled date fields on `repair_orders` (verify live column names against schema first — audit_codebase's snapshot is stale on these, S171) |
+| `callback` | notes / `conversations` flagged needs-reply where a customer asked for contact |
+| `receivable` | `ro_receivables` where status open (S185) |
+| `status_change` | `audit_log` field changes on `repair_orders.status`, last N days |
+| `appointment` | calendar-synced schedule items (`sync-ro-calendar` source rows) |
+| `quiet_ro` | ⚠️ the S183 unwatched lesson: an event feed cannot show an RO where NOTHING is happening. Active/on-lot ROs with no notes/audit activity in N days (default 7) — arguably the most rattle-the-cage list of all; query pattern proven by send-manager-report v2.5's 🚨 Unwatched section |
+
+Scope: "active/on-lot" = the status set used by the manager report's lot-wide sweep — do
+NOT invent a new definition; reuse that predicate so the two tools can never disagree.
+
+### `board_prefs` (the selector Roland asked for)
+
+```sql
+create table board_prefs (
+  staff_id  uuid primary key references staff(id),
+  feed_kinds jsonb not null default '["parts","pickup","dropoff","callback","receivable","quiet_ro"]',
+  quiet_days int not null default 7,
+  updated_at timestamptz not null default now()
+);
+```
+
+Stored in DB (not localStorage) so Lynn's selection follows her across devices. UI: one
+chip per kind, tap to toggle. Ship the default set above; she tunes it.
+
+### Promote-to-task (the bridge between lanes)
+
+Every feed item gets a one-tap **"Make task"**: pre-fills title/RO, Lynn picks assignee +
+due, and it becomes a real §3 task with the nag loop (`source='promoted'`,
+`source_event = ref_table || ':' || ref_id`). Dedup guard: block if an open task already
+references the same `ref_table`/`ref_id`. Feed = awareness; promotion = commitment.
+
+### Phasing impact
+
+Feed view + chips + promote are read-only plus one INSERT — cheap. Pulled INTO Phase 1
+(see §8). The `quiet_ro` kind ships in Phase 1 too; its query already exists in the
+manager report.
+
 ## 7. Permissions / RLS
 
 - Insert/assign: managers + admins (`is_sr_manager_or_admin()` class of policy — service
@@ -163,7 +224,7 @@ the page is large; the manager already gets cache-busting risk per the S182 open
 
 | Phase | Scope | Ships |
 |---|---|---|
-| **1** | `tasks` table + RLS, tasks.html (board + My Tasks), manual create/assign, nag cron + SMS/email, escalation, audit | migration + tasks.html + `enqueue-task-reminders` |
+| **1** | `tasks` table + RLS, tasks.html (board + My Tasks), manual create/assign, nag cron + SMS/email, escalation, audit, **RO Activity feed (§6a): `ro_activity_feed` view + `board_prefs` chips + promote-to-task + `quiet_ro`** | migration + tasks.html + `enqueue-task-reminders` |
 | **2** | `task_rules` + RO status-change auto-spawn, `t.html` tap-to-complete, RO modal task count | migration + index.html minor + t.html |
 | **3** | Sales-call reminders off leads/conversations, recurrence, digest tuning, Messages board deep-link both directions | TBD after field use |
 
@@ -179,3 +240,7 @@ arrives" manually while Phase 2 grows the automation.
    `public.users` row (S164: seven techs)? SMS works via `staff.phone`; dashboard My Tasks
    needs a login. Phone-only staff could live on SMS + tap-link alone.
 4. Should validation rejects notify the assignee immediately (SMS) or just reopen the nag loop?
+5. **Feed (§6a):** confirm the callback source — is "customer wants a call back" reliably
+   captured today (notes? conversations needs-reply?), or does it need a small capture
+   affordance in the RO first? The feed can only surface what gets written somewhere.
+6. **Feed:** default `quiet_days` = 7 — right threshold for "nothing is happening on this RO"?
