@@ -1,8 +1,12 @@
 <!DOCTYPE html>
 <!--
-    PRVS Task Manager  tasks-v1.1
+    PRVS Task Manager  tasks-v1.2
     Released: 2026-08-27 (Session 186)
     Spec: docs/specs/TASK_MANAGER_SPEC.md
+    v1.2: Assignment notify on create (Roland field test S186). After a task
+        insert, the page calls send-task-reminders v1.1 { notify_task: id } —
+        assignee gets an immediate SMS + email with the board link. Fire-and-
+        forget; notify failure never blocks creation.
     v1.1: Light restyle — mirrors the Messages board palette (jersey white /
         celeste / navy / gold), Roland S186 same-day adjustment, may revert.
         Colors only; no markup or logic changes.
@@ -171,7 +175,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-const TASKS_VERSION = 'tasks-v1.1';
+const TASKS_VERSION = 'tasks-v1.2';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
@@ -518,7 +522,7 @@ async function createTask(prefill) {
         source: prefill?.source || 'manual',
         source_ref: prefill?.source_ref || null,
     };
-    const { error } = await getSB().from('tasks').insert(row).select().maybeSingle();
+    const { data: created, error } = await getSB().from('tasks').insert(row).select().maybeSingle();
     if (error) {
         if ((error.code || '') === '23505' || /uq_tasks_live_source_ref/.test(error.message))
             msg.textContent = 'That item already has a live task.';
@@ -528,6 +532,16 @@ async function createTask(prefill) {
     ['qaTitle','qaNotes','qaRo'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('qaMsg').textContent = '';
     toggleQuickAdd(false);
+    // v1.2: immediate assignment notice (SMS + email) via send-task-reminders.
+    // Fire-and-forget — a notify failure must not block task creation.
+    if (created?.id) {
+        fetch(`${SUPABASE_URL}/functions/v1/send-task-reminders`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notify_task: created.id }),
+        }).then(r => r.json())
+          .then(j => console.log('assignment notify:', j))
+          .catch(e => console.error('assignment notify failed:', e));
+    }
     await refreshAll();
 }
 

@@ -22,9 +22,17 @@
 // Each send bumps reminder_count / last_reminded_at and writes a
 // task_events row ('reminder_sent' / 'escalated').
 //
+// v1.1 (S186 same-day, Roland field test): ASSIGNMENT NOTIFY ON CREATE.
+//   { "notify_task": "<uuid>" } — called by tasks.html right after insert;
+//   sends the assignee an immediate "you've been assigned" SMS + email with
+//   the board link, writes task_events 'created'. Bypasses weekday/cadence
+//   logic (it is not a nag). Roland expectation S186: assignee hears about
+//   a task the moment it lands, not at the first cron tick.
+//
 // Request body (all optional):
 //   { "dry_run": true,   report what WOULD be sent, send nothing
-//     "force": true }    bypass the weekday guard (testing)
+//     "force": true,     bypass the weekday guard (testing)
+//     "notify_task": "<uuid>" }  assignment-notify mode (see above)
 //
 // Config (app_config, optional):
 //   task_reminder_enabled  "false" = kill switch (default on)
@@ -77,11 +85,65 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
-  let body: { dry_run?: boolean; force?: boolean } = {};
+  let body: { dry_run?: boolean; force?: boolean; notify_task?: string } = {};
   try { body = await req.json(); } catch { /* empty body */ }
   const dryRun = !!body.dry_run;
 
   const now = new Date();
+
+  // ── v1.1: assignment-notify mode ─────────────────────────────────────
+  if (body.notify_task) {
+    const sbN = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: t, error: tErr } = await sbN.from("tasks")
+      .select("id, title, ro_display_id, assigned_to_email, assigned_by_email, due_at, priority, status")
+      .eq("id", body.notify_task).maybeSingle();
+    if (tErr) return json({ ok: false, error: tErr.message }, 500);
+    if (!t) return json({ ok: false, error: "task not found" }, 404);
+    if (t.status !== "open") return json({ ok: true, action: "skipped_not_open" });
+
+    const { data: st, error: sErr2 } = await sbN.from("staff")
+      .select("email, name, phone_number").eq("active", true)
+      .in("email", [t.assigned_to_email.toLowerCase(), t.assigned_by_email.toLowerCase()]);
+    if (sErr2) return json({ ok: false, error: sErr2.message }, 500);
+    const byEmail = new Map((st || []).map((s) =>
+      [String(s.email || "").toLowerCase(), { name: s.name || s.email, phone: (s.phone_number || "").trim() }]));
+    const assignee = byEmail.get(t.assigned_to_email.toLowerCase());
+    const assigner = byEmail.get(t.assigned_by_email.toLowerCase());
+    const roBit = t.ro_display_id ? ` (${t.ro_display_id})` : "";
+
+    let smsSent = false;
+    if (assignee?.phone) {
+      smsSent = await textlySend(assignee.phone,
+        `PRVS Task from ${assigner?.name || t.assigned_by_email}` +
+        `${t.priority === "urgent" ? " 🔴" : ""}: ${t.title}${roBit} — ` +
+        `due ${fmtChicago(t.due_at)}. Details: ${BOARD_URL}`);
+    }
+    const { error: nErr2 } = await sbN.from("scheduled_notifications").insert({
+      scheduled_at: now.toISOString(),
+      recipient_emails: [t.assigned_to_email],
+      subject: `📌 New task from ${assigner?.name || t.assigned_by_email}: ${t.title}${roBit}`,
+      body:
+        `You have been assigned a task.\n\n` +
+        `Task:        ${t.title}\n` +
+        (t.ro_display_id ? `RO:          ${t.ro_display_id}\n` : "") +
+        `Assigned by: ${assigner?.name || t.assigned_by_email}\n` +
+        `Due:         ${fmtChicago(t.due_at)}\n` +
+        `Priority:    ${t.priority}\n\n` +
+        `See it on the task board: ${BOARD_URL}`,
+      source: "task_reminder",
+      created_by_email: SYSTEM_EMAIL,
+    });
+    if (nErr2) console.error(`task ${t.id} assign email enqueue failed: ${nErr2.message}`);
+    const { error: eErr2 } = await sbN.from("task_events").insert({
+      task_id: t.id, event: "created", actor_email: SYSTEM_EMAIL,
+      detail: `assignment notify; sms=${smsSent}; email=${!nErr2}`,
+    });
+    if (eErr2) console.error(`task ${t.id} created event write failed: ${eErr2.message}`);
+    return json({ ok: true, action: "assignment_notified", smsSent, emailQueued: !nErr2 });
+  }
   const wd = chicagoWeekday(now);
   if ((wd === "Sat" || wd === "Sun") && !body.force) {
     return json({ ok: true, action: "skipped_weekend", weekday: wd });
