@@ -175,11 +175,20 @@ One SQL view UNIONing per-kind subqueries into a common shape:
 |---|---|
 | `parts` | `notes` where `type='ro_status'` and body prefix `🔩 PARTS REQUESTED:` (NEVER `type:'parts_request'`); received-state per send-parts-report logic |
 | `pickup` / `dropoff` | scheduled date fields on `repair_orders` (verify live column names against schema first — audit_codebase's snapshot is stale on these, S171) |
-| `callback` | notes / `conversations` flagged needs-reply where a customer asked for contact |
+| `ro_reminder` | **the 🔔 RO Reminders feature (Unified Scheduled Notifications, v1.411 + v1.463 repeat-until)**: pending `scheduled_notifications` rows with an `ro_id`, incl. `auto_dropoff_reminder`. Roland S186: these are the "important RO tasks" — a primary feed kind |
+| `scheduled_msg` | pending Scheduled Messages (S177) — queued but unsent; mostly unknown to staff, surfacing them here doubles as discovery |
 | `receivable` | `ro_receivables` where status open (S185) |
 | `status_change` | `audit_log` field changes on `repair_orders.status`, last N days |
-| `appointment` | calendar-synced schedule items (`sync-ro-calendar` source rows) |
-| `quiet_ro` | ⚠️ the S183 unwatched lesson: an event feed cannot show an RO where NOTHING is happening. Active/on-lot ROs with no notes/audit activity in N days (default 7) — arguably the most rattle-the-cage list of all; query pattern proven by send-manager-report v2.5's 🚨 Unwatched section |
+| `appointment` | calendar-synced schedule items (`sync-ro-calendar` source rows / Google work calendar) |
+| `quiet_ro` | ⚠️ the S183 unwatched lesson: an event feed cannot show an RO where NOTHING is happening. Active/on-lot ROs with no notes/audit activity in N days (**default 21, Roland S186** — 14–21 considered, 21 chosen) — arguably the most rattle-the-cage list of all; query pattern proven by send-manager-report v2.5's 🚨 Unwatched section |
+
+**Callbacks — NO feed kind in v1 (answered S186).** There is no reliable capture point
+today: customer-contact scheduling lives in WooSender (leads/customers, outside the
+dashboard), Google calendar, Scheduled Messages, and 🔔 RO Reminders — none is a canonical
+"customer asked for a call back" record. So in v1 a callback IS a manual task: the
+quick-add gets a "📞 Callback" template chip (title pre-fill + default due today+1). If a
+capture affordance is added to the RO/Messages later, a `callback` feed kind can follow.
+WooSender stays adjacent — not integrated in v1.
 
 Scope: "active/on-lot" = the status set used by the manager report's lot-wide sweep — do
 NOT invent a new definition; reuse that predicate so the two tools can never disagree.
@@ -189,8 +198,8 @@ NOT invent a new definition; reuse that predicate so the two tools can never dis
 ```sql
 create table board_prefs (
   staff_id  uuid primary key references staff(id),
-  feed_kinds jsonb not null default '["parts","pickup","dropoff","callback","receivable","quiet_ro"]',
-  quiet_days int not null default 7,
+  feed_kinds jsonb not null default '["parts","pickup","dropoff","ro_reminder","receivable","quiet_ro"]',
+  quiet_days int not null default 21,
   updated_at timestamptz not null default now()
 );
 ```
@@ -240,7 +249,8 @@ arrives" manually while Phase 2 grows the automation.
    `public.users` row (S164: seven techs)? SMS works via `staff.phone`; dashboard My Tasks
    needs a login. Phone-only staff could live on SMS + tap-link alone.
 4. Should validation rejects notify the assignee immediately (SMS) or just reopen the nag loop?
-5. **Feed (§6a):** confirm the callback source — is "customer wants a call back" reliably
-   captured today (notes? conversations needs-reply?), or does it need a small capture
-   affordance in the RO first? The feed can only surface what gets written somewhere.
-6. **Feed:** default `quiet_days` = 7 — right threshold for "nothing is happening on this RO"?
+5. ~~Feed: callback source~~ — **ANSWERED S186:** no reliable capture exists (WooSender /
+   Google calendar / Scheduled Messages / 🔔 RO Reminders are the only channels, none
+   canonical for callbacks). v1: callback = manual task with a "📞 Callback" quick-add
+   template; no `callback` feed kind until a capture affordance exists.
+6. ~~Feed: quiet_days threshold~~ — **ANSWERED S186:** 21 days (Roland; 14–21 considered).
