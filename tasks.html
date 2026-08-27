@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<!--
+    PRVS Task Manager  tasks-v1.0
+    Released: 2026-08-27 (Session 186)
+    Spec: docs/specs/TASK_MANAGER_SPEC.md
+    v1.0: Phase 1 — Todoist-style task board (Roland/Lynn directive S186).
+        Two lanes: TASKS (assigned obligations, lifecycle open -> done -> validated,
+        per-task validation toggle) and RO ACTIVITY (read-through ro_activity_feed
+        view: parts / pickup / dropoff / promised / RO reminders / scheduled msgs /
+        receivables / status changes / quiet ROs). Never copies RO data (S183 rule).
+        board_prefs kind chips per user (DB-stored, follows devices, quiet_days=21).
+        Promote-to-task from any feed item (source_ref dedup). Quick-add with
+        Callback template. Nag loop delivered by send-task-reminders edge fn
+        (SMS+email, escalation to assigner after 3 missed past due).
+        Assign gate: Admin / Sr Manager / Manager / Parts Manager. Techs: My Tasks only.
+    Requires migration: task_manager_s186.sql
+-->
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRVS Tasks</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-main: #0d0f12;
+            --bg-surface: #1a1d24;
+            --bg-elevated: #252930;
+            --border-color: #2d3139;
+            --text-primary: #e8eaed;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-info: #0a84ff;
+            --accent-low: #34c759;
+            --accent-medium: #ffcc00;
+            --accent-urgent: #ff3b30;
+            --accent-high: #ff9500;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: var(--bg-main); color: var(--text-primary); font-family: 'Barlow Condensed', sans-serif; min-height: 100vh; }
+        #app { display: none; max-width: 1100px; margin: 0 auto; padding: 12px 14px 80px; }
+        .top-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+        .top-bar h1 { font-size: 1.5rem; font-weight: 700; }
+        .top-bar .ver { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--text-muted); }
+        .top-bar .who { margin-left: auto; font-size: 0.85rem; color: var(--text-secondary); }
+        .top-bar a.backlink { color: var(--accent-info); text-decoration: none; font-size: 0.85rem; }
+        #loginGate { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .login-box { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 34px 40px; text-align: center; }
+        .login-box h2 { margin-bottom: 6px; }
+        .login-box p { color: var(--text-secondary); margin-bottom: 18px; }
+        .login-error { color: var(--accent-urgent); margin-top: 12px; font-size: 0.85rem; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .tab { padding: 7px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; font-family: inherit; font-size: 1rem; font-weight: 600; }
+        .tab.active { background: var(--accent-info); border-color: var(--accent-info); color: #fff; }
+        .filters, .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .fchip { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; font-family: inherit; font-size: 0.85rem; }
+        .fchip.on { border-color: var(--accent-info); color: var(--accent-info); background: rgba(10,132,255,0.12); }
+        .card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+        .card .row1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .card .title { font-size: 1.05rem; font-weight: 600; }
+        .card .meta { font-size: 0.8rem; color: var(--text-secondary); }
+        .card .meta b { color: var(--text-primary); font-weight: 600; }
+        .card .actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+        .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-secondary); white-space: nowrap; }
+        .badge.overdue { border-color: var(--accent-urgent); color: var(--accent-urgent); }
+        .badge.today { border-color: var(--accent-high); color: var(--accent-high); }
+        .badge.needsval { border-color: var(--accent-medium); color: var(--accent-medium); }
+        .badge.prio-urgent { border-color: var(--accent-urgent); color: var(--accent-urgent); }
+        .badge.prio-high { border-color: var(--accent-high); color: var(--accent-high); }
+        .badge.nags { color: var(--text-muted); }
+        .badge.kind { border-color: var(--accent-info); color: var(--accent-info); }
+        button.act { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border-color); background: var(--bg-elevated); color: var(--text-primary); cursor: pointer; font-family: inherit; font-size: 0.85rem; }
+        button.act.primary { background: var(--accent-info); border-color: var(--accent-info); color: #fff; }
+        button.act.good { background: var(--accent-low); border-color: var(--accent-low); color: #06280f; font-weight: 600; }
+        button.act.warn { border-color: var(--accent-urgent); color: var(--accent-urgent); background: transparent; }
+        .quickadd { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: none; }
+        .quickadd.open { display: block; }
+        .quickadd .grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
+        .quickadd input, .quickadd select, .quickadd textarea {
+            width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 7px;
+            color: var(--text-primary); padding: 7px 9px; font-family: inherit; font-size: 0.95rem; }
+        .quickadd label { font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .quickadd .full { grid-column: 1 / -1; }
+        .quickadd .opts { display: flex; gap: 14px; align-items: center; margin-top: 8px; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-secondary); }
+        .quickadd .opts input[type=checkbox] { width: auto; }
+        .tmpl { font-size: 0.8rem; color: var(--accent-info); cursor: pointer; background: none; border: 1px dashed var(--accent-info); border-radius: 999px; padding: 3px 10px; font-family: inherit; }
+        .section-note { font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 10px; }
+        .empty { color: var(--text-muted); text-align: center; padding: 30px 0; }
+        @media (max-width: 640px) { .quickadd .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="loginGate">
+    <div class="login-box">
+        <h2>📌 PRVS Tasks</h2>
+        <p>Patriots RV Services — Task Board</p>
+        <div id="googleSignInBtn"></div>
+        <div class="login-error" id="loginError"></div>
+    </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+    <div class="top-bar">
+        <h1>📌 Tasks</h1>
+        <span class="ver" id="verTag"></span>
+        <a class="backlink" href="index.html">← Dashboard</a>
+        <span class="who" id="whoAmI"></span>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <!-- QUICK ADD (managers/admins) -->
+    <div style="margin-bottom:10px;" id="quickAddBtnWrap"></div>
+    <div class="quickadd" id="quickAdd">
+        <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+            <button class="tmpl" onclick="applyTemplate('callback')">📞 Callback</button>
+            <button class="tmpl" onclick="applyTemplate('check')">💵 Check in the mail</button>
+            <button class="tmpl" onclick="applyTemplate('part')">🔩 Part follow-up</button>
+        </div>
+        <div class="grid">
+            <div class="full"><label>Task</label><input id="qaTitle" placeholder="What needs to happen?"></div>
+            <div><label>Assign to</label><select id="qaAssignee"></select></div>
+            <div><label>Due date</label><input id="qaDate" type="date"></div>
+            <div><label>Due time</label><input id="qaTime" type="time" value="16:00"></div>
+            <div><label>Priority</label><select id="qaPriority">
+                <option value="normal" selected>Normal</option><option value="low">Low</option>
+                <option value="high">High</option><option value="urgent">Urgent</option></select></div>
+            <div><label>RO # (optional)</label><input id="qaRo" placeholder="PRVS-…"></div>
+            <div><label>Remind starting</label><select id="qaLead">
+                <option value="0" selected>At due time</option><option value="120">2 h before</option>
+                <option value="1440">1 day before</option><option value="4320">3 days before</option></select></div>
+            <div class="full"><label>Notes (optional)</label><textarea id="qaNotes" rows="2"></textarea></div>
+        </div>
+        <div class="opts">
+            <label style="display:flex;align-items:center;gap:6px; text-transform:none; font-size:0.85rem; color:var(--text-secondary);">
+                <input type="checkbox" id="qaValidate" checked> I validate when done</label>
+            <button class="act primary" onclick="createTask()">Add task</button>
+            <button class="act" onclick="toggleQuickAdd(false)">Cancel</button>
+            <span id="qaMsg" style="color:var(--accent-urgent); font-size:0.8rem;"></span>
+        </div>
+    </div>
+
+    <!-- TASKS LANE -->
+    <div id="laneTasks">
+        <div class="filters" id="taskFilters"></div>
+        <div id="taskList"></div>
+    </div>
+
+    <!-- FEED LANE -->
+    <div id="laneFeed" style="display:none;">
+        <div class="section-note">Live view of what's happening across active ROs — read-only, straight from the RO data. Toggle what you want to see; ⭐ turns any item into a tracked task.</div>
+        <div class="chips" id="feedChips"></div>
+        <div id="feedList"></div>
+    </div>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+const TASKS_VERSION = 'tasks-v1.0';
+const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+const ASSIGN_ROLES = ['Admin', 'Sr Manager', 'Manager', 'Parts Manager'];
+const FEED_KINDS = {
+    parts:         { label: '🔩 Parts',          desc: 'open parts (Sourcing/Ordered)' },
+    pickup:        { label: '🚚 Pickups',        desc: 'scheduled pickup dates' },
+    dropoff:       { label: '📥 Drop-offs',      desc: 'planned drop-off dates' },
+    promised:      { label: '🤝 Promised',       desc: 'promised completion dates' },
+    ro_reminder:   { label: '🔔 RO Reminders',   desc: 'pending manual RO notifications' },
+    scheduled_msg: { label: '💬 Scheduled msgs', desc: 'queued scheduled messages' },
+    receivable:    { label: '💵 Receivables',    desc: 'open outstanding payments' },
+    status_change: { label: '🔀 Status changes', desc: 'last 14 days' },
+    quiet_ro:      { label: '😴 Quiet ROs',      desc: 'no activity in N days' },
+};
+const DEFAULT_KINDS = ['parts','pickup','dropoff','promised','ro_reminder','receivable','quiet_ro'];
+
+let _sb = null, supabaseSession = null, userRoles = [], currentUser = null;
+let staffList = [], canAssign = false;
+let allTasks = [], feedRows = [], prefs = { feed_kinds: DEFAULT_KINDS.slice(), quiet_days: 21 };
+let activeTab = 'my', activeFilter = 'open';
+
+function getSB() {
+    if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+    });
+    return _sb;
+}
+
+async function loadUserRoles() {
+    userRoles = [];
+    const email = (supabaseSession?.user?.email || '').toLowerCase();
+    if (!email) return;
+    const { data: userRow } = await getSB().from('users').select('id').eq('email', email).maybeSingle();
+    if (userRow?.id) {
+        const { data: roleRows } = await getSB().from('user_roles').select('roles(name)').eq('user_id', userRow.id);
+        if (roleRows) userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
+    }
+}
+
+// ── AUTH ──
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log(`PRVS Tasks ${TASKS_VERSION} [S186 Phase 1 — task board + RO activity feed]`);
+    document.getElementById('verTag').textContent = TASKS_VERSION;
+    const { data: { session } } = await getSB().auth.getSession();
+    if (session) {
+        supabaseSession = session;
+        currentUser = { email: session.user.email.toLowerCase(), name: session.user.user_metadata?.full_name || session.user.email };
+        await loadUserRoles();
+        showApp();
+        return;
+    }
+    initGoogleSignIn();
+});
+
+function initGoogleSignIn() {
+    const tryInit = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts) {
+            clearInterval(tryInit);
+            google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleSignIn, auto_select: true });
+            google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), { theme: 'outline', size: 'large', width: 280 });
+            google.accounts.id.prompt();
+        }
+    }, 200);
+}
+
+async function handleSignIn(response) {
+    try {
+        const { data, error } = await getSB().auth.signInWithIdToken({ provider: 'google', token: response.credential });
+        if (error) throw error;
+        supabaseSession = data.session;
+        currentUser = { email: data.user.email.toLowerCase(), name: data.user.user_metadata?.full_name || data.user.email };
+        await loadUserRoles();
+        showApp();
+    } catch(e) {
+        document.getElementById('loginError').textContent = 'Sign-in failed: ' + (e.message || e);
+    }
+}
+
+// ── APP BOOT ──
+async function showApp() {
+    if (!getSB() || !supabaseSession) return;   // auth guard — never accessToken alone
+    canAssign = userRoles.some(r => ASSIGN_ROLES.includes(r));
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('whoAmI').textContent = `${currentUser.name}${canAssign ? ' · manager' : ''}`;
+    renderTabs();
+    await Promise.all([loadStaff(), loadPrefs()]);
+    populateAssignees();
+    if (canAssign) document.getElementById('quickAddBtnWrap').innerHTML =
+        `<button class="act primary" onclick="toggleQuickAdd(true)">＋ New task</button>`;
+    await refreshAll();
+}
+
+function renderTabs() {
+    const tabs = [['my', '🙋 My Tasks']];
+    if (canAssign) { tabs.push(['board', '📋 Board']); tabs.push(['feed', '📡 RO Activity']); }
+    document.getElementById('tabs').innerHTML = tabs.map(([id, label]) =>
+        `<button class="tab ${activeTab===id?'active':''}" onclick="setTab('${id}')">${label}</button>`).join('');
+}
+
+function setTab(id) {
+    activeTab = id;
+    renderTabs();
+    document.getElementById('laneTasks').style.display = (id === 'feed') ? 'none' : 'block';
+    document.getElementById('laneFeed').style.display  = (id === 'feed') ? 'block' : 'none';
+    if (id === 'feed') renderFeed(); else renderTasks();
+}
+
+async function loadStaff() {
+    const { data, error } = await getSB().from('staff')
+        .select('name, email, role, active').eq('active', true).order('name');
+    if (error) { console.error(error); return; }
+    staffList = data || [];
+}
+
+function populateAssignees() {
+    const sel = document.getElementById('qaAssignee');
+    sel.innerHTML = staffList.map(s =>
+        `<option value="${s.email.toLowerCase()}">${esc(s.name)}</option>`).join('');
+}
+
+async function loadPrefs() {
+    const { data, error } = await getSB().from('board_prefs')
+        .select('feed_kinds, quiet_days').eq('staff_email', currentUser.email).maybeSingle();
+    if (error) { console.error(error); return; }
+    if (data) prefs = { feed_kinds: data.feed_kinds || DEFAULT_KINDS.slice(), quiet_days: data.quiet_days ?? 21 };
+}
+
+async function savePrefs() {
+    const { error } = await getSB().from('board_prefs').upsert({
+        staff_email: currentUser.email, feed_kinds: prefs.feed_kinds,
+        quiet_days: prefs.quiet_days, updated_at: new Date().toISOString(),
+    });
+    if (error) { console.error(error); alert('Could not save board preferences: ' + error.message); }
+}
+
+// ── DATA ──
+async function refreshAll() {
+    const jobs = [loadTasks()];
+    if (canAssign) jobs.push(loadFeed());
+    await Promise.all(jobs);
+    if (activeTab === 'feed') renderFeed(); else renderTasks();
+}
+
+async function loadTasks() {
+    let q = getSB().from('tasks')
+        .select('*')
+        .in('status', ['open', 'done'])
+        .order('due_at', { ascending: true })
+        .limit(400);
+    // Techs see only their own; managers load everything for the Board.
+    if (!canAssign) q = q.eq('assigned_to_email', currentUser.email);
+    const { data, error } = await q;
+    if (error) { console.error(error); alert('Could not load tasks: ' + error.message); return; }
+    allTasks = data || [];
+    // Recently validated (7 days) for the Done filter, managers only
+    if (canAssign) {
+        const since = new Date(Date.now() - 7 * 86400000).toISOString();
+        const { data: doneRows, error: dErr } = await getSB().from('tasks')
+            .select('*').eq('status', 'validated').gte('validated_at', since)
+            .order('validated_at', { ascending: false }).limit(100);
+        if (!dErr && doneRows) allTasks = allTasks.concat(doneRows);
+    }
+}
+
+async function loadFeed() {
+    const { data, error } = await getSB().from('ro_activity_feed').select('*').limit(1000);
+    if (error) { console.error(error); alert('Could not load RO activity: ' + error.message); return; }
+    feedRows = data || [];
+}
+
+// ── TASK RENDERING ──
+const FILTERS = [
+    ['open', '⏳ Open'], ['overdue', '🔴 Overdue'], ['today', '📅 Due today'],
+    ['needsval', '☑️ Needs validation'], ['done', '✅ Done (7d)'],
+];
+
+function renderTasks() {
+    const isBoard = activeTab === 'board';
+    const mine = isBoard ? allTasks
+        : allTasks.filter(t => t.assigned_to_email === currentUser.email || t.assigned_by_email === currentUser.email);
+    document.getElementById('taskFilters').innerHTML = FILTERS.map(([id, label]) => {
+        const n = mine.filter(t => matchFilter(t, id)).length;
+        return `<button class="fchip ${activeFilter===id?'on':''}" onclick="setFilter('${id}')">${label} (${n})</button>`;
+    }).join('');
+    const rows = mine.filter(t => matchFilter(t, activeFilter));
+    document.getElementById('taskList').innerHTML = rows.length
+        ? rows.map(taskCard).join('')
+        : `<div class="empty">Nothing here. ${activeFilter==='open' ? 'All caught up. 🎉' : ''}</div>`;
+}
+
+function setFilter(id) { activeFilter = id; renderTasks(); }
+
+function matchFilter(t, f) {
+    const now = Date.now(), due = new Date(t.due_at).getTime();
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tomorrow = today.getTime() + 86400000;
+    switch (f) {
+        case 'open':     return t.status === 'open';
+        case 'overdue':  return t.status === 'open' && due < now;
+        case 'today':    return t.status === 'open' && due >= today.getTime() && due < tomorrow;
+        case 'needsval': return t.status === 'done';
+        case 'done':     return t.status === 'validated';
+        default:         return true;
+    }
+}
+
+function taskCard(t) {
+    const now = Date.now(), due = new Date(t.due_at).getTime();
+    const overdue = t.status === 'open' && due < now;
+    const assignee = staffName(t.assigned_to_email), assigner = staffName(t.assigned_by_email);
+    const badges = [];
+    if (overdue) badges.push(`<span class="badge overdue">overdue</span>`);
+    if (t.status === 'done') badges.push(`<span class="badge needsval">awaiting validation</span>`);
+    if (t.priority === 'urgent' || t.priority === 'high')
+        badges.push(`<span class="badge prio-${t.priority}">${t.priority}</span>`);
+    if (t.reminder_count > 0) badges.push(`<span class="badge nags">nagged ×${t.reminder_count}</span>`);
+    if (t.ro_display_id) badges.push(`<span class="badge kind">${esc(t.ro_display_id)}</span>`);
+    if (!t.requires_validation) badges.push(`<span class="badge">auto-close</span>`);
+
+    const acts = [];
+    const isAssignee = t.assigned_to_email === currentUser.email;
+    const isAssigner = t.assigned_by_email === currentUser.email;
+    const isAdmin = userRoles.includes('Admin');
+    if (t.status === 'open' && (isAssignee || isAdmin))
+        acts.push(`<button class="act good" onclick="markDone('${t.id}')">✓ Mark done</button>`);
+    if (t.status === 'done' && (isAssigner || isAdmin)) {
+        acts.push(`<button class="act good" onclick="validateTask('${t.id}')">☑ Validate</button>`);
+        acts.push(`<button class="act warn" onclick="rejectTask('${t.id}')">↩ Not done — reopen</button>`);
+    }
+    if (t.status !== 'validated' && t.status !== 'cancelled' && (isAssigner || isAdmin))
+        acts.push(`<button class="act warn" onclick="cancelTask('${t.id}')">✕ Cancel</button>`);
+
+    return `<div class="card">
+        <div class="row1"><span class="title">${esc(t.title)}</span>${badges.join('')}</div>
+        <div class="meta"><b>${esc(assignee)}</b> · from ${esc(assigner)} · due <b>${fmtDue(t.due_at)}</b>${
+            t.status === 'done' && t.completed_at ? ` · done ${fmtDue(t.completed_at)}` : ''}${
+            t.status === 'validated' && t.validated_at ? ` · ✅ validated ${fmtDue(t.validated_at)}` : ''}</div>
+        ${t.notes ? `<div class="meta" style="margin-top:3px;">${esc(t.notes)}</div>` : ''}
+        ${acts.length ? `<div class="actions">${acts.join('')}</div>` : ''}
+    </div>`;
+}
+
+// ── TASK TRANSITIONS (UI-enforced per spec §4; every one writes task_events) ──
+async function markDone(id) {
+    const now = new Date().toISOString();
+    const t = allTasks.find(x => x.id === id); if (!t) return;
+    const patch = t.requires_validation
+        ? { status: 'done', completed_at: now, completed_by_email: currentUser.email, updated_at: now }
+        : { status: 'validated', completed_at: now, completed_by_email: currentUser.email,
+            validated_at: now, validated_by_email: t.assigned_by_email, updated_at: now };
+    const { error } = await getSB().from('tasks').update(patch).eq('id', id);
+    if (error) { alert('Could not mark done: ' + error.message); return; }
+    await logEvent(id, 'done', t.requires_validation ? 'sent for validation' : 'auto-closed (no validation required)');
+    await refreshAll();
+}
+
+async function validateTask(id) {
+    const now = new Date().toISOString();
+    const { error } = await getSB().from('tasks').update({
+        status: 'validated', validated_at: now, validated_by_email: currentUser.email, updated_at: now,
+    }).eq('id', id);
+    if (error) { alert('Could not validate: ' + error.message); return; }
+    await logEvent(id, 'validated', null);
+    await refreshAll();
+}
+
+async function rejectTask(id) {
+    const reason = prompt('Why is it not done? (goes to the task history)') || '';
+    const now = new Date().toISOString();
+    const { error } = await getSB().from('tasks').update({
+        status: 'open', completed_at: null, completed_by_email: null,
+        reminder_count: 0, last_reminded_at: null, updated_at: now,
+    }).eq('id', id);
+    if (error) { alert('Could not reopen: ' + error.message); return; }
+    await logEvent(id, 'rejected', reason || null);
+    await refreshAll();
+}
+
+async function cancelTask(id) {
+    if (!confirm('Cancel this task? It comes off everyone\'s list.')) return;
+    const now = new Date().toISOString();
+    const { error } = await getSB().from('tasks').update({ status: 'cancelled', updated_at: now }).eq('id', id);
+    if (error) { alert('Could not cancel: ' + error.message); return; }
+    await logEvent(id, 'cancelled', null);
+    await refreshAll();
+}
+
+async function logEvent(taskId, event, detail) {
+    const { error } = await getSB().from('task_events').insert({
+        task_id: taskId, event, actor_email: currentUser.email, detail,
+    });
+    if (error) console.error('task_events write failed:', error.message);
+}
+
+// ── QUICK ADD ──
+function toggleQuickAdd(open) {
+    document.getElementById('quickAdd').classList.toggle('open', open);
+    if (open && !document.getElementById('qaDate').value)
+        document.getElementById('qaDate').value = new Date().toISOString().slice(0, 10);
+}
+
+function applyTemplate(kind) {
+    const title = document.getElementById('qaTitle');
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    document.getElementById('qaDate').value = d.toISOString().slice(0, 10);
+    if (kind === 'callback') { title.value = '📞 Call back: '; document.getElementById('qaPriority').value = 'high'; }
+    if (kind === 'check')    { title.value = '💵 Confirm check received: '; document.getElementById('qaLead').value = '1440'; }
+    if (kind === 'part')     { title.value = '🔩 Order/confirm part: '; }
+    title.focus();
+}
+
+async function createTask(prefill) {
+    const msg = document.getElementById('qaMsg'); msg.textContent = '';
+    const title = document.getElementById('qaTitle').value.trim();
+    const dateV = document.getElementById('qaDate').value;
+    const timeV = document.getElementById('qaTime').value || '16:00';
+    if (!title) { msg.textContent = 'Task title required.'; return; }
+    if (!dateV) { msg.textContent = 'Due date required.'; return; }
+    const dueAt = new Date(`${dateV}T${timeV}`);
+
+    // Optional RO link: resolve typed RO # against repair_orders
+    let roUuid = null, roDisplay = null;
+    const roTyped = document.getElementById('qaRo').value.trim();
+    if (prefill?.ro_uuid) { roUuid = prefill.ro_uuid; roDisplay = prefill.ro_display_id; }
+    else if (roTyped) {
+        const { data: ro } = await getSB().from('repair_orders')
+            .select('id, ro_id').ilike('ro_id', `%${roTyped}%`).is('deleted_at', null).limit(1).maybeSingle();
+        if (!ro) { msg.textContent = `No RO matching "${roTyped}".`; return; }
+        roUuid = ro.id; roDisplay = ro.ro_id;
+    }
+
+    const row = {
+        title,
+        notes: document.getElementById('qaNotes').value.trim() || null,
+        ro_uuid: roUuid, ro_display_id: roDisplay,
+        assigned_to_email: document.getElementById('qaAssignee').value,
+        assigned_by_email: currentUser.email,
+        due_at: dueAt.toISOString(),
+        remind_lead_minutes: parseInt(document.getElementById('qaLead').value, 10) || 0,
+        requires_validation: document.getElementById('qaValidate').checked,
+        priority: document.getElementById('qaPriority').value,
+        source: prefill?.source || 'manual',
+        source_ref: prefill?.source_ref || null,
+    };
+    const { error } = await getSB().from('tasks').insert(row).select().maybeSingle();
+    if (error) {
+        if ((error.code || '') === '23505' || /uq_tasks_live_source_ref/.test(error.message))
+            msg.textContent = 'That item already has a live task.';
+        else msg.textContent = 'Could not create task: ' + error.message;
+        return;
+    }
+    ['qaTitle','qaNotes','qaRo'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('qaMsg').textContent = '';
+    toggleQuickAdd(false);
+    await refreshAll();
+}
+
+// ── FEED ──
+function renderFeed() {
+    document.getElementById('feedChips').innerHTML = Object.entries(FEED_KINDS).map(([k, v]) => {
+        const on = prefs.feed_kinds.includes(k);
+        return `<button class="fchip ${on?'on':''}" title="${v.desc}" onclick="toggleKind('${k}')">${v.label}</button>`;
+    }).join('');
+    const cutoff = Date.now() - prefs.quiet_days * 86400000;
+    const rows = feedRows
+        .filter(r => prefs.feed_kinds.includes(r.kind))
+        .filter(r => r.kind !== 'quiet_ro' || (r.event_at && new Date(r.event_at).getTime() < cutoff))
+        .sort((a, b) => new Date(a.event_at || 0) - new Date(b.event_at || 0));
+    document.getElementById('feedList').innerHTML = rows.length
+        ? rows.map(feedCard).join('')
+        : `<div class="empty">Nothing matches the selected kinds.</div>`;
+}
+
+async function toggleKind(k) {
+    const i = prefs.feed_kinds.indexOf(k);
+    if (i >= 0) prefs.feed_kinds.splice(i, 1); else prefs.feed_kinds.push(k);
+    renderFeed();
+    await savePrefs();
+}
+
+function feedCard(r) {
+    const kindMeta = FEED_KINDS[r.kind] || { label: r.kind };
+    const quiet = r.kind === 'quiet_ro';
+    const days = r.event_at ? Math.floor((Date.now() - new Date(r.event_at).getTime()) / 86400000) : null;
+    const when = quiet
+        ? `<b>${days} days quiet</b>`
+        : (r.event_at ? `<b>${fmtDue(r.event_at)}</b>` : '');
+    return `<div class="card">
+        <div class="row1">
+            <span class="badge kind">${kindMeta.label}</span>
+            <span class="title">${esc(r.title || '')}</span>
+            ${r.ro_display_id ? `<span class="badge">${esc(r.ro_display_id)}</span>` : ''}
+        </div>
+        <div class="meta">${r.customer_name ? `<b>${esc(r.customer_name)}</b> · ` : ''}${when}${
+            r.detail ? ` · ${esc(r.detail)}` : ''}${r.actor ? ` · ${esc(r.actor)}` : ''}</div>
+        <div class="actions"><button class="act" onclick='promoteFeedItem(${JSON.stringify(feedRef(r)).replace(/'/g, "&#39;")})'>⭐ Make task</button></div>
+    </div>`;
+}
+
+function feedRef(r) {
+    return { kind: r.kind, title: r.title, ro_uuid: r.ro_uuid, ro_display_id: r.ro_display_id,
+             customer: r.customer_name, ref: `${r.ref_table}:${r.ref_id}` };
+}
+
+function promoteFeedItem(ref) {
+    setTab('my'); // bring the quick-add into view
+    toggleQuickAdd(true);
+    document.getElementById('qaTitle').value =
+        `${ref.title || ''}${ref.customer ? ' — ' + ref.customer : ''}`.trim();
+    document.getElementById('qaRo').value = ref.ro_display_id || '';
+    window._promotePrefill = { source: 'promoted', source_ref: ref.ref,
+                              ro_uuid: ref.ro_uuid, ro_display_id: ref.ro_display_id };
+    // createTask reads the prefill once, then clears it
+    const origCreate = createTask;
+    document.querySelector('#quickAdd .opts .primary').onclick = async () => {
+        const p = window._promotePrefill; window._promotePrefill = null;
+        await origCreate(p);
+        document.querySelector('#quickAdd .opts .primary').onclick = () => createTask();
+    };
+}
+
+// ── UTILS ──
+function staffName(email) {
+    const s = staffList.find(x => x.email.toLowerCase() === (email || '').toLowerCase());
+    return s ? s.name : (email || '?');
+}
+
+function fmtDue(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+           d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+</script>
+</body>
+</html>
