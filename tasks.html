@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Task Manager  tasks-v1.0
+    PRVS Task Manager  tasks-v1.1
     Released: 2026-08-27 (Session 186)
     Spec: docs/specs/TASK_MANAGER_SPEC.md
+    v1.1: Light restyle — mirrors the Messages board palette (jersey white /
+        celeste / navy / gold), Roland S186 same-day adjustment, may revert.
+        Colors only; no markup or logic changes.
     v1.0: Phase 1 — Todoist-style task board (Roland/Lynn directive S186).
         Two lanes: TASKS (assigned obligations, lifecycle open -> done -> validated,
         per-task validation toggle) and RO ACTIVITY (read-through ro_activity_feed
@@ -25,20 +28,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
+        /* tasks-v1.1: mirrors the Messages board light palette (Roland S186,
+           may revert) — jersey-white panes, celeste sky-blue accents,
+           navy-black text, gold for validation. Same vars as messages.html. */
         :root {
-            color-scheme: dark;
-            --bg-main: #0d0f12;
-            --bg-surface: #1a1d24;
-            --bg-elevated: #252930;
-            --border-color: #2d3139;
-            --text-primary: #e8eaed;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --accent-info: #0a84ff;
-            --accent-low: #34c759;
-            --accent-medium: #ffcc00;
-            --accent-urgent: #ff3b30;
-            --accent-high: #ff9500;
+            color-scheme: light;
+            --bg-main: #F5FAFE;         /* just off white                    */
+            --bg-surface: #FFFFFF;      /* panes — jersey white              */
+            --bg-elevated: #EAF4FB;     /* celeste mist                      */
+            --border-color: #BBD9F0;    /* celeste-soft borders              */
+            --text-primary: #10243E;    /* navy-black                        */
+            --text-secondary: #53718E;  /* calm slate blue                   */
+            --text-muted: #7E93A8;
+            --accent-info: #2F6FA8;     /* readable link blue                */
+            --celeste: #75AADB;
+            --celeste-deep: #4E8FC7;
+            --accent-low: #2E9E52;      /* green, darkened for white bg      */
+            --accent-medium: #C9A544;   /* gold — validation / third star    */
+            --accent-urgent: #D64545;   /* red, darkened for white bg        */
+            --accent-high: #C87A2B;     /* amber, darkened for white bg      */
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: var(--bg-main); color: var(--text-primary); font-family: 'Barlow Condensed', sans-serif; min-height: 100vh; }
@@ -55,10 +63,10 @@
         .login-error { color: var(--accent-urgent); margin-top: 12px; font-size: 0.85rem; }
         .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
         .tab { padding: 7px 16px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; font-family: inherit; font-size: 1rem; font-weight: 600; }
-        .tab.active { background: var(--accent-info); border-color: var(--accent-info); color: #fff; }
+        .tab.active { background: var(--celeste-deep); border-color: var(--celeste-deep); color: #fff; }
         .filters, .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
         .fchip { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; font-family: inherit; font-size: 0.85rem; }
-        .fchip.on { border-color: var(--accent-info); color: var(--accent-info); background: rgba(10,132,255,0.12); }
+        .fchip.on { border-color: var(--celeste-deep); color: var(--accent-info); background: rgba(117,170,219,0.18); }
         .card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
         .card .row1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
         .card .title { font-size: 1.05rem; font-weight: 600; }
@@ -74,8 +82,8 @@
         .badge.nags { color: var(--text-muted); }
         .badge.kind { border-color: var(--accent-info); color: var(--accent-info); }
         button.act { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border-color); background: var(--bg-elevated); color: var(--text-primary); cursor: pointer; font-family: inherit; font-size: 0.85rem; }
-        button.act.primary { background: var(--accent-info); border-color: var(--accent-info); color: #fff; }
-        button.act.good { background: var(--accent-low); border-color: var(--accent-low); color: #06280f; font-weight: 600; }
+        button.act.primary { background: var(--celeste-deep); border-color: var(--celeste-deep); color: #fff; }
+        button.act.good { background: var(--accent-low); border-color: var(--accent-low); color: #fff; font-weight: 600; }
         button.act.warn { border-color: var(--accent-urgent); color: var(--accent-urgent); background: transparent; }
         .quickadd { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; display: none; }
         .quickadd.open { display: block; }
@@ -163,7 +171,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-const TASKS_VERSION = 'tasks-v1.0';
+const TASKS_VERSION = 'tasks-v1.1';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
