@@ -1,8 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Task Manager  tasks-v1.2
+    PRVS Task Manager  tasks-v1.3
     Released: 2026-08-27 (Session 186)
     Spec: docs/specs/TASK_MANAGER_SPEC.md
+    v1.3: EDIT open tasks (Roland field test S186 — set the wrong due time and
+        had no way to fix it). ✎ Edit on any open task (assigner or Admin);
+        quick-add form doubles as the editor. Due change RESETS the nag
+        schedule (reminder_count/last_reminded_at/escalated_at). Reassignment
+        fires the v1.2 assignment notice at the new assignee. History events:
+        reassigned / due_changed / edited (task_events CHECK widened by
+        migration task_events_edited_s186.sql — run it BEFORE this ships).
     v1.2: Assignment notify on create (Roland field test S186). After a task
         insert, the page calls send-task-reminders v1.1 { notify_task: id } —
         assignee gets an immediate SMS + email with the board link. Fire-and-
@@ -153,7 +160,7 @@
         <div class="opts">
             <label style="display:flex;align-items:center;gap:6px; text-transform:none; font-size:0.85rem; color:var(--text-secondary);">
                 <input type="checkbox" id="qaValidate" checked> I validate when done</label>
-            <button class="act primary" onclick="createTask()">Add task</button>
+            <button class="act primary" id="qaSubmit" onclick="createTask()">Add task</button>
             <button class="act" onclick="toggleQuickAdd(false)">Cancel</button>
             <span id="qaMsg" style="color:var(--accent-urgent); font-size:0.8rem;"></span>
         </div>
@@ -175,7 +182,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-const TASKS_VERSION = 'tasks-v1.2';
+const TASKS_VERSION = 'tasks-v1.3';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
@@ -407,6 +414,8 @@ function taskCard(t) {
         acts.push(`<button class="act good" onclick="validateTask('${t.id}')">☑ Validate</button>`);
         acts.push(`<button class="act warn" onclick="rejectTask('${t.id}')">↩ Not done — reopen</button>`);
     }
+    if (t.status === 'open' && (isAssigner || isAdmin))
+        acts.push(`<button class="act" onclick="editTask('${t.id}')">✎ Edit</button>`);
     if (t.status !== 'validated' && t.status !== 'cancelled' && (isAssigner || isAdmin))
         acts.push(`<button class="act warn" onclick="cancelTask('${t.id}')">✕ Cancel</button>`);
 
@@ -472,11 +481,41 @@ async function logEvent(taskId, event, detail) {
     if (error) console.error('task_events write failed:', error.message);
 }
 
-// ── QUICK ADD ──
+// ── QUICK ADD / EDIT ──
+let editingTask = null;   // v1.3: task being edited, or null for create mode
+
 function toggleQuickAdd(open) {
     document.getElementById('quickAdd').classList.toggle('open', open);
     if (open && !document.getElementById('qaDate').value)
         document.getElementById('qaDate').value = new Date().toISOString().slice(0, 10);
+    if (!open) {
+        editingTask = null;
+        window._promotePrefill = null;
+        document.getElementById('qaSubmit').textContent = 'Add task';
+        document.getElementById('qaSubmit').onclick = () => createTask();
+    }
+}
+
+// v1.3: assigner/admin edits an open task — same form, update path.
+function editTask(id) {
+    const t = allTasks.find(x => x.id === id);
+    if (!t) return;
+    editingTask = t;
+    toggleQuickAdd(true);
+    const due = new Date(t.due_at);
+    document.getElementById('qaTitle').value = t.title;
+    document.getElementById('qaNotes').value = t.notes || '';
+    document.getElementById('qaRo').value = t.ro_display_id || '';
+    document.getElementById('qaAssignee').value = t.assigned_to_email;
+    document.getElementById('qaDate').value =
+        `${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,'0')}-${String(due.getDate()).padStart(2,'0')}`;
+    document.getElementById('qaTime').value =
+        `${String(due.getHours()).padStart(2,'0')}:${String(due.getMinutes()).padStart(2,'0')}`;
+    document.getElementById('qaPriority').value = t.priority;
+    document.getElementById('qaLead').value = String(t.remind_lead_minutes);
+    document.getElementById('qaValidate').checked = t.requires_validation;
+    document.getElementById('qaSubmit').textContent = 'Save changes';
+    document.getElementById('qaTitle').focus();
 }
 
 function applyTemplate(kind) {
@@ -507,6 +546,49 @@ async function createTask(prefill) {
             .select('id, ro_id').ilike('ro_id', `%${roTyped}%`).is('deleted_at', null).limit(1).maybeSingle();
         if (!ro) { msg.textContent = `No RO matching "${roTyped}".`; return; }
         roUuid = ro.id; roDisplay = ro.ro_id;
+    }
+
+    // ── v1.3: EDIT path (assigner/admin) ─────────────────────────────
+    if (editingTask) {
+        const t = editingTask;
+        const now = new Date().toISOString();
+        const newAssignee = document.getElementById('qaAssignee').value;
+        const patch = {
+            title,
+            notes: document.getElementById('qaNotes').value.trim() || null,
+            ro_uuid: roUuid, ro_display_id: roDisplay,
+            assigned_to_email: newAssignee,
+            due_at: dueAt.toISOString(),
+            remind_lead_minutes: parseInt(document.getElementById('qaLead').value, 10) || 0,
+            requires_validation: document.getElementById('qaValidate').checked,
+            priority: document.getElementById('qaPriority').value,
+            updated_at: now,
+        };
+        const dueChanged = patch.due_at !== t.due_at &&
+            new Date(patch.due_at).getTime() !== new Date(t.due_at).getTime();
+        const reassigned = newAssignee !== t.assigned_to_email;
+        if (dueChanged) {   // new due date = fresh nag schedule
+            patch.reminder_count = 0; patch.last_reminded_at = null; patch.escalated_at = null;
+        }
+        const { error: upErr } = await getSB().from('tasks').update(patch).eq('id', t.id);
+        if (upErr) { msg.textContent = 'Could not save: ' + upErr.message; return; }
+        const changes = [];
+        if (title !== t.title) changes.push('title');
+        if (dueChanged) changes.push(`due ${fmtDue(t.due_at)} → ${fmtDue(patch.due_at)}`);
+        if (reassigned) changes.push(`assignee ${staffName(t.assigned_to_email)} → ${staffName(newAssignee)}`);
+        if (patch.priority !== t.priority) changes.push(`priority ${t.priority} → ${patch.priority}`);
+        await logEvent(t.id, reassigned ? 'reassigned' : (dueChanged ? 'due_changed' : 'edited'),
+            changes.join('; ') || 'details edited');
+        if (reassigned) {   // new assignee hears about it immediately
+            fetch(`${SUPABASE_URL}/functions/v1/send-task-reminders`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notify_task: t.id }),
+            }).catch(e => console.error('reassign notify failed:', e));
+        }
+        ['qaTitle','qaNotes','qaRo'].forEach(id => document.getElementById(id).value = '');
+        toggleQuickAdd(false);
+        await refreshAll();
+        return;
     }
 
     const row = {
