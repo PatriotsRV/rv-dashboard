@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PRVS — Enhancement Request Triage</title>
+<title>PRVS - Enhancement Request Triage</title>
 <style>
   :root{
     --bg:#0b1220; --panel:#111c30; --panel2:#0e1626; --line:#1e2d45;
@@ -39,8 +39,8 @@
 </style>
 </head>
 <body>
-  <h1>PRVS — Enhancement Request Triage</h1>
-  <div class="sub">2026-08-22 | Session 178 full pass | vs index.html v1.496 + messages v1.24 (HEAD 0d2687b) | all 37 unreviewed ERs, grouped by function then LOE/risk | report: docs/ER_TRIAGE_2026-08-22.md</div>
+  <h1>PRVS - Enhancement Request Triage</h1>
+  <div class="sub">2026-08-23 | nightly runner, incremental pass | vs index.html v1.498 + messages v1.24 (HEAD e8666a9) | the 25 still-open ERs, grouped by function then LOE/risk | bug bucket is EMPTY - all 4 S178 bugs plus the 5 quick wins shipped in v1.497 / v1.498 | report: docs/ER_TRIAGE_2026-08-23.md</div>
 
   <div class="cards" id="stats"></div>
 
@@ -53,135 +53,103 @@
     <span class="pill" data-f="S">S</span>
     <span class="pill" data-f="DATA">Data</span>
     <span class="pill" data-f="DUP">Dup</span>
-    <input id="q" placeholder="Search ERs…">
+    <input id="q" placeholder="Search ERs...">
   </div>
 
   <div id="list"></div>
 
 <script>
 const ERS = [
- // ---- GROUP 0: BUGS ----
- {id:"225a2535",by:"Brandon",date:"08-05",loe:"BUG",theme:"0 · Bugs (front of the line)",
-  desc:"DATA-INTEGRITY: insurance scan info bleeds between customers.",
-  verdict:"Re-verified at HEAD 0d2687b: window._lastEstimateScan set per scan (js/insurance.js L118) but read keyed by MODE only (L43-44); closeEditModal deliberately keeps it (js/ro-crud.js L1326). Scan RO A, close unsaved, open RO B -> A's data merges onto B. Same wrong-RO family as Kain/Ivins (S176). Fix: key by RO UUID (editingROSupabaseId exists since v1.496) + clear on close."},
- {id:"d94a418a",by:"Brandon",date:"07-27",loe:"BUG",theme:"0 · Bugs (front of the line)",
-  desc:"Multi-line RO Status notes render bottom-line-first.",
-  verdict:"Re-verified: js/render.js L571 does split('\\n').map(escapeHtml).reverse() on the whole box, reversing lines WITHIN a note. Same pattern L581 (Customer Comm). Render-only, no data loss. Severity data-display."},
- {id:"5ca724ff",by:"Lynn",date:"08-06",loe:"BUG",theme:"0 · Bugs (front of the line)",
-  desc:"Desktop worklist drag-reorder does not work (mobile does).",
-  verdict:"Re-verified: js/work-list.js dragstart (L415) never calls e.dataTransfer.setData / sets effectAllowed - Firefox and some Chrome paths refuse the drag. ~2-line fix. Severity small (saved priority intact)."},
- {id:"d4d0eeba",by:"Brandon",date:"07-22",loe:"BUG",theme:"0 · Bugs (front of the line)",
-  desc:"Clicking an RO in My Work List / Messages does not land on the board card.",
-  verdict:"Re-verified: scrollToROInBoard (index.html L4307) only matches already-rendered [data-ro-index] cards, else toasts; its Clear Filters action re-renders but never re-scrolls. Messages link path (js/qr.js) same class. Severity small (navigation)."},
+ // ---- GROUP 0 (BUGS) IS EMPTY: all four shipped in v1.497 (S178). ----
+ // 225a2535 insurance-scan bleed, d94a418a note reversal, 5ca724ff desktop drag,
+ // d4d0eeba RO-link tracking - all re-verified fixed at HEAD e8666a9 on 2026-08-23.
  // ---- GROUP 1: RO STATUSES & SORT ----
- {id:"44419de9",by:"Lynn",date:"08-12",loe:"S",theme:"1 · RO Statuses & Board Sort — ship as ONE batch (both DB CHECK twins! S172 lesson)",
+ {id:"44419de9",by:"Lynn",date:"08-12",loe:"S",theme:"1 - RO Statuses & Board Sort - ship as ONE batch (both DB CHECK twins! S172 lesson)",
   desc:"New statuses: Need Estimate / Awaiting Estimate / Estimate Declined / Job Declined-Close.",
   verdict:"None of the 4 exist. Each status add hits ~9 hardcoded UI spots + BOTH CHECK constraints (repair_orders + cashiered). Canonical set is 17 post-S175; this batch -> 23. Confirm with Lynn whether all 4 survive or some collapse with Canceled."},
- {id:"972af03c",by:"Lynn",date:"07-17",loe:"S",theme:"1 · RO Statuses & Board Sort — ship as ONE batch (both DB CHECK twins! S172 lesson)",
-  desc:"Add status CANCELED — keep record + notes, never delete.",
-  verdict:"Absent. Add status + color/priority maps; exclude from on-lot and queue counts. Largely also solves Brandon's 5fbfa299 archive ask."},
- {id:"3e746c18",by:"Lynn",date:"08-03",loe:"S",theme:"1 · RO Statuses & Board Sort — ship as ONE batch (both DB CHECK twins! S172 lesson)",
+ {id:"972af03c",by:"Lynn",date:"07-17",loe:"S",theme:"1 - RO Statuses & Board Sort - ship as ONE batch (both DB CHECK twins! S172 lesson)",
+  desc:"Add status CANCELED - keep record + notes, never delete.",
+  verdict:"Absent: STATUS_PROGRESS_MAP (js/config.js L151-164) ends at Delivered/Cashed Out. Add status + color/priority maps; exclude from on-lot and queue counts. Largely also solves Brandon's 5fbfa299 archive ask. Canonical for declined dup eb00a68d."},
+ {id:"3e746c18",by:"Lynn",date:"08-03",loe:"S",theme:"1 - RO Statuses & Board Sort - ship as ONE batch (both DB CHECK twins! S172 lesson)",
   desc:"Add status TOTALED OUT.",
-  verdict:"Absent. Distinct terminal value; build together with Canceled, exclude both from queue/on-lot counts."},
- {id:"d1844e46",by:"Lynn",date:"07-16",loe:"S",theme:"1 · RO Statuses & Board Sort — ship as ONE batch (both DB CHECK twins! S172 lesson)",
+  verdict:"Absent (zero totaled/totalled hits). Distinct terminal value; build together with Canceled and exclude both from the queue/on-lot counts (js/render.js L656-658, L718-721)."},
+ {id:"d1844e46",by:"Lynn",date:"07-16",loe:"S",theme:"1 - RO Statuses & Board Sort - ship as ONE batch (both DB CHECK twins! S172 lesson)",
   desc:"Sort board by promised date then oldest-on-lot, Shop Ops pinned top.",
   verdict:"Board sorts on one blended calculatePriority score (js/render.js L30-39, shop pin L35-37); no selectable sort mode exists. Needs a sort-mode control; pairs with the status batch release."},
  // ---- GROUP 2: NOTES SEPARATION & TASKS ----
- {id:"a03677e6",by:"Brandon",date:"08-07",loe:"S",theme:"2 · RO Card: Notes Separation & Task Tracking",
+ {id:"a03677e6",by:"Brandon",date:"08-07",loe:"S",theme:"2 - RO Card: Notes Separation & Task Tracking",
   desc:"Move machine lines (NOTIFICATION SENT, replies, scheduled) out of RO Status Updates.",
-  verdict:"Machine audit lines write as notes type ro_status and crowd the box (render.js L571 stream). CAUTION: Roland reversed exactly this kind of retarget for lead notes in v1.491 - confirm the target stream with him first."},
- {id:"2deb8f30",by:"Lynn",date:"08-13",loe:"DUP",theme:"2 · RO Card: Notes Separation & Task Tracking",
-  desc:"Store RO notifications outside RO Status (separate view).",
-  verdict:"DUPLICATE of a03677e6 (Brandon 08-07) - same ask. Recommend declined with pointer once approved."},
- {id:"af14b3cb",by:"Lynn",date:"05-21",loe:"L",theme:"2 · RO Card: Notes Separation & Task Tracking",
+  verdict:"Re-verified 08-23 at HEAD e8666a9: audit lines still insert with type='ro_status' (js/ro-crud.js L316/L358/L393/L545/L602) and crowd the box; customer_comm renders separately. CAUTION: Roland reversed exactly this kind of retarget for lead notes in v1.491 - confirm the target stream first. Absorbs declined dup 2deb8f30."},
+ {id:"af14b3cb",by:"Lynn",date:"05-21",loe:"L",theme:"2 - RO Card: Notes Separation & Task Tracking",
   desc:"Per-RO TO-DO list w/ daily reminder; items persist until completed.",
-  verdict:"Absent: shop_tasks has no ro_id; ro_tasks/task_tracker greps = 0. Needs per-RO tasks table + add/complete UI + daily reminder. ece91cba supplies the concrete spec (who/when notation, roles of each box)."},
- {id:"ece91cba",by:"Lynn",date:"08-17",loe:"DUP",theme:"2 · RO Card: Notes Separation & Task Tracking",
-  desc:"Bulleted TO-DO list on the RO; anyone adds/checks; notate who/when.",
-  verdict:"DUPLICATE of af14b3cb but carries the best spec detail - fold in as the design input, then declined with pointer."},
- {id:"5925fc01",by:"Lynn",date:"04-09",loe:"L",theme:"2 · RO Card: Notes Separation & Task Tracking",
+  verdict:"Re-verified absent 08-23: ro_tasks / task_tracker / customer_task greps return 0 across js, index.html and supabase, and shop_tasks has no ro_id. Needs a per-RO tasks table + add/complete UI + daily reminder. Declined dup ece91cba supplies the spec (who/when on add and complete, anyone can check)."},
+ {id:"5925fc01",by:"Lynn",date:"04-09",loe:"L",theme:"2 - RO Card: Notes Separation & Task Tracking",
   desc:"Notify team on every RO update + daily digest with scraped to-dos.",
-  verdict:"PARTIAL: daily digest half ships as send-manager-report; single-event notifies exist. Remaining half (per-update notify + to-do scraping) overlaps the af14b3cb task tracker - design together."},
- // ---- GROUP 3: RO FIELDS ----
- {id:"ac8265c8",by:"Lynn",date:"08-05",loe:"S",theme:"3 · RO Fields & Data Capture",
-  desc:"Add mileage to the RO.",
-  verdict:"Zero mileage/odometer hits repo-wide. One repair_orders.mileage column + New/Edit inputs + card readout. Could ride the Group 1 migration."},
- {id:"a195e4ab",by:"Brandon",date:"08-20",loe:"M",theme:"3 · RO Fields & Data Capture",
+  verdict:"PARTIAL: daily digest half ships as send-manager-report; single-event notifies exist (service_added_notify, urgent_update_notify). Remaining half (per-update notify + to-do scraping) overlaps the af14b3cb task tracker - design together."},
+ // ---- GROUP 3: RO FIELDS (mileage + contrast shipped in v1.498) ----
+ {id:"a195e4ab",by:"Brandon",date:"08-20",loe:"M",theme:"3 - RO Fields & Data Capture",
   desc:"Track checks received on an RO (multiple, with amounts/dates).",
-  verdict:"Zero check/payment tracking today; only the single-value hybrid Customer Pay block. Needs a small payments-list design (table or jsonb) - decide shape with Roland."},
- {id:"fa35e3df",by:"Lynn",date:"08-18",loe:"S",theme:"3 · RO Fields & Data Capture",
-  desc:"Get rid of the hard-to-read blue font.",
-  verdict:"Cosmetic/contrast: #3b82f6 parts chip, .comm-thread-link, #0a84ff key-date chip, #667eea log-duration all sit ~4.0-4.6:1. Pure CSS pass; bundle with the misc-UI batch."},
+  verdict:"Zero check/payment tracking today; the only capture is the single-value hybrid Customer Pay block (index.html L7203-7246 / L7782-7804) - method Check but no check number, saved flat into insurance_data JSONB and never shown on the card. Needs a per-RO checks table + add/list UI + cashiered mirror."},
  // ---- GROUP 4: MESSAGES POLISH ----
- {id:"9aab7550",by:"Brandon",date:"07-21",loe:"S",theme:"4 · Messages UX Polish — one messages-v1.25 batch",
+ {id:"9aab7550",by:"Brandon",date:"07-21",loe:"S",theme:"4 - Messages UX Polish - one messages-v1.25 batch",
   desc:"Make unread conversations much more visible.",
-  verdict:"Only an 8px gold dot when last_direction=inbound AND open. Add bold/tinted row treatment."},
- {id:"21fc3a9d",by:"Brandon",date:"07-21",loe:"S",theme:"4 · Messages UX Polish — one messages-v1.25 batch",
+  verdict:"Only an 8px gold dot when last_direction=inbound AND open; S166's manual Mark-unread button helps but the visual is unchanged. Add bold/tinted row treatment."},
+ {id:"21fc3a9d",by:"Brandon",date:"07-21",loe:"S",theme:"4 - Messages UX Polish - one messages-v1.25 batch",
   desc:"Rescale conversation-list text for readability.",
-  verdict:"Fixed rem sizes, no user control. Add persisted font-scale control."},
- {id:"f1e6e311",by:"Brandon",date:"07-21",loe:"S",theme:"4 · Messages UX Polish — one messages-v1.25 batch",
+  verdict:"Fixed rem sizes, no user control (zero font-scale / textSize hits). Add a persisted font-scale control."},
+ {id:"f1e6e311",by:"Brandon",date:"07-21",loe:"S",theme:"4 - Messages UX Polish - one messages-v1.25 batch",
   desc:"Clear (x) button in the conversation search.",
   verdict:"convoSearch is a plain input, reset only programmatically. Add clear button + re-filter."},
- {id:"6e9ca4dc",by:"Brandon",date:"07-21",loe:"S",theme:"4 · Messages UX Polish — one messages-v1.25 batch",
+ {id:"6e9ca4dc",by:"Brandon",date:"07-21",loe:"S",theme:"4 - Messages UX Polish - one messages-v1.25 batch",
   desc:"Remove the redundant 'Added to every send' signature preview.",
   verdict:"Already hidden on mobile (media query); still shows on desktop + RO-card composer. Kill or collapse everywhere; signature still sends."},
- {id:"ca0f7ed9",by:"Brandon",date:"08-03",loe:"S",theme:"4 · Messages UX Polish — one messages-v1.25 batch",
+ {id:"ca0f7ed9",by:"Brandon",date:"08-03",loe:"S",theme:"4 - Messages UX Polish - one messages-v1.25 batch",
   desc:"Auto-populate lead info from the dashboard when the customer already exists.",
   verdict:"renderLeadInfo reads only the conversation's own columns; selectConversation already computes phone-matched linked ROs but never passes them (messages.html L1744). Pass linked, fall back to RO rv/service."},
  // ---- GROUP 5: PARTS ----
- {id:"8d885331",by:"Lynn",date:"04-09",loe:"S",theme:"5 · Parts & Inventory",
+ {id:"8d885331",by:"Lynn",date:"04-09",loe:"S",theme:"5 - Parts & Inventory",
   desc:"Reorder the parts-entry form fields.",
   verdict:"Form unchanged; the ask is a field reorder. BLOCKED on Lynn supplying the target layout, not on effort."},
- {id:"b19975d4",by:"Lynn",date:"04-09",loe:"L",theme:"5 · Parts & Inventory",
+ {id:"b19975d4",by:"Lynn",date:"04-09",loe:"L",theme:"5 - Parts & Inventory",
   desc:"Parts returned to supplier / warrantied by supplier.",
-  verdict:"Partial infra only ('Returned' status + return-deadline input); no RMA/reason/credit flow. Overlaps open TODO GH#24 Phase 2 Parts Returns - merge into that build."},
- {id:"14f35f95",by:"Lynn",date:"04-09",loe:"XL",theme:"5 · Parts & Inventory",
+  verdict:"Partial infra only ('Returned' status + return-deadline input); no RMA/reason/credit flow. Overlaps open TODO GH#24 Phase 2 Parts Returns - merge into that build. Canonical for declined dup 86bbaf50."},
+ {id:"14f35f95",by:"Lynn",date:"04-09",loe:"XL",theme:"5 - Parts & Inventory",
   desc:"Parts stock inventory (order 25, use 5, 20 searchable in-house).",
   verdict:"Zero inventory hits repo-wide; parts are per-RO line items only. New subsystem: inventory table + receive/consume/adjust + search. Needs own spec + Roland go/no-go."},
  // ---- GROUP 6: WORK ORDERS ----
- {id:"2f752d40",by:"Jason",date:"07-21",loe:"S",theme:"6 · Work Orders",
+ {id:"2f752d40",by:"Jason",date:"07-21",loe:"S",theme:"6 - Work Orders",
   desc:"WO dollar amount auto-populates from total hours x $195 labor rate.",
-  verdict:"woFormDollar and woFormEstHours are independent manual inputs; no LABOR_RATE constant exists. Add config constant + auto-fill (editable override safest)."},
+  verdict:"woFormDollar and woFormEstHours are independent manual inputs; no LABOR_RATE constant exists. Add config constant + auto-fill respecting the dollarLocked gate (editable override safest)."},
  // ---- GROUP 7: CHECK-IN ----
- {id:"6bb61db2",by:"Riley",date:"07-22",loe:"S",theme:"7 · Check-In / Time Clock",
+ {id:"6bb61db2",by:"Riley",date:"07-22",loe:"S",theme:"7 - Check-In / Time Clock",
   desc:"Compact-view clock in/out button + clocked-in indicator at login (all layouts).",
-  verdict:"Compact actions row has no check-in button; no clocked-into indicator anywhere. CANONICAL spec for this theme (folds in e06d747e)."},
- {id:"e06d747e",by:"Riley",date:"04-10",loe:"S",theme:"7 · Check-In / Time Clock",
+  verdict:"Compact actions row (js/render.js L228-235) has no check-in button; no clocked-into indicator anywhere. CANONICAL spec for this theme (folds in e06d747e)."},
+ {id:"e06d747e",by:"Riley",date:"04-10",loe:"S",theme:"7 - Check-In / Time Clock",
   desc:"Tech check-in float for ease of access.",
   verdict:"Underspecified; almost certainly the same ask as 6bb61db2 - fold in and build once."},
- // ---- GROUP 8: CUSTOMER MGMT ----
- {id:"0e172b2c",by:"Sofia",date:"07-16",loe:"M",theme:"8 · Customer / Account Management",
+ // ---- GROUP 8: CUSTOMER MGMT (Hubert data fix closed in S178) ----
+ {id:"0e172b2c",by:"Sofia",date:"07-16",loe:"M",theme:"8 - Customer / Account Management",
   desc:"Merge duplicate customer accounts created under different spellings.",
-  verdict:"js/duplicates.js merges only same-base-RO-id groups (regex L36); different spellings never detected. Needs name/phone-similarity detection + verify-then-merge step."},
- {id:"5fbfa299",by:"Brandon",date:"06-30",loe:"M",theme:"8 · Customer / Account Management",
+  verdict:"js/duplicates.js merges only same-base-RO-id groups (regex L36); different spellings never detected. Needs name/phone-similarity detection + verify-then-merge step. The one-off Hubert cleanup was 3f254929, now closed."},
+ {id:"5fbfa299",by:"Brandon",date:"06-30",loe:"M",theme:"8 - Customer / Account Management",
   desc:"Archive quote-only customers/units that never moved forward.",
   verdict:"Only archive path is cashiered. Largely solved by Group 1's Canceled status - decide if a board filter / soft-archive is still needed on top."},
- {id:"3f254929",by:"Sofia",date:"07-16",loe:"DATA",theme:"8 · Customer / Account Management",
-  desc:"Delete the misspelled Steve Hubert RO (correct spelling Huebert, customer verified).",
-  verdict:"Data correction, no code change. Guarded SELECT-then-soft-delete SQL delivered in docs/ER_TRIAGE_2026-08-22.md for Roland to run."},
  // ---- GROUP 9: RAF / E-SIGN ----
- {id:"5fec3eca",by:"Sofia",date:"07-15",loe:"S",theme:"9 · RAF / E-Signature",
+ {id:"5fec3eca",by:"Sofia",date:"07-15",loe:"S",theme:"9 - RAF / E-Signature",
   desc:"Show customer address on the emailed RAF copy.",
-  verdict:"raf_copy branch of send-quote-email has no customerAddress in payload or template (address exists only in lead_staff_notify branch). Edge-fn deploy, no dashboard release."},
- {id:"0448de62",by:"Sofia",date:"06-11",loe:"L",theme:"9 · RAF / E-Signature",
+  verdict:"raf_copy branch of send-quote-email (L387) has no customerAddress in payload or template (address exists only in the lead_staff_notify branch). Edge-fn deploy, no dashboard release."},
+ {id:"0448de62",by:"Sofia",date:"06-11",loe:"L",theme:"9 - RAF / E-Signature",
   desc:"Send the authorization form remotely for e-signature.",
   verdict:"Signing is kiosk-only; zero remote-sign infrastructure. Needs tokenized public signing page + delivery + signed-form storage. Pairs with the S166 short-link machinery."},
- // ---- GROUP 10: MISC UI ----
- {id:"d432863a",by:"Brandon",date:"07-21",loe:"S",theme:"10 · Misc UI Quick Wins",
-  desc:"Patriots-logo favicon so the tab stands out.",
-  verdict:"Zero favicon/rel=icon hits in any page. Add favicon + apple-touch-icon everywhere - ALSO closes the long-standing favicon-404 TODO (S139)."},
- {id:"29654af7",by:"Lynn",date:"07-06",loe:"S",theme:"10 · Misc UI Quick Wins",
-  desc:"Back-to-top / jump-to-search button after scrolling.",
-  verdict:"No back-to-top control exists; only targeted scrollIntoView calls. Small scroll-triggered button."},
- {id:"50175fce",by:"Lynn",date:"07-27",loe:"S",theme:"10 · Misc UI Quick Wins",
-  desc:"Edit Urgent Update directly from the tile, not inside Edit RO.",
-  verdict:"urgent_update writable only from New/Edit forms; card banner read-only. Inline edit-in-place reusing editField path so urgent_update_notify still fires."},
+ // ---- GROUP 10 (MISC UI QUICK WINS) IS EMPTY: favicon d432863a, back-to-top ----
+ // 29654af7, urgent-on-tile 50175fce, mileage ac8265c8 and the blue-contrast pass
+ // fa35e3df all shipped in v1.498 (S178), re-verified present at HEAD e8666a9.
  // ---- GROUP 11: STRATEGIC ----
- {id:"ed1b873e",by:"Roland",date:"06-07",loe:"XL",theme:"11 · Strategic / Needs Roland",
+ {id:"ed1b873e",by:"Roland",date:"06-07",loe:"XL",theme:"11 - Strategic / Needs Roland",
   desc:"Replace per-seat Google-email auth (~$500/mo) with database auth.",
-  verdict:"Auth is Google-token end-to-end (js/auth.js + One Tap + signInWithIdToken; kiosk same path). Supabase password/magic-link swap touches auth, RLS identity (the id-drift lesson), kiosk. Dedicated design session."},
- {id:"47428f75",by:"Lynn",date:"08-03",loe:"S",theme:"11 · Strategic / Needs Roland",
-  desc:"'Update vacation/sick/personal calendar' — underspecified.",
+  verdict:"Auth is Google-token end-to-end (js/auth.js L69 / L203-204 + One Tap + signInWithIdToken; kiosk same path). Supabase password/magic-link swap touches auth, RLS identity (the id-drift lesson), kiosk. Dedicated design session."},
+ {id:"47428f75",by:"Lynn",date:"08-03",loe:"S",theme:"11 - Strategic / Needs Roland",
+  desc:"'Update vacation/sick/personal calendar' - underspecified.",
   verdict:"time-off.html already has all three types, color-coded month calendar, stats, per-row edit, partial-day windows. No stated defect - ASK LYNN what is wrong or wanted before filing work."}
 ];
 
@@ -209,7 +177,7 @@ function render(){
     items.forEach(e=>{
       const d=document.createElement('div'); d.className=`er b-${e.loe}`;
       d.innerHTML=`<div class="top"><p class="desc">${e.desc}</p><span class="tag t-${e.loe}">${e.loe}</span></div>
-        <div class="meta">${e.id} · ${e.by} · 2026-${e.date}</div>
+        <div class="meta">${e.id} | ${e.by} | 2026-${e.date}</div>
         <div class="verdict">${e.verdict}</div>`;
       list.appendChild(d);
     });
