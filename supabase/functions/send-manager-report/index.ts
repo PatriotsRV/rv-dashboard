@@ -99,7 +99,10 @@ const siloName = (k: string | null | undefined) =>
 // [S183] 'Closed - No Charge' is terminal too (unbilled close: totaled-out
 // insurance, warranty). Without it here, a closed RO keeps showing up in Fire
 // Watch and idle detection forever.
-const DONE_STATUSES = new Set(["Delivered/Cashed Out", "Closed - No Charge", "Ready for pickup"]);
+// [S187] 'Delivered - No Review' added — a real cash-out that simply never asks
+// for a review. Omitting it here would leave closed ROs in Fire Watch and idle
+// detection forever, the exact bug S183 fixed for 'Closed - No Charge'.
+const DONE_STATUSES = new Set(["Delivered/Cashed Out", "Closed - No Charge", "Ready for pickup", "Delivered - No Review"]);
 
 // [S183] Statuses where the unit is NOT physically on the lot, so "no tech time"
 // is the EXPECTED state and flagging it idle is a false positive. Same set the

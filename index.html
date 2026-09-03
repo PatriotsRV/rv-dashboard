@@ -1,7 +1,41 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.502
+    PRVS Dashboard v1.503
+    v1.503: [S187] NEW TERMINAL STATUS "Delivered - No Review".
+    A 19th RO status (18 -> 19 on BOTH status CHECKs). A REAL cash-out — the
+    customer paid, the work was billed — that simply never asks for a Google
+    review. Roland S187, for customers we do not want the review notice going
+    to. Behaves IDENTICALLY to 'Delivered/Cashed Out' in every other respect:
+    same S185 outstanding-payment prompt, same S183 dollar-value gate, same
+    archive, same 100% progress, same reports.
+    HOW THE SUPPRESSION WORKS: by doing nothing. enqueue_review_request() already
+    returns early on any status that is not exactly 'Delivered/Cashed Out', so
+    the new status inherits suppression with ZERO trigger changes. The live
+    function is deliberately untouched by the migration.
+    FREE BONUS: cancel_pending_review_request() fires when status moves OFF
+    'Delivered/Cashed Out', so switching an RO to 'Delivered - No Review' inside
+    the 24h window CANCELS an already-pending ask — the "oops, not this one"
+    recovery path, working without new code.
+    js/render.js: isTerminalStatus() gains the third status (the one-line change
+    S183 promised) + NEW isCashOutStatus() for the BILLED family (Delivered/Cashed
+    Out + Delivered - No Review, deliberately excluding the unbilled no-charge);
+    BOTH added to the window bridge because js/ro-crud.js has no ESM imports and
+    would otherwise throw ReferenceError at cash-out time. Two `doneish` inline
+    literal triples replaced by isTerminalStatus() calls (S182 drift lesson).
+    js/ro-crud.js: the cash-out gate widens from one literal to isCashOutStatus()
+    on BOTH sides, so a Delivered/Cashed Out -> Delivered - No Review re-file
+    does NOT re-ask "collected in full?" about money already reconciled.
+    ALSO FIXES A PRE-EXISTING S183 BUG: prune_cashiered_worklists() (cron 12,
+    07:30 daily) filtered on 'Delivered/Cashed Out' ONLY — S183 widened the
+    archive sweep for 'Closed - No Charge' but never this, so since 2026-08-25
+    no-charge ROs stayed on managers' work lists. All three statuses now listed.
+    Migration: supabase/migrations/delivered_no_review_s187.sql (both status
+    CHECKs 18 -> 19; archive_cashiered_ros() rebuilt FROM THE LIVE DEFINITION so
+    the S185 receivable ARCHIVE HOLD survives; prune_cashiered_worklists()).
+    Edge fns to redeploy: send-manager-report, textly-webhook,
+    projectblue-webhook, projectblue-reconcile.
+
     v1.502: [S185] OUTSTANDING PAYMENTS — cashed out with a check still coming.
     ROs are routinely cashed out and the RV delivered while an insurance or
     extended-warranty check is still in the mail. Nothing recorded that, so
@@ -1015,7 +1049,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.502';</script>
+    <script>window.APP_VERSION = '1.503';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
@@ -1261,6 +1295,7 @@
                             <button class="filter-btn" data-filter="Ready for pickup" data-type="status">Ready for Pickup</button>
                             <button class="filter-btn" data-filter="Delivered/Cashed Out" data-type="status">Delivered/Cashed Out</button>
                             <button class="filter-btn" data-filter="Closed - No Charge" data-type="status">Closed - No Charge</button>
+                            <button class="filter-btn" data-filter="Delivered - No Review" data-type="status">Delivered - No Review</button>
                         </div>
                         <!-- [S175] Source sub-chips — shown while their group chip is active; narrow the group to one approval source -->
                         <div class="filter-group status-subchips" id="subchips-awaiting" style="display:none;padding-top:4px;">
@@ -1771,7 +1806,8 @@
             'Waiting for QA/QC': 85,
             'Ready for pickup': 95,
             'Delivered/Cashed Out': 100,
-            'Closed - No Charge': 100   // [S183] terminal, unbilled
+            'Closed - No Charge': 100,  // [S183] terminal, unbilled
+            'Delivered - No Review': 100 // [S187] terminal, billed, no review ask
         };
 
         // Update RO Urgency
@@ -3854,7 +3890,7 @@
             // [v1.500 S182] Version is read from the single bump site (window.APP_VERSION,
             // declared head-level). Both badges are painted from it too, so the number a
             // user reads on screen is by construction the number the update poller compares.
-            log('📦 PRVS Dashboard v' + window.APP_VERSION + ' - 2026-08-25 - S183: NEW terminal status "Closed - No Charge" (archives like a cash-out, never asks for a review), review request re-timed off the Sunday sweep onto the RO status change, and a soft-launch cash-out dollar gate.');
+            log('📦 PRVS Dashboard v' + window.APP_VERSION + ' - 2026-09-03 - S187: NEW terminal status "Delivered - No Review" — a real cash-out (same balance prompt, same dollar gate, same archive) that never asks the customer for a review. Also fixes prune_cashiered_worklists(), which had only ever pruned "Delivered/Cashed Out" and left no-charge ROs on manager work lists since S183.');
             ['verBadgeHeader', 'verBadgeSidebar'].forEach(function (id) {
                 const el = document.getElementById(id);
                 if (el) el.textContent = 'v' + window.APP_VERSION;
@@ -4281,6 +4317,7 @@
             if (ro.status === 'Not On Lot') return false;
             if (ro.status === 'Delivered/Cashed Out') return false;
             if (ro.status === 'Closed - No Charge') return false;   // [S183] terminal, unbilled
+            if (ro.status === 'Delivered - No Review') return false; // [S187] terminal, billed
             if (ro.status === 'Ready for pickup') return false;
             return true;
         }
@@ -4748,6 +4785,7 @@
             'Ready for Pickup': 'Listo para Recoger',
             'Delivered/Cashed Out': 'Entregado/Cerrado',
             'Closed - No Charge': 'Cerrado - Sin Cargo',
+            'Delivered - No Review': 'Entregado - Sin Reseña',   // [S187]
             // Urgency
             'CRITICAL': 'CRÍTICO',
             'HIGH': 'ALTO',
@@ -7346,6 +7384,7 @@ function toggleWOTasks(tasksId, chevId) {
                             <option value="Ready for pickup">Ready for pickup</option>
                             <option value="Delivered/Cashed Out">Delivered/Cashed Out</option>
                             <option value="Closed - No Charge">Closed - No Charge</option>
+                            <option value="Delivered - No Review">Delivered - No Review</option>
                         </select>
                     </div>
                     <div class="form-field shop-hide">

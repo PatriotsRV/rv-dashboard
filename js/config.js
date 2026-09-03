@@ -171,7 +171,10 @@ export const STATUS_PROGRESS_MAP = {
     // [S183] Terminal, but NOT a cash-out. For ROs closed with nothing billed —
     // totaled-out insurance claims paying an admin fee, warranty closes, etc.
     // Archives exactly like Delivered/Cashed Out; suppresses the review request.
-    'Closed - No Charge': 100
+    'Closed - No Charge': 100,
+    // [S187] A real cash-out that simply never asks for a review. Same 100% as
+    // 'Delivered/Cashed Out' — the work IS complete; only the follow-up differs.
+    'Delivered - No Review': 100
 };
 
 // ── Work Order Statuses ─────────────────────────────────────────────
@@ -287,6 +290,7 @@ export const TRANSLATIONS_ES = {
     'Ready for Pickup': 'Listo para Recoger',
     'Delivered/Cashed Out': 'Entregado/Cerrado',
     'Closed - No Charge': 'Cerrado - Sin Cargo',
+    'Delivered - No Review': 'Entregado - Sin Reseña',   // [S187]
     // Urgency
     'CRITICAL': 'CRÍTICO',
     'HIGH': 'ALTO',

@@ -64,8 +64,23 @@
         // that used to compare against the one literal calls this instead, so
         // adding a third terminal status later is a one-line change here and not
         // a scavenger hunt. (S182 lesson: a duplicated constant WILL drift.)
+        // [S187] Third terminal status added — 'Delivered - No Review'. This is
+        // the one-line change S183 predicted, and it cost exactly that here
+        // because every gate calls this instead of comparing literals.
         export function isTerminalStatus(s) {
-            return s === 'Delivered/Cashed Out' || s === 'Closed - No Charge';
+            return s === 'Delivered/Cashed Out'
+                || s === 'Closed - No Charge'
+                || s === 'Delivered - No Review';
+        }
+
+        // [S187] The BILLED cash-out family: money was charged and the customer
+        // paid (or still owes). Drives the S183 dollar gate and the S185
+        // outstanding-payment prompt. Deliberately EXCLUDES 'Closed - No Charge',
+        // where nothing was billed — that status has its own prompt copy.
+        // Distinct from isTerminalStatus(): all three archive, only these two
+        // are cash-outs.
+        export function isCashOutStatus(s) {
+            return s === 'Delivered/Cashed Out' || s === 'Delivered - No Review';
         }
 
         // [ER fa35e3df v1.498 S178] key-date Drop chip text #0a84ff -> #5cadff (contrast on dark).
@@ -331,6 +346,7 @@
                                         <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>Ready for Pickup</option>
                                         <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>Delivered/Cashed Out</option>
                                         <option value="Closed - No Charge" ${ro.status === 'Closed - No Charge' ? 'selected' : ''}>Closed - No Charge</option>
+                                        <option value="Delivered - No Review" ${ro.status === 'Delivered - No Review' ? 'selected' : ''}>Delivered - No Review</option>
                                     </select>
                                     `}
                                 </div>
@@ -376,7 +392,10 @@
                             // Rendered ALWAYS but display-gated to html.layout-sidebar in
                             // css/sidebar-layout.css (.sb-dalert) — zero classic-mode impact.
                             const todayStr = new Date().toLocaleDateString('en-CA');
-                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Closed - No Charge' || ro.status === 'Ready for pickup';
+                            // [S187] was three inline literals; now routed through
+                            // isTerminalStatus() so a 4th terminal status never
+                            // needs finding here again (S182 drift lesson).
+                            const doneish = isTerminalStatus(ro.status) || ro.status === 'Ready for pickup';
                             const d = (v) => v ? String(v).slice(0, 10) : '';
                             const banners = [];
                             if (!doneish && d(ro.promisedDate) && d(ro.promisedDate) < todayStr) banners.push('<div class="sb-dalert red">🚨 ' + t('PROMISED DATE PASSED') + '</div>');
@@ -463,7 +482,10 @@
                             // [Key Dates P1 S117] Colored key-date chips (ER 1aeb3f58 promised prominence, 2b814250 date buttons, d2561e11 pickup)
                             const fmt = (d) => { if (!d) return ''; const p = String(d).slice(0,10).split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) : d; };
                             const todayStr = new Date().toLocaleDateString('en-CA'); // local YYYY-MM-DD
-                            const doneish = ro.status === 'Delivered/Cashed Out' || ro.status === 'Closed - No Charge' || ro.status === 'Ready for pickup';
+                            // [S187] was three inline literals; now routed through
+                            // isTerminalStatus() so a 4th terminal status never
+                            // needs finding here again (S182 drift lesson).
+                            const doneish = isTerminalStatus(ro.status) || ro.status === 'Ready for pickup';
                             const chips = [];
                             if (ro.plannedDropoffDate) chips.push('<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;background:#0a84ff1a;color:#5cadff;border:1px solid #0a84ff44;">📅 Drop ' + fmt(ro.plannedDropoffDate) + '</span>');
                             if (ro.promisedDate) { const overdue = !doneish && String(ro.promisedDate).slice(0,10) < todayStr; const c = overdue ? '#ef4444' : '#f59e0b'; chips.push('<span title="Promised date" style="display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:10px;font-size:0.78rem;font-weight:800;background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '55;">⏰ Promised ' + fmt(ro.promisedDate) + (overdue ? ' !' : '') + '</span>'); }
@@ -541,6 +563,7 @@
                                 <option value="Ready for pickup" ${ro.status === 'Ready for pickup' ? 'selected' : ''}>${t('Ready for Pickup')}</option>
                                 <option value="Delivered/Cashed Out" ${ro.status === 'Delivered/Cashed Out' ? 'selected' : ''}>${t('Delivered/Cashed Out')}</option>
                                 <option value="Closed - No Charge" ${ro.status === 'Closed - No Charge' ? 'selected' : ''}>${t('Closed - No Charge')}</option>
+                                <option value="Delivered - No Review" ${ro.status === 'Delivered - No Review' ? 'selected' : ''}>${t('Delivered - No Review')}</option>
                             </select>
                         </div>
                         ` : ''}
@@ -835,7 +858,11 @@
                 'Delivered/Cashed Out': '#6b7280',
                 // [S183] Terminal but unbilled — slate, one step off the cash-out grey
                 // so the two terminal states read as related but distinguishable.
-                'Closed - No Charge': '#94a3b8'
+                'Closed - No Charge': '#94a3b8',
+                // [S187] A real cash-out, so it sits in the SAME grey family as
+                // 'Delivered/Cashed Out' rather than beside the unbilled slate —
+                // the colour should say "money changed hands", not "no review".
+                'Delivered - No Review': '#78828f'
             };
 
             const ALL_STATUSES = [
@@ -844,7 +871,8 @@
                 'Approved Insurance', 'Approved Customer', 'Approved Extended Warranty',
                 'Awaiting parts',
                 'Ready to Work', 'In progress', 'Repairs Completed', 'Waiting for QA/QC',
-                'Ready for pickup', 'Delivered/Cashed Out', 'Closed - No Charge'
+                'Ready for pickup', 'Delivered/Cashed Out', 'Closed - No Charge',
+                'Delivered - No Review'
             ];
 
             const isCondensedOrRegular = (currentViewMode === 'condensed' || currentViewMode === 'regular');
@@ -952,9 +980,18 @@ export function renderERAdminList() {
 
 
 // ---- Window bridge (Phase 6 additive) ----
+// [S187] isTerminalStatus + isCashOutStatus ADDED to the bridge. They were
+// module-private, which was fine while only render.js compared statuses — but
+// js/ro-crud.js has no ESM imports (see its header: bare references resolve
+// through the shared global environment), so its cash-out gate could not reach
+// them. Without this the S187 gate would throw ReferenceError at the moment a
+// manager cashes out. Exporting the two predicates is what keeps the "single
+// definition of terminal" promise true ACROSS modules and not just inside one.
 Object.assign(window, {
   shouldShow,
   renderBoard,
   updateStats,
   renderERAdminList,
+  isTerminalStatus,
+  isCashOutStatus,
 });

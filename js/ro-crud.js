@@ -1291,7 +1291,14 @@
                 // covers both card dropdowns (see index.html delegation ~L4053).
                 let _bypassedNoDollar = false;
                 let _pendingReceivable = null;   // [S185] written after the status write lands
-                if (newStatus === 'Delivered/Cashed Out' && ro.status !== 'Delivered/Cashed Out') {
+                // [S187] Widened from the single 'Delivered/Cashed Out' literal to
+                // the cash-out FAMILY, so 'Delivered - No Review' gets the exact
+                // same treatment (Roland S187: "identical in every other way").
+                // The transition guard is now family-aware on BOTH sides: moving
+                // Delivered/Cashed Out -> Delivered - No Review is a re-file
+                // within the family, NOT a fresh cash-out, so it must not re-ask
+                // "collected in full?" about money already reconciled.
+                if (isCashOutStatus(newStatus) && !isCashOutStatus(ro.status)) {
                     const dollars = parseFloat(ro.dollarValue) || 0;
 
                     // [S185] BALANCE GATE — billed ROs only. A $0 RO falls through to
