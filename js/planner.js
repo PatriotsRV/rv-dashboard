@@ -4,38 +4,35 @@
 // Manager-facing dynamic RO report + daily/weekly work-list builder that
 // lives ON index.html (full-screen overlay, #plannerOverlay).
 //
-// Mindset: a Sr Shop Manager / Director deciding what gets worked. The
-// board already knows everything about every RO — this view slices it by
-// service silo (including ROs that SPAN silos), promised date, urgency,
-// status, days on lot, dollar value, parts state, WO progress … then lets
-// the manager:
-//   • sort by any column, or switch to MANUAL order and drag rows (mouse + touch)
-//   • bucket each RO into TODAY / THIS WEEK / LATER / HOLD  (the "work list")
-//   • jot a one-line planner note per RO
-//   • SAVE the whole thing as a named view (planner_views table), SHARE it
-//     (link + shared flag), reload it, Save As a copy
-//   • push the TODAY bucket onto the existing Manager Work List
-//   • export CSV / print
+// Roland's model (S188, docs/specs/WORK_PLANNER_SPEC.md):
+//   • The PLAN is SHARED. planner_entries = one row per (RO, silo): bucket
+//     (today / week / later / hold), planned start/end, note, owner. Every
+//     manager sees every silo's entry on an RO — cross-silo awareness is the
+//     point (Roof spraying Wed vs Solar installing Wed). Owner / that silo's
+//     manager / Sr Manager / Admin can write it. Admins can drop an RO onto
+//     ANY silo's plan as an FYI.
+//   • The RO CHANNEL (planner_messages) is a Slack-style thread per RO:
+//     messages, "request update from <silo>", replies, resolve, system
+//     conflict notices. NOT email (Roland: email buries things). Phase 2 adds
+//     a direct SMS for important ones via the Messages-board path.
+//   • planner_events = audit trail, written by DB triggers on both tables.
+//   • Conflicts computed live, client-side: date OVERLAP between silos,
+//     PROMISE/PICKUP squeeze, UNPLANNED silo (has a WO, no plan while another
+//     silo has one), OPEN REQUESTS addressed to a silo.
+//   • planner_views (personal): filters / columns / sort / manual order only.
 //
-// Data source: the already-loaded `currentData` (no extra round trip).
-// Silo membership of an RO = union of its service_work_orders silos
+// Data source for ROs: the already-loaded `currentData` (no extra round trip);
+// entries + messages are loaded when the planner opens and refreshed per RO
+// after every write. Silo membership of an RO = union of its WO silos
 // (_woSummary.silos) and its repairType text (REPAIR_TYPE_TO_SILO).
 //
-// Wiring: module namespace on window.PRVS_Planner (js/app.js) + the
-// Object.assign(window, {...}) bridge at the bottom so inline onclick=
-// handlers resolve. Reads inline globals (currentData, getSB,
-// supabaseSession, SERVICE_SILOS, REPAIR_TYPE_TO_SILO, _staffCache,
-// scrollToROInBoard, showToast, escapeHtml, calculateDaysOnLot,
+// Wiring: window.PRVS_Planner (js/app.js) + Object.assign(window, {...}) at
+// the bottom so inline onclick= handlers resolve. Reads inline globals
+// (currentData, getSB, supabaseSession, SERVICE_SILOS, REPAIR_TYPE_TO_SILO,
+// _staffCache, scrollToROInBoard, showToast, escapeHtml, calculateDaysOnLot,
 // calculatePriority, isTerminalStatus, isAdmin, hasRole, canSeeWorkList,
-// _addToWorkListWithSilo) via the shared global environment, exactly like
-// js/work-list.js.
-//
-// Persistence:
-//   planner_views (supabase/migrations/planner_views_s188.sql)
-//     id uuid · name · owner_email · shared bool · config jsonb · rows jsonb
-//   config = { filters, sort, columns, mode }
-//   rows   = { [ro_uuid]: { order, bucket, note } }
-//   Unsaved working state is mirrored to localStorage prvs_planner_draft.
+// canManageSilo, _addToWorkListWithSilo) via the shared global environment,
+// exactly like js/work-list.js.
 // ═══════════════════════════════════════════════════════════════════════
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -46,9 +43,6 @@ export const PLANNER_BUCKETS = [
     { key: 'hold',  label: 'Hold',      emoji: '⏸', color: '#6b7280' },
 ];
 
-// Every board status, in pipeline order (mirrors render.js ALL_STATUSES + the
-// two scheduling statuses it omits). Kept local on purpose — ALL_STATUSES is
-// function-scoped inside updateStats().
 export const PLANNER_STATUSES = [
     'Not On Lot', 'Scheduled', 'On Lot', 'Off Lot - Returning',
     'Awaiting Insurance', 'Awaiting Customer', 'Awaiting Extended Warranty',
@@ -68,40 +62,46 @@ const STATUS_PRESETS = {
 };
 
 const PROMISED_PRESETS = [
-    ['any',     'Any promised date'],
-    ['overdue', 'Overdue'],
-    ['today',   'Due today'],
-    ['3d',      'Due within 3 days'],
-    ['7d',      'Due within 7 days'],
-    ['14d',     'Due within 14 days'],
-    ['30d',     'Due within 30 days'],
-    ['none',    'No promised date'],
-    ['has',     'Has a promised date'],
+    ['any', 'Any promised date'], ['overdue', 'Overdue'], ['today', 'Due today'],
+    ['3d', 'Due within 3 days'], ['7d', 'Due within 7 days'], ['14d', 'Due within 14 days'],
+    ['30d', 'Due within 30 days'], ['none', 'No promised date'], ['has', 'Has a promised date'],
 ];
 
 const URGENCIES = ['Critical', 'High', 'Medium', 'Low'];
 
-// Column catalogue. `get` returns the raw sortable value; `cell` returns HTML.
+const MSG_KINDS = {
+    message:  { label: 'Message', emoji: '💬', color: '#94a3b8' },
+    request:  { label: 'Request', emoji: '📣', color: '#f59e0b' },
+    reply:    { label: 'Reply',   emoji: '↩️', color: '#38bdf8' },
+    conflict: { label: 'Conflict', emoji: '⚠️', color: '#ef4444' },
+    fyi:      { label: 'FYI',     emoji: '📌', color: '#a78bfa' },
+    system:   { label: 'System',  emoji: '⚙️', color: '#64748b' },
+};
+
+// Column catalogue. `get` returns the raw sortable value (e = MY entry for the row).
 const COLUMNS = [
     { key: 'ro',       label: 'RO',        default: true,  get: r => r.roId },
     { key: 'customer', label: 'Customer',  default: true,  get: r => r.customerName },
     { key: 'rv',       label: 'RV',        default: true,  get: r => r.rv },
     { key: 'silos',    label: 'Services',  default: true,  get: r => _roSilos(r).join(',') },
+    { key: 'plans',    label: 'Plans (all silos)', default: true, get: r => -(_entriesFor(r._supabaseId).length) },
+    { key: 'coord',    label: 'Coordination', default: true, get: r => -(_conflicts(r).length) },
     { key: 'status',   label: 'Status',    default: true,  get: r => PLANNER_STATUSES.indexOf(r.status) },
     { key: 'urgency',  label: 'Urgency',   default: true,  get: r => ({ Critical: 0, High: 1, Medium: 2, Low: 3 })[r.urgency] ?? 9 },
     { key: 'promised', label: 'Promised',  default: true,  get: r => r.promisedDate || '9999-99-99' },
     { key: 'dropoff',  label: 'Drop-off',  default: false, get: r => r.plannedDropoffDate || '9999-99-99' },
     { key: 'pickup',   label: 'Pickup',    default: false, get: r => r.pickupDate || '9999-99-99' },
     { key: 'days',     label: 'Days',      default: true,  get: r => _daysOnLot(r) ?? -1 },
-    { key: 'dollars',  label: '$ Value',   default: true,  get: r => parseFloat(r.dollarValue) || 0 },
+    { key: 'dollars',  label: '$ Value',   default: false, get: r => parseFloat(r.dollarValue) || 0 },
     { key: 'wo',       label: 'WO %',      default: true,  get: r => _woPct(r) ?? -1 },
     { key: 'parts',    label: 'Parts',     default: true,  get: r => _partsRank(r) },
     { key: 'tech',     label: 'Tech',      default: false, get: r => r.technicianAssigned || '' },
     { key: 'type',     label: 'Type',      default: false, get: r => r.roType || '' },
     { key: 'spot',     label: 'Spot',      default: false, get: r => r.parkingSpot || '' },
     { key: 'score',    label: 'Score',     default: false, get: r => _score(r) },
-    { key: 'bucket',   label: 'Bucket',    default: true,  get: (r, s) => PLANNER_BUCKETS.findIndex(b => b.key === (s?.bucket || '')) },
-    { key: 'note',     label: 'Plan note', default: true,  get: (r, s) => s?.note || '' },
+    { key: 'bucket',   label: 'My bucket', default: true,  get: (r, e) => e ? PLANNER_BUCKETS.findIndex(b => b.key === e.bucket) : 9 },
+    { key: 'dates',    label: 'My start → end', default: true, get: (r, e) => e?.planned_start || '9999-99-99' },
+    { key: 'note',     label: 'My plan note', default: true, get: (r, e) => e?.note || '' },
 ];
 
 // ── Module state ───────────────────────────────────────────────────────
@@ -109,30 +109,25 @@ let _open = false;
 let _view = null;            // { id, name, owner_email, shared } of the loaded saved view (null = unsaved draft)
 let _dirty = false;
 let _filters = _defaultFilters();
-let _sort = { key: 'score', dir: 'desc' };   // key 'manual' = drag order
+let _sort = { key: 'coord', dir: 'desc' };   // key 'manual' = drag order
 let _columns = COLUMNS.filter(c => c.default).map(c => c.key);
-let _rows = {};              // ro_uuid -> { order, bucket, note }
-let _bucketTab = 'all';      // all | today | week | later | hold | unbucketed
-let _savedViews = [];        // cache of planner_views rows (id,name,owner_email,shared,updated_at)
-let _lastRendered = [];      // ROs in display order (for drag index mapping + export)
+let _order = {};             // ro_uuid -> manual sort order (personal, lives in planner_views.rows)
+let _bucketTab = 'all';      // all | today | week | later | hold | unplanned | coord
+let _savedViews = [];
+let _lastRendered = [];
+let _entries = {};           // ro_uuid -> [planner_entries rows]
+let _msgs = {};              // ro_uuid -> [planner_messages rows]
+let _events = {};            // ro_uuid -> [planner_events rows] (loaded on drawer open)
+let _drawerRo = null;        // ro_uuid currently open in the drill-down drawer
+let _loaded = false;
 
 function _defaultFilters() {
     return {
-        silos: [],            // [] = all silos
-        siloMode: 'any',      // any | all | only   (only = RO's silo set ⊆ selection)
-        multiSiloOnly: false,
-        statusPreset: 'active',
-        statuses: [],         // explicit list overrides preset when non-empty
-        promised: 'any',
-        promisedFrom: '',
-        promisedTo: '',
-        urgencies: [],
-        minDays: '',
-        minDollars: '',
-        roTypes: [],
-        flags: [],            // parts_open | urgent | receivable | no_wo | wo_done | vip | training
-        search: '',
-        includeShop: false,
+        silos: [], siloMode: 'any', multiSiloOnly: false,
+        statusPreset: 'active', statuses: [],
+        promised: 'any', promisedFrom: '', promisedTo: '',
+        urgencies: [], minDays: '', minDollars: '', roTypes: [], flags: [],
+        search: '', includeShop: false,
     };
 }
 
@@ -142,6 +137,8 @@ function _isTerminal(s) {
     catch (_) { return /^(Delivered|Closed)/.test(s || ''); }
 }
 function _me() { return (window.supabaseSession?.user?.email || '').toLowerCase(); }
+function _isAdmin() { try { return isAdmin(); } catch (_) { return false; } }
+function _isSr() { try { return _isAdmin() || hasRole('Sr Manager'); } catch (_) { return false; } }
 function _todayISO() { return new Date().toLocaleDateString('en-CA'); }
 function _addDaysISO(n) { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); }
 function _fmtDate(d) {
@@ -149,6 +146,7 @@ function _fmtDate(d) {
     try { return new Date(String(d).slice(0, 10) + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
     catch (_) { return String(d).slice(0, 10); }
 }
+function _fmtWhen(ts) { try { return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (_) { return ts; } }
 function _fmtMoney(n) { n = parseFloat(n) || 0; return n ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'; }
 function _esc(s) { return typeof escapeHtml === 'function' ? escapeHtml(s == null ? '' : String(s)) : String(s == null ? '' : s); }
 function _daysOnLot(r) { try { return calculateDaysOnLot(r); } catch (_) { return null; } }
@@ -170,7 +168,14 @@ function _partsLabel(r) {
     if (r.partsStatus === 'received') return { t: '✅ Received', c: '#22c55e' };
     return { t: '—', c: '#6b7280' };
 }
-function _siloMeta(key) { return (SERVICE_SILOS || []).find(s => s.key === key) || { key, label: key, emoji: '' }; }
+function _siloMeta(key) { return (SERVICE_SILOS || []).find(s => s.key === key) || { key, label: key || '—', emoji: '' }; }
+function _who(email) {
+    const e = (email || '').toLowerCase();
+    const st = (window._staffCache || []).find(s => (s.email || '').toLowerCase() === e);
+    return st?.name || e.split('@')[0] || '—';
+}
+function _initials(email) { return _who(email).split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
+function _roByUuid(id) { return (Array.isArray(currentData) ? currentData : []).find(r => r._supabaseId === id) || null; }
 
 /** Silo keys an RO belongs to: WO silos ∪ repairType-derived silos. */
 export function _roSilos(r) {
@@ -183,13 +188,59 @@ export function _roSilos(r) {
 }
 
 function _mySilo() { return window._currentStaffSilo || null; }
+/** Silos this user speaks for: silo managers = their silo; Sr Mgr/Admin = all. */
+function _mySilos() { return _isSr() ? (SERVICE_SILOS || []).map(s => s.key) : (_mySilo() ? [_mySilo()] : []); }
 function _canUse() { try { return canSeeWorkList(); } catch (_) { return false; } }
-function _canEditView(v) {
-    if (!v) return true;
-    return (v.owner_email || '').toLowerCase() === _me() || (typeof isAdmin === 'function' && isAdmin());
+function _canEditView(v) { return !v || (v.owner_email || '').toLowerCase() === _me() || _isAdmin(); }
+function _canEditEntry(e) {
+    if (!e) return false;
+    if (_isSr()) return true;
+    if ((e.owner_email || '').toLowerCase() === _me()) return true;
+    try { return canManageSilo(e.service_silo); } catch (_) { return false; }
 }
+function _canPlanSilo(silo) { if (_isSr()) return true; try { return canManageSilo(silo); } catch (_) { return false; } }
 
-// ── Filtering ──────────────────────────────────────────────────────────
+function _entriesFor(roUuid) { return _entries[roUuid] || []; }
+function _msgsFor(roUuid) { return _msgs[roUuid] || []; }
+
+/**
+ * "My" entry for a row — the one the inline bucket/date/note cells edit.
+ * Silo manager → their silo's entry. Sr/Admin → the single filtered silo, else
+ * the RO's only silo, else the first entry they own, else null (use the drawer).
+ */
+function _editSiloFor(r) {
+    const silos = _roSilos(r);
+    if (!_isSr()) { const m = _mySilo(); return m ? m : null; }
+    if (_filters.silos.length === 1) return _filters.silos[0];
+    if (silos.length === 1) return silos[0];
+    const mine = _entriesFor(r._supabaseId).find(e => (e.owner_email || '').toLowerCase() === _me());
+    if (mine) return mine.service_silo;
+    return null;
+}
+function _myEntry(r) { const s = _editSiloFor(r); return s ? _entriesFor(r._supabaseId).find(e => e.service_silo === s) || null : null; }
+
+// ── Conflicts (live, client-side) ──────────────────────────────────────
+function _range(e) { const a = e.planned_start || e.planned_end; const b = e.planned_end || e.planned_start; return a ? [a, b] : null; }
+export function _conflicts(r) {
+    const out = [];
+    const es = _entriesFor(r._supabaseId).filter(e => e.status !== 'dropped' && e.status !== 'done');
+    // 1. overlap between silos
+    for (let i = 0; i < es.length; i++) for (let j = i + 1; j < es.length; j++) {
+        const a = _range(es[i]), b = _range(es[j]); if (!a || !b) continue;
+        if (a[0] <= b[1] && b[0] <= a[1]) out.push({ kind: 'overlap', silos: [es[i].service_silo, es[j].service_silo], text: `${_siloMeta(es[i].service_silo).label} (${_fmtDate(a[0])}–${_fmtDate(a[1])}) overlaps ${_siloMeta(es[j].service_silo).label} (${_fmtDate(b[0])}–${_fmtDate(b[1])})` });
+    }
+    // 2. promise / pickup squeeze
+    const deadline = (r.pickupDate || r.promisedDate || '').slice(0, 10);
+    if (deadline) es.forEach(e => { const rg = _range(e); if (rg && rg[1] > deadline) out.push({ kind: 'promise', silos: [e.service_silo], text: `${_siloMeta(e.service_silo).label} plan ends ${_fmtDate(rg[1])} — after the ${r.pickupDate ? 'pickup' : 'promised'} date ${_fmtDate(deadline)}` }); });
+    // 3. unplanned silo while another silo has a plan
+    if (es.length) _roSilos(r).forEach(k => { if (!es.some(e => e.service_silo === k)) out.push({ kind: 'unplanned', silos: [k], text: `${_siloMeta(k).label} has work on this RO but no plan yet` }); });
+    // 4. open requests
+    _msgsFor(r._supabaseId).filter(m => m.kind === 'request' && !m.resolved_at).forEach(m => out.push({ kind: 'request', silos: [m.to_silo, m.from_silo].filter(Boolean), text: `Open request${m.to_silo ? ' to ' + _siloMeta(m.to_silo).label : ''} from ${_who(m.from_email)}: ${m.body.slice(0, 80)}` }));
+    return out;
+}
+function _mineConflicts(r) { const mine = _mySilos(); return _conflicts(r).filter(c => _isSr() || c.silos.some(s => mine.includes(s))); }
+
+// ── Filtering / sorting ────────────────────────────────────────────────
 export function _applyFilters(list) {
     const f = _filters;
     const today = _todayISO();
@@ -230,14 +281,20 @@ export function _applyFilters(list) {
             if (fl === 'wo_open' && !((r._woSummary?.total_wos || 0) > 0 && (_woPct(r) ?? 0) < 100)) return false;
             if (fl === 'vip' && r.customerType !== 'VIP') return false;
             if (fl === 'no_promised' && r.promisedDate) return false;
+            if (fl === 'planned_any' && !_entriesFor(r._supabaseId).length) return false;
+            if (fl === 'planned_other' && !_entriesFor(r._supabaseId).some(e => !_mySilos().includes(e.service_silo))) return false;
         }
         if (q) {
-            const hay = [r.roId, r.customerName, r.rv, r.vin, r.technicianAssigned, r.parkingSpot, r.repairDescription, r.status, (_rows[r._supabaseId]?.note || '')].join(' ').toLowerCase();
+            const hay = [r.roId, r.customerName, r.rv, r.vin, r.technicianAssigned, r.parkingSpot, r.repairDescription, r.status,
+                ..._entriesFor(r._supabaseId).map(e => e.note || '')].join(' ').toLowerCase();
             if (!hay.includes(q)) return false;
         }
         if (_bucketTab !== 'all') {
-            const b = _rows[r._supabaseId]?.bucket || '';
-            if (_bucketTab === 'unbucketed' ? !!b : b !== _bucketTab) return false;
+            if (_bucketTab === 'coord') { if (!_mineConflicts(r).length) return false; }
+            else {
+                const e = _myEntry(r); const b = e?.bucket || '';
+                if (_bucketTab === 'unplanned' ? !!b : b !== _bucketTab) return false;
+            }
         }
         return true;
     });
@@ -246,7 +303,7 @@ export function _applyFilters(list) {
 function _sortRows(list) {
     if (_sort.key === 'manual') {
         return list.slice().sort((a, b) => {
-            const oa = _rows[a._supabaseId]?.order, ob = _rows[b._supabaseId]?.order;
+            const oa = _order[a._supabaseId], ob = _order[b._supabaseId];
             if (oa == null && ob == null) return _score(b) - _score(a);
             if (oa == null) return 1; if (ob == null) return -1;
             return oa - ob;
@@ -255,30 +312,118 @@ function _sortRows(list) {
     const col = COLUMNS.find(c => c.key === _sort.key) || COLUMNS.find(c => c.key === 'score');
     const dir = _sort.dir === 'asc' ? 1 : -1;
     return list.slice().sort((a, b) => {
-        const va = col.get(a, _rows[a._supabaseId]), vb = col.get(b, _rows[b._supabaseId]);
+        const va = col.get(a, _myEntry(a)), vb = col.get(b, _myEntry(b));
         if (va === vb) return _score(b) - _score(a);
         if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
         return String(va).localeCompare(String(vb), undefined, { numeric: true }) * dir;
     });
 }
 
+// ── Data: entries + messages ───────────────────────────────────────────
+async function _loadPlanData() {
+    const sb = getSB(); if (!sb || !window.supabaseSession) return;
+    const [{ data: es, error: e1 }, { data: ms, error: e2 }] = await Promise.all([
+        sb.from('planner_entries').select('*').order('created_at'),
+        sb.from('planner_messages').select('*').order('created_at'),
+    ]);
+    if (e1) { showToast('Planner entries failed to load: ' + e1.message + ' (has planner_shared_plan_s188.sql been run?)', 'error'); return; }
+    if (e2) { showToast('Planner messages failed to load: ' + e2.message, 'error'); }
+    _entries = {}; (es || []).forEach(e => { (_entries[e.ro_uuid] = _entries[e.ro_uuid] || []).push(e); });
+    _msgs = {}; (ms || []).forEach(m => { (_msgs[m.ro_uuid] = _msgs[m.ro_uuid] || []).push(m); });
+    _loaded = true;
+    _updateBadge();
+}
+async function _refreshRo(roUuid) {
+    const sb = getSB(); if (!sb) return;
+    const [{ data: es }, { data: ms }] = await Promise.all([
+        sb.from('planner_entries').select('*').eq('ro_uuid', roUuid).order('created_at'),
+        sb.from('planner_messages').select('*').eq('ro_uuid', roUuid).order('created_at'),
+    ]);
+    _entries[roUuid] = es || []; _msgs[roUuid] = ms || [];
+    if (_drawerRo === roUuid) await _loadEvents(roUuid);
+    _updateBadge();
+    renderPlanner();
+}
+async function _loadEvents(roUuid) {
+    const sb = getSB(); if (!sb) return;
+    const { data } = await sb.from('planner_events').select('*').eq('ro_uuid', roUuid).order('created_at', { ascending: false }).limit(200);
+    _events[roUuid] = data || [];
+}
+
+/** Insert-or-update the (ro, silo) entry. Audit is trigger-written. */
+export async function plannerUpsertEntry(roUuid, silo, patch, opts) {
+    opts = opts || {};
+    const sb = getSB(); if (!sb || !window.supabaseSession) { showToast('Not signed in.', 'error'); return; }
+    const ro = _roByUuid(roUuid); if (!ro) return;
+    if (!silo) { showToast('Pick which service this plan is for.', 'warning'); return; }
+    const existing = _entriesFor(roUuid).find(e => e.service_silo === silo);
+    if (existing && !_canEditEntry(existing)) { showToast(`Only ${_who(existing.owner_email)} (or a Sr Manager/Admin) can change the ${_siloMeta(silo).label} plan.`, 'warning'); return; }
+    if (!existing && !_canPlanSilo(silo) && !opts.fyi) { showToast(`You cannot plan ${_siloMeta(silo).label} work.`, 'warning'); return; }
+    let res;
+    if (existing) {
+        res = await sb.from('planner_entries').update({ ...patch, updated_by: _me() }).eq('id', existing.id).select('id').maybeSingle();
+    } else {
+        const row = {
+            ro_uuid: roUuid, ro_display_id: ro.roId, service_silo: silo,
+            owner_email: opts.owner || _me(), bucket: '', source: opts.fyi ? 'admin_fyi' : 'manual',
+            created_by: _me(), updated_by: _me(), ...patch,
+        };
+        res = await sb.from('planner_entries').insert(row).select('id').maybeSingle();
+    }
+    const { data, error } = res;
+    if (error) { showToast('Plan save failed: ' + error.message, 'error'); return; }
+    if (!data) { showToast('Plan save returned no row — RLS may have blocked it.', 'error'); return; }
+    if (!existing && opts.fyi) {
+        await _postMessage(roUuid, { kind: 'fyi', to_silo: silo, body: opts.body || `${_who(_me())} added this RO to the ${_siloMeta(silo).label} plan (FYI).` }, true);
+    }
+    await _refreshRo(roUuid);
+}
+
+export async function plannerDeleteEntry(entryId) {
+    const all = Object.values(_entries).flat();
+    const e = all.find(x => x.id === entryId); if (!e) return;
+    if (!_canEditEntry(e)) { showToast('You cannot remove this plan.', 'warning'); return; }
+    if (!confirm(`Remove the ${_siloMeta(e.service_silo).label} plan for ${e.ro_display_id || 'this RO'}?`)) return;
+    const { error } = await getSB().from('planner_entries').delete().eq('id', entryId);
+    if (error) { showToast('Remove failed: ' + error.message, 'error'); return; }
+    await _refreshRo(e.ro_uuid);
+}
+
+async function _postMessage(roUuid, m, silent) {
+    const sb = getSB(); if (!sb) return null;
+    const ro = _roByUuid(roUuid);
+    const row = {
+        ro_uuid: roUuid, ro_display_id: ro?.roId || null, from_email: _me(),
+        from_silo: m.from_silo !== undefined ? m.from_silo : (_isSr() ? (_filters.silos.length === 1 ? _filters.silos[0] : null) : _mySilo()),
+        to_silo: m.to_silo || null, kind: m.kind || 'message', body: m.body, proposed_date: m.proposed_date || null, parent_id: m.parent_id || null,
+    };
+    const { data, error } = await sb.from('planner_messages').insert(row).select('id').maybeSingle();
+    if (error) { showToast('Message failed: ' + error.message, 'error'); return null; }
+    if (!silent) showToast(row.kind === 'request' ? `Request sent to ${_siloMeta(row.to_silo).label}` : 'Posted', 'success', { duration: 1800 });
+    return data;
+}
+
+export async function plannerResolveMessage(msgId) {
+    const m = Object.values(_msgs).flat().find(x => x.id === msgId); if (!m) return;
+    const { error } = await getSB().from('planner_messages').update({ resolved_at: new Date().toISOString(), resolved_by: _me() }).eq('id', msgId);
+    if (error) { showToast('Resolve failed: ' + error.message, 'error'); return; }
+    await _refreshRo(m.ro_uuid);
+}
+
 // ── Open / close ───────────────────────────────────────────────────────
-export function openPlanner(viewId) {
+export async function openPlanner(viewId) {
     if (!_canUse()) { showToast('Work Planner is for managers and admins.', 'warning'); return; }
-    const ov = document.getElementById('plannerOverlay');
-    if (!ov) return;
+    const ov = document.getElementById('plannerOverlay'); if (!ov) return;
     _open = true;
     ov.style.display = 'flex';
     document.body.style.overflow = 'hidden';
-    if (viewId) {
-        loadPlannerView(viewId);
-    } else if (!_view && !_dirty) {
+    if (!viewId && !_view && !_dirty) {
         _restoreDraft();
-        // First-time default for a silo manager: their own silo
-        if (!_filters.silos.length && _mySilo() && !(typeof isAdmin === 'function' && isAdmin()) && !hasRole('Sr Manager')) {
-            _filters.silos = [_mySilo()];
-        }
+        if (!_filters.silos.length && _mySilo() && !_isSr()) _filters.silos = [_mySilo()];
     }
+    renderPlanner(); // paint immediately from currentData
+    await _loadPlanData();
+    if (viewId) await loadPlannerView(viewId);
     _refreshSavedViews();
     renderPlanner();
 }
@@ -287,14 +432,14 @@ export function closePlanner() {
     const ov = document.getElementById('plannerOverlay');
     if (ov) ov.style.display = 'none';
     document.body.style.overflow = '';
-    _open = false;
+    _open = false; _drawerRo = null;
     _saveDraft();
 }
 
 export function _initPlannerBtn() {
     const btn = document.getElementById('plannerBtn');
     if (btn) btn.style.display = _canUse() ? 'inline-block' : 'none';
-    // Deep link: index.html?planner=<view uuid>  → open once data + session are ready
+    if (_canUse() && !_loaded && window.supabaseSession) _loadPlanData().catch(() => {});
     try {
         const id = new URLSearchParams(location.search).get('planner');
         if (id && !window._plannerDeepLinked) {
@@ -302,37 +447,43 @@ export function _initPlannerBtn() {
             let tries = 0;
             const t = setInterval(() => {
                 tries++;
-                if (window.supabaseSession && Array.isArray(currentData) && currentData.length) {
-                    clearInterval(t); openPlanner(id);
-                } else if (tries > 120) clearInterval(t);
+                if (window.supabaseSession && Array.isArray(currentData) && currentData.length) { clearInterval(t); openPlanner(id); }
+                else if (tries > 120) clearInterval(t);
             }, 500);
         }
     } catch (_) { /* no-op */ }
 }
 
-// ── Draft persistence (localStorage) ───────────────────────────────────
+/** Badge on the header button: open requests to my silos + conflicts touching my silos. */
+function _updateBadge() {
+    const btn = document.getElementById('plannerBtn'); if (!btn) return;
+    let n = 0;
+    (Array.isArray(currentData) ? currentData : []).forEach(r => { if (!_isTerminal(r.status)) n += _mineConflicts(r).length; });
+    let b = btn.querySelector('.pl-badge');
+    if (!n) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('span'); b.className = 'pl-badge'; btn.appendChild(b); }
+    b.textContent = n;
+}
+
+// ── Draft persistence (localStorage) — personal view state only ────────
 function _saveDraft() {
-    try {
-        localStorage.setItem('prvs_planner_draft', JSON.stringify({
-            view: _view, filters: _filters, sort: _sort, columns: _columns, rows: _rows, bucketTab: _bucketTab, dirty: _dirty,
-        }));
-    } catch (_) { /* storage may be unavailable */ }
+    try { localStorage.setItem('prvs_planner_draft', JSON.stringify({ view: _view, filters: _filters, sort: _sort, columns: _columns, order: _order, bucketTab: _bucketTab, dirty: _dirty })); }
+    catch (_) { /* storage may be unavailable */ }
 }
 function _restoreDraft() {
     try {
-        const d = JSON.parse(localStorage.getItem('prvs_planner_draft') || 'null');
-        if (!d) return;
+        const d = JSON.parse(localStorage.getItem('prvs_planner_draft') || 'null'); if (!d) return;
         _view = d.view || null; _filters = Object.assign(_defaultFilters(), d.filters || {});
-        _sort = d.sort || _sort; _columns = d.columns || _columns; _rows = d.rows || {}; _bucketTab = d.bucketTab || 'all'; _dirty = !!d.dirty;
+        _sort = d.sort || _sort; _columns = (d.columns || _columns).filter(k => COLUMNS.some(c => c.key === k)); if (_columns.length < 2) _columns = COLUMNS.filter(c => c.default).map(c => c.key);
+        _order = d.order || {}; _bucketTab = d.bucketTab || 'all'; _dirty = !!d.dirty;
     } catch (_) { /* ignore */ }
 }
 function _touch() { _dirty = true; _saveDraft(); }
 
-// ── Filter/sort/column mutators (called from inline handlers) ──────────
+// ── Filter/sort/column mutators (inline handlers) ──────────────────────
 export function plannerSetFilter(key, value) {
-    if (key === 'silos' || key === 'urgencies' || key === 'roTypes' || key === 'flags' || key === 'statuses') {
-        const arr = _filters[key].slice();
-        const i = arr.indexOf(value);
+    if (['silos', 'urgencies', 'roTypes', 'flags', 'statuses'].includes(key)) {
+        const arr = _filters[key].slice(); const i = arr.indexOf(value);
         if (i >= 0) arr.splice(i, 1); else arr.push(value);
         _filters[key] = arr;
         if (key === 'statuses' && arr.length) _filters.statusPreset = 'custom';
@@ -349,62 +500,61 @@ export function plannerResetFilters() { _filters = _defaultFilters(); _bucketTab
 export function plannerSort(key) {
     if (key === 'manual') { _sort = { key: 'manual', dir: 'asc' }; _freezeManualOrder(); }
     else if (_sort.key === key) _sort.dir = _sort.dir === 'asc' ? 'desc' : 'asc';
-    else _sort = { key, dir: ['ro', 'customer', 'rv', 'status', 'urgency', 'promised', 'dropoff', 'pickup', 'parts', 'tech', 'type', 'spot', 'bucket', 'note', 'silos'].includes(key) ? 'asc' : 'desc' };
+    else _sort = { key, dir: ['ro', 'customer', 'rv', 'status', 'urgency', 'promised', 'dropoff', 'pickup', 'parts', 'tech', 'type', 'spot', 'bucket', 'dates', 'note', 'silos'].includes(key) ? 'asc' : 'desc' };
     _touch(); renderPlanner();
 }
 export function plannerToggleColumn(key) {
     const i = _columns.indexOf(key);
     if (i >= 0) { if (_columns.length > 2) _columns.splice(i, 1); } else _columns.push(key);
-    _columns = COLUMNS.map(c => c.key).filter(k => _columns.includes(k)); // keep catalogue order
+    _columns = COLUMNS.map(c => c.key).filter(k => _columns.includes(k));
     _touch(); renderPlanner();
 }
 export function plannerSetBucketTab(tab) { _bucketTab = tab; _saveDraft(); renderPlanner(); }
+
+// Inline cell writes → planner_entries
 export function plannerSetBucket(roUuid, bucket) {
-    const s = _rows[roUuid] || (_rows[roUuid] = {});
-    s.bucket = bucket || '';
-    if (s.order == null) s.order = _nextOrder();
-    _touch(); renderPlanner();
+    const r = _roByUuid(roUuid); if (!r) return;
+    const silo = _editSiloFor(r);
+    if (!silo) { openPlannerDrawer(roUuid); showToast('This RO spans several services — pick which plan to set in the drawer.', 'info'); return; }
+    plannerUpsertEntry(roUuid, silo, { bucket: bucket || '' });
+}
+export function plannerSetDates(roUuid, start, end) {
+    const r = _roByUuid(roUuid); if (!r) return;
+    const silo = _editSiloFor(r);
+    if (!silo) { openPlannerDrawer(roUuid); return; }
+    plannerUpsertEntry(roUuid, silo, { planned_start: start || null, planned_end: end || null });
 }
 export function plannerSetNote(roUuid, note) {
-    const s = _rows[roUuid] || (_rows[roUuid] = {});
-    s.note = note || '';
-    if (s.order == null && s.note) s.order = _nextOrder();
-    _touch(); // no re-render — user is typing
+    const r = _roByUuid(roUuid); if (!r) return;
+    const silo = _editSiloFor(r);
+    if (!silo) { openPlannerDrawer(roUuid); return; }
+    plannerUpsertEntry(roUuid, silo, { note: note || '' });
 }
-export function plannerBulkBucket(bucket) {
-    // Apply to everything currently displayed
-    _lastRendered.forEach(r => { const s = _rows[r._supabaseId] || (_rows[r._supabaseId] = {}); s.bucket = bucket; if (s.order == null) s.order = _nextOrder(); });
-    _touch(); renderPlanner();
+export async function plannerBulkBucket(bucket) {
+    const targets = _lastRendered.filter(r => _editSiloFor(r));
+    if (!targets.length) return;
+    if (!confirm(`Set ${targets.length} RO(s) → ${bucket ? PLANNER_BUCKETS.find(b => b.key === bucket).label : 'no bucket'} on your plan?`)) return;
+    for (const r of targets) await plannerUpsertEntry(r._supabaseId, _editSiloFor(r), { bucket: bucket || '' });
 }
-function _nextOrder() { return Object.values(_rows).reduce((m, s) => Math.max(m, s.order ?? -1), -1) + 1; }
-function _freezeManualOrder() {
-    // Snapshot the current display order into rows.order so manual mode starts from what the manager sees
-    _lastRendered.forEach((r, i) => { const s = _rows[r._supabaseId] || (_rows[r._supabaseId] = {}); s.order = i; });
-}
+function _freezeManualOrder() { _lastRendered.forEach((r, i) => { _order[r._supabaseId] = i; }); }
 function _reorder(srcIdx, destIdx) {
     if (srcIdx == null || destIdx == null || srcIdx === destIdx) return;
-    if (_sort.key !== 'manual') { _sort = { key: 'manual', dir: 'asc' }; _freezeManualOrder(); }
-    if (_lastRendered.some(r => _rows[r._supabaseId]?.order == null)) _freezeManualOrder();
+    if (_sort.key !== 'manual') { _sort = { key: 'manual', dir: 'asc' }; }
+    if (_lastRendered.some(r => _order[r._supabaseId] == null)) _freezeManualOrder();
     const list = _lastRendered.slice();
-    const [moved] = list.splice(srcIdx, 1);
-    list.splice(destIdx, 0, moved);
-    // Re-number ONLY the displayed rows, preserving their relative slots among hidden rows
-    const slots = _lastRendered.map(r => _rows[r._supabaseId]?.order ?? 0).sort((a, b) => a - b);
-    list.forEach((r, i) => { const s = _rows[r._supabaseId] || (_rows[r._supabaseId] = {}); s.order = slots[i]; });
+    const [moved] = list.splice(srcIdx, 1); list.splice(destIdx, 0, moved);
+    const slots = _lastRendered.map(r => _order[r._supabaseId]).sort((a, b) => a - b);
+    list.forEach((r, i) => { _order[r._supabaseId] = slots[i]; });
     _touch(); renderPlanner();
 }
 
-// ── Saved views (planner_views) ────────────────────────────────────────
+// ── Saved views (planner_views: personal report config) ────────────────
 async function _refreshSavedViews() {
     const sb = getSB(); if (!sb || !window.supabaseSession) return;
-    const { data, error } = await sb.from('planner_views')
-        .select('id,name,owner_email,shared,updated_at')
-        .order('updated_at', { ascending: false });
+    const { data, error } = await sb.from('planner_views').select('id,name,owner_email,shared,updated_at').order('updated_at', { ascending: false });
     if (error) { console.warn('[Planner] views load failed', error); return; }
-    _savedViews = data || [];
-    _renderViewPicker();
+    _savedViews = data || []; _renderViewPicker();
 }
-
 export async function loadPlannerView(id) {
     const sb = getSB(); if (!sb || !window.supabaseSession) return;
     const { data, error } = await sb.from('planner_views').select('*').eq('id', id).maybeSingle();
@@ -413,15 +563,13 @@ export async function loadPlannerView(id) {
     _view = { id: data.id, name: data.name, owner_email: data.owner_email, shared: !!data.shared };
     const cfg = data.config || {};
     _filters = Object.assign(_defaultFilters(), cfg.filters || {});
-    _sort = cfg.sort || { key: 'score', dir: 'desc' };
-    _columns = Array.isArray(cfg.columns) && cfg.columns.length ? cfg.columns : COLUMNS.filter(c => c.default).map(c => c.key);
-    _rows = data.rows || {};
-    _bucketTab = 'all';
-    _dirty = false; _saveDraft();
+    _sort = cfg.sort || { key: 'coord', dir: 'desc' };
+    _columns = Array.isArray(cfg.columns) && cfg.columns.length ? cfg.columns.filter(k => COLUMNS.some(c => c.key === k)) : COLUMNS.filter(c => c.default).map(c => c.key);
+    _order = {}; Object.entries(data.rows || {}).forEach(([k, v]) => { if (v && v.order != null) _order[k] = v.order; });
+    _bucketTab = 'all'; _dirty = false; _saveDraft();
     renderPlanner();
     showToast(`Loaded "${data.name}"`, 'success', { duration: 2000 });
 }
-
 export async function savePlannerView(asCopy) {
     const sb = getSB(); if (!sb || !window.supabaseSession) { showToast('Not signed in.', 'error'); return; }
     let name = _view?.name || '';
@@ -430,20 +578,11 @@ export async function savePlannerView(asCopy) {
         name = prompt(asCopy || !_view ? 'Name this planner view:' : `You cannot overwrite "${_view.name}" (owned by ${_view.owner_email}). Save a copy as:`, name ? name + (asCopy ? ' (copy)' : '') : _suggestName());
         if (!name) return;
     }
-    const payload = {
-        name: name.trim(),
-        owner_email: _me(),
-        shared: mustName ? (_view?.shared || false) : _view.shared,
-        config: { filters: _filters, sort: _sort, columns: _columns },
-        rows: _prunedRows(),
-        updated_at: new Date().toISOString(),
-    };
-    let res;
-    if (mustName) {
-        res = await sb.from('planner_views').insert(payload).select('id,name,owner_email,shared').maybeSingle();
-    } else {
-        res = await sb.from('planner_views').update(payload).eq('id', _view.id).select('id,name,owner_email,shared').maybeSingle();
-    }
+    const rows = {}; Object.entries(_order).forEach(([k, o]) => { rows[k] = { order: o }; });
+    const payload = { name: name.trim(), owner_email: _me(), shared: mustName ? false : _view.shared, config: { filters: _filters, sort: _sort, columns: _columns }, rows, updated_at: new Date().toISOString() };
+    const res = mustName
+        ? await sb.from('planner_views').insert(payload).select('id,name,owner_email,shared').maybeSingle()
+        : await sb.from('planner_views').update(payload).eq('id', _view.id).select('id,name,owner_email,shared').maybeSingle();
     const { data, error } = res;
     if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
     if (!data) { showToast('Save returned no row — RLS may have blocked it.', 'error'); return; }
@@ -452,74 +591,56 @@ export async function savePlannerView(asCopy) {
     showToast(`Saved "${data.name}"`, 'success', { duration: 2500 });
     _refreshSavedViews(); renderPlanner();
 }
-
 export async function deletePlannerView() {
     if (!_view) return;
     if (!_canEditView(_view)) { showToast('Only the owner or an admin can delete this view.', 'warning'); return; }
-    if (!confirm(`Delete planner view "${_view.name}"? This cannot be undone.`)) return;
-    const sb = getSB();
-    const { error } = await sb.from('planner_views').delete().eq('id', _view.id);
+    if (!confirm(`Delete planner view "${_view.name}"? (Plans and messages are NOT affected — only this saved filter set.)`)) return;
+    const { error } = await getSB().from('planner_views').delete().eq('id', _view.id);
     if (error) { showToast('Delete failed: ' + error.message, 'error'); return; }
     showToast('View deleted', 'success', { duration: 2000 });
-    newPlannerView(true);
-    _refreshSavedViews();
+    newPlannerView(true); _refreshSavedViews();
 }
-
 export async function togglePlannerShared() {
     if (!_view) { showToast('Save the view first, then share it.', 'info'); return; }
     if (!_canEditView(_view)) { showToast('Only the owner can change sharing.', 'warning'); return; }
-    const sb = getSB();
     const next = !_view.shared;
-    const { data, error } = await sb.from('planner_views').update({ shared: next, updated_at: new Date().toISOString() }).eq('id', _view.id).select('id').maybeSingle();
+    const { data, error } = await getSB().from('planner_views').update({ shared: next, updated_at: new Date().toISOString() }).eq('id', _view.id).select('id').maybeSingle();
     if (error || !data) { showToast('Could not update sharing' + (error ? ': ' + error.message : ''), 'error'); return; }
     _view.shared = next; _saveDraft();
     showToast(next ? 'View is now SHARED with all managers' : 'View is now private', 'success', { duration: 2500 });
     _refreshSavedViews(); renderPlanner();
 }
-
 export function copyPlannerLink() {
     if (!_view) { showToast('Save the view first — the link points at the saved view.', 'info'); return; }
     const url = `${location.origin}${location.pathname}?planner=${_view.id}`;
     const done = () => showToast((_view.shared ? '' : '⚠️ View is PRIVATE — others will not see it. ') + 'Link copied: ' + url, _view.shared ? 'success' : 'warning', { duration: 6000 });
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done, () => prompt('Copy this link:', url));
-    else prompt('Copy this link:', url);
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done, () => prompt('Copy this link:', url)); else prompt('Copy this link:', url);
 }
-
 export function newPlannerView(silent) {
-    if (!silent && _dirty && !confirm('Discard unsaved planner changes?')) return;
-    _view = null; _rows = {}; _dirty = false; _sort = { key: 'score', dir: 'desc' }; _bucketTab = 'all';
+    if (!silent && _dirty && !confirm('Discard unsaved view changes? (Plans and messages are already saved.)')) return;
+    _view = null; _order = {}; _dirty = false; _sort = { key: 'coord', dir: 'desc' }; _bucketTab = 'all';
     _filters = _defaultFilters();
-    if (_mySilo() && !(typeof isAdmin === 'function' && isAdmin()) && !hasRole('Sr Manager')) _filters.silos = [_mySilo()];
+    if (_mySilo() && !_isSr()) _filters.silos = [_mySilo()];
     _saveDraft(); renderPlanner();
 }
-
 function _suggestName() {
     const silo = _filters.silos.length === 1 ? _siloMeta(_filters.silos[0]).label : (_filters.silos.length ? _filters.silos.length + ' silos' : 'All silos');
     return `${silo} — week of ${_fmtDate(_todayISO())}`;
-}
-function _prunedRows() {
-    // Drop empty entries so the jsonb stays small; keep anything with a bucket, note or manual order
-    const out = {};
-    Object.entries(_rows).forEach(([k, s]) => { if (s && (s.bucket || s.note || s.order != null)) out[k] = { order: s.order ?? null, bucket: s.bucket || '', note: s.note || '' }; });
-    return out;
 }
 
 // ── Push TODAY bucket → Manager Work List ──────────────────────────────
 export async function plannerPushToWorkList(bucket) {
     bucket = bucket || 'today';
     if (typeof _addToWorkListWithSilo !== 'function') { showToast('Work List module not loaded.', 'error'); return; }
-    const targets = (Array.isArray(currentData) ? currentData : []).filter(r => (_rows[r._supabaseId]?.bucket || '') === bucket);
-    if (!targets.length) { showToast(`Nothing in the ${bucket.toUpperCase()} bucket.`, 'info'); return; }
-    if (!confirm(`Add ${targets.length} RO(s) from the ${bucket.toUpperCase()} bucket to YOUR Manager Work List?\n(ROs already on your list are skipped.)`)) return;
-    const sb = getSB();
-    const { data: existing } = await sb.from('manager_work_lists').select('ro_id').eq('manager_email', _me());
+    const targets = (Array.isArray(currentData) ? currentData : []).filter(r => (_myEntry(r)?.bucket || '') === bucket);
+    if (!targets.length) { showToast(`Nothing in your ${bucket.toUpperCase()} bucket.`, 'info'); return; }
+    if (!confirm(`Add ${targets.length} RO(s) from your ${bucket.toUpperCase()} bucket to YOUR Manager Work List?\n(ROs already on your list are skipped.)`)) return;
+    const { data: existing } = await getSB().from('manager_work_lists').select('ro_id').eq('manager_email', _me());
     const have = new Set((existing || []).map(x => String(x.ro_id)));
     let added = 0;
     for (const r of targets) {
         if (have.has(String(r._supabaseId))) continue;
-        const silos = _roSilos(r);
-        const silo = _filters.silos.length === 1 ? _filters.silos[0] : (silos.length === 1 ? silos[0] : (_mySilo() && silos.includes(_mySilo()) ? _mySilo() : null));
-        try { await _addToWorkListWithSilo(r._supabaseId, `${r.customerName} — ${r.roId}`, silo); added++; }
+        try { await _addToWorkListWithSilo(r._supabaseId, `${r.customerName} — ${r.roId}`, _editSiloFor(r)); added++; }
         catch (e) { console.warn('[Planner] work list add failed', r.roId, e); }
     }
     showToast(`Added ${added} RO(s) to your Work List`, 'success');
@@ -532,40 +653,39 @@ export function plannerExportCSV() {
     const rows = [line(cols.map(c => c.label))];
     _lastRendered.forEach(r => rows.push(line(cols.map(c => _cellText(c.key, r)))));
     const blob = new Blob([rows.join('\r\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = `work-planner-${(_view?.name || 'draft').replace(/[^\w-]+/g, '_')}-${_todayISO()}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
 }
-
 export function plannerPrint() {
     const cols = COLUMNS.filter(c => _columns.includes(c.key));
-    const title = _esc(_view?.name || 'Work Planner (unsaved)');
+    const title = _esc(_view?.name || 'Work Planner');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{font-family:Arial,sans-serif;font-size:11px;margin:16px;color:#111}h1{font-size:16px;margin:0 0 4px}p{margin:0 0 10px;color:#555}
 table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eee}tr:nth-child(even) td{background:#fafafa}
 .b-today td:first-child{border-left:4px solid #ef4444}.b-week td:first-child{border-left:4px solid #f59e0b}</style></head><body>
-<h1>${title}</h1><p>${_lastRendered.length} ROs · printed ${new Date().toLocaleString()} · ${_esc(_me())}</p>
+<h1>${title}</h1><p>${_lastRendered.length} ROs · printed ${new Date().toLocaleString()} · ${_esc(_who(_me()))}</p>
 <table><thead><tr>${cols.map(c => `<th>${_esc(c.label)}</th>`).join('')}</tr></thead><tbody>
-${_lastRendered.map(r => `<tr class="b-${_rows[r._supabaseId]?.bucket || ''}">${cols.map(c => `<td>${_esc(_cellText(c.key, r))}</td>`).join('')}</tr>`).join('')}
+${_lastRendered.map(r => `<tr class="b-${_myEntry(r)?.bucket || ''}">${cols.map(c => `<td>${_esc(_cellText(c.key, r))}</td>`).join('')}</tr>`).join('')}
 </tbody></table></body></html>`;
     const w = window.open('', '_blank');
     if (!w) { showToast('Pop-up blocked — allow pop-ups to print.', 'warning'); return; }
     w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
 }
-
 function _cellText(key, r) {
-    const s = _rows[r._supabaseId] || {};
+    const e = _myEntry(r);
     switch (key) {
         case 'ro': return r.roId;
         case 'customer': return r.customerName;
         case 'rv': return r.rv;
         case 'silos': return _roSilos(r).map(k => _siloMeta(k).label).join(', ');
+        case 'plans': return _entriesFor(r._supabaseId).map(x => `${_siloMeta(x.service_silo).label}: ${x.bucket || 'no bucket'}${x.planned_start ? ' ' + x.planned_start : ''}${x.planned_end ? '→' + x.planned_end : ''} (${_who(x.owner_email)})`).join(' | ');
+        case 'coord': return _conflicts(r).map(c => c.text).join(' | ');
         case 'status': return r.status;
         case 'urgency': return r.urgency || '';
-        case 'promised': return r.promisedDate ? String(r.promisedDate).slice(0, 10) : '';
-        case 'dropoff': return r.plannedDropoffDate ? String(r.plannedDropoffDate).slice(0, 10) : '';
-        case 'pickup': return r.pickupDate ? String(r.pickupDate).slice(0, 10) : '';
+        case 'promised': return (r.promisedDate || '').slice(0, 10);
+        case 'dropoff': return (r.plannedDropoffDate || '').slice(0, 10);
+        case 'pickup': return (r.pickupDate || '').slice(0, 10);
         case 'days': { const d = _daysOnLot(r); return d == null ? '' : d; }
         case 'dollars': return parseFloat(r.dollarValue) || 0;
         case 'wo': { const p = _woPct(r); return p == null ? '' : p + '%'; }
@@ -574,8 +694,9 @@ function _cellText(key, r) {
         case 'type': return r.roType || 'standard';
         case 'spot': return r.parkingSpot || '';
         case 'score': return _score(r);
-        case 'bucket': { const b = PLANNER_BUCKETS.find(x => x.key === s.bucket); return b ? b.label : ''; }
-        case 'note': return s.note || '';
+        case 'bucket': { const b = PLANNER_BUCKETS.find(x => x.key === e?.bucket); return b ? b.label : ''; }
+        case 'dates': return e ? [e.planned_start, e.planned_end].filter(Boolean).join(' → ') : '';
+        case 'note': return e?.note || '';
         default: return '';
     }
 }
@@ -584,8 +705,7 @@ function _cellText(key, r) {
 export function renderPlanner(opts) {
     if (!_open) return;
     const bodyOnly = !!(opts && opts.bodyOnly);
-    const body = document.getElementById('plannerBody');
-    const head = document.getElementById('plannerHead');
+    const body = document.getElementById('plannerBody'), head = document.getElementById('plannerHead');
     if (!body || !head) return;
     const all = (Array.isArray(currentData) ? currentData : []);
     const list = _sortRows(_applyFilters(all));
@@ -594,44 +714,42 @@ export function renderPlanner(opts) {
     body.innerHTML = _tableHtml(list);
     _wireDrag(body);
     if (!bodyOnly) _renderViewPicker();
+    if (_drawerRo) _renderDrawer();
 }
 
 function _headerHtml(all) {
     const f = _filters;
-    const chip = (on, label, onclick, color) =>
-        `<button type="button" class="pl-chip${on ? ' on' : ''}" onclick="${onclick}" ${color ? `style="--chip:${color}"` : ''}>${label}</button>`;
-    const bucketCounts = { all: 0, today: 0, week: 0, later: 0, hold: 0, unbucketed: 0 };
-    // counts use the filter WITHOUT the bucket tab so tabs show what each bucket holds
-    const savedTab = _bucketTab; _bucketTab = 'all';
-    const base = _applyFilters(all); _bucketTab = savedTab;
-    base.forEach(r => { const b = _rows[r._supabaseId]?.bucket || ''; bucketCounts.all++; if (b) bucketCounts[b] = (bucketCounts[b] || 0) + 1; else bucketCounts.unbucketed++; });
+    const chip = (on, label, onclick, color) => `<button type="button" class="pl-chip${on ? ' on' : ''}" onclick="${onclick}" ${color ? `style="--chip:${color}"` : ''}>${label}</button>`;
+    const counts = { all: 0, today: 0, week: 0, later: 0, hold: 0, unplanned: 0, coord: 0 };
+    const savedTab = _bucketTab; _bucketTab = 'all'; const base = _applyFilters(all); _bucketTab = savedTab;
+    base.forEach(r => { counts.all++; const b = _myEntry(r)?.bucket || ''; if (b) counts[b]++; else counts.unplanned++; if (_mineConflicts(r).length) counts.coord++; });
     const totalDollars = base.reduce((s, r) => s + (parseFloat(r.dollarValue) || 0), 0);
-
-    const viewTitle = _view ? `${_esc(_view.name)}${_view.shared ? ' <span class="pl-tag pl-tag-shared">SHARED</span>' : ' <span class="pl-tag">private</span>'}${_canEditView(_view) ? '' : ' <span class="pl-tag">read-only · ' + _esc(_view.owner_email) + '</span>'}` : '<em>Unsaved draft</em>';
-
+    const planAs = _isSr() ? (f.silos.length === 1 ? `planning as <b>${_siloMeta(f.silos[0]).emoji} ${_esc(_siloMeta(f.silos[0]).label)}</b>` : 'planning: <b>pick ONE service filter</b> to edit inline, or use the drawer') : `planning as <b>${_siloMeta(_mySilo()).emoji} ${_esc(_siloMeta(_mySilo()).label)}</b>`;
+    const viewTitle = _view ? `${_esc(_view.name)}${_view.shared ? ' <span class="pl-tag pl-tag-shared">SHARED</span>' : ' <span class="pl-tag">private</span>'}${_canEditView(_view) ? '' : ' <span class="pl-tag">read-only · ' + _esc(_who(_view.owner_email)) + '</span>'}` : '<em>Unsaved view</em>';
     return `
     <div class="pl-toolbar">
         <div class="pl-title">
-            <span class="pl-viewname">${viewTitle}${_dirty ? ' <span class="pl-dirty" title="Unsaved changes">●</span>' : ''}</span>
+            <span class="pl-viewname">${viewTitle}${_dirty ? ' <span class="pl-dirty" title="Unsaved view changes">●</span>' : ''}</span>
             <select id="plannerViewPicker" class="pl-select" onchange="if(this.value==='__new'){newPlannerView()}else if(this.value){loadPlannerView(this.value)};this.value=''"><option value="">Open saved view…</option></select>
+            <span class="pl-planas">${planAs}</span>
         </div>
         <div class="pl-actions">
-            <button class="pl-btn pl-btn-primary" onclick="savePlannerView(false)" title="Save this view (filters, columns, order, buckets, notes)">💾 Save</button>
-            <button class="pl-btn" onclick="savePlannerView(true)" title="Save as a new copy">Save As</button>
-            <button class="pl-btn" onclick="togglePlannerShared()" title="Toggle sharing with all managers">${_view?.shared ? '🔓 Shared' : '🔒 Share'}</button>
-            <button class="pl-btn" onclick="copyPlannerLink()" title="Copy a link that opens this saved view">🔗 Link</button>
-            <button class="pl-btn" onclick="plannerPushToWorkList('today')" title="Add every TODAY-bucket RO to your Manager Work List">➕ Today → My Work List</button>
+            <button class="pl-btn pl-btn-primary" onclick="savePlannerView(false)" title="Save this view (filters, columns, sort, manual order). Plans + messages save themselves.">💾 Save view</button>
+            <button class="pl-btn" onclick="savePlannerView(true)">Save As</button>
+            <button class="pl-btn" onclick="togglePlannerShared()">${_view?.shared ? '🔓 Shared' : '🔒 Share'}</button>
+            <button class="pl-btn" onclick="copyPlannerLink()">🔗 Link</button>
+            <button class="pl-btn" onclick="plannerPushToWorkList('today')" title="Add every RO in YOUR Today bucket to your Manager Work List">➕ Today → Work List</button>
             <button class="pl-btn" onclick="plannerExportCSV()">⬇ CSV</button>
             <button class="pl-btn" onclick="plannerPrint()">🖨 Print</button>
             ${_view && _canEditView(_view) ? '<button class="pl-btn pl-btn-danger" onclick="deletePlannerView()" title="Delete this saved view">🗑</button>' : ''}
-            <button class="pl-btn" onclick="newPlannerView()" title="Start a fresh, empty planner">✨ New</button>
+            <button class="pl-btn" onclick="newPlannerView()">✨ New</button>
         </div>
     </div>
     <div class="pl-filters">
         <div class="pl-frow">
             <span class="pl-flabel">Services</span>
             ${(SERVICE_SILOS || []).map(s => chip(f.silos.includes(s.key), `${s.emoji} ${_esc(s.label)}`, `plannerSetFilter('silos','${s.key}')`)).join('')}
-            <select class="pl-select" onchange="plannerSetFilter('siloMode',this.value)" title="How the selected services match an RO">
+            <select class="pl-select" onchange="plannerSetFilter('siloMode',this.value)">
                 <option value="any"${f.siloMode === 'any' ? ' selected' : ''}>has ANY selected</option>
                 <option value="all"${f.siloMode === 'all' ? ' selected' : ''}>has ALL selected</option>
                 <option value="only"${f.siloMode === 'only' ? ' selected' : ''}>ONLY selected (no others)</option>
@@ -646,12 +764,10 @@ function _headerHtml(all) {
                 ${f.statuses.length ? '<option value="custom" selected>Custom…</option>' : ''}
             </select>
             <details class="pl-details"><summary>pick statuses${f.statuses.length ? ` (${f.statuses.length})` : ''}</summary>
-                <div class="pl-popover">${PLANNER_STATUSES.map(s => chip(f.statuses.includes(s), _esc(s), `plannerSetFilter('statuses','${s.replace(/'/g, "\\'")}')`)).join('')}</div>
+                <div class="pl-popover">${PLANNER_STATUSES.map(s => chip(f.statuses.includes(s), _esc(s), `plannerSetFilter('statuses','${s}')`)).join('')}</div>
             </details>
             <span class="pl-flabel">Promised</span>
-            <select class="pl-select" onchange="plannerSetFilter('promised',this.value)">
-                ${PROMISED_PRESETS.map(([k, l]) => `<option value="${k}"${f.promised === k ? ' selected' : ''}>${l}</option>`).join('')}
-            </select>
+            <select class="pl-select" onchange="plannerSetFilter('promised',this.value)">${PROMISED_PRESETS.map(([k, l]) => `<option value="${k}"${f.promised === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
             <input type="date" class="pl-input" value="${_esc(f.promisedFrom)}" onchange="plannerSetFilter('promisedFrom',this.value)" title="Promised from">
             <span class="pl-flabel">→</span>
             <input type="date" class="pl-input" value="${_esc(f.promisedTo)}" onchange="plannerSetFilter('promisedTo',this.value)" title="Promised to">
@@ -662,23 +778,23 @@ function _headerHtml(all) {
             <span class="pl-flabel">Type</span>
             ${['standard', 'insurance', 'hybrid', 'warranty', 'warranty_repair'].map(t => chip(f.roTypes.includes(t), t.replace('_', '+'), `plannerSetFilter('roTypes','${t}')`)).join('')}
             <span class="pl-flabel">Flags</span>
-            ${[['parts_open', '🔩 Parts pending'], ['urgent', '🚨 Urgent update'], ['receivable', '💵 Open balance'], ['no_wo', '📭 No WO'], ['wo_open', '🛠 WO in progress'], ['vip', '⭐ VIP'], ['no_promised', '📆 No promise']]
+            ${[['parts_open', '🔩 Parts pending'], ['urgent', '🚨 Urgent update'], ['receivable', '💵 Open balance'], ['no_wo', '📭 No WO'], ['wo_open', '🛠 WO in progress'], ['vip', '⭐ VIP'], ['no_promised', '📆 No promise'], ['planned_any', '🗓 Has a plan'], ['planned_other', '👀 Planned by another silo']]
                 .map(([k, l]) => chip(f.flags.includes(k), l, `plannerSetFilter('flags','${k}')`)).join('')}
         </div>
         <div class="pl-frow">
             <span class="pl-flabel">Days on lot ≥</span><input type="number" min="0" class="pl-input pl-num" value="${_esc(f.minDays)}" onchange="plannerSetFilter('minDays',this.value)">
             <span class="pl-flabel">$ ≥</span><input type="number" min="0" step="100" class="pl-input pl-num" value="${_esc(f.minDollars)}" onchange="plannerSetFilter('minDollars',this.value)">
-            <span class="pl-flabel">Search</span><input type="search" class="pl-input" style="min-width:200px" placeholder="RO, customer, RV, VIN, tech, note…" value="${_esc(f.search)}" oninput="plannerSearch(this.value)">
-            <details class="pl-details"><summary>columns</summary>
+            <span class="pl-flabel">Search</span><input type="search" class="pl-input" style="min-width:200px" placeholder="RO, customer, RV, VIN, tech, plan note…" value="${_esc(f.search)}" oninput="plannerSearch(this.value)">
+            <details class="pl-details"><summary>columns — what else do you need to see?</summary>
                 <div class="pl-popover">${COLUMNS.map(c => chip(_columns.includes(c.key), _esc(c.label), `plannerToggleColumn('${c.key}')`)).join('')}</div>
             </details>
             <button class="pl-btn pl-btn-sm" onclick="plannerResetFilters()">Reset filters</button>
         </div>
     </div>
     <div class="pl-buckets">
-        ${[['all', 'All', '#94a3b8'], ...PLANNER_BUCKETS.map(b => [b.key, b.emoji + ' ' + b.label, b.color]), ['unbucketed', 'Unplanned', '#64748b']]
-            .map(([k, l, c]) => `<button type="button" class="pl-tab${_bucketTab === k ? ' on' : ''}" style="--tab:${c}" onclick="plannerSetBucketTab('${k}')">${l} <b>${bucketCounts[k] || 0}</b></button>`).join('')}
-        <span class="pl-summary">${bucketCounts.all} ROs · ${_fmtMoney(totalDollars)} · sort: <b>${_sort.key === 'manual' ? '✋ manual (drag rows)' : (COLUMNS.find(c => c.key === _sort.key)?.label || _sort.key) + (_sort.dir === 'asc' ? ' ↑' : ' ↓')}</b></span>
+        ${[['all', 'All', '#94a3b8'], ...PLANNER_BUCKETS.map(b => [b.key, b.emoji + ' ' + b.label, b.color]), ['unplanned', 'Unplanned', '#64748b'], ['coord', '🤝 Needs coordination', '#f472b6']]
+            .map(([k, l, c]) => `<button type="button" class="pl-tab${_bucketTab === k ? ' on' : ''}" style="--tab:${c}" onclick="plannerSetBucketTab('${k}')">${l} <b>${counts[k] || 0}</b></button>`).join('')}
+        <span class="pl-summary">${counts.all} ROs · ${_fmtMoney(totalDollars)} · sort: <b>${_sort.key === 'manual' ? '✋ manual (drag rows)' : (COLUMNS.find(c => c.key === _sort.key)?.label || _sort.key) + (_sort.dir === 'asc' ? ' ↑' : ' ↓')}</b></span>
         <span class="pl-bulk">Set all shown → ${PLANNER_BUCKETS.map(b => `<button class="pl-btn pl-btn-sm" style="border-color:${b.color}" onclick="plannerBulkBucket('${b.key}')">${b.emoji} ${b.label}</button>`).join('')}<button class="pl-btn pl-btn-sm" onclick="plannerBulkBucket('')">clear</button></span>
     </div>`;
 }
@@ -686,27 +802,31 @@ function _headerHtml(all) {
 function _tableHtml(list) {
     if (!list.length) return '<div class="pl-empty">No ROs match these filters.<br><small>Loosen a filter, change the status preset, or check the bucket tab.</small></div>';
     const cols = COLUMNS.filter(c => _columns.includes(c.key));
-    const th = cols.map(c => {
-        const on = _sort.key === c.key;
-        return `<th class="pl-th${on ? ' on' : ''}" onclick="plannerSort('${c.key}')">${_esc(c.label)}${on ? (_sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>`;
-    }).join('');
-    const manualOn = _sort.key === 'manual';
-    return `<table class="pl-table"><thead><tr>
-        <th class="pl-th pl-th-grip${manualOn ? ' on' : ''}" onclick="plannerSort('manual')" title="Manual order — drag rows">#</th>${th}<th></th></tr></thead>
+    const th = cols.map(c => { const on = _sort.key === c.key; return `<th class="pl-th${on ? ' on' : ''}" onclick="plannerSort('${c.key}')">${_esc(c.label)}${on ? (_sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>`; }).join('');
+    return `<table class="pl-table"><thead><tr><th class="pl-th pl-th-grip${_sort.key === 'manual' ? ' on' : ''}" onclick="plannerSort('manual')" title="Manual order — drag rows">#</th>${th}<th></th></tr></thead>
         <tbody>${list.map((r, i) => _rowHtml(r, i, cols)).join('')}</tbody></table>`;
 }
 
 function _rowHtml(r, i, cols) {
-    const s = _rows[r._supabaseId] || {};
-    const b = PLANNER_BUCKETS.find(x => x.key === s.bucket);
-    const tds = cols.map(c => `<td class="pl-td pl-td-${c.key}">${_cellHtml(c.key, r, s)}</td>`).join('');
-    return `<tr class="pl-row${b ? ' pl-b-' + b.key : ''}${r.urgentUpdate ? ' pl-urgent' : ''}" data-idx="${i}" data-id="${r._supabaseId}" style="--bucket:${b ? b.color : 'transparent'}">
+    const e = _myEntry(r);
+    const b = PLANNER_BUCKETS.find(x => x.key === e?.bucket);
+    const tds = cols.map(c => `<td class="pl-td pl-td-${c.key}">${_cellHtml(c.key, r, e)}</td>`).join('');
+    return `<tr class="pl-row${b ? ' pl-b-' + b.key : ''}${r.urgentUpdate ? ' pl-urgent' : ''}${_drawerRo === r._supabaseId ? ' pl-row-open' : ''}" data-idx="${i}" data-id="${r._supabaseId}" style="--bucket:${b ? b.color : 'transparent'}">
         <td class="pl-td pl-grip" draggable="true" title="Drag to reorder">⋮⋮ <span class="pl-num-cell">${i + 1}</span></td>${tds}
-        <td class="pl-td pl-td-go"><button class="pl-btn pl-btn-sm" onclick="closePlanner();scrollToROInBoard('${r._supabaseId}')" title="Jump to this RO on the board">→ card</button></td></tr>`;
+        <td class="pl-td pl-td-go"><button class="pl-btn pl-btn-sm" onclick="openPlannerDrawer('${r._supabaseId}')" title="All silos' plans, RO channel, audit">🔎 Plan</button> <button class="pl-btn pl-btn-sm" onclick="closePlanner();scrollToROInBoard('${r._supabaseId}')" title="Jump to this RO on the board">→ card</button></td></tr>`;
 }
 
-function _cellHtml(key, r, s) {
+function _planChip(x) {
+    const b = PLANNER_BUCKETS.find(y => y.key === x.bucket);
+    const m = _siloMeta(x.service_silo);
+    const dates = x.planned_start || x.planned_end ? ` ${_fmtDate(x.planned_start || x.planned_end)}${x.planned_end && x.planned_end !== x.planned_start ? '→' + _fmtDate(x.planned_end) : ''}` : '';
+    const mine = _mySilos().includes(x.service_silo);
+    return `<span class="pl-plan${mine ? ' mine' : ''}" style="--pc:${b ? b.color : '#475569'}" title="${_esc(m.label)} · ${b ? b.label : 'no bucket'}${dates} · ${_esc(_who(x.owner_email))}${x.source === 'admin_fyi' ? ' · FYI from admin' : ''}${x.note ? '\n' + _esc(x.note) : ''}">${m.emoji} ${b ? b.emoji : '·'}${dates} <i>${_initials(x.owner_email)}</i></span>`;
+}
+
+function _cellHtml(key, r, e) {
     const today = _todayISO();
+    const id = r._supabaseId;
     switch (key) {
         case 'ro': return `<span class="pl-ro">${_esc(r.roId)}</span>${r.customerType === 'VIP' ? ' ⭐' : ''}${r.isTraining ? ' 🎓' : ''}`;
         case 'customer': return `<span class="pl-cust">${_esc(r.customerName)}</span>${r.urgentUpdate ? `<div class="pl-urgent-txt" title="${_esc(r.urgentUpdate)}">🚨 ${_esc(String(r.urgentUpdate).slice(0, 60))}</div>` : ''}`;
@@ -719,6 +839,12 @@ function _cellHtml(key, r, s) {
                 const tip = wo ? `${m.label}: WO ${wo.completed}/${wo.task_count} tasks${wo.est_hours ? ', ' + wo.est_hours + 'h est' : ''}${wo.wo_completed ? ' — COMPLETE' : (wo.tech_done ? ' — tech done' : '')}` : `${m.label}: no work order yet`;
                 return `<span class="pl-silo pl-silo-${st}" title="${_esc(tip)}">${m.emoji} ${_esc(m.label)}</span>`;
             }).join(' ') || '<span class="pl-muted">—</span>';
+        }
+        case 'plans': { const es = _entriesFor(id); return es.length ? es.map(_planChip).join(' ') : '<span class="pl-muted">no plans</span>'; }
+        case 'coord': {
+            const cs = _conflicts(r); if (!cs.length) return '<span class="pl-muted">—</span>';
+            const icon = { overlap: '⚠️', promise: '🔴', unplanned: '📭', request: '📣' };
+            return `<span class="pl-coord" onclick="openPlannerDrawer('${id}')" title="${_esc(cs.map(c => c.text).join('\n'))}">${cs.map(c => `<span class="pl-cf pl-cf-${c.kind}">${icon[c.kind]} ${c.kind}</span>`).join(' ')}</span>`;
         }
         case 'status': return `<span class="pl-status">${_esc(r.status)}</span>`;
         case 'urgency': return r.urgency ? `<span class="pl-urg pl-urg-${r.urgency.toLowerCase()}">${_esc(r.urgency)}</span>` : '<span class="pl-muted">—</span>';
@@ -738,10 +864,23 @@ function _cellHtml(key, r, s) {
         case 'type': return _esc((r.roType || 'standard').replace('_', '+'));
         case 'spot': return _esc(r.parkingSpot) || '<span class="pl-muted">—</span>';
         case 'score': return `<span class="pl-muted">${_score(r)}</span>`;
-        case 'bucket': return `<select class="pl-select pl-bucket-sel" onchange="plannerSetBucket('${r._supabaseId}',this.value)" style="border-color:${PLANNER_BUCKETS.find(b => b.key === s.bucket)?.color || '#334155'}">
-            <option value=""${!s.bucket ? ' selected' : ''}>—</option>
-            ${PLANNER_BUCKETS.map(b => `<option value="${b.key}"${s.bucket === b.key ? ' selected' : ''}>${b.emoji} ${b.label}</option>`).join('')}</select>`;
-        case 'note': return `<input class="pl-input pl-note" maxlength="140" placeholder="plan note…" value="${_esc(s.note || '')}" onchange="plannerSetNote('${r._supabaseId}',this.value)">`;
+        case 'bucket': {
+            if (!_editSiloFor(r)) return `<button class="pl-btn pl-btn-sm" onclick="openPlannerDrawer('${id}')" title="Multi-service RO — choose the service in the drawer">pick service…</button>`;
+            const ro = e && !_canEditEntry(e);
+            return `<select class="pl-select pl-bucket-sel" ${ro ? 'disabled' : ''} onchange="plannerSetBucket('${id}',this.value)" style="border-color:${PLANNER_BUCKETS.find(b => b.key === e?.bucket)?.color || '#334155'}">
+                <option value=""${!e?.bucket ? ' selected' : ''}>—</option>
+                ${PLANNER_BUCKETS.map(b => `<option value="${b.key}"${e?.bucket === b.key ? ' selected' : ''}>${b.emoji} ${b.label}</option>`).join('')}</select>`;
+        }
+        case 'dates': {
+            if (!_editSiloFor(r)) return '<span class="pl-muted">—</span>';
+            const ro = e && !_canEditEntry(e);
+            return `<span class="pl-dates"><input type="date" class="pl-input pl-date" ${ro ? 'disabled' : ''} value="${_esc(e?.planned_start || '')}" onchange="plannerSetDates('${id}',this.value,this.nextElementSibling.nextElementSibling.value)"><span>→</span><input type="date" class="pl-input pl-date" ${ro ? 'disabled' : ''} value="${_esc(e?.planned_end || '')}" onchange="plannerSetDates('${id}',this.previousElementSibling.previousElementSibling.value,this.value)"></span>`;
+        }
+        case 'note': {
+            if (!_editSiloFor(r)) return '<span class="pl-muted">—</span>';
+            const ro = e && !_canEditEntry(e);
+            return `<input class="pl-input pl-note" ${ro ? 'disabled' : ''} maxlength="200" placeholder="plan note…" value="${_esc(e?.note || '')}" onchange="plannerSetNote('${id}',this.value)">`;
+        }
         default: return '';
     }
 }
@@ -751,21 +890,144 @@ function _renderViewPicker() {
     const me = _me();
     const mine = _savedViews.filter(v => (v.owner_email || '').toLowerCase() === me);
     const shared = _savedViews.filter(v => (v.owner_email || '').toLowerCase() !== me);
-    const opt = v => `<option value="${v.id}">${_esc(v.name)}${v.shared ? ' 🔓' : ''}</option>`;
     sel.innerHTML = '<option value="">Open saved view…</option>'
-        + (mine.length ? `<optgroup label="My views">${mine.map(opt).join('')}</optgroup>` : '')
-        + (shared.length ? `<optgroup label="Shared by others">${shared.map(v => `<option value="${v.id}">${_esc(v.name)} — ${_esc((v.owner_email || '').split('@')[0])}</option>`).join('')}</optgroup>` : '')
-        + '<option value="__new">✨ New empty planner</option>';
+        + (mine.length ? `<optgroup label="My views">${mine.map(v => `<option value="${v.id}">${_esc(v.name)}${v.shared ? ' 🔓' : ''}</option>`).join('')}</optgroup>` : '')
+        + (shared.length ? `<optgroup label="Shared by others">${shared.map(v => `<option value="${v.id}">${_esc(v.name)} — ${_esc(_who(v.owner_email))}</option>`).join('')}</optgroup>` : '')
+        + '<option value="__new">✨ New empty view</option>';
 }
 
-// ── Drag & drop (mouse + touch) — same dual pattern as work-list.js ────
+// ── Drill-down drawer: all silos' plans + RO channel + audit ───────────
+export async function openPlannerDrawer(roUuid) {
+    _drawerRo = roUuid;
+    _renderDrawer();
+    await _loadEvents(roUuid);
+    _renderDrawer();
+}
+export function closePlannerDrawer() { _drawerRo = null; const d = document.getElementById('plannerDrawer'); if (d) d.classList.remove('open'); renderPlanner({ bodyOnly: true }); }
+
+function _renderDrawer() {
+    let d = document.getElementById('plannerDrawer');
+    if (!d) { d = document.createElement('div'); d.id = 'plannerDrawer'; d.className = 'pl-drawer'; document.querySelector('#plannerOverlay .pl-shell')?.appendChild(d); }
+    const r = _roByUuid(_drawerRo);
+    if (!r) { d.classList.remove('open'); return; }
+    d.classList.add('open');
+    const es = _entriesFor(r._supabaseId), ms = _msgsFor(r._supabaseId), evs = _events[r._supabaseId] || [];
+    const silos = _roSilos(r);
+    const allSilos = (SERVICE_SILOS || []).map(s => s.key);
+    const cs = _conflicts(r);
+    const deadline = r.pickupDate || r.promisedDate;
+
+    const entryCard = e => {
+        const m = _siloMeta(e.service_silo); const b = PLANNER_BUCKETS.find(x => x.key === e.bucket);
+        const can = _canEditEntry(e);
+        return `<div class="pl-ecard" style="--pc:${b ? b.color : '#475569'}">
+            <div class="pl-ecard-h"><b>${m.emoji} ${_esc(m.label)}</b> <span class="pl-muted">${_esc(_who(e.owner_email))}${e.source === 'admin_fyi' ? ' · 📌 FYI from admin' : ''} · ${e.status}</span>
+                ${can ? `<button class="pl-btn pl-btn-sm pl-btn-danger" onclick="plannerDeleteEntry('${e.id}')" title="Remove this plan">✕</button>` : ''}</div>
+            <div class="pl-ecard-b">
+                <select class="pl-select pl-bucket-sel" ${can ? '' : 'disabled'} onchange="plannerUpsertEntry('${e.ro_uuid}','${e.service_silo}',{bucket:this.value})">
+                    <option value=""${!e.bucket ? ' selected' : ''}>— bucket —</option>${PLANNER_BUCKETS.map(x => `<option value="${x.key}"${e.bucket === x.key ? ' selected' : ''}>${x.emoji} ${x.label}</option>`).join('')}</select>
+                <input type="date" class="pl-input pl-date" ${can ? '' : 'disabled'} value="${_esc(e.planned_start || '')}" onchange="plannerUpsertEntry('${e.ro_uuid}','${e.service_silo}',{planned_start:this.value||null})"> →
+                <input type="date" class="pl-input pl-date" ${can ? '' : 'disabled'} value="${_esc(e.planned_end || '')}" onchange="plannerUpsertEntry('${e.ro_uuid}','${e.service_silo}',{planned_end:this.value||null})">
+                <select class="pl-select" ${can ? '' : 'disabled'} onchange="plannerUpsertEntry('${e.ro_uuid}','${e.service_silo}',{status:this.value})">${['planned', 'active', 'done', 'dropped'].map(s => `<option value="${s}"${e.status === s ? ' selected' : ''}>${s}</option>`).join('')}</select>
+            </div>
+            <input class="pl-input pl-note" ${can ? '' : 'disabled'} maxlength="200" placeholder="plan note…" value="${_esc(e.note || '')}" onchange="plannerUpsertEntry('${e.ro_uuid}','${e.service_silo}',{note:this.value})">
+        </div>`;
+    };
+    const missing = silos.filter(k => !es.some(e => e.service_silo === k));
+    const addable = _isAdmin() ? allSilos.filter(k => !es.some(e => e.service_silo === k)) : missing.filter(_canPlanSilo);
+    const msgHtml = m => {
+        const k = MSG_KINDS[m.kind] || MSG_KINDS.message;
+        const open = m.kind === 'request' && !m.resolved_at;
+        const canResolve = open && (_isSr() || _mySilos().includes(m.to_silo) || (m.from_email || '').toLowerCase() === _me());
+        return `<div class="pl-msg pl-msg-${m.kind}${open ? ' open' : ''}" style="--mc:${k.color}">
+            <div class="pl-msg-h"><span class="pl-msg-kind">${k.emoji} ${k.label}</span> <b>${_esc(_who(m.from_email))}</b>${m.from_silo ? ` <span class="pl-muted">(${_esc(_siloMeta(m.from_silo).label)})</span>` : ''}${m.to_silo ? ` → <b>${_siloMeta(m.to_silo).emoji} ${_esc(_siloMeta(m.to_silo).label)}</b>` : ''} <span class="pl-muted">${_fmtWhen(m.created_at)}</span>
+                ${m.resolved_at ? `<span class="pl-tag pl-tag-shared">resolved by ${_esc(_who(m.resolved_by))}</span>` : ''}</div>
+            <div class="pl-msg-b">${_esc(m.body)}${m.proposed_date ? ` <span class="pl-msg-date">📅 ${_fmtDate(m.proposed_date)}</span>` : ''}</div>
+            <div class="pl-msg-a">
+                <button class="pl-btn pl-btn-sm" onclick="plannerReplyTo('${m.id}')">↩ Reply</button>
+                ${canResolve ? `<button class="pl-btn pl-btn-sm" onclick="plannerResolveMessage('${m.id}')">✓ Resolve</button>` : ''}
+            </div></div>`;
+    };
+    const evHtml = ev => {
+        const who = _who(ev.actor_email); const t = ev.table_name === 'planner_entries' ? 'plan' : 'message';
+        let what = ev.action.toLowerCase();
+        if (ev.action === 'UPDATE' && ev.old_row && ev.new_row) {
+            const diffs = Object.keys(ev.new_row).filter(k => !['updated_at', 'updated_by'].includes(k) && JSON.stringify(ev.old_row[k]) !== JSON.stringify(ev.new_row[k]))
+                .map(k => `${k}: ${_esc(String(ev.old_row[k] ?? '—')).slice(0, 40)} → ${_esc(String(ev.new_row[k] ?? '—')).slice(0, 40)}`);
+            what = diffs.length ? diffs.join('; ') : 'touched';
+        } else if (ev.action === 'INSERT' && ev.new_row) what = `created ${t}${ev.new_row.kind ? ' (' + ev.new_row.kind + ')' : ''}${ev.new_row.bucket ? ' bucket=' + ev.new_row.bucket : ''}`;
+        else if (ev.action === 'DELETE') what = `removed ${t}`;
+        return `<div class="pl-ev"><span class="pl-muted">${_fmtWhen(ev.created_at)}</span> <b>${_esc(who)}</b> <span class="pl-tag">${_esc(_siloMeta(ev.service_silo).label)}</span> ${what}</div>`;
+    };
+    const fromSilo = _isSr() ? (_filters.silos.length === 1 ? _filters.silos[0] : '') : (_mySilo() || '');
+
+    d.innerHTML = `
+    <div class="pl-drawer-h">
+        <div><span class="pl-ro">${_esc(r.roId)}</span> <b>${_esc(r.customerName)}</b> <span class="pl-muted">${_esc(r.rv)}</span><br>
+            <small class="pl-muted">${_esc(r.status)} · promised ${r.promisedDate ? _fmtDate(r.promisedDate) : '—'} · pickup ${r.pickupDate ? _fmtDate(r.pickupDate) : '—'} · ${silos.map(k => _siloMeta(k).emoji + ' ' + _esc(_siloMeta(k).label)).join(', ') || 'no services'}</small></div>
+        <div><button class="pl-btn pl-btn-sm" onclick="closePlanner();scrollToROInBoard('${r._supabaseId}')">→ card</button> <button class="pl-close" onclick="closePlannerDrawer()">&times;</button></div>
+    </div>
+    <div class="pl-drawer-b">
+        ${cs.length ? `<div class="pl-sec"><h4>🤝 Needs coordination</h4>${cs.map(c => `<div class="pl-cf-line pl-cf-${c.kind}">${{ overlap: '⚠️', promise: '🔴', unplanned: '📭', request: '📣' }[c.kind]} ${_esc(c.text)}</div>`).join('')}</div>` : ''}
+        <div class="pl-sec"><h4>🗓 Plans by service <span class="pl-muted">(every manager sees all of these)</span></h4>
+            ${es.length ? es.map(entryCard).join('') : '<div class="pl-muted">No silo has planned this RO yet.</div>'}
+            ${addable.length ? `<div class="pl-addplan">Add plan for: ${addable.map(k => `<button class="pl-btn pl-btn-sm" onclick="plannerUpsertEntry('${r._supabaseId}','${k}',{},{fyi:${_isAdmin() && !silos.includes(k)}})">${_siloMeta(k).emoji} ${_esc(_siloMeta(k).label)}${_isAdmin() && !silos.includes(k) ? ' (FYI)' : ''}</button>`).join(' ')}</div>` : ''}
+            ${_isAdmin() && es.length ? `<div class="pl-addplan">📌 Admin FYI to: ${allSilos.filter(k => !es.some(e => e.service_silo === k)).map(k => `<button class="pl-btn pl-btn-sm" onclick="plannerAdminFyi('${r._supabaseId}','${k}')">${_siloMeta(k).emoji} ${_esc(_siloMeta(k).label)}</button>`).join(' ')}</div>` : ''}
+        </div>
+        <div class="pl-sec"><h4>💬 RO channel <span class="pl-muted">${ms.length} message${ms.length === 1 ? '' : 's'}</span></h4>
+            <div class="pl-thread">${ms.length ? ms.map(msgHtml).join('') : '<div class="pl-muted">No messages yet. Ask another silo for a date, or post an update.</div>'}</div>
+            <div class="pl-compose" id="plannerCompose">
+                <input type="hidden" id="plComposeParent" value="">
+                <div class="pl-frow">
+                    <select id="plComposeKind" class="pl-select" onchange="document.getElementById('plComposeTo').style.display=this.value==='request'?'':'none'">
+                        <option value="message">💬 Message</option><option value="request">📣 Request update from…</option></select>
+                    <select id="plComposeTo" class="pl-select" style="display:none">${allSilos.filter(k => k !== fromSilo).map(k => `<option value="${k}"${silos.includes(k) ? '' : ' style="color:#64748b"'}>${_siloMeta(k).emoji} ${_esc(_siloMeta(k).label)}</option>`).join('')}</select>
+                    <input type="date" id="plComposeDate" class="pl-input pl-date" title="Proposed / requested date">
+                    <span class="pl-muted" style="font-size:0.72rem">as ${fromSilo ? _siloMeta(fromSilo).emoji + ' ' + _esc(_siloMeta(fromSilo).label) : (_isAdmin() ? 'Admin' : 'Sr Manager')}</span>
+                </div>
+                <div class="pl-frow"><input id="plComposeBody" class="pl-input" style="flex:1" maxlength="600" placeholder="e.g. Roof — what day can Solar have the roof for panel install?" onkeydown="if(event.key==='Enter'){plannerSend('${r._supabaseId}')}">
+                    <button class="pl-btn pl-btn-primary" onclick="plannerSend('${r._supabaseId}')">Send</button></div>
+                <div id="plComposeReplyTo" class="pl-muted" style="font-size:0.72rem"></div>
+            </div>
+        </div>
+        <details class="pl-sec"><summary>📜 Audit trail (${evs.length})</summary>${evs.length ? evs.map(evHtml).join('') : '<div class="pl-muted">Nothing yet.</div>'}</details>
+    </div>`;
+}
+
+export function plannerReplyTo(msgId) {
+    const m = Object.values(_msgs).flat().find(x => x.id === msgId); if (!m) return;
+    const p = document.getElementById('plComposeParent'), k = document.getElementById('plComposeKind'), t = document.getElementById('plComposeTo'), b = document.getElementById('plComposeBody'), lbl = document.getElementById('plComposeReplyTo');
+    if (!p) return;
+    p.value = msgId; k.value = 'message'; t.style.display = 'none';
+    lbl.textContent = `Replying to ${_who(m.from_email)}: "${m.body.slice(0, 60)}"`;
+    b.focus();
+}
+export async function plannerSend(roUuid) {
+    const kind = document.getElementById('plComposeKind')?.value || 'message';
+    const to = document.getElementById('plComposeTo')?.value || null;
+    const date = document.getElementById('plComposeDate')?.value || null;
+    const body = (document.getElementById('plComposeBody')?.value || '').trim();
+    const parent = document.getElementById('plComposeParent')?.value || null;
+    if (!body) { showToast('Type a message first.', 'info'); return; }
+    const m = { kind: parent ? 'reply' : kind, to_silo: kind === 'request' ? to : null, proposed_date: date, body, parent_id: parent };
+    if (parent) { const pm = Object.values(_msgs).flat().find(x => x.id === parent); if (pm) m.to_silo = pm.from_silo || null; }
+    const ok = await _postMessage(roUuid, m);
+    if (ok) await _refreshRo(roUuid);
+}
+export async function plannerAdminFyi(roUuid, silo) {
+    if (!_isAdmin()) return;
+    const body = prompt(`FYI note for the ${_siloMeta(silo).label} manager (why this RO needs their attention):`, '');
+    if (body === null) return;
+    const lead = (window._staffCache || []).find(s => s.active && (s.role === 'manager' || s.role === 'sr_manager') && s.service_silo === silo);
+    await plannerUpsertEntry(roUuid, silo, {}, { fyi: true, owner: lead?.email || _me(), body: body || `${_who(_me())} flagged this RO for ${_siloMeta(silo).label} (FYI).` });
+}
+
+// ── Drag & drop (mouse + touch on the grip cell) ───────────────────────
 function _wireDrag(body) {
     const rows = Array.from(body.querySelectorAll('tr.pl-row'));
     let srcIdx = null, touchDest = null;
     rows.forEach(row => {
-        const grip = row.querySelector('.pl-grip');
-        if (!grip) return;
-        // Only the grip cell is draggable so text selection inside note inputs still works
+        const grip = row.querySelector('.pl-grip'); if (!grip) return;
         grip.addEventListener('dragstart', e => {
             srcIdx = parseInt(row.dataset.idx);
             if (e.dataTransfer) { e.dataTransfer.setData('text/plain', row.dataset.id || String(srcIdx)); e.dataTransfer.effectAllowed = 'move'; }
@@ -775,14 +1037,10 @@ function _wireDrag(body) {
         row.addEventListener('dragover', e => { if (srcIdx === null) return; e.preventDefault(); row.classList.add('over'); });
         row.addEventListener('dragleave', () => row.classList.remove('over'));
         row.addEventListener('drop', e => { e.preventDefault(); row.classList.remove('over'); _reorder(srcIdx, parseInt(row.dataset.idx)); srcIdx = null; });
-
-        // Touch (phones/tablets): same grip-only rule
         grip.addEventListener('touchstart', () => { srcIdx = parseInt(row.dataset.idx); touchDest = null; row.classList.add('dragging'); }, { passive: true });
         grip.addEventListener('touchmove', e => {
-            if (srcIdx === null) return;
-            e.preventDefault();
-            const t = e.touches[0];
-            const el = document.elementFromPoint(t.clientX, t.clientY);
+            if (srcIdx === null) return; e.preventDefault();
+            const t = e.touches[0]; const el = document.elementFromPoint(t.clientX, t.clientY);
             const over = el && el.closest ? el.closest('tr.pl-row') : null;
             rows.forEach(r => r.classList.remove('over'));
             if (over && over !== row) { over.classList.add('over'); touchDest = parseInt(over.dataset.idx); } else touchDest = null;
@@ -791,14 +1049,15 @@ function _wireDrag(body) {
     });
 }
 
-// Close on Escape
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && _open) closePlanner(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && _open) { if (_drawerRo) closePlannerDrawer(); else closePlanner(); } });
 
-// ── Window bridge (inline onclick= handlers resolve through here) ──────
+// ── Window bridge ──────────────────────────────────────────────────────
 Object.assign(window, {
     openPlanner, closePlanner, renderPlanner, _initPlannerBtn,
-    plannerSetFilter, plannerSearch, plannerResetFilters, plannerSort, plannerToggleColumn,
-    plannerSetBucketTab, plannerSetBucket, plannerSetNote, plannerBulkBucket,
+    plannerSetFilter, plannerSearch, plannerResetFilters, plannerSort, plannerToggleColumn, plannerSetBucketTab,
+    plannerSetBucket, plannerSetDates, plannerSetNote, plannerBulkBucket,
+    plannerUpsertEntry, plannerDeleteEntry, plannerResolveMessage, plannerReplyTo, plannerSend, plannerAdminFyi,
+    openPlannerDrawer, closePlannerDrawer,
     loadPlannerView, savePlannerView, deletePlannerView, togglePlannerShared, copyPlannerLink, newPlannerView,
     plannerPushToWorkList, plannerExportCSV, plannerPrint,
 });

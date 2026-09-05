@@ -2,15 +2,21 @@
 <!DOCTYPE html>
 <!--
     PRVS Dashboard v1.504
-    v1.504: [S188] NEW 🗓 WORK PLANNER (js/planner.js) — manager-facing dynamic
-    RO report + daily/weekly work-list builder ON index.html: filter by service
-    silo (any/all/only + spans-2+), status preset/pick, promised-date window,
-    urgency, RO type, flags (parts pending, urgent update, open balance, no WO,
-    WO in progress, VIP, no promise), days-on-lot / $ floors, search; sortable
-    columns or MANUAL drag order (mouse + touch grip); TODAY / THIS WEEK / LATER /
-    HOLD buckets + per-RO plan note; Save / Save As / Share / Link (?planner=<id>)
-    via NEW planner_views table (planner_views_s188.sql); Today -> My Work List
-    push; CSV + print. Header button 🗓 Work Planner (canSeeWorkList).
+    v1.504: [S188] NEW 🗓 WORK PLANNER (js/planner.js, spec docs/specs/WORK_PLANNER_SPEC.md)
+    — manager-facing dynamic RO report + daily/weekly work-list builder ON
+    index.html, built on Roland's SHARED-PLAN model: planner_entries = one row
+    per (RO, silo) with bucket Today/Week/Later/Hold + planned start/end + note,
+    visible to EVERY manager (cross-silo awareness: Roof spraying Wed vs Solar
+    installing Wed); RO CHANNEL (planner_messages) = Slack-style thread per RO
+    for requests / replies / resolve / admin FYI — NOT email; planner_events =
+    trigger-written audit of every touch. Live coordination checks: date
+    OVERLAP between silos, PROMISE/PICKUP squeeze, UNPLANNED silo, OPEN
+    REQUEST → 🤝 Needs-coordination tab + red badge on the header button.
+    Filters: silo any/all/only + spans-2+, status preset/pick, promised window,
+    urgency, RO type, flags, days/$ floors, search; sortable or MANUAL drag
+    order; "what else do you need to see" column picker; personal saved/shared
+    views (planner_views) + ?planner=<id> deep link; Today → Work List push;
+    CSV + print. Migrations: planner_views_s188.sql + planner_shared_plan_s188.sql.
     v1.503: [S187] NEW TERMINAL STATUS "Delivered - No Review".
     A 19th RO status (18 -> 19 on BOTH status CHECKs). A REAL cash-out — the
     customer paid, the work was billed — that simply never asks for a Google
