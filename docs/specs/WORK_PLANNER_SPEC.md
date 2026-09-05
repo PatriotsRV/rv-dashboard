@@ -72,3 +72,35 @@
    via the Messages board. Roland: email is "the worst way" — huge buckets, things get buried.
 3. Sr Managers / Admins pick the silo explicitly; silo Managers default to their own silo.
 4. Existing Manager Work List side panel stays for now; Planner can push into it.
+
+## Roadmap — the long game (Roland, S188): "Jarvis for Patriots RV"
+
+> Verbatim goal: *"a tool that will become an assistant manager to my managers, a guide to my staff,
+> and a sales assistant … like Jarvis managing Stark Industries. The only way to truly do that is an
+> interactive assistant and guide that anyone on my staff could have access to and become super
+> AI-supplemented managers."* NOT spec'd yet — noted so no session loses it.
+
+**Near-term seed (feasible now, ~2 sessions):** an **AI prompt field on index.html** (and later every page)
+that acts as (1) a **guide** ("how do I request a date from Roof?" → answers from guide.html + the
+Planner guide), (2) an **RO DB tutor / FAQ** ("what does Awaiting Extended Warranty mean?"),
+(3) a **manager assistant** that can *read* live data ("which of my Solar RVs are promised this week and
+have no plan?", "summarize the channel on PRVS-7CFE-2397"). Mechanics: a `claude-assistant` Supabase edge
+function (same shape as `claude-vision-proxy`, S-era key already provisioned) that receives the question +
+the caller's role/silo, is given tool access to READ-ONLY SQL views over repair_orders / planner_* / parts /
+time_logs (RLS-scoped through the caller's JWT — never the service key), plus the docs folder as retrieval
+context; answers stream into a chat drawer. Audit every question + answer (assistant_events).
+
+**Mid-term:** the assistant can *act* with confirmation — draft a channel request, bucket an RV, create a
+Task, draft a customer text in the Messages composer — each action goes through the existing write paths so
+RLS + audit + notify all still fire. Per-role behaviour: tech = guide + check-in helper; manager = planner
+copilot; sales = quote/estimate assistant (AeroArmor calculator, solar sizing).
+
+**End state:** proactive — the morning digest (Phase 3) becomes a conversation; the assistant flags promise
+risks before a human asks, proposes a re-sequenced plan across silos, and explains its reasoning against
+the audit trail. Every staff member gets the same assistant, scoped by their role.
+
+**Feasibility (Claude's read, S188):** the seed is very feasible — the codebase already has an edge-fn
+pattern for calling Claude, RLS helpers keyed on the JWT, structured docs, and now a planner data model
+worth reasoning over. The hard parts are (a) keeping answers grounded (read-only tool calls over real rows,
+not free-text guessing), (b) cost/latency controls per question, and (c) the write-with-confirmation
+loop. Suggested order: Q&A over docs → read-only data questions → confirmed actions → proactive.
