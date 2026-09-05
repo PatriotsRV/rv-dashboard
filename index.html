@@ -1,7 +1,16 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.503
+    PRVS Dashboard v1.504
+    v1.504: [S188] NEW 🗓 WORK PLANNER (js/planner.js) — manager-facing dynamic
+    RO report + daily/weekly work-list builder ON index.html: filter by service
+    silo (any/all/only + spans-2+), status preset/pick, promised-date window,
+    urgency, RO type, flags (parts pending, urgent update, open balance, no WO,
+    WO in progress, VIP, no promise), days-on-lot / $ floors, search; sortable
+    columns or MANUAL drag order (mouse + touch grip); TODAY / THIS WEEK / LATER /
+    HOLD buckets + per-RO plan note; Save / Save As / Share / Link (?planner=<id>)
+    via NEW planner_views table (planner_views_s188.sql); Today -> My Work List
+    push; CSV + print. Header button 🗓 Work Planner (canSeeWorkList).
     v1.503: [S187] NEW TERMINAL STATUS "Delivered - No Review".
     A 19th RO status (18 -> 19 on BOTH status CHECKs). A REAL cash-out — the
     customer paid, the work was billed — that simply never asks for a Google
@@ -1049,7 +1058,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.503';</script>
+    <script>window.APP_VERSION = '1.504';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
@@ -1139,6 +1148,9 @@
                 </button>
                 <button id="workListReportBtn" onclick="window.open('worklist-report.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(124,58,237,0.15); color: #c4b5fd; border: 2px solid rgba(124,58,237,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.3)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
                     &#128203; Work List Report
+                </button>
+                <button id="plannerBtn" onclick="openPlanner()" title="Work Planner — build a daily / weekly work list by service" style="display:none; padding: 10px 16px; background: rgba(14,165,233,0.15); color: #7dd3fc; border: 2px solid rgba(14,165,233,0.5); border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                    &#128197; Work Planner
                 </button>
                 <button id="closedROsBtn" onclick="window.open('closed-ros.html','_blank')" style="display:none; padding: 10px 16px; background: rgba(234,179,8,0.15); color: #facc15; border: 2px solid rgba(234,179,8,0.5); border-radius: 8px; cursor: pointer; font-weight: 700; letter-spacing: 0.03em; transition: all 0.2s;" onmouseover="this.style.background='rgba(234,179,8,0.3)'" onmouseout="this.style.background='rgba(234,179,8,0.15)'">
                     &#128451; Closed ROs
@@ -5146,6 +5158,8 @@
             if (wlReportBtn) {
                 wlReportBtn.style.display = isAdmin() ? 'inline-block' : 'none';
             }
+            // [v1.504 S188] Work Planner button (Admin / Manager / Sr Manager)
+            if (typeof _initPlannerBtn === 'function') _initPlannerBtn();
             // Show Closed ROs button (all authenticated users)
             const closedROsBtn = document.getElementById('closedROsBtn');
             if (closedROsBtn) {
@@ -8325,6 +8339,22 @@ let _erFilterCategory = 'all';
 
 // [PHASE 18 DELETED v1.443 S91] saveERNote() -> js/enhancement.js
 </script>
+
+<!-- [v1.504 S188] Work Planner — full-screen overlay; header + table are rendered by js/planner.js -->
+<div id="plannerOverlay" class="pl-overlay" style="display:none;">
+    <div class="pl-shell">
+        <div class="pl-titlebar">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:24px;">&#128197;</span>
+                <h2 style="margin:0;font-size:1.2rem;font-family:'Barlow Condensed',sans-serif;font-weight:700;">Work Planner</h2>
+                <span class="pl-hint">filter &rarr; sort or drag &rarr; bucket into Today / This Week &rarr; save &amp; share</span>
+            </div>
+            <button onclick="closePlanner()" class="pl-close" title="Close (Esc)">&times;</button>
+        </div>
+        <div id="plannerHead"></div>
+        <div id="plannerBody" class="pl-body"></div>
+    </div>
+</div>
 
 <!-- GH#19: Enhancement Request Admin Modal -->
 <div id="erAdminOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10060;display:none;align-items:center;justify-content:center;padding:20px;">
