@@ -1,7 +1,10 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.504
+    PRVS Dashboard v1.505
+    v1.505: [S188 HOTFIX] Work Planner — Coordination / Plans columns sorted flagged rows to the
+    BOTTOM under the default desc sort (negative counts); now positive counts so 🤝 rows lead.
+    Found in the S188 prod smoke test on the Kevin McHenry Tester RO.
     v1.504: [S188] NEW 🗓 WORK PLANNER (js/planner.js, spec docs/specs/WORK_PLANNER_SPEC.md)
     — manager-facing dynamic RO report + daily/weekly work-list builder ON
     index.html, built on Roland's SHARED-PLAN model: planner_entries = one row
@@ -1064,7 +1067,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.504';</script>
+    <script>window.APP_VERSION = '1.505';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>

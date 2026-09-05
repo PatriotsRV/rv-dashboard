@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// js/planner.js — 🗓 WORK PLANNER  (v1.504, Session 188, 2026-09-05)
+// js/planner.js — 🗓 WORK PLANNER  (v1.505, Session 188, 2026-09-05)
 // ───────────────────────────────────────────────────────────────────────
 // Manager-facing dynamic RO report + daily/weekly work-list builder that
 // lives ON index.html (full-screen overlay, #plannerOverlay).
@@ -84,8 +84,8 @@ const COLUMNS = [
     { key: 'customer', label: 'Customer',  default: true,  get: r => r.customerName },
     { key: 'rv',       label: 'RV',        default: true,  get: r => r.rv },
     { key: 'silos',    label: 'Services',  default: true,  get: r => _roSilos(r).join(',') },
-    { key: 'plans',    label: 'Plans (all silos)', default: true, get: r => -(_entriesFor(r._supabaseId).length) },
-    { key: 'coord',    label: 'Coordination', default: true, get: r => -(_conflicts(r).length) },
+    { key: 'plans',    label: 'Plans (all silos)', default: true, get: r => _entriesFor(r._supabaseId).length },
+    { key: 'coord',    label: 'Coordination', default: true, get: r => _conflicts(r).length },
     { key: 'status',   label: 'Status',    default: true,  get: r => PLANNER_STATUSES.indexOf(r.status) },
     { key: 'urgency',  label: 'Urgency',   default: true,  get: r => ({ Critical: 0, High: 1, Medium: 2, Low: 3 })[r.urgency] ?? 9 },
     { key: 'promised', label: 'Promised',  default: true,  get: r => r.promisedDate || '9999-99-99' },
