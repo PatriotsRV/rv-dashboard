@@ -2,6 +2,18 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.25 (Session 189, 2026-09-14): RETURNING CUSTOMERS CAN GET A NEW RO
+    (Roland: a customer whose prior RO was closed out/archived had no
+    "Create RO from this lead" button). The RO-chip block now splits the
+    phone-matched repair_orders rows into LIVE vs CLOSED (terminal status per
+    the shared STATUS_PROGRESS_MAP, 100% = terminal — not a private list) and
+    ALSO looks up `cashiered` for ARCHIVED ROs. Closed/archived chips render
+    muted + tagged (CLOSED / ARCHIVED, with archive date in the tooltip);
+    archived chips link to closed-ros.html. Only a LIVE RO hides the Create-RO
+    button; a returning customer sees their history AND the button, with a
+    "Returning customer — no active RO" hint. saveLeadInfo's button refresh
+    now honours the cached live-RO answer instead of always showing it.
+
     v1.24 (Session 177, 2026-08-21): SCHEDULED MESSAGES (Roland directive —
     "build the message, schedule it to send later at a very specific time",
     e.g. remind a tech at 4:35 PM, or a team-lunch broadcast set up hours
@@ -533,6 +545,16 @@
             background: var(--celeste-mist); border: 1px solid var(--border-color); color: var(--accent-info); font-size: 0.75rem;
             text-decoration: none; font-family: 'JetBrains Mono', monospace;
         }
+        /* v1.25 (S189): closed/archived RO chips — muted, with a small tag */
+        .ro-chip.closed, .ro-chip.archived {
+            color: var(--text-secondary, #64748b); background: var(--bg-secondary); border-style: dashed;
+        }
+        .ro-chip.archived { opacity: 0.85; }
+        .ro-chip-tag {
+            font-family: 'Inter', system-ui, sans-serif; font-size: 0.62rem; text-transform: uppercase;
+            letter-spacing: 0.04em; margin-left: 4px; padding: 0 5px; border-radius: 6px;
+            background: var(--border-color); color: var(--text-secondary, #64748b);
+        }
         .assign-select, .assign-input {
             width: 100%; padding: 8px 10px; background: var(--bg-secondary); color: var(--text-primary);
             border: 1.5px solid var(--input-border); border-radius: 8px; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px;
@@ -912,14 +934,19 @@
 <div id="toastBox"></div>
 
 <script type="module">
-import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET } from './js/config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, STATUS_PROGRESS_MAP } from './js/config.js';
 
 // ── Constants / gated logging (closed-ros.html conventions) ─────────
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.24';
-console.log('PRVS Messages ' + PAGE_VERSION + ' (S177)');
+const PAGE_VERSION = 'messages v1.25';
+console.log('PRVS Messages ' + PAGE_VERSION + ' (S189)');
+// v1.25 (S189): terminal = the SHARED progress map says 100% (Delivered/Cashed Out,
+// Closed - No Charge, Delivered - No Review). Not a private copy of the list — the
+// S187 gotcha: a module-private predicate drifts the day a 20th status lands.
+function _isTerminalStatus(s) { return (STATUS_PROGRESS_MAP[s] || 0) >= 100; }
+let _liveROCache = null; // v1.25: { convoId, hasLive } — consumed by saveLeadInfo's button refresh
 document.getElementById('verBadge').textContent = PAGE_VERSION;
 
 // ── State ────────────────────────────────────────────────────────────
@@ -1522,7 +1549,7 @@ async function saveLeadInfo() {
         const { data: fresh, error: reErr } = await getSB()
             .from('conversations').select('*').eq('id', c.id).maybeSingle();
         if (reErr) throw reErr;
-        if (fresh) { _activeConvo = fresh; renderLeadInfo(fresh); _refreshCreateROBtn(fresh); }
+        if (fresh) { _activeConvo = fresh; renderLeadInfo(fresh); _refreshCreateROBtn(fresh, !!(_liveROCache && _liveROCache.convoId === fresh.id && _liveROCache.hasLive)); }
         closeLeadModal();
         showToast('Lead info saved.', 'success');
     } catch (e) {
@@ -1531,9 +1558,10 @@ async function saveLeadInfo() {
     } finally { btn.disabled = false; }
 }
 
-// Show the handoff button only when it makes sense: managers+, and no live RO
-// already exists for this number (an existing RO means it's already converted —
-// the RO chips above are the answer).
+// Show the handoff button only when it makes sense: managers+, and no LIVE RO
+// already exists for this number (a live RO means it's already converted —
+// the RO chips above are the answer). v1.25: closed (terminal-status) and
+// archived (cashiered) ROs are NOT live — a returning customer gets the button.
 function _refreshCreateROBtn(c, hasLiveRO) {
     const btn = document.getElementById('createROBtn');
     if (!btn) return;
@@ -1787,6 +1815,11 @@ async function renderDetails() {
     document.getElementById('markUnreadInfo').style.display = canMarkUnread ? '' : 'none';
 
     // Linked ROs by phone key (same match as webhook routing).
+    // v1.25 (S189, Roland): a customer whose only RO is CLOSED (terminal status,
+    // still in repair_orders until the Sunday sweep) or ARCHIVED (already swept
+    // into `cashiered`) is a RETURNING customer, not a converted lead. Show the
+    // old RO(s) — labelled closed/archived — and still offer "Create RO from
+    // this lead". Only a LIVE (non-terminal) RO hides the button.
     const roBox = document.getElementById('detailROs');
     roBox.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
     const { data: ros, error: roErr } = await getSB()
@@ -1795,13 +1828,37 @@ async function renderDetails() {
         .is('deleted_at', null)
         .not('phone', 'is', null);
     let linked = [];
+    let live = [];
     if (roErr) { roBox.innerHTML = '<span style="color:#ef4444; font-size:0.8rem;">Error loading ROs</span>'; }
     else {
         linked = (ros || []).filter(r => phoneKeyOf(r.phone) === c.phone_key);
-        roBox.innerHTML = linked.length
-            ? linked.map(r => `<a class="ro-chip" href="index.html?ro=${encodeURIComponent(r.ro_id || '')}" target="_blank" title="${escapeHtml(r.customer_name || '')} — ${escapeHtml(r.status || '')}">${escapeHtml(r.ro_id || '?')}</a>`).join('')
+        live = linked.filter(r => !_isTerminalStatus(r.status));
+        const closed = linked.filter(r => _isTerminalStatus(r.status));
+        // Archived ROs live in `cashiered` (same last-4 prefilter + exact
+        // phone_key match as renderContactInfo's archive fallback).
+        let archived = [];
+        try {
+            const last4 = c.phone_key.slice(-4);
+            const { data: arch, error: archErr } = await getSB()
+                .from('cashiered')
+                .select('ro_id, customer_name, rv, phone, status, date_received, archived_at')
+                .ilike('phone', '%' + last4 + '%')
+                .order('archived_at', { ascending: false })
+                .limit(20);
+            if (!archErr && arch) archived = arch.filter(r => phoneKeyOf(r.phone) === c.phone_key);
+        } catch (e) { console.error('cashiered RO lookup failed:', e); }
+        if (_activeConvo?.id !== c.id) return; // async race guard — user moved on
+        const chip = (r, cls, label, href) =>
+            `<a class="ro-chip ${cls}" href="${href}" target="_blank" title="${escapeHtml(r.customer_name || '')} — ${escapeHtml(label)}${r.rv ? ' — ' + escapeHtml(r.rv) : ''}">${escapeHtml(r.ro_id || '?')}${cls ? ' <span class="ro-chip-tag">' + escapeHtml(cls) + '</span>' : ''}</a>`;
+        const parts = [];
+        parts.push(...live.map(r => chip(r, '', r.status || '', `index.html?ro=${encodeURIComponent(r.ro_id || '')}`)));
+        parts.push(...closed.map(r => chip(r, 'closed', r.status || 'Closed', `index.html?ro=${encodeURIComponent(r.ro_id || '')}`)));
+        parts.push(...archived.map(r => chip(r, 'archived', 'Archived ' + (r.archived_at ? new Date(r.archived_at).toLocaleDateString('en-US') : '') + (r.status ? ' (' + r.status + ')' : ''), 'closed-ros.html')));
+        roBox.innerHTML = parts.length
+            ? parts.join('') + (live.length ? '' : '<div style="font-size:0.72rem; color:#8FA9C2; margin-top:4px;">Returning customer &mdash; no active RO. You can open a new one below.</div>')
             : '<span style="color:#64748b; font-size:0.8rem;">No active RO for this number.</span>';
     }
+    _liveROCache = { convoId: c.id, hasLive: live.length > 0 };
 
     // ── v1.11: email + address (Roland directive: easy to see + copy) ──
     // Source of truth order: newest live RO that has the field, else the
@@ -1809,10 +1866,10 @@ async function renderDetails() {
     // we simply don't have it.
     renderContactInfo(c, linked);
 
-    // v1.17 (S161): lead info + the lead->RO handoff button. `linked` is the
-    // live-RO match by phone, so an already-converted lead hides the button.
+    // v1.17 (S161): lead info + the lead->RO handoff button. v1.25: only a
+    // LIVE (non-terminal) RO hides the button — closed/archived ROs do not.
     renderLeadInfo(c);
-    _refreshCreateROBtn(c, linked.length > 0);
+    _refreshCreateROBtn(c, live.length > 0);
 
     // ── v1.12: customer note (Kenect parity — customer_notes by phone_key) ──
     renderCustomerNote(c);
