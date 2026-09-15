@@ -2,6 +2,15 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.26 (Session 189, 2026-09-15): SCROLL-SAFE, NEAR-REAL-TIME THREAD
+    (Roland: "the refresh pops me back down to the most recent message —
+    very difficult to read past messages"). renderThread() now (1) skips the
+    DOM entirely when the message signature is unchanged, (2) keeps your
+    scroll position when it does rebuild while you are scrolled up and shows
+    a "↓ New messages" pill (click = jump), and (3) only auto-scrolls to the
+    bottom on open / send / already-at-bottom. Plus a 10s poll on the open
+    thread only, so inbound replies land within seconds instead of a minute.
+
     v1.25 (Session 189, 2026-09-14): RETURNING CUSTOMERS CAN GET A NEW RO
     (Roland: a customer whose prior RO was closed out/archived had no
     "Create RO from this lead" button). The RO-chip block now splits the
@@ -372,7 +381,8 @@
     staff.phone_number via projectblue-send (context 'staff_notify').
     Role visibility v1: all authenticated staff see all conversations;
     only Manager/Sr Manager/Admin can assign (RLS-enforced too).
-    Refresh: 60s poll + window focus. No realtime dependency (GH#36).
+    Refresh: 60s poll + window focus for the list/details; 10s poll for the
+    OPEN thread (v1.26). No realtime dependency (GH#36).
 -->
 <html lang="en">
 <head>
@@ -505,7 +515,14 @@
         .unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); margin-left: 5px; }
 
         /* ── Center: thread ── */
-        .thread-pane { display: flex; flex-direction: column; background: var(--bg-primary); }
+        .thread-pane { display: flex; flex-direction: column; background: var(--bg-primary); position: relative; }
+        /* v1.26 (S189): "new messages" pill — shown when the thread updated while you were scrolled up */
+        .thread-new-pill {
+            position: absolute; left: 50%; transform: translateX(-50%); bottom: 132px; z-index: 5;
+            padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border-color);
+            background: var(--accent-info, #2563eb); color: #fff; font-size: 0.78rem; font-weight: 600;
+            cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        }
         .thread-header {
             padding: 10px 16px; border-bottom: 1px solid var(--bg-tertiary);
             display: flex; justify-content: space-between; align-items: center; gap: 8px;
@@ -686,6 +703,7 @@
             </div>
             <input type="hidden" id="msgPhone">
             <div id="msgThread"><div class="empty-note">Pick a conversation on the left to see the thread.</div></div>
+            <button id="threadNewPill" class="thread-new-pill" onclick="threadJumpToBottom()" style="display:none;">&#8595; New messages</button>
             <div id="optoutBanner" class="optout-banner" style="display:none;">
                 &#128721; This customer replied STOP — outgoing texts are blocked until they reply START.
             </div>
@@ -940,7 +958,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, STATUS_PROGRESS_
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.25';
+const PAGE_VERSION = 'messages v1.26';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S189)');
 // v1.25 (S189): terminal = the SHARED progress map says 100% (Delivered/Cashed Out,
 // Closed - No Charge, Delivered - No Review). Not a private copy of the list — the
@@ -965,6 +983,9 @@ let _activeFilter = 'open';   // v1.4: "Open" is the default filter
 let _serviceFilter = new Set();
 let _roServicesByPhone = {};  // phone_key -> Set(lowercased repair_type values) from live ROs
 let _pollTimer = null;
+let _threadPollTimer = null;   // v1.26: 10s active-thread poll (cheap: one query by phone)
+let _threadSig = '';           // v1.26: signature of the rendered thread — unchanged = do not touch the DOM
+let _threadConvoId = null;     // v1.26: which conversation the rendered thread belongs to
 
 function getSB() {
     if (!_sb) {
@@ -1145,6 +1166,15 @@ function showApp() {
     refreshAll();
     _pollTimer = setInterval(refreshAll, 60000);
     window.addEventListener('focus', refreshAll);
+    // v1.26: near-real-time thread — poll just the open thread every 10s
+    // (one indexed query by phone; renderThread skips the DOM when unchanged).
+    // Still no realtime dependency (GH#36).
+    _threadPollTimer = setInterval(() => {
+        if (_activeConvo && document.visibilityState === 'visible') renderThread();
+    }, 10000);
+    // Hide the "new messages" pill once the reader scrolls back to the bottom.
+    const _thEl = document.getElementById('msgThread');
+    if (_thEl) _thEl.addEventListener('scroll', () => { if (_threadAtBottom(_thEl)) { const p = document.getElementById('threadNewPill'); if (p) p.style.display = 'none'; } }, { passive: true });
 }
 
 // ── Conversation list ────────────────────────────────────────────────
@@ -1448,17 +1478,51 @@ async function selectConversation(id) {
     document.getElementById('msgSchedBtn').disabled = !!c.opted_out_at; // v1.24 S177
     document.getElementById('optoutBanner').style.display = c.opted_out_at ? 'block' : 'none';
     renderConvoList();
-    await Promise.all([renderThread(), renderDetails()]);
+    await Promise.all([renderThread(true), renderDetails()]);
 }
-async function renderThread() {
+// v1.26 (S189, Roland): the 60s refresh used to rebuild the thread and slam
+// scrollTop to the bottom every time — unreadable if you were scrolled up in
+// history. Now: (1) if nothing changed, the DOM is not touched at all;
+// (2) if something changed and you were reading old messages, your scroll
+// position is kept and a "↓ New messages" pill appears; (3) the jump to the
+// bottom only happens when you open a conversation, send, or were already at
+// the bottom. `jump` forces the bottom (open / send).
+const _AT_BOTTOM_PX = 48;
+function _threadAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight <= _AT_BOTTOM_PX; }
+function _showThreadPill(threadEl) {
+    const pill = document.getElementById('threadNewPill');
+    if (!pill) return;
+    // Sit just above the bottom edge of the thread box, whatever the composer height is.
+    const pane = threadEl.offsetParent;
+    if (pane) pill.style.bottom = Math.max(8, pane.clientHeight - threadEl.offsetTop - threadEl.clientHeight + 10) + 'px';
+    pill.style.display = '';
+}
+function threadJumpToBottom() {
+    const threadEl = document.getElementById('msgThread');
+    if (threadEl) threadEl.scrollTop = threadEl.scrollHeight;
+    const pill = document.getElementById('threadNewPill');
+    if (pill) pill.style.display = 'none';
+}
+async function renderThread(jump = false) {
     const c = _activeConvo;
     if (!c) return;
     const threadEl = document.getElementById('msgThread');
     const msgs = await loadMessages(null, c.display_phone || ('+1' + c.phone_key));
+    if (_activeConvo?.id !== c.id) return; // user switched threads mid-fetch
+    const switched = _threadConvoId !== c.id;
+    const sig = msgs.length + '|' + msgs.map(m => `${m.id}:${m.status || ''}:${m.updated_at || ''}:${m.direction || ''}`).join(',');
+    if (!switched && sig === _threadSig) return; // nothing new — leave the DOM (and the scroll) alone
+    const wasAtBottom = switched || jump || _threadAtBottom(threadEl);
+    const prevTop = threadEl.scrollTop;
     threadEl.innerHTML = msgs.length
         ? msgs.map(bubbleHtml).join('')
         : '<div class="empty-note">No messages yet. Send the first one below.</div>';
-    threadEl.scrollTop = threadEl.scrollHeight;
+    _threadSig = sig; _threadConvoId = c.id;
+    if (wasAtBottom) threadJumpToBottom();
+    else {
+        threadEl.scrollTop = prevTop; // new rows append at the bottom, so the view stays put
+        _showThreadPill(threadEl);
+    }
     // S144: imported Kenect threads look warm but are cold to PB — warn here,
     // where staff read the history and draw exactly the wrong conclusion.
     const warnEl = document.getElementById('msgPbWarn');
@@ -2841,7 +2905,7 @@ Object.assign(window, {
     openNotesModal, closeNotesModal, saveCustomerNote, requestReview, // v1.12
     openBroadcastModal, closeBroadcastModal, broadcastTeamChanged, // v1.13 S158
     bcCheckAll, bcUpdateCount, saveStaffGroup, deleteStaffGroup, sendBroadcast, // v1.13 S158
-    inboxSend, assignConversation, unassignConversation, toggleClosed,
+    inboxSend, assignConversation, unassignConversation, toggleClosed, threadJumpToBottom, // v1.26
     markConversationRead, // v1.14 S160
     markConversationUnread, // v1.18 S166
     svcFilterToggle, svcFilterChanged, svcFilterClear, // v1.19 S166
