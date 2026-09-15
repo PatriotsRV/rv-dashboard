@@ -2,6 +2,14 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.27 (Session 189, 2026-09-15): DETAILS PANE STOPS RE-RENDERING EVERY 60s
+    (Roland: same annoyance on the right-hand customer-info side). refreshAll()
+    now takes `force`; the poll / window-focus paths only call renderDetails()
+    when the conversation row's signature changed; the Refresh button and every
+    post-action caller (assign, close, mark read, name/lead/note saves) force it.
+    renderDetails() also keeps the pane's scroll position and no longer flashes
+    "Loading…" over the RO chips on a re-render.
+
     v1.26 (Session 189, 2026-09-15): SCROLL-SAFE, NEAR-REAL-TIME THREAD
     (Roland: "the refresh pops me back down to the most recent message —
     very difficult to read past messages"). renderThread() now (1) skips the
@@ -699,7 +707,7 @@
                         <div id="threadSub" style="font-size:0.72rem; color:#64748b;"></div>
                     </div>
                 </div>
-                <button class="mini-btn" onclick="refreshAll()" title="Check for new messages">&#128260; Refresh</button>
+                <button class="mini-btn" onclick="refreshAll(true)" title="Check for new messages">&#128260; Refresh</button>
             </div>
             <input type="hidden" id="msgPhone">
             <div id="msgThread"><div class="empty-note">Pick a conversation on the left to see the thread.</div></div>
@@ -958,7 +966,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, STATUS_PROGRESS_
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.26';
+const PAGE_VERSION = 'messages v1.27';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S189)');
 // v1.25 (S189): terminal = the SHARED progress map says 100% (Delivered/Cashed Out,
 // Closed - No Charge, Delivered - No Review). Not a private copy of the list — the
@@ -986,6 +994,7 @@ let _pollTimer = null;
 let _threadPollTimer = null;   // v1.26: 10s active-thread poll (cheap: one query by phone)
 let _threadSig = '';           // v1.26: signature of the rendered thread — unchanged = do not touch the DOM
 let _threadConvoId = null;     // v1.26: which conversation the rendered thread belongs to
+let _detailsSig = '';          // v1.27: signature of the conversation row the details pane was rendered from
 
 function getSB() {
     if (!_sb) {
@@ -1856,6 +1865,9 @@ async function requestReview() {
 async function renderDetails() {
     const c = _activeConvo;
     if (!c) return;
+    _detailsSig = _detailsSigOf(c); // v1.27: what this render is based on
+    const pane = document.getElementById('detailsPane');
+    const paneTop = pane ? pane.scrollTop : 0; // v1.27: keep the reader's place in the pane
     document.getElementById('detailsEmpty').style.display = 'none';
     document.getElementById('detailsBody').style.display = 'block';
     document.getElementById('detailName').textContent = c.customer_name || '(no name)';
@@ -1885,7 +1897,9 @@ async function renderDetails() {
     // old RO(s) — labelled closed/archived — and still offer "Create RO from
     // this lead". Only a LIVE (non-terminal) RO hides the button.
     const roBox = document.getElementById('detailROs');
-    roBox.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
+    // v1.27: only show the placeholder on a cold pane — on a re-render the old
+    // chips stay put until the fresh ones replace them (no flash).
+    if (!roBox.innerHTML.trim()) roBox.innerHTML = '<span style="color:#64748b; font-size:0.8rem;">Loading&hellip;</span>';
     const { data: ros, error: roErr } = await getSB()
         .from('repair_orders')
         .select('id, ro_id, customer_name, rv, phone, status, email, address, updated_at')
@@ -1965,6 +1979,7 @@ async function renderDetails() {
             }).join('')
             : '<span style="color:#64748b; font-size:0.8rem;">No events yet.</span>';
     }
+    if (pane && paneTop) pane.scrollTop = paneTop; // v1.27
 }
 
 // ── Send (reuses messaging.js sendCustomerMessage contract) ─────────
@@ -2068,7 +2083,7 @@ async function assignConversation() {
         }
 
         showToast(`Assigned to ${staffNameOf(newOwner)}.`, 'success');
-        await refreshAll();
+        await refreshAll(true);
     } catch (err) {
         console.error('assignConversation error:', err);
         showToast('Assign failed: ' + (err.message || err), 'error');
@@ -2093,7 +2108,7 @@ async function unassignConversation() {
         });
         if (evErr) throw evErr;
         showToast('Unassigned.', 'success');
-        await refreshAll();
+        await refreshAll(true);
     } catch (err) {
         console.error('unassignConversation error:', err);
         showToast('Unassign failed: ' + (err.message || err), 'error');
@@ -2117,7 +2132,7 @@ async function toggleClosed() {
         });
         if (evErr) throw evErr;
         showToast(newStatus === 'closed' ? 'Conversation closed.' : 'Conversation reopened.', 'success');
-        await refreshAll();
+        await refreshAll(true);
     } catch (err) {
         console.error('toggleClosed error:', err);
         showToast('Update failed: ' + (err.message || err), 'error');
@@ -2152,7 +2167,7 @@ async function markConversationRead() {
         });
         if (evErr) throw evErr;
         showToast('Marked read — no reply needed.', 'success');
-        await refreshAll();
+        await refreshAll(true);
     } catch (err) {
         console.error('markConversationRead error:', err);
         showToast('Mark read failed: ' + (err.message || err), 'error');
@@ -2186,7 +2201,7 @@ async function markConversationUnread() {
         });
         if (evErr) throw evErr;
         showToast('Marked unread — flagged as awaiting a reply.', 'success');
-        await refreshAll();
+        await refreshAll(true);
     } catch (err) {
         console.error('markConversationUnread error:', err);
         showToast('Mark unread failed: ' + (err.message || err), 'error');
@@ -2204,7 +2219,7 @@ async function editCustomerName() {
             .update({ customer_name: name.trim() || null }).eq('id', c.id);
         if (error) throw error;
         showToast('Name updated.', 'success');
-        await refreshAll();
+        await refreshAll(true);
     } catch (err) {
         console.error('editCustomerName error:', err);
         showToast('Name update failed: ' + (err.message || err), 'error');
@@ -2593,7 +2608,14 @@ async function _runBroadcast(targets, bodyRaw, groupLabel, progEl) {
 }
 
 // ── Refresh / UI plumbing ────────────────────────────────────────────
-async function refreshAll() {
+// v1.27 (S189, Roland): the details (customer) pane got the same treatment as
+// the thread. The 60s poll and window-focus refresh only re-render the pane
+// when the conversation row actually changed (assignment, status, name, lead
+// fields, opt-out, last message…). `force === true` (the Refresh button and
+// the post-action callers) always re-renders. NOTE: the focus listener passes
+// an Event, and setInterval passes nothing — neither is `true`.
+async function refreshAll(force = false) {
+    force = force === true;
     if (!supabaseSession) return;
     await loadConversations();
     if (_activeConvo) {
@@ -2601,9 +2623,11 @@ async function refreshAll() {
         document.getElementById('msgSendBtn').disabled = !!_activeConvo.opted_out_at;
         document.getElementById('msgSchedBtn').disabled = !!_activeConvo.opted_out_at; // v1.24 S177
         document.getElementById('optoutBanner').style.display = _activeConvo.opted_out_at ? 'block' : 'none';
-        await Promise.all([renderThread(), renderDetails()]);
+        const detailsChanged = force || _detailsSigOf(_activeConvo) !== _detailsSig;
+        await Promise.all([renderThread(), detailsChanged ? renderDetails() : Promise.resolve()]);
     }
 }
+function _detailsSigOf(c) { return c ? c.id + '|' + JSON.stringify(c) : ''; }
 function backToList() { document.body.classList.remove('thread-open'); }
 function toggleDetails() { document.getElementById('detailsPane').classList.toggle('open'); }
 
