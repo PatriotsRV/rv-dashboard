@@ -420,6 +420,13 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             // and repeat picks ADD to the pending set (up to MSG_MEDIA_MAX_COUNT).
             const files = Array.from(ev.target.files || []);
             ev.target.value = '';
+            return attachFiles(files);
+        }
+
+        // S189 (ER 472ccadb, Andrew): the upload path, split from the <input>
+        // so drag-and-drop can feed it the same way the paperclip does.
+        export async function attachFiles(files) {
+            files = Array.from(files || []);
             if (!files.length) return;
             if (!getSB() || (typeof supabaseSession === 'undefined' || !supabaseSession)) {
                 showToast('Sign in first to attach files.', 'warning'); return;
@@ -465,6 +472,48 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
                 showToast('Attach failed: ' + e.message, 'error');
             } finally {
                 if (btn) { btn.disabled = false; btn.textContent = '\u{1F4CE}'; }
+            }
+        }
+
+        // S189 (ER 472ccadb, Andrew): desktop drag-and-drop of OS files
+        // (photos / PDFs / videos) onto `el`. Shows an overlay while dragging,
+        // then hands the dropped files to attachFiles() — same caps, same
+        // compression, same chips. Mobile keeps the paperclip; nothing changes
+        // there. Text/URL drags (no files) are ignored.
+        export function bindDropZone(el, opts = {}) {
+            if (!el || el._prvsDropBound) return;
+            el._prvsDropBound = true;
+            const label = opts.label || 'Drop to attach';
+            let overlay = null, depth = 0;
+            const hasFiles = ev => Array.from(ev.dataTransfer?.types || []).includes('Files');
+            const show = () => {
+                if (overlay) return;
+                overlay = document.createElement('div');
+                overlay.className = 'prvs-drop-overlay';
+                overlay.textContent = '\u{1F4CE} ' + label;
+                Object.assign(overlay.style, {
+                    position: 'absolute', inset: '0', zIndex: '40', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(37,99,235,0.10)', border: '3px dashed #2563eb', borderRadius: '12px',
+                    color: '#1d4ed8', fontWeight: '700', fontSize: '1.05rem', pointerEvents: 'none'
+                });
+                if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+                el.appendChild(overlay);
+            };
+            const hide = () => { depth = 0; if (overlay) { overlay.remove(); overlay = null; } };
+            el.addEventListener('dragenter', ev => { if (!hasFiles(ev)) return; ev.preventDefault(); depth++; show(); });
+            el.addEventListener('dragover',  ev => { if (!hasFiles(ev)) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; });
+            el.addEventListener('dragleave', ev => { if (!hasFiles(ev)) return; depth = Math.max(0, depth - 1); if (depth === 0) hide(); });
+            el.addEventListener('drop', ev => {
+                if (!hasFiles(ev)) return;
+                ev.preventDefault(); hide();
+                const files = Array.from(ev.dataTransfer.files || []);
+                if (files.length) attachFiles(files);
+            });
+            // A drop anywhere else on the page would navigate away from the board.
+            if (!window._prvsDropGuard) {
+                window._prvsDropGuard = true;
+                window.addEventListener('dragover', ev => { if (hasFiles(ev)) ev.preventDefault(); });
+                window.addEventListener('drop',     ev => { if (hasFiles(ev)) ev.preventDefault(); });
             }
         }
 
@@ -671,4 +720,5 @@ Object.assign(window, {
   initComposerExtras,      // S151b
   refreshSignaturePreview, // S151b
   openMediaPreview, closeMediaPreview, // S166 messages v1.20
+  attachFiles, bindDropZone,           // S189 messages v1.29 (ER 472ccadb)
 });

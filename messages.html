@@ -2,6 +2,23 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.29 (Session 189, 2026-09-15): ANDREW'S TWO — drag-and-drop + quick replies.
+    • ER 472ccadb — DRAG-AND-DROP ATTACH (desktop). Drop OS files (photos,
+      PDFs, videos) anywhere on the thread pane; an overlay shows while
+      dragging and the files go through the SAME path as the paperclip
+      (js/messaging.js attachFiles(), split out of _handleAttachPick; new
+      bindDropZone()). Same caps/compression/chips. Mobile unchanged.
+    • ER 776384e7 — QUICK REPLIES with customer tokens (Roland spec). NEW table
+      message_snippets (migration message_snippets_s189.sql: read = all staff,
+      write = managers+, explicit grants, soft-delete via active=false).
+      💬 Quick replies button above the composer → picker (search, click to
+      insert). Tokens in angle brackets — <first name> <last name> <name>
+      <phone> <rv> <ro number> <service> <my name> <my first name>
+      <shop phone> — expand from the OPEN conversation at insert time (RV / RO /
+      service reuse the v1.25 linked-RO rows), land in the composer for review,
+      and any token with no value stays literal + a toast says which to fill
+      in. Managers+ get ＋ New / ✎ Edit with a token palette + live preview.
+
     v1.28 (Session 189, 2026-09-15): BRANDON'S POLISH BATCH — 5 open ERs.
     • ER 9aab7550 — unread rows (awaiting our reply) get a tinted background,
       gold left bar, bold name + darker snippet, not just the 8px dot.
@@ -667,6 +684,7 @@
             .header { padding: 8px 12px; }
             .badge-role { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             #msgSigPreview { display: none !important; } /* sig still sends; preview costs space */
+            .drop-hint { display: none; } /* v1.29: no OS drag on phones */
             #msgExtrasRow { margin: 6px 0 !important; }
             .composer { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
             .composer textarea { rows: 2; }
@@ -755,6 +773,11 @@
             </div>
             <div id="msgPbWarn"></div>
             <div class="composer">
+                <!-- v1.29 (ER 776384e7): quick replies (canned responses with customer tokens) -->
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <button class="mini-btn" id="quickReplyBtn" onclick="openSnippetPicker()" title="Insert a saved quick reply">&#128172; Quick replies</button>
+                    <span class="drop-hint" style="font-size:0.68rem; color:#8FA9C2;">Drag photos or files here to attach</span>
+                </div>
                 <textarea id="msgBody" class="form-input" rows="2" placeholder="Type a message to the customer&hellip;"></textarea>
                 <div id="composerExtrasSlot"></div><!-- S151b: filled by composerExtrasHtml() at boot -->
                 <div style="display:flex; gap:8px;">
@@ -884,6 +907,53 @@
 </div>
 
 <!-- v1.17 (S161): Lead Info editor — email / RV / service type (managers+) -->
+<!-- v1.29 (S189, ER 776384e7): Quick replies picker -->
+<div id="snippetModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:18px; width:min(94vw, 560px); max-height:88vh; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+            <div style="font-weight:700; font-size:1.05rem;">&#128172; Quick replies</div>
+            <button class="mini-btn primary" id="snippetNewBtn" onclick="openSnippetEditor()" style="display:none;">&#65291; New</button>
+        </div>
+        <input id="snippetSearch" class="assign-input" type="text" placeholder="Search quick replies&hellip;" style="margin-bottom:8px;" oninput="renderSnippetList()">
+        <div id="snippetList" style="flex:1; overflow-y:auto; min-height:120px; border:1px solid var(--border-color); border-radius:8px;"></div>
+        <div style="font-size:0.68rem; color:#8FA9C2; margin-top:8px;">Click a reply to insert it into the message box with this customer's details filled in. You can still edit before sending.</div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px;">
+            <button class="mini-btn" onclick="closeSnippetPicker()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- v1.29 (S189): Quick reply editor (managers+) -->
+<div id="snippetEditModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.55); z-index:210; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:18px; width:min(94vw, 600px); max-height:90vh; overflow-y:auto; box-shadow:0 12px 40px rgba(16,36,62,0.3);">
+        <div style="font-weight:700; font-size:1.05rem; margin-bottom:10px;" id="snippetEditTitle">&#9998; New quick reply</div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Title (what staff see in the list)</label>
+        <input id="snTitle" class="assign-input" type="text" placeholder="Vroom parts deposit" style="margin-bottom:8px;">
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <div style="flex:1;">
+                <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Category (optional)</label>
+                <input id="snCategory" class="assign-input" type="text" placeholder="Vroom, Parts, Scheduling&hellip;">
+            </div>
+            <div style="flex:0 0 110px;">
+                <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Sort</label>
+                <input id="snSort" class="assign-input" type="number" value="100">
+            </div>
+        </div>
+        <label style="display:block; font-size:0.72rem; color:var(--text-secondary); margin-bottom:4px;">Message &mdash; click a token to insert it at the cursor</label>
+        <div id="snTokens" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px;"></div>
+        <textarea id="snBody" class="form-input" rows="6" placeholder="Hi <first name>, this is <my first name> at Patriots RV&hellip;" style="width:100%; resize:vertical;" oninput="_snRefreshPreview()"></textarea>
+        <div style="font-size:0.72rem; color:var(--text-secondary); margin:8px 0 4px;">Preview with the open conversation:</div>
+        <div id="snPreview" style="font-size:0.85rem; white-space:pre-wrap; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:8px; padding:8px 10px; min-height:40px;"></div>
+        <div style="display:flex; gap:8px; justify-content:space-between; margin-top:12px;">
+            <button class="mini-btn" id="snDeleteBtn" onclick="deleteSnippet()" style="display:none; color:#ef4444;">&#128465; Delete</button>
+            <div style="display:flex; gap:8px; margin-left:auto;">
+                <button class="mini-btn" onclick="closeSnippetEditor()">Cancel</button>
+                <button id="snSaveBtn" class="mini-btn primary" onclick="saveSnippet()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="leadModal" style="display:none; position:fixed; inset:0; background:rgba(16,36,62,0.45); z-index:200; align-items:center; justify-content:center;">
     <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; width:min(92vw, 400px); box-shadow:0 12px 40px rgba(16,36,62,0.3);">
         <div style="font-weight:700; font-size:1.05rem; margin-bottom:12px;">&#9998; Lead Info &mdash; <span id="leadModalName"></span></div>
@@ -1004,7 +1074,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, STATUS_PROGRESS_
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.28';
+const PAGE_VERSION = 'messages v1.29';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S189)');
 // v1.25 (S189): terminal = the SHARED progress map says 100% (Delivered/Cashed Out,
 // Closed - No Charge, Delivered - No Review). Not a private copy of the list — the
@@ -1102,7 +1172,7 @@ const LEAD_SERVICE_TYPES = SERVICE_SILOS.map(s => ({
     value: SILO_TO_REPAIR_TYPE[s.key],
     display: s.emoji + ' ' + s.label,
 })).filter(s => s.value);
-const { loadMessages, bubbleHtml, sendCustomerMessage, pbEngagement, pbEngagementBannerHtml, composerExtrasHtml, initComposerExtras, refreshSignaturePreview } = messaging; // S151b: +composer extras
+const { loadMessages, bubbleHtml, sendCustomerMessage, pbEngagement, pbEngagementBannerHtml, composerExtrasHtml, initComposerExtras, refreshSignaturePreview, bindDropZone } = messaging; // S151b: +composer extras; v1.29: +bindDropZone
 
 // ── RBAC (closed-ros.html pattern) ───────────────────────────────────
 async function loadUserRoles() {
@@ -1210,6 +1280,8 @@ function showApp() {
     // S151b: attach/emoji/signature composer extras (shared with the RO modal).
     const slot = document.getElementById('composerExtrasSlot');
     if (slot && !slot.innerHTML) { slot.innerHTML = composerExtrasHtml(); initComposerExtras(); }
+    // v1.29 (ER 472ccadb, Andrew): drag OS files anywhere onto the thread pane to attach.
+    bindDropZone(document.querySelector('.thread-pane'), { label: 'Drop to attach to this message' });
     refreshAll();
     _pollTimer = setInterval(refreshAll, 60000);
     window.addEventListener('focus', refreshAll);
@@ -2695,6 +2767,182 @@ document.getElementById('convoSearch').addEventListener('input', () => {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(searchAllConversations, 350);
 });
+// ── v1.29 (S189): QUICK REPLIES — canned responses with customer tokens ──
+// ER 776384e7 (Andrew) + Roland's spec: tokens like <first name> are expanded
+// from the OPEN conversation when the reply is inserted into the composer, so
+// staff still see (and can edit) the final text before Send.
+const SHOP_PHONE_DISPLAY = '940-488-5047';
+const SNIPPET_TOKENS = [
+    ['first name',    'Customer first name'],
+    ['last name',     'Customer last name'],
+    ['name',          'Customer full name'],
+    ['phone',         'Customer phone'],
+    ['rv',            'RV (year make model) — from the lead or their newest RO'],
+    ['ro number',     'RO number — newest live RO, else newest closed/archived'],
+    ['service',       'Service type(s) — from the lead or their newest RO'],
+    ['my name',       'Your full name'],
+    ['my first name', 'Your first name'],
+    ['shop phone',    'Shop line ' + SHOP_PHONE_DISPLAY],
+];
+let _quickReplies = [];
+let _snippetEditingId = null;
+
+function _tokenValues() {
+    const c = _activeConvo || {};
+    const rows = (_linkedROCache && _linkedROCache.convoId === c.id) ? _linkedROCache.rows : [];
+    const full = (c.customer_name || '').trim();
+    const parts = full.split(/\s+/).filter(Boolean);
+    // "Last, First" leads land as typed — handle the comma form too.
+    let first = parts[0] || '', last = parts.slice(1).join(' ');
+    if (full.includes(',')) { const [l, f] = full.split(',').map(x => x.trim()); first = f || ''; last = l || ''; }
+    const roRv  = rows.find(r => (r.rv || '').trim());
+    const roSvc = rows.find(r => (r.repair_type || '').trim());
+    const me = (currentUser && (currentUser.name || staffNameOf(currentUser.email))) || '';
+    return {
+        'first name':    first,
+        'last name':     last,
+        'name':          full,
+        'phone':         c.display_phone || '',
+        'rv':            (c.rv || '').trim() || roRv?.rv?.trim() || '',
+        'ro number':     rows[0]?.ro_id || '',
+        'service':       (c.service_type || '').trim() || roSvc?.repair_type?.trim() || '',
+        'my name':       me,
+        'my first name': me.split(/\s+/)[0] || '',
+        'shop phone':    SHOP_PHONE_DISPLAY,
+    };
+}
+// Expand <token> placeholders (case-insensitive; spaces or underscores). Returns
+// { text, missing[] } — unresolved tokens are left literal so nothing silently
+// goes out blank, and the caller warns.
+function expandSnippet(body) {
+    const vals = _tokenValues();
+    const missing = new Set();
+    const text = String(body || '').replace(/<\s*([a-z][a-z _]*?)\s*>/gi, (m, key) => {
+        const k = key.trim().toLowerCase().replace(/_/g, ' ');
+        if (!(k in vals)) return m;            // not one of ours — leave it (e.g. a literal <3)
+        const v = (vals[k] || '').trim();
+        if (!v) { missing.add('<' + k + '>'); return m; }
+        return v;
+    });
+    return { text, missing: [...missing] };
+}
+async function loadSnippets() {
+    if (!getSB() || !supabaseSession) return [];
+    const { data, error } = await getSB().from('message_snippets')
+        .select('id, title, body, category, sort_order, active')
+        .eq('active', true)
+        .order('sort_order', { ascending: true })
+        .order('title', { ascending: true });
+    if (error) { console.error('loadSnippets failed:', error); showToast('Could not load quick replies: ' + error.message, 'warning'); return []; }
+    _quickReplies = data || [];
+    return _quickReplies;
+}
+async function openSnippetPicker() {
+    if (!_activeConvo) { showToast('Open a conversation first.', 'warning'); return; }
+    document.getElementById('snippetNewBtn').style.display = isManagerOrAdmin() ? '' : 'none';
+    document.getElementById('snippetSearch').value = '';
+    document.getElementById('snippetList').innerHTML = '<div class="empty-note" style="padding:14px;">Loading&hellip;</div>';
+    document.getElementById('snippetModal').style.display = 'flex';
+    await loadSnippets();
+    renderSnippetList();
+    setTimeout(() => document.getElementById('snippetSearch').focus(), 50);
+}
+function closeSnippetPicker() { document.getElementById('snippetModal').style.display = 'none'; }
+function renderSnippetList() {
+    const q = (document.getElementById('snippetSearch').value || '').trim().toLowerCase();
+    const box = document.getElementById('snippetList');
+    const rows = _quickReplies.filter(s => !q || (s.title + ' ' + (s.category || '') + ' ' + s.body).toLowerCase().includes(q));
+    if (!rows.length) {
+        box.innerHTML = `<div class="empty-note" style="padding:14px;">${_quickReplies.length ? 'No quick replies match.' : (isManagerOrAdmin() ? 'No quick replies yet — click ＋ New to add the first one.' : 'No quick replies yet. Ask a manager to add some.')}</div>`;
+        return;
+    }
+    const canEdit = isManagerOrAdmin();
+    box.innerHTML = rows.map(s => `
+        <div class="snippet-row" data-id="${s.id}" style="display:flex; gap:8px; align-items:flex-start; padding:9px 10px; border-bottom:1px solid var(--border-color); cursor:pointer;">
+            <div style="flex:1; min-width:0;" onclick="insertSnippet('${s.id}')">
+                <div style="font-weight:700; font-size:0.88rem;">${escapeHtml(s.title)}${s.category ? ` <span style="font-weight:500; font-size:0.66rem; color:var(--accent-info); background:var(--celeste-mist); border:1px solid var(--border-color); border-radius:8px; padding:0 6px; margin-left:4px;">${escapeHtml(s.category)}</span>` : ''}</div>
+                <div style="font-size:0.76rem; color:var(--text-secondary); white-space:pre-wrap; max-height:3.2em; overflow:hidden;">${escapeHtml(s.body)}</div>
+            </div>
+            ${canEdit ? `<button class="mini-btn" onclick="event.stopPropagation(); openSnippetEditor('${s.id}')" title="Edit" style="padding:2px 8px; flex:0 0 auto;">&#9998;</button>` : ''}
+        </div>`).join('');
+}
+function _insertAtCursor(ta, text) {
+    const start = ta.selectionStart ?? ta.value.length, end = ta.selectionEnd ?? ta.value.length;
+    const before = ta.value.slice(0, start), after = ta.value.slice(end);
+    const sep = before && !/\s$/.test(before) ? ' ' : '';
+    ta.value = before + sep + text + after;
+    const pos = (before + sep + text).length;
+    ta.focus(); ta.setSelectionRange(pos, pos);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function insertSnippet(id) {
+    const s = _quickReplies.find(x => x.id === id);
+    if (!s) return;
+    const { text, missing } = expandSnippet(s.body);
+    const ta = document.getElementById('msgBody');
+    _insertAtCursor(ta, text);
+    closeSnippetPicker();
+    if (missing.length) showToast('Fill in before sending: ' + missing.join(', '), 'warning', { duration: 7000 });
+}
+// ── editor (managers+) ──
+function openSnippetEditor(id) {
+    if (!isManagerOrAdmin()) { showToast('Only managers and admins can edit quick replies.', 'warning'); return; }
+    _snippetEditingId = id || null;
+    const s = id ? _quickReplies.find(x => x.id === id) : null;
+    document.getElementById('snippetEditTitle').innerHTML = s ? '&#9998; Edit quick reply' : '&#9998; New quick reply';
+    document.getElementById('snTitle').value    = s?.title || '';
+    document.getElementById('snCategory').value = s?.category || '';
+    document.getElementById('snSort').value     = s?.sort_order ?? 100;
+    document.getElementById('snBody').value     = s?.body || '';
+    document.getElementById('snDeleteBtn').style.display = s ? '' : 'none';
+    document.getElementById('snTokens').innerHTML = SNIPPET_TOKENS.map(([k, help]) =>
+        `<button type="button" class="mini-btn" style="padding:2px 8px; font-size:0.72rem; font-family:'JetBrains Mono',monospace;" title="${escapeHtml(help)}" onclick="_snInsertToken('${k}')">&lt;${k}&gt;</button>`).join('');
+    _snRefreshPreview();
+    document.getElementById('snippetEditModal').style.display = 'flex';
+    setTimeout(() => document.getElementById(s ? 'snBody' : 'snTitle').focus(), 50);
+}
+function closeSnippetEditor() { document.getElementById('snippetEditModal').style.display = 'none'; _snippetEditingId = null; }
+function _snInsertToken(k) { _insertAtCursor(document.getElementById('snBody'), '<' + k + '>'); }
+function _snRefreshPreview() {
+    const { text, missing } = expandSnippet(document.getElementById('snBody').value);
+    const pv = document.getElementById('snPreview');
+    pv.textContent = text || '(empty)';
+    if (missing.length) pv.textContent += '\n\n⚠ no value here for: ' + missing.join(', ');
+}
+async function saveSnippet() {
+    const title = document.getElementById('snTitle').value.trim();
+    const body  = document.getElementById('snBody').value.trim();
+    const category = document.getElementById('snCategory').value.trim() || null;
+    const sort_order = parseInt(document.getElementById('snSort').value, 10);
+    if (!title || !body) { showToast('Title and message are both required.', 'warning'); return; }
+    if (!getSB() || !supabaseSession) { showToast('Sign in first.', 'warning'); return; }
+    const btn = document.getElementById('snSaveBtn'); btn.disabled = true;
+    try {
+        const row = { title, body, category, sort_order: Number.isFinite(sort_order) ? sort_order : 100, updated_by: currentUser.email };
+        let error;
+        if (_snippetEditingId) ({ error } = await getSB().from('message_snippets').update(row).eq('id', _snippetEditingId));
+        else ({ error } = await getSB().from('message_snippets').insert({ ...row, created_by: currentUser.email }));
+        if (error) throw error;
+        showToast(_snippetEditingId ? 'Quick reply updated.' : 'Quick reply added.', 'success');
+        closeSnippetEditor();
+        await loadSnippets(); renderSnippetList();
+    } catch (e) {
+        console.error('saveSnippet failed:', e);
+        showToast('Could not save: ' + (e.message || e), 'error');
+    } finally { btn.disabled = false; }
+}
+async function deleteSnippet() {
+    if (!_snippetEditingId) return;
+    const s = _quickReplies.find(x => x.id === _snippetEditingId);
+    if (!confirm(`Delete "${s?.title || 'this quick reply'}" for everyone?`)) return;
+    // Soft delete — keeps the row (and its history) but hides it from every picker.
+    const { error } = await getSB().from('message_snippets').update({ active: false, updated_by: currentUser.email }).eq('id', _snippetEditingId);
+    if (error) { showToast('Could not delete: ' + error.message, 'error'); return; }
+    showToast('Quick reply deleted.', 'success');
+    closeSnippetEditor();
+    await loadSnippets(); renderSnippetList();
+}
+
 // v1.28 (ER f1e6e311): clear (×) for the conversation search
 function _toggleSearchClear() {
     const btn = document.getElementById('convoSearchClear');
@@ -3024,6 +3272,7 @@ Object.assign(window, {
     bcCheckAll, bcUpdateCount, saveStaffGroup, deleteStaffGroup, sendBroadcast, // v1.13 S158
     inboxSend, assignConversation, unassignConversation, toggleClosed, threadJumpToBottom, // v1.26
     clearConvoSearch, convoScale, // v1.28
+    openSnippetPicker, closeSnippetPicker, renderSnippetList, insertSnippet, openSnippetEditor, closeSnippetEditor, _snInsertToken, _snRefreshPreview, saveSnippet, deleteSnippet, // v1.29
     markConversationRead, // v1.14 S160
     markConversationUnread, // v1.18 S166
     svcFilterToggle, svcFilterChanged, svcFilterClear, // v1.19 S166
