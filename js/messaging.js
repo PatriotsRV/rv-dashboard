@@ -366,16 +366,15 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
             return _mySig;
         }
 
+        // S189 (ER 6e9ca4dc, Brandon): the "✍️ Added to every send" preview is
+        // retired in EVERY viewport — staff know their signature sends. The
+        // signature is still loaded (warms the cache for the send path) and
+        // still appended on send; only the on-screen block is gone. The
+        // #msgSigPreview element stays in the markup so nothing else breaks.
         export async function refreshSignaturePreview() {
             const el = document.getElementById('msgSigPreview');
-            if (!el) return;
-            const sig = await _loadMySignature();
-            if (sig) {
-                el.textContent = '✍️ Added to every send:\n' + sig;
-                el.style.display = 'block';
-            } else {
-                el.style.display = 'none';
-            }
+            if (el) el.style.display = 'none';
+            try { await _loadMySignature(); } catch (e) { /* preview only */ }
         }
 
         function _renderAttachChip() {
