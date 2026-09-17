@@ -2507,6 +2507,7 @@ After an additive extraction + window bridge, the MODULE copy is the runtime own
 | Name | Email | Role | Silo |
 |---|---|---|---|
 | Roland Shepard | roland@patriotsrvservices.com | Sr. Manager | — (Owner/Admin; added to staff table Session 27 to satisfy WO RLS) |
+| **Lynn Shepard — ROLAND'S WIFE / co-owner** | lynn@patriotsrvservices.com | **Admin** (`user_roles`, DB-verified S190) | — (not a silo manager. When Roland says "my wife" he means Lynn. Files many ERs; primary daily user of the board, Task Manager and Work Planner. Pinned here S190 because the only prior record of this was the Session 59 entry, which the S107 cleanup moved to CLAUDE_CONTEXT_ARCHIVE.md — a file Start Session does not read — so S190 had to ask Roland who his wife was.) |
 | Ryan Dillon | ryan@patriotsrvservices.com | Sr. Manager | — (cross-silo; acting manager for Roof + Paint & Body until dedicated hires) |
 | Kevin McHenry | kevin@patriotsrvservices.com | Sr. Manager | — (added manually to Supabase + SR_MANAGER_EMAILS v1.300) |
 | Mauricio Tellez | mauricio@patriotsrvservices.com | Manager | Repair |
