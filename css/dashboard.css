@@ -3509,6 +3509,22 @@
         .pl-titlebar { background:linear-gradient(135deg,#0ea5e9,#0369a1); color:#fff; padding:10px 18px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
         .pl-hint { font-size:0.8rem; opacity:0.85; margin-left:8px; }
         .pl-close { background:none; border:none; color:#fff; font-size:1.7rem; cursor:pointer; font-weight:700; line-height:1; }
+        /* [v1.506 S190] Planner Assistant bar */
+        .pl-ai { padding:10px 14px 8px; border-bottom:1px solid var(--border-color,#2d3139); background:linear-gradient(180deg,rgba(14,165,233,0.13),rgba(14,165,233,0.03)); display:flex; flex-direction:column; gap:6px; }
+        .pl-ai-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .pl-ai-badge { font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:1.05rem; color:#7dd3fc; white-space:nowrap; }
+        .pl-ai-input { flex:1 1 320px; min-width:0; font-size:0.95rem; padding:9px 12px; border-color:#0ea5e9; }
+        .pl-ai-input:focus { outline:2px solid rgba(14,165,233,0.5); }
+        .pl-ai .pl-btn { padding:8px 14px; font-size:0.88rem; }
+        .pl-ai .pl-btn-sm { padding:4px 10px; font-size:0.76rem; }
+        .pl-ai-mic.on { border-color:#ef4444; color:#fecaca; }
+        .pl-ai-msg { font-size:0.9rem; line-height:1.45; padding:7px 11px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; }
+        .pl-ai-ok { border-color:#15803d; }
+        .pl-ai-warn { border-color:#b45309; }
+        .pl-ai-err { border-color:#b91c1c; color:#fecaca; }
+        .pl-ai-miss { color:#fbbf24; }
+        .pl-ai-acts { display:inline-flex; gap:6px; margin-left:12px; vertical-align:middle; }
+        @media print { .pl-ai { display:none !important; } }
         .pl-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 14px; border-bottom:1px solid var(--border-color,#2d3139); background:var(--bg-elevated,#252930); }
         .pl-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
         .pl-viewname { font-family:'Barlow Condensed',sans-serif; font-size:1.15rem; font-weight:700; color:var(--text-primary,#e8eaed); }

@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════
-// js/planner.js — 🗓 WORK PLANNER  (v1.505, Session 188, 2026-09-05)
+// js/planner.js — 🗓 WORK PLANNER  (v1.506, Session 190, 2026-09-17 — adds 🤖 Planner Assistant)
 // ───────────────────────────────────────────────────────────────────────
 // Manager-facing dynamic RO report + daily/weekly work-list builder that
 // lives ON index.html (full-screen overlay, #plannerOverlay).
@@ -120,6 +120,8 @@ let _msgs = {};              // ro_uuid -> [planner_messages rows]
 let _events = {};            // ro_uuid -> [planner_events rows] (loaded on drawer open)
 let _drawerRo = null;        // ro_uuid currently open in the drill-down drawer
 let _loaded = false;
+// [S190] AI assistant bar state. text survives header re-renders; name feeds _suggestName().
+let _ai = { text: '', busy: false, msg: '', kind: '', name: '', listening: false };
 
 function _defaultFilters() {
     return {
@@ -566,6 +568,7 @@ export async function loadPlannerView(id) {
     _sort = cfg.sort || { key: 'coord', dir: 'desc' };
     _columns = Array.isArray(cfg.columns) && cfg.columns.length ? cfg.columns.filter(k => COLUMNS.some(c => c.key === k)) : COLUMNS.filter(c => c.default).map(c => c.key);
     _order = {}; Object.entries(data.rows || {}).forEach(([k, v]) => { if (v && v.order != null) _order[k] = v.order; });
+    _ai.name = ''; _ai.msg = '';
     _bucketTab = 'all'; _dirty = false; _saveDraft();
     renderPlanner();
     showToast(`Loaded "${data.name}"`, 'success', { duration: 2000 });
@@ -619,11 +622,12 @@ export function copyPlannerLink() {
 export function newPlannerView(silent) {
     if (!silent && _dirty && !confirm('Discard unsaved view changes? (Plans and messages are already saved.)')) return;
     _view = null; _order = {}; _dirty = false; _sort = { key: 'coord', dir: 'desc' }; _bucketTab = 'all';
-    _filters = _defaultFilters();
+    _filters = _defaultFilters(); _ai.name = '';
     if (_mySilo() && !_isSr()) _filters.silos = [_mySilo()];
     _saveDraft(); renderPlanner();
 }
 function _suggestName() {
+    if (_ai.name) return _ai.name;
     const silo = _filters.silos.length === 1 ? _siloMeta(_filters.silos[0]).label : (_filters.silos.length ? _filters.silos.length + ' silos' : 'All silos');
     return `${silo} — week of ${_fmtDate(_todayISO())}`;
 }
@@ -727,6 +731,7 @@ function _headerHtml(all) {
     const planAs = _isSr() ? (f.silos.length === 1 ? `planning as <b>${_siloMeta(f.silos[0]).emoji} ${_esc(_siloMeta(f.silos[0]).label)}</b>` : 'planning: <b>pick ONE service filter</b> to edit inline, or use the drawer') : `planning as <b>${_siloMeta(_mySilo()).emoji} ${_esc(_siloMeta(_mySilo()).label)}</b>`;
     const viewTitle = _view ? `${_esc(_view.name)}${_view.shared ? ' <span class="pl-tag pl-tag-shared">SHARED</span>' : ' <span class="pl-tag">private</span>'}${_canEditView(_view) ? '' : ' <span class="pl-tag">read-only · ' + _esc(_who(_view.owner_email)) + '</span>'}` : '<em>Unsaved view</em>';
     return `
+    ${_aiBarHtml()}
     <div class="pl-toolbar">
         <div class="pl-title">
             <span class="pl-viewname">${viewTitle}${_dirty ? ' <span class="pl-dirty" title="Unsaved view changes">●</span>' : ''}</span>
@@ -1052,7 +1057,167 @@ function _wireDrag(body) {
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && _open) { if (_drawerRo) closePlannerDrawer(); else closePlanner(); } });
 
 // ── Window bridge ──────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+// [S190] 🤖 PLANNER ASSISTANT — "tell me which ROs you want to see"
+// ───────────────────────────────────────────────────────────────────────
+// The manager types or speaks a request; the planner-ai edge function maps it
+// to a VIEW CONFIG (filters / sort / columns / bucket tab) using only the
+// planner's existing filter catalogue. The AI never sees RO data and never
+// writes anything. _applyAiView() re-validates EVERY field against the local
+// catalogue before applying, so a bad answer can only ever be ignored.
+// Quick views are local presets: instant, no AI call.
+// ═══════════════════════════════════════════════════════════════════════
+const AI_FLAGS = ['parts_open', 'urgent', 'receivable', 'no_wo', 'wo_open', 'vip', 'no_promised', 'planned_any', 'planned_other'];
+const AI_RO_TYPES = ['standard', 'insurance', 'hybrid', 'warranty', 'warranty_repair'];
+const AI_TABS = ['all', 'today', 'week', 'later', 'hold', 'unplanned', 'coord'];
+
+const QUICK_VIEWS = [
+    { key: 'mine7',   label: '📅 Mine — due in 7 days', name: 'My silo — due in 7 days', mine: true, filters: { promised: '7d' }, sort: { key: 'promised', dir: 'asc' } },
+    { key: 'overdue', label: '⏰ Overdue',               name: 'Overdue promises',        mine: true, filters: { promised: 'overdue' }, sort: { key: 'promised', dir: 'asc' } },
+    { key: 'noplan',  label: '🫥 No plan yet',           name: 'Nothing planned yet',     mine: true, filters: { statusPreset: 'workable' }, sort: { key: 'promised', dir: 'asc' }, tab: 'unplanned' },
+    { key: 'parts',   label: '🔩 Waiting on parts',      name: 'Waiting on parts',        mine: true, filters: { flags: ['parts_open'] }, sort: { key: 'days', dir: 'desc' } },
+    { key: 'pickup',  label: '🚐 Ready for pickup',      name: 'Ready for pickup',        mine: false, filters: { statuses: ['Ready for pickup'], statusPreset: 'custom' }, sort: { key: 'days', dir: 'desc' }, cols: ['pickup'] },
+];
+
+function _aiBarHtml() {
+    const canSpeak = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    const msg = _ai.msg ? `<div class="pl-ai-msg pl-ai-${_ai.kind || 'ok'}">${_ai.msg}</div>` : '';
+    return `
+    <div class="pl-ai">
+        <div class="pl-ai-row">
+            <span class="pl-ai-badge">🤖 Ask</span>
+            <input id="plannerAiInput" type="text" class="pl-input pl-ai-input" maxlength="600" autocomplete="off"
+                placeholder="Tell me which ROs you want to see…  e.g. “my ROs due this week that are waiting on parts, biggest dollar first”"
+                value="${_esc(_ai.text)}" oninput="plannerAiTyping(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();plannerAiAsk()}" ${_ai.busy ? 'disabled' : ''}>
+            ${canSpeak ? `<button type="button" class="pl-btn pl-ai-mic${_ai.listening ? ' on' : ''}" onclick="plannerAiMic()" title="Speak your request" ${_ai.busy ? 'disabled' : ''}>${_ai.listening ? '🔴 Listening…' : '🎤 Speak'}</button>` : ''}
+            <button type="button" class="pl-btn pl-btn-primary" onclick="plannerAiAsk()" ${_ai.busy ? 'disabled' : ''}>${_ai.busy ? '⏳ Thinking…' : 'Show me'}</button>
+        </div>
+        <div class="pl-ai-row pl-ai-quick">
+            <span class="pl-flabel">Quick views</span>
+            ${QUICK_VIEWS.map(q => `<button type="button" class="pl-chip" onclick="plannerQuickView('${q.key}')">${q.label}</button>`).join('')}
+        </div>
+        ${msg}
+    </div>`;
+}
+
+export function plannerAiTyping(v) { _ai.text = v || ''; }
+
+// Build a full, validated planner state from a loose view object and apply it.
+function _applyAiView(v) {
+    const f = _defaultFilters(), src = (v && v.filters) || {};
+    const silos = (SERVICE_SILOS || []).map(s => s.key);
+    const arr = (x, allowed) => Array.isArray(x) ? [...new Set(x.filter(k => allowed.includes(k)))] : [];
+    const iso = x => (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)) ? x : '';
+    const num = x => (x === '' || x == null || isNaN(Number(x)) || Number(x) <= 0) ? '' : String(Math.round(Number(x)));
+    f.silos = arr(src.silos, silos);
+    if (['any', 'all', 'only'].includes(src.siloMode)) f.siloMode = src.siloMode;
+    f.multiSiloOnly = src.multiSiloOnly === true;
+    f.statuses = arr(src.statuses, PLANNER_STATUSES);
+    f.statusPreset = f.statuses.length ? 'custom' : (STATUS_PRESETS[src.statusPreset] ? src.statusPreset : 'active');
+    if (PROMISED_PRESETS.some(([k]) => k === src.promised)) f.promised = src.promised;
+    f.promisedFrom = iso(src.promisedFrom); f.promisedTo = iso(src.promisedTo);
+    f.urgencies = arr(src.urgencies, URGENCIES);
+    f.minDays = num(src.minDays); f.minDollars = num(src.minDollars);
+    f.roTypes = arr(src.roTypes, AI_RO_TYPES);
+    f.flags = arr(src.flags, AI_FLAGS);
+    f.search = typeof src.search === 'string' ? src.search.trim().slice(0, 60) : '';
+    f.includeShop = src.includeShop === true;
+    // A non-senior manager with no silo chosen keeps the planner's normal "my silo" default.
+    if (!f.silos.length && v && v._mine && _mySilo()) f.silos = [_mySilo()];
+
+    let sort = { key: 'coord', dir: 'desc' };
+    if (v && v.sort && COLUMNS.some(c => c.key === v.sort.key)) sort = { key: v.sort.key, dir: v.sort.dir === 'asc' ? 'asc' : 'desc' };
+    const cols = COLUMNS.filter(c => c.default).map(c => c.key);
+    arr(v && v.add_columns, COLUMNS.map(c => c.key)).forEach(k => { if (!cols.includes(k)) cols.push(k); });
+    if (sort.key !== 'manual' && !cols.includes(sort.key)) cols.push(sort.key);
+    if (f.minDollars !== '' && !cols.includes('dollars')) cols.push('dollars');
+
+    _filters = f; _sort = sort;
+    _columns = COLUMNS.map(c => c.key).filter(k => cols.includes(k));   // keep catalogue order
+    _bucketTab = AI_TABS.includes(v && v.bucket_tab) ? v.bucket_tab : 'all';
+    _view = null; _order = {}; _dirty = true; _saveDraft();
+}
+
+function _aiResultMsg(summary, unmapped) {
+    const n = _sortRows(_applyFilters(Array.isArray(currentData) ? currentData : [])).length;
+    const miss = (unmapped || []).filter(x => typeof x === 'string' && x.trim()).slice(0, 4);
+    return `<b>${n} RO${n === 1 ? '' : 's'}</b> — ${_esc(summary || 'View updated.')}`
+        + (miss.length ? `<br><span class="pl-ai-miss">⚠️ I couldn't filter by: ${miss.map(_esc).join('; ')} — everything else is applied.</span>` : '')
+        + `<span class="pl-ai-acts"><button type="button" class="pl-btn pl-btn-sm pl-btn-primary" onclick="savePlannerView(true)">💾 Save as my template</button>`
+        + `<button type="button" class="pl-btn pl-btn-sm" onclick="plannerAiClear()">Start over</button></span>`;
+}
+
+export function plannerQuickView(key) {
+    const q = QUICK_VIEWS.find(x => x.key === key); if (!q) return;
+    _applyAiView({ filters: q.filters, sort: q.sort, add_columns: q.cols || [], bucket_tab: q.tab || 'all', _mine: q.mine });
+    _ai.name = q.name; _ai.kind = 'ok';
+    _ai.msg = _aiResultMsg(q.name + (q.mine && _mySilo() && _filters.silos.length === 1 ? ` (${_siloMeta(_mySilo()).label})` : '') + '.', []);
+    renderPlanner();
+}
+
+export function plannerAiClear() {
+    _ai = { text: '', busy: false, msg: '', kind: '', name: '', listening: false };
+    newPlannerView(true);
+}
+
+export async function plannerAiAsk(via) {
+    const text = (_ai.text || '').trim();
+    if (_ai.busy) return;
+    if (text.length < 3) { _ai.msg = 'Type (or speak) which ROs you want to see, then press <b>Show me</b>.'; _ai.kind = 'warn'; renderPlanner(); return; }
+    if (!getSB() || !window.supabaseSession) { showToast('Not signed in.', 'error'); return; }
+    _ai.busy = true; _ai.msg = ''; renderPlanner();
+    try {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/planner-ai`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${window.supabaseSession.access_token}`, 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: text, via: via === 'voice' ? 'voice' : 'text', today: _todayISO(), mySilo: _mySilo() || '', isSr: !!_isSr(), userName: _who(_me()) }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.view) throw new Error(data.error || ('HTTP ' + resp.status));
+        const v = data.view;
+        if (v.understood === false) {
+            _ai.kind = 'warn'; _ai.name = '';
+            _ai.msg = `🤔 ${_esc(v.summary || "I couldn't turn that into a planner view.")} <span class="pl-ai-miss">Nothing was changed.</span>`;
+        } else {
+            v._mine = !_isSr();
+            _applyAiView(v);
+            _ai.kind = 'ok'; _ai.name = (typeof v.name === 'string' ? v.name.trim().slice(0, 60) : '');
+            _ai.msg = _aiResultMsg(v.summary, v.unmapped);
+        }
+    } catch (e) {
+        console.warn('[Planner AI]', e);
+        _ai.kind = 'err'; _ai.msg = `⚠️ ${_esc(e.message || String(e))}`;
+    } finally {
+        _ai.busy = false; renderPlanner();
+        const el = document.getElementById('plannerAiInput'); if (el && _ai.kind !== 'ok') el.focus();
+    }
+}
+
+let _aiRec = null;
+export function plannerAiMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { showToast('Voice input needs Chrome, Edge or Safari.', 'warning'); return; }
+    if (_ai.listening && _aiRec) { try { _aiRec.stop(); } catch (_) {} return; }
+    const rec = new SR(); _aiRec = rec;
+    rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    let finalText = '';
+    rec.onresult = ev => {
+        let t = ''; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+        finalText = t.trim(); _ai.text = finalText;
+        const el = document.getElementById('plannerAiInput'); if (el) el.value = finalText;
+    };
+    rec.onerror = ev => {
+        _ai.listening = false; _ai.kind = 'warn';
+        _ai.msg = ev.error === 'not-allowed' ? '🎤 The microphone is blocked for this site — click the 🔒 in the address bar and allow it, or just type.' : (ev.error === 'no-speech' ? "🎤 I didn't hear anything — try again, or type it." : '🎤 Voice input failed (' + _esc(ev.error) + ') — you can type instead.');
+        renderPlanner();
+    };
+    rec.onend = () => { _ai.listening = false; _aiRec = null; if (finalText.length >= 3) plannerAiAsk('voice'); else renderPlanner(); };
+    _ai.listening = true; _ai.msg = ''; renderPlanner();
+    try { rec.start(); } catch (e) { _ai.listening = false; renderPlanner(); }
+}
+
 Object.assign(window, {
+    plannerAiAsk, plannerAiTyping, plannerAiMic, plannerAiClear, plannerQuickView,
     openPlanner, closePlanner, renderPlanner, _initPlannerBtn,
     plannerSetFilter, plannerSearch, plannerResetFilters, plannerSort, plannerToggleColumn, plannerSetBucketTab,
     plannerSetBucket, plannerSetDates, plannerSetNote, plannerBulkBucket,

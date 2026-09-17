@@ -1,7 +1,16 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.505
+    PRVS Dashboard v1.506
+    v1.506: [S190] Work Planner gains the 🤖 PLANNER ASSISTANT bar (js/planner.js + css/dashboard.css
+    .pl-ai*). A manager types or speaks ("🎤 Speak", browser SpeechRecognition) which ROs they want;
+    the NEW planner-ai edge fn (Claude, forced tool call) maps the request to a planner VIEW CONFIG
+    (filters / sort / columns / bucket tab) using ONLY the existing filter catalogue. The AI never
+    sees RO data and writes nothing; _applyAiView() re-validates every field client-side. Result line
+    shows the RO count + a plain-English summary + anything it could not filter by, with
+    "💾 Save as my template" (existing planner_views save). Five instant local "Quick views" chips
+    (no AI call). Manager+ only (JWT + is_manager_or_above), 40 req/user/hr, every request logged
+    to NEW planner_ai_log (migration planner_ai_log_s190.sql; admin-read, service-role write).
     v1.505: [S188 HOTFIX] Work Planner — Coordination / Plans columns sorted flagged rows to the
     BOTTOM under the default desc sort (negative counts); now positive counts so 🤝 rows lead.
     Found in the S188 prod smoke test on the Kevin McHenry Tester RO.
@@ -1067,7 +1076,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.505';</script>
+    <script>window.APP_VERSION = '1.506';</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
