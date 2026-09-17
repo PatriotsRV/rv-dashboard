@@ -1,7 +1,14 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.506
+    PRVS Dashboard v1.507
+    v1.507: [S190] CACHE-BUSTING AT THE SHAPE (closes the S182 TODO). v1.506 shipped and the live page
+    ran new index.html with a 10-min-stale js/planner.js + css/dashboard.css - no Ask bar. Now an
+    import map (built from window.APP_VERSION, which moved ABOVE the stylesheets) rewrites every
+    js/ module import to <file>?v=<version>; js/app.js loads via an inline `import` so it goes
+    through the map too; both stylesheets + js/layout.js are written with ?v=. No module file
+    changed. check_version_sync.py gains check 6: PRVS_MODULES must equal the files in js/.
+    NOT covered yet: messages.html / v.html / tasks.html (same class, follow-up).
     v1.506: [S190] Work Planner gains the 🤖 PLANNER ASSISTANT bar (js/planner.js + css/dashboard.css
     .pl-ai*). A manager types or speaks ("🎤 Speak", browser SpeechRecognition) which ROs they want;
     the NEW planner-ai edge fn (Claude, forced tool call) maps the request to a planner VIEW CONFIG
@@ -1048,18 +1055,6 @@
     <title>RV Repair Order Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <!-- Phase 19 (v1.444 S91): embedded CSS moved VERBATIM to css/dashboard.css -->
-    <link rel="stylesheet" href="css/dashboard.css">
-    <!-- v1.477 (S147): Sidebar layout toggle. Class applied BEFORE first paint to
-         avoid layout flash; all sidebar CSS is scoped under html.layout-sidebar so
-         the classic layout is untouched when the toggle is off. -->
-    <script>
-      try {
-        if (localStorage.getItem('prvs_layout') === 'sidebar') {
-          document.documentElement.classList.add('layout-sidebar');
-        }
-      } catch (e) {}
-    </script>
-    <link rel="stylesheet" href="css/sidebar-layout.css">
     <!-- ============================================================== -->
     <!-- [v1.500 S182] THE VERSION BUMP SITE. Change the number HERE.   -->
     <!--                                                                -->
@@ -1076,7 +1071,36 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.506';</script>
+    <script>window.APP_VERSION = '1.507';</script>
+    <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
+         fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
+         leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
+         index.html is already new. The import map rewrites every `import './x.js'` inside the
+         modules - no module file changes. PRVS_MODULES must list EVERY file in js/;
+         scripts/check_version_sync.py enforces that (BLOCKING in CI). The version still lives in
+         exactly two places (the declaration above + version.json). -->
+    <script>
+      window.PRVS_MODULES = ['app','auth','config','duplicates','enhancement','i18n','insurance','layout','messaging','parts','photos','planner','qr','render','ro-crud','scheduling','shop-tasks','state','time-tracking','utils','work-list','work-orders'];
+      (function () {
+        var v = encodeURIComponent(window.APP_VERSION), imports = {};
+        window.PRVS_MODULES.forEach(function (n) { imports['./js/' + n + '.js'] = './js/' + n + '.js?v=' + v; });
+        document.write('<script type="importmap">' + JSON.stringify({ imports: imports }) + '<\/script>');
+        window.prvsAsset = function (path) { return path + '?v=' + v; };
+      })();
+    </script>
+    <script>document.write('<link rel="stylesheet" href="' + prvsAsset('css/dashboard.css') + '">');</script>
+    <noscript><link rel="stylesheet" href="css/dashboard.css"></noscript>
+    <!-- v1.477 (S147): Sidebar layout toggle. Class applied BEFORE first paint to
+         avoid layout flash; all sidebar CSS is scoped under html.layout-sidebar so
+         the classic layout is untouched when the toggle is off. -->
+    <script>
+      try {
+        if (localStorage.getItem('prvs_layout') === 'sidebar') {
+          document.documentElement.classList.add('layout-sidebar');
+        }
+      } catch (e) {}
+    </script>
+    <script>document.write('<link rel="stylesheet" href="' + prvsAsset('css/sidebar-layout.css') + '">');</script>
 </head>
 <body>
     <div class="noise-overlay"></div>
@@ -8192,11 +8216,12 @@ function toggleWOTasks(tasksId, chevId) {
     </div>
 
     <!-- Phase 0: module entry point (currently a no-op; modules will be populated phase by phase per docs/specs/MODULARIZATION_ROADMAP.md) -->
-    <script type="module" src="js/app.js"></script>
+    <!-- [v1.507 S190] inline import so the entry module resolves through the import map (versioned). -->
+    <script type="module">import './js/app.js';</script>
     <!-- v1.477 (S147): sidebar layout switcher — relocates classic DOM into the
          #sbShell slots when html.layout-sidebar is set; no-op in classic mode.
          Plain script (not a module): defines the window.sb* inline handlers. -->
-    <script src="js/layout.js"></script>
+    <script>document.write('<script src="' + prvsAsset('js/layout.js') + '"><\/script>');</script>
 
     <!-- Phase 4.5-E (v1.429): `defer` added to both Google CDN tags so the
          module's window bridge (js/app.js, loaded above as type="module" — also

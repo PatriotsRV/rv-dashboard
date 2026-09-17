@@ -140,6 +140,32 @@ else:
             )
 
 
+# ── 6. [S190 v1.507] cache-busting module list ───────────────────────────
+# index.html builds an import map from window.PRVS_MODULES so every js/ file is
+# fetched as <file>?v=<version>. A file missing from the list silently falls
+# back to the 10-minute stale-cache behaviour (the v1.506 defect), and a module
+# loaded both with and without ?v= would exist TWICE with separate state.
+if index_path.exists():
+    mods = re.search(r"window\.PRVS_MODULES\s*=\s*\[([^\]]*)\]", html)
+    if not mods:
+        fail("index.html does not declare window.PRVS_MODULES (cache-busting import map).")
+    else:
+        listed = set(re.findall(r"['\"]([^'\"]+)['\"]", mods.group(1)))
+        on_disk = {p.stem for p in (ROOT / "js").glob("*.js")}
+        if listed != on_disk:
+            fail(
+                "PRVS_MODULES in index.html does not match the files in js/.\n"
+                f"         missing from the list: {sorted(on_disk - listed)}\n"
+                f"         listed but not on disk: {sorted(listed - on_disk)}"
+            )
+        else:
+            notes.append(f"PRVS_MODULES            = {len(listed)} files, matches js/")
+    if re.search(r"""<script[^>]+src=["'](?:\./)?js/""", html):
+        fail("index.html loads a js/ file with a plain <script src=> - it bypasses cache-busting.")
+    for mod in (ROOT / "js").glob("*.js"):
+        if re.search(r"""(?:from|import)\s*\(?\s*['"][^'"]+\.js\?""", mod.read_text(encoding="utf-8")):
+            fail(f"js/{mod.name} imports a module with its own ?query - the import map must be the only versioner.")
+
 # ── 5. no module may mint its own copy ───────────────────────────────────
 js_dir = ROOT / "js"
 if js_dir.is_dir():
