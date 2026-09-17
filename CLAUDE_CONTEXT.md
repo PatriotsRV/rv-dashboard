@@ -2499,29 +2499,61 @@ After an additive extraction + window bridge, the MODULE copy is the runtime own
 
 ---
 
+## 📌 STANDING FACTS & DECISIONS — NEVER ARCHIVE THIS SECTION
+
+> **Why this exists (S190):** Roland had told Claude in Session 59 that Lynn is his wife. The S107 cleanup moved that session-log entry to `CLAUDE_CONTEXT_ARCHIVE.md`, which Start Session never reads, so in S190 Claude had to ask him who his wife was. **A durable fact recorded ONLY inside a session-log entry or a TODO row dies when that entry is archived.**
+> **RULE:** anything that stays true for months — who a person is, a standing owner decision, a business fact — gets a one-line entry HERE (or in the Staff Roster) in the SAME session it is learned. End Session step: *"Did Roland tell me anything durable today? Pin it."* Archiving/cleanup passes must not touch this section. Entries below marked (archive) were recovered by the S190 sweep of the archive.
+
+**People**
+- **Lynn Shepard = Roland's wife / co-owner.** "My wife" always means Lynn. Admin. Heaviest daily user; files many ERs. Roland + Lynn are the audience for owner-only reports (shop-spend abuse watch, shop-expenses P&L).
+- **Rusty Sasiain** = Roland's Android-using friend, the standing Android tester for customer messaging (iPhone testers: Roland + Lynn). (archive S96)
+- **customerservice@patriotsrvservices.com** = the front-desk KIOSK account. customer-checkin locks it to Drop Off by strict email match — Roland chose strict email over role-based gating. (archive S80)
+
+**Standing owner decisions**
+- **No Slack.** Roland S81: "We are not going to use Slack." Integration torn down v1.445. Do not propose Slack notifications. (archive)
+- **No Twilio / A2P.** Abandoned 2026-06-14 after two A2P campaign rejections (err 30909). Messaging is Project Blue. Do not propose Twilio. (archive)
+- **No iPhone/mobile context sync.** Removed S74 — Roland: "I never use it because I DON'T TRUST IT ... to be maintained and kept in sync." Never surface the idea; silence is correct.
+- **Tech clock-in policy: "just clock into the new RO, the system handles cleanup."** An auto-closed prior session (`auto_replaced_by_new_session`) is NORMAL behaviour, not a discipline event. Only end-of-day auto-closes are flagged. (archive S65)
+- **Clock-in service pick: the TECH selects the service at clock-in** (Option B); manager pre-queuing (Option A) was deferred. (archive)
+- **Auto status flips only UPGRADE, never downgrade,** and leave completed-side + both Awaiting states alone (checkin `FLIPPABLE_STATUSES`). Roland: "leave completed ROs put." (archive)
+- **Time-off requests are self-service for every role;** only Admins get the employee picker to file on someone's behalf (time-off.html v1.1–v1.3). (archive S68)
+- **Unpublished GitHub Release backlogs may be closed without publishing** — Roland's call twice (v1.438–v1.443, six earlier tags). Tags stay as rollback anchors; do not nag about old releases. (archive S95)
+- **No separate staging Supabase / second repo.** Staging = git branches (invisible to staff on GH Pages) + additive-only migrations + feature flags. Rejected as overkill. (archive)
+- **Not-On-Lot lead matching keys:** phone + email + customer name, scoped to status Not On Lot; both the lead-conversion and the customer-arrived emails fire. (archive S51)
+
+**Business facts**
+- **Office line +1 940-488-5047** (old Kenect line; Roland wants customer messaging tied to it permanently — coordinate any port, never port twice). Project Blue line +1 940-407-4145.
+- **Lot map naming (from Roland's handwritten map, v1.292):** R1–R20 Rear Lot · B1–B14 Interior Bays · Wash Bay 17, Wash Bay 18 · W1–W4 Wash · F1–F12 Front Lot. (archive)
+
+---
+
 ## 👥 PRVS Staff Roster
 
 > Source of truth for personnel. Loaded into `staff` table via `supabase/migrations/staff_table.sql`.
 > Admin role (Roland) auto-grants Sr. Manager access — no staff row needed.
+> 🔁 **S190 rule: this table is reconciled against the live `staff` table at every End Session** (`select name,email,role,service_silo,active from staff`). It had drifted: 3 people missing, 2 inactive not marked, 1 role wrong, 3 surnames misspelled.
 
 | Name | Email | Role | Silo |
 |---|---|---|---|
 | Roland Shepard | roland@patriotsrvservices.com | Sr. Manager | — (Owner/Admin; added to staff table Session 27 to satisfy WO RLS) |
 | **Lynn Shepard — ROLAND'S WIFE / co-owner** | lynn@patriotsrvservices.com | **Admin** (`user_roles`, DB-verified S190) | — (not a silo manager. When Roland says "my wife" he means Lynn. Files many ERs; primary daily user of the board, Task Manager and Work Planner. Pinned here S190 because the only prior record of this was the Session 59 entry, which the S107 cleanup moved to CLAUDE_CONTEXT_ARCHIVE.md — a file Start Session does not read — so S190 had to ask Roland who his wife was.) |
 | Ryan Dillon | ryan@patriotsrvservices.com | Sr. Manager | — (cross-silo; acting manager for Roof + Paint & Body until dedicated hires) |
-| Kevin McHenry | kevin@patriotsrvservices.com | Sr. Manager | — (added manually to Supabase + SR_MANAGER_EMAILS v1.300) |
-| Mauricio Tellez | mauricio@patriotsrvservices.com | Manager | Repair |
+| Kevin McHenry — ⚠️ INACTIVE (`staff.active=false`, DB-verified S190; former tester, his name lives on in the "Kevin McHenry Tester" RO) | kevin@patriotsrvservices.com | Sr. Manager | — (added manually to Supabase + SR_MANAGER_EMAILS v1.300) |
+| Mauricio Tellez | mauricio@patriotsrvservices.com | Sr. Manager (`staff.role=sr_manager`, silo repair — DB-verified S190; this table said Manager) | Repair |
 | Jason Rubin | jason@patriotsrvservices.com | Manager | Repair |
 | Andrew Page | andrew@patriotsrvservices.com | Manager | Vroom |
 | Riley Scott | solar@patriotsrvservices.com | Manager | Solar |
+| John Nepomuceno | john@patriotsrvservices.com | Manager | — (cross-silo, `service_silo=NULL`; added S154-era. Was MISSING from this table until S190) |
+| Will Read | will@patriotsrvservices.com | Sr. Manager in `staff` + **Admin** in `user_roles` (S187) | — (Roland's assistant, Hearthside Creative Co. Was MISSING from this table until S190) |
+| Sofia | sofia@patriotsrvservices.com | Sr. Manager | — ($0-priced tester row like Roland's, so her clock-ins never hit P&L; files ERs. Was MISSING from this table until S190) |
 | Bobby Thatcher | bobby@patriotsrvservices.com | Parts Manager | Parts & Insurance (office — NOT assigned to service WOs) |
 | Brandon Dillon | brandon@patriotsrvservices.com | Parts Manager | Parts & Insurance (office — NOT assigned to service WOs) |
-| Nik Polizzo | nik@patriotsrvservices.com | Tech | — |
+| Nik Polizzo — ⚠️ INACTIVE (`staff.active=false`, DB-verified S190) | nik@patriotsrvservices.com | Tech | — |
 | Ignacio Ochoa | ignacio@patriotsrvservices.com | Tech | — |
 | Tipton Scott | tipton@patriotsrvservices.com | Tech | — |
-| Rod Wimbles | rod@patriotsrvservices.com | Tech | — |
-| Zak Wimbles | zak@patriotsrvservices.com | Tech | — |
-| Travis Wimbles | travis@patriotsrvservices.com | Tech | — |
+| Rod Wombles | rod@patriotsrvservices.com | Tech | — |
+| Zak Wombles | zak@patriotsrvservices.com | Tech | — |
+| Travis Wombles | travis@patriotsrvservices.com | Tech | — |
 | Cooper Cihak | cooper@patriotsrvservices.com | Tech | — |
 | Rudy Juarez | rudy@patriotsrvservices.com | Tech | — |
 | Tommy Belew | tommy@patriotsrvservices.com | Tech | — |
