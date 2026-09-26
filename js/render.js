@@ -760,6 +760,8 @@
 
             // Deep-link: scroll to and highlight the target RO if ?ro= is in the URL
             if (_deepLinkRoId) handleDeepLink();
+            // [v1.510 S191] an open Work Planner repaints when currentData was replaced (js/planner.js)
+            if (typeof window.plannerBoardDataChanged === 'function') window.plannerBoardDataChanged();
         }
 
         export function updateStats(data, filteredData) {

@@ -122,6 +122,7 @@ let _drawerRo = null;        // ro_uuid currently open in the drill-down drawer
 let _loaded = false;
 // [S190] AI assistant bar state. text survives header re-renders; name feeds _suggestName().
 let _ai = { text: '', busy: false, msg: '', kind: '', name: '', listening: false };
+let _lastDataRef = null;   // [v1.510 S191] identity of the currentData array the open planner last painted from
 
 function _defaultFilters() {
     return {
@@ -473,7 +474,23 @@ async function _openPlannerFromUrl(id) {
     v._mine = !_isSr();
     _applyAiView(v);
     _ai.kind = 'ok'; _ai.name = typeof v.name === 'string' ? v.name.trim().slice(0, 60) : '';
-    _ai.msg = _aiResultMsg(v.summary || 'View from the PRVS Assistant.', Array.isArray(v.unmapped) ? v.unmapped : []);
+    _ai.summary = v.summary || 'View from the PRVS Assistant.'; _ai.unmapped = Array.isArray(v.unmapped) ? v.unmapped : [];
+    _ai.msg = _aiResultMsg(_ai.summary, _ai.unmapped);
+    _lastDataRef = Array.isArray(currentData) ? currentData : null;
+    renderPlanner();
+}
+
+// [v1.510 S191] Called from renderBoard() (js/render.js tail). The board REPLACES currentData on
+// every Supabase load (and can briefly swap the placeholders back in during the auth boot), but
+// the open planner only ever repainted on its own interactions - so a planner opened from a deep
+// link during a cold boot could sit on "0 ROs" while the board underneath had 100+. Repaint only
+// when the array identity changed (a real reload), and recount the assistant's result line.
+export function plannerBoardDataChanged() {
+    if (!_open) return;
+    const cur = Array.isArray(currentData) ? currentData : null;
+    if (!cur || cur === _lastDataRef) return;
+    _lastDataRef = cur;
+    if (_ai.kind === 'ok' && _ai.summary) _ai.msg = _aiResultMsg(_ai.summary, _ai.unmapped || []);
     renderPlanner();
 }
 
@@ -1203,6 +1220,7 @@ export async function plannerAiAsk(via) {
             v._mine = !_isSr();
             _applyAiView(v);
             _ai.kind = 'ok'; _ai.name = (typeof v.name === 'string' ? v.name.trim().slice(0, 60) : '');
+            _ai.summary = v.summary; _ai.unmapped = Array.isArray(v.unmapped) ? v.unmapped : [];   // [v1.510] recounted on board reload
             _ai.msg = _aiResultMsg(v.summary, v.unmapped);
         }
     } catch (e) {
@@ -1239,7 +1257,7 @@ export function plannerAiMic() {
 
 Object.assign(window, {
     plannerAiAsk, plannerAiTyping, plannerAiMic, plannerAiClear, plannerQuickView,
-    openPlanner, closePlanner, renderPlanner, _initPlannerBtn,
+    openPlanner, closePlanner, renderPlanner, _initPlannerBtn, plannerBoardDataChanged,
     plannerSetFilter, plannerSearch, plannerResetFilters, plannerSort, plannerToggleColumn, plannerSetBucketTab,
     plannerSetBucket, plannerSetDates, plannerSetNote, plannerBulkBucket,
     plannerUpsertEntry, plannerDeleteEntry, plannerResolveMessage, plannerReplyTo, plannerSend, plannerAdminFyi,

@@ -264,14 +264,22 @@
             else showToast(hits.length + ' ROs match "' + find + '" - pick the right one.', 'info', { duration: 8000 });
             return null;
         }
-        function _runDeepLinkAction(idx) {
+        function _runDeepLinkAction(target) {
             if (_deepLinkOpened) return;
             const action = (_deepLinkParams().get('open') || '').trim();
             if (!action || !Object.prototype.hasOwnProperty.call(DEEP_LINK_ACTIONS, action)) return;
             _deepLinkOpened = true;
             const fn = DEEP_LINK_ACTIONS[action];
             if (!fn) return;
-            setTimeout(() => { try { fn(idx); } catch (e) { console.warn('[deep link] open=' + action, e); } }, 650);
+            // [v1.510 S191] re-find the card by RO id at FIRE time - a board reload in the 650 ms
+            // between highlight and open would shift array indexes (the v1.496 Kain/Ivins class).
+            setTimeout(() => {
+                try {
+                    const idx = currentFilteredData.findIndex(ro => _deepLinkRoIdOf(ro) === target);
+                    if (idx === -1) { showToast('The RO moved before it could be opened - click it on the board.', 'warning'); return; }
+                    fn(idx);
+                } catch (e) { console.warn('[deep link] open=' + action, e); }
+            }, 650);
         }
 
         export function handleDeepLink() {
@@ -322,7 +330,7 @@
 
             // Clear the flag so we don't re-highlight on every subsequent renderBoard()
             _deepLinkRoId = null;
-            _runDeepLinkAction(idx);   // [v1.508 S191] ?open=<action> from the PRVS Assistant (one-shot)
+            _runDeepLinkAction(target);   // [v1.508 S191] ?open=<action> from the PRVS Assistant (one-shot; v1.510 re-finds by RO id at fire time)
 
             // Scroll the card into view
             setTimeout(() => {

@@ -1,7 +1,16 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.509
+    PRVS Dashboard v1.510
+    v1.510: [S191] HOTFIX 2 - an OPEN Work Planner now repaints when the board replaces currentData.
+    The v1.509 gate was necessary but not sufficient: on a cold boot the board can swap its data
+    array again AFTER the planner opened from ?planner=ai (auth-status flip -> placeholders -> real
+    reload), and the planner only ever repainted on its own interactions - so it sat on "0 ROs" with
+    103 real rows underneath (live on v1.509; a manual renderPlanner() showed them). NEW
+    plannerBoardDataChanged() (js/planner.js, window-bridged) is called from the renderBoard() tail
+    (js/render.js): repaints + recounts the assistant result line ONLY when the array identity
+    changed. js/qr.js ?open= now re-finds the card by RO id at fire time instead of trusting a
+    650 ms-old index (v1.496 Kain/Ivins class). No other change.
     v1.509: [S191] HOTFIX - deep links vs the boot placeholders. Boot paints the 9 sampleData rows
     before the Supabase load (S147), and both the ?ro= recovery branch (S178, ER d4d0eeba) and the
     ?planner= deep link treated "currentData.length > 0" as "data loaded": on every COLD load a ?ro=
@@ -1089,7 +1098,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.509';</script>
+    <script>window.APP_VERSION = '1.510';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
