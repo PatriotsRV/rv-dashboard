@@ -199,8 +199,83 @@
         // recovery below cannot loop if the card still fails to appear.
         let _deepLinkClearedFilters = false;
 
+        // [v1.508 S191] PRVS Assistant hand-off (home.html, docs/specs/AI_HOME_SPEC.md).
+        // Three URL intents on top of the existing ?ro= deep link:
+        //   ?find=<text>   resolve to ONE RO client-side (customer / RO id / RV / VIN / phone).
+        //                  Several matches -> search box set + toast; none -> toast.
+        //   ?open=<action> once the card is highlighted, open that card action - the SAME
+        //                  handlers as the board's click delegation, allow-listed below.
+        //   ?q=<text>      prefill the board search and render.
+        // index.html seeds _deepLinkRoId = '~intent~' when find/q is present and ?ro= is
+        // not, so renderBoard()'s existing `if (_deepLinkRoId) handleDeepLink()` tail lands
+        // here. The AI never resolves names: the match happens HERE, against the user's
+        // own loaded data.
+        let _deepLinkOpened = false;
+        const DEEP_LINK_ACTIONS = {
+            view:          null,
+            edit:          idx => window.openEditRO(idx),
+            reminder:      idx => window.openScheduleNotificationModal(idx),
+            schedule:      idx => window.openScheduleModal(idx),
+            parts:         idx => window.openPartsModal(idx),
+            request_parts: idx => window.openPartsRequestModal(idx),
+            work_orders:   idx => window.openWorkOrderModal(idx),
+            photos:        idx => window.openPhotoLibrary(idx),
+            message:       idx => window.openMessagesModal(currentFilteredData[idx]),
+            time_logs:     idx => window.openTimeLogsModal(idx),
+            receivable:    idx => window.PRVS_RoCrud.openReceivablePanel(currentFilteredData[idx] && currentFilteredData[idx]._supabaseId),
+            checkin:       idx => window.openCheckIn(idx),
+        };
+        function _deepLinkParams() { try { return new URLSearchParams(window.location.search); } catch (_) { return new URLSearchParams(''); } }
+        function _deepLinkRoIdOf(ro) { return ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived); }
+        function _setBoardSearch(text) {
+            currentSearchFilter = (text || '').trim();
+            const cs = document.getElementById('customerSearch'); if (cs) cs.value = currentSearchFilter;
+            const cb = document.getElementById('clearSearch'); if (cb) cb.style.display = currentSearchFilter ? 'block' : 'none';
+        }
+        /** Resolve ?find= / ?q= once the data is loaded. Returns the RO id to deep-link to, or null when handled. */
+        function _resolveUrlIntent() {
+            const p = _deepLinkParams();
+            const q = (p.get('q') || '').trim().slice(0, 80);
+            const find = (p.get('find') || '').trim().slice(0, 80);
+            if (!find) {
+                if (q) { _setBoardSearch(q); renderBoard(); }
+                return null;
+            }
+            const needle = find.toLowerCase();
+            const digits = find.replace(/\D/g, '');
+            const hits = currentData.filter(ro => {
+                if (!ro || ro.roType === 'shop') return false;
+                const hay = [ro.customerName, _deepLinkRoIdOf(ro), ro.rv, ro.vin].map(x => String(x || '').toLowerCase());
+                if (hay.some(h => h.includes(needle))) return true;
+                return digits.length >= 7 && String(ro.customerPhone || '').replace(/\D/g, '').includes(digits);
+            });
+            if (hits.length === 1) return _deepLinkRoIdOf(hits[0]);
+            _setBoardSearch(find);
+            renderBoard();
+            if (hits.length === 0) showToast('No RO on the board matches "' + find + '" - it may be closed, or spelled differently.', 'warning', { duration: 8000 });
+            else showToast(hits.length + ' ROs match "' + find + '" - pick the right one.', 'info', { duration: 8000 });
+            return null;
+        }
+        function _runDeepLinkAction(idx) {
+            if (_deepLinkOpened) return;
+            const action = (_deepLinkParams().get('open') || '').trim();
+            if (!action || !Object.prototype.hasOwnProperty.call(DEEP_LINK_ACTIONS, action)) return;
+            _deepLinkOpened = true;
+            const fn = DEEP_LINK_ACTIONS[action];
+            if (!fn) return;
+            setTimeout(() => { try { fn(idx); } catch (e) { console.warn('[deep link] open=' + action, e); } }, 650);
+        }
+
         export function handleDeepLink() {
             if (!_deepLinkRoId) return;
+            // [v1.508 S191] ?find= / ?q= from the PRVS Assistant: resolve, then continue as ?ro=.
+            if (_deepLinkRoId === '~intent~') {
+                if (!currentData.length) return;          // data still loading - wait for the next render
+                _deepLinkRoId = null;                     // consume BEFORE any re-render (renderBoard re-enters here)
+                const found = _resolveUrlIntent();
+                if (!found) return;
+                _deepLinkRoId = found;                    // exactly one match - behave like a normal ?ro= link
+            }
             const target = _deepLinkRoId;
 
             // Find the RO card whose roId matches the URL param
@@ -239,6 +314,7 @@
 
             // Clear the flag so we don't re-highlight on every subsequent renderBoard()
             _deepLinkRoId = null;
+            _runDeepLinkAction(idx);   // [v1.508 S191] ?open=<action> from the PRVS Assistant (one-shot)
 
             // Scroll the card into view
             setTimeout(() => {

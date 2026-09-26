@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <!--
-    PRVS Task Manager  tasks-v1.3
+    PRVS Task Manager  tasks-v1.4
     Released: 2026-08-27 (Session 186)
     Spec: docs/specs/TASK_MANAGER_SPEC.md
+    v1.4: 🤖 Assistant header link -> home.html, the new AI-driven entry page
+        (Session 191, docs/specs/AI_HOME_SPEC.md). Link only; no logic change.
     v1.3: EDIT open tasks (Roland field test S186 — set the wrong due time and
         had no way to fix it). ✎ Edit on any open task (assigner or Admin);
         quick-add form doubles as the editor. Due change RESETS the nag
@@ -130,6 +132,7 @@
         <h1>📌 Tasks</h1>
         <span class="ver" id="verTag"></span>
         <a class="backlink" href="index.html">← Dashboard</a>
+        <a class="backlink" href="home.html" title="PRVS Assistant - say where you want to go or what you want to do">🤖 Assistant</a>
         <span class="who" id="whoAmI"></span>
     </div>
 
@@ -182,7 +185,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-const TASKS_VERSION = 'tasks-v1.3';
+const TASKS_VERSION = 'tasks-v1.4';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';

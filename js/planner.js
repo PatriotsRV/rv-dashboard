@@ -449,11 +449,31 @@ export function _initPlannerBtn() {
             let tries = 0;
             const t = setInterval(() => {
                 tries++;
-                if (window.supabaseSession && Array.isArray(currentData) && currentData.length) { clearInterval(t); openPlanner(id); }
+                if (window.supabaseSession && Array.isArray(currentData) && currentData.length) { clearInterval(t); _openPlannerFromUrl(id); }
                 else if (tries > 120) clearInterval(t);
             }, 500);
         }
     } catch (_) { /* no-op */ }
+}
+
+// [v1.508 S191] PRVS Assistant hand-off (home.html, docs/specs/AI_HOME_SPEC.md).
+// ?planner=open just opens the planner; ?planner=ai opens it and applies the view the
+// assistant left in sessionStorage['prvs_ai_view'] - through _applyAiView(), so it gets
+// exactly the same allow-list validation as an answer typed into the Ask bar. Any other
+// value is a saved-view id, as before. The stored view is consumed once and expires
+// after 10 minutes, so a stale tab cannot replay it.
+async function _openPlannerFromUrl(id) {
+    if (id !== 'ai' && id !== 'open') { await openPlanner(id); return; }
+    await openPlanner();
+    if (id !== 'ai') return;
+    let v = null;
+    try { v = JSON.parse(sessionStorage.getItem('prvs_ai_view') || 'null'); sessionStorage.removeItem('prvs_ai_view'); } catch (_) { v = null; }
+    if (!v || typeof v !== 'object' || (v.ts && Date.now() - v.ts > 10 * 60 * 1000)) return;
+    v._mine = !_isSr();
+    _applyAiView(v);
+    _ai.kind = 'ok'; _ai.name = typeof v.name === 'string' ? v.name.trim().slice(0, 60) : '';
+    _ai.msg = _aiResultMsg(v.summary || 'View from the PRVS Assistant.', Array.isArray(v.unmapped) ? v.unmapped : []);
+    renderPlanner();
 }
 
 /** Badge on the header button: open requests to my silos + conflicts touching my silos. */

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<!--
+    PRVS Assistant  home-v1.0
+    Released: 2026-09-26 (Session 191)
+    Spec: docs/specs/AI_HOME_SPEC.md
+    v1.0: Gen-1 AI-driven entry page for the RO Dashboard (Roland directive S191).
+        "Hello <name>, how can I assist you today?" + one prompt bar (type or
+        speak) + permission-filtered shortcut tiles to every page + the user's
+        own request history. The NEW assistant-router edge fn turns the request
+        into a ROUTE (destination page + view config or RO action) from a fixed
+        catalogue; this page then navigates in the SAME tab and the destination
+        does the data work under the user's own RLS. The AI never sees RO data
+        and never writes anything (decision 1 + 4, S191).
+        Hand-offs: Work Planner view via sessionStorage 'prvs_ai_view' +
+        index.html?planner=ai; RO actions via index.html?find=<ref>&open=<action>
+        (or ?ro=<RO id>&open=); board search via ?q=; New RO via the existing
+        ?newro=1 prefill; every other page plain.
+        Palette mirrors messages/tasks (jersey white / celeste / navy / gold).
+    Requires migration: assistant_log_s191.sql + edge fn assistant-router
+-->
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRVS Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg-main: #F5FAFE;
+            --bg-surface: #FFFFFF;
+            --bg-elevated: #EAF4FB;
+            --border-color: #BBD9F0;
+            --text-primary: #10243E;
+            --text-secondary: #53718E;
+            --text-muted: #7E93A8;
+            --accent-info: #2F6FA8;
+            --celeste: #75AADB;
+            --celeste-deep: #4E8FC7;
+            --accent-low: #2E9E52;
+            --accent-medium: #C9A544;
+            --accent-urgent: #D64545;
+            --accent-high: #C87A2B;
+            --shadow: 0 10px 30px rgba(16, 36, 62, 0.10);
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg-main); color: var(--text-primary); font-family: 'Barlow Condensed', sans-serif; min-height: 100vh; }
+        a { color: var(--accent-info); }
+        button { font-family: inherit; }
+
+        /* ── login gate ── */
+        #loginGate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .login-box { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 16px; padding: 36px 32px; text-align: center; box-shadow: var(--shadow); max-width: 420px; width: 100%; }
+        .login-box img { width: 84px; height: 84px; object-fit: contain; margin-bottom: 8px; }
+        .login-box h2 { margin: 6px 0 4px; font-size: 1.9rem; }
+        .login-box p { margin: 0 0 18px; color: var(--text-secondary); }
+        .login-error { color: var(--accent-urgent); margin-top: 12px; font-size: 0.95rem; min-height: 1.2em; }
+        #googleSignInBtn { display: flex; justify-content: center; }
+
+        /* ── app ── */
+        #app { display: none; }
+        .top-bar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--bg-surface); border-bottom: 1px solid var(--border-color); }
+        .top-bar img { width: 34px; height: 34px; object-fit: contain; }
+        .top-bar .brand { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.3px; }
+        .top-bar .ver { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); }
+        .top-bar .spacer { flex: 1; }
+        .top-bar .who { color: var(--text-secondary); font-size: 0.95rem; }
+        .top-bar .link { background: none; border: 1px solid var(--border-color); border-radius: 8px; padding: 5px 10px; color: var(--text-secondary); cursor: pointer; font-size: 0.85rem; }
+        .top-bar .link:hover { background: var(--bg-elevated); }
+
+        main { max-width: 980px; margin: 0 auto; padding: 44px 20px 60px; }
+        h1.greet { font-size: clamp(1.8rem, 4vw, 2.7rem); font-weight: 600; margin: 0 0 22px; text-align: center; letter-spacing: 0.2px; }
+        h1.greet .name { color: var(--celeste-deep); }
+
+        /* ── ask bar ── */
+        .askbar { display: flex; gap: 8px; align-items: stretch; background: var(--bg-surface); border: 2px solid var(--border-color); border-radius: 999px; padding: 6px 6px 6px 18px; box-shadow: var(--shadow); transition: border-color .15s; }
+        .askbar:focus-within { border-color: var(--celeste-deep); }
+        .askbar input { flex: 1; border: none; outline: none; background: transparent; font: inherit; font-size: 1.25rem; color: var(--text-primary); min-width: 0; }
+        .askbar input::placeholder { color: var(--text-muted); }
+        .askbar button { border: none; border-radius: 999px; padding: 0 18px; font-size: 1.05rem; font-weight: 600; cursor: pointer; height: 46px; }
+        .askbar .mic { background: var(--bg-elevated); color: var(--text-primary); }
+        .askbar .mic.listening { background: #FDE7E7; color: var(--accent-urgent); animation: pulse 1s infinite; }
+        .askbar .go { background: var(--celeste-deep); color: #fff; }
+        .askbar .go:disabled { opacity: .55; cursor: wait; }
+        @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(214,69,69,.35);} 50% { box-shadow: 0 0 0 8px rgba(214,69,69,0);} }
+
+        .examples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 14px 0 0; }
+        .chip { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 999px; padding: 6px 12px; font-size: 0.92rem; color: var(--text-secondary); cursor: pointer; }
+        .chip:hover { border-color: var(--celeste-deep); color: var(--text-primary); }
+
+        /* ── result ── */
+        .result { margin: 20px auto 0; max-width: 820px; background: var(--bg-surface); border: 1px solid var(--border-color); border-left: 5px solid var(--celeste-deep); border-radius: 12px; padding: 14px 18px; font-size: 1.1rem; line-height: 1.45; display: none; }
+        .result.show { display: block; }
+        .result.warn { border-left-color: var(--accent-medium); }
+        .result.err { border-left-color: var(--accent-urgent); }
+        .result .miss { display: block; color: var(--accent-high); font-size: 0.95rem; margin-top: 4px; }
+        .result .going { display: block; color: var(--text-secondary); font-size: 0.95rem; margin-top: 6px; }
+        .result .acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .btn { border: 1px solid var(--border-color); background: var(--bg-elevated); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 0.95rem; cursor: pointer; }
+        .btn.primary { background: var(--celeste-deep); border-color: var(--celeste-deep); color: #fff; }
+
+        /* ── shortcuts ── */
+        section { margin-top: 38px; }
+        section h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 0 0 12px; font-weight: 600; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+        .tile { display: flex; flex-direction: column; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px 14px 12px; text-decoration: none; color: var(--text-primary); transition: transform .12s, box-shadow .12s, border-color .12s; }
+        .tile:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--celeste); }
+        .tile .em { font-size: 1.6rem; line-height: 1; }
+        .tile .lbl { font-size: 1.15rem; font-weight: 600; }
+        .tile .sub { font-size: 0.85rem; color: var(--text-secondary); }
+
+        /* ── history ── */
+        .hist { list-style: none; margin: 0; padding: 0; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
+        .hist li { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; }
+        .hist li:last-child { border-bottom: none; }
+        .hist li:hover { background: var(--bg-elevated); }
+        .hist .when { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+        .hist .txt { flex: 1; font-size: 1rem; }
+        .hist .dest { font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap; }
+        .hist .empty { color: var(--text-muted); cursor: default; }
+        .hist .empty:hover { background: transparent; }
+
+        @media (max-width: 640px) {
+            main { padding: 26px 14px 40px; }
+            .askbar { border-radius: 18px; flex-wrap: wrap; padding: 10px; }
+            .askbar input { width: 100%; font-size: 1.1rem; padding: 4px 6px; }
+            .askbar button { flex: 1; }
+            .top-bar .who { display: none; }
+            .hist .dest { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="loginGate">
+    <div class="login-box">
+        <img src="logo.png" alt="Patriots RV Services">
+        <h2>PRVS Assistant</h2>
+        <p>Patriots RV Services — RO Dashboard</p>
+        <div id="googleSignInBtn"></div>
+        <div class="login-error" id="loginError"></div>
+    </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+    <div class="top-bar">
+        <img src="logo.png" alt="">
+        <span class="brand">PRVS Assistant</span>
+        <span class="ver" id="verTag"></span>
+        <span class="spacer"></span>
+        <span class="who" id="whoAmI"></span>
+        <button class="link" onclick="signOut()" title="Sign out of the dashboard on this device">Sign out</button>
+    </div>
+
+    <main>
+        <h1 class="greet" id="greeting">Hello, how can I assist you today?</h1>
+
+        <form class="askbar" id="askForm" onsubmit="ask('text'); return false;">
+            <input id="askInput" type="text" autocomplete="off" maxlength="600"
+                   placeholder="Type or speak — where do you want to go, or what do you want to do?">
+            <button type="button" class="mic" id="micBtn" onclick="mic()" title="Speak your request">🎤 Speak</button>
+            <button type="submit" class="go" id="goBtn">Ask</button>
+        </form>
+        <div class="examples" id="examples"></div>
+
+        <div class="result" id="result"></div>
+
+        <section>
+            <h2>Go to</h2>
+            <div class="grid" id="tiles"></div>
+        </section>
+
+        <section>
+            <h2>Your recent requests</h2>
+            <ul class="hist" id="hist"><li class="empty">Loading…</li></ul>
+        </section>
+    </main>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+const HOME_VERSION = 'home-v1.0';
+const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+
+// Destination catalogue. `gate` mirrors index.html updateViewModeDropdown() and the
+// assistant-router edge fn (the router decides server-side; this is the client re-check).
+const PAGES = {
+    board:            { em: '🚐', label: 'RO Board',          sub: 'Every repair order',              href: 'index.html',            gate: 'all' },
+    planner:          { em: '📅', label: 'Work Planner',      sub: 'Filter, sort, plan by service',   href: 'index.html?planner=open', gate: 'mgr' },
+    messages:         { em: '💬', label: 'Messages',          sub: 'Customer texts + leads',          href: 'messages.html',         gate: 'all' },
+    tasks:            { em: '📌', label: 'Tasks',             sub: 'To-dos and reminders',            href: 'tasks.html',            gate: 'all' },
+    new_ro:           { em: '➕', label: 'New RO',            sub: 'Start a repair order',            href: 'index.html?newro=1',    gate: 'mgr' },
+    customer_checkin: { em: '📋', label: 'Customer Check-In', sub: 'Front-desk arrivals',             href: 'customer-checkin.html', gate: 'mgr' },
+    clock_in:         { em: '⏱', label: 'Tech Clock-In',     sub: 'Clock in / out on an RO',         href: 'checkin.html',          gate: 'all' },
+    closed_ros:       { em: '🗄', label: 'Closed ROs',        sub: 'Archived + cashed out',           href: 'closed-ros.html',       gate: 'all' },
+    worklist_report:  { em: '📊', label: 'Work List Report',  sub: 'Weekly P&L, labor load',          href: 'worklist-report.html',  gate: 'admin' },
+    analytics:        { em: '📈', label: 'Analytics',         sub: 'Shop charts',                     href: 'analytics.html',        gate: 'admin' },
+    leads:            { em: '📥', label: 'Leads',             sub: 'WooSender review queue',          href: 'leads.html',            gate: 'admin' },
+    solar:            { em: '☀️', label: 'Solar',             sub: 'Solar quoting',                   href: 'solar.html',            gate: 'solar' },
+    time_off:         { em: '🏖', label: 'Time Off',          sub: 'Request or review',               href: 'time-off.html',         gate: 'all' },
+    guide:            { em: '📚', label: 'Employee Guide',    sub: 'How the dashboard works',         href: 'guide.html',            gate: 'all' },
+};
+const RO_ACTIONS = ['view', 'edit', 'reminder', 'schedule', 'parts', 'request_parts', 'work_orders', 'photos', 'message', 'time_logs', 'receivable', 'checkin'];
+const EXAMPLES = {
+    mgr:  ['Show my active ROs by priority', 'ROs waiting on parts', 'Overdue promised dates in my silo', 'Reminder for the Shepard RO to set a pickup date', 'Start a new RO for John Smith 940-555-1234', 'Open my tasks'],
+    tech: ['Clock in', 'Open my tasks', 'Find the Shepard RO', 'Request time off', 'How do I build a work order?', 'Open messages'],
+};
+
+let _sb = null, supabaseSession = null, userRoles = [], currentUser = null, me = null;
+let _busy = false, _rec = null, _listening = false, _navTimer = null, _pendingUrl = '';
+
+function getSB() {
+    if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+    });
+    return _sb;
+}
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const isAdmin = () => userRoles.includes('Admin');
+const hasRole = r => userRoles.includes(r);
+const isMgr = () => isAdmin() || hasRole('Manager') || hasRole('Sr Manager');
+const canSolar = () => isAdmin() || hasRole('Solar') || (me && me.service_silo === 'solar') || (me && me.role === 'sr_manager');
+function canOpen(key) {
+    const p = PAGES[key]; if (!p) return false;
+    return p.gate === 'all' || (p.gate === 'mgr' && isMgr()) || (p.gate === 'admin' && isAdmin()) || (p.gate === 'solar' && canSolar());
+}
+function todayISO() {
+    // America/Chicago calendar date, like the planner
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+    catch (_) { return new Date().toISOString().slice(0, 10); }
+}
+
+// ── AUTH (same shape as tasks.html) ──
+async function loadUserRoles() {
+    userRoles = [];
+    const email = (supabaseSession?.user?.email || '').toLowerCase();
+    if (!email) return;
+    const { data: userRow } = await getSB().from('users').select('id').eq('email', email).maybeSingle();
+    if (userRow?.id) {
+        const { data: roleRows } = await getSB().from('user_roles').select('roles(name)').eq('user_id', userRow.id);
+        if (roleRows) userRoles = roleRows.map(r => r.roles?.name).filter(Boolean);
+    }
+}
+async function loadMe() {
+    me = null;
+    const email = (supabaseSession?.user?.email || '').toLowerCase();
+    if (!email) return;
+    const { data } = await getSB().from('staff').select('name, email, role, service_silo, active').ilike('email', email).maybeSingle();
+    me = data || null;
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log(`PRVS Assistant ${HOME_VERSION} [S191 Gen 1 - router only, AI never sees RO data]`);
+    document.getElementById('verTag').textContent = HOME_VERSION;
+    const { data: { session } } = await getSB().auth.getSession();
+    if (session) {
+        supabaseSession = session;
+        currentUser = { email: session.user.email.toLowerCase(), name: session.user.user_metadata?.full_name || session.user.email };
+        await Promise.all([loadUserRoles(), loadMe()]);
+        showApp();
+        return;
+    }
+    initGoogleSignIn();
+});
+
+function initGoogleSignIn() {
+    const tryInit = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts) {
+            clearInterval(tryInit);
+            google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleSignIn, auto_select: true });
+            google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), { theme: 'outline', size: 'large', width: 280 });
+            google.accounts.id.prompt();
+        }
+    }, 200);
+}
+
+async function handleSignIn(response) {
+    try {
+        const { data, error } = await getSB().auth.signInWithIdToken({ provider: 'google', token: response.credential });
+        if (error) throw error;
+        supabaseSession = data.session;
+        currentUser = { email: data.user.email.toLowerCase(), name: data.user.user_metadata?.full_name || data.user.email };
+        await Promise.all([loadUserRoles(), loadMe()]);
+        showApp();
+    } catch (e) {
+        document.getElementById('loginError').textContent = 'Sign-in failed: ' + (e.message || e);
+    }
+}
+
+async function signOut() {
+    try { await getSB().auth.signOut(); } catch (_) {}
+    location.reload();
+}
+
+// ── APP BOOT ──
+function showApp() {
+    if (!getSB() || !supabaseSession) return;   // auth guard - never accessToken alone
+    if (!me || me.active !== true) {
+        document.getElementById('loginError').textContent = 'This Google account is not an active PRVS staff account (' + esc(currentUser.email) + ').';
+        return;
+    }
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    const full = (me.name || currentUser.name || '').trim();
+    const first = full.split(/\s+/)[0] || 'there';
+    document.getElementById('greeting').innerHTML = `Hello <span class="name">${esc(first)}</span>, how can I assist you today?`;
+    document.getElementById('whoAmI').textContent = `${full}${isAdmin() ? ' · admin' : (isMgr() ? ' · manager' : '')}`;
+    renderTiles();
+    renderExamples();
+    loadHistory();
+    setTimeout(() => { const i = document.getElementById('askInput'); if (i && window.innerWidth > 640) i.focus(); }, 50);
+}
+
+function renderTiles() {
+    const el = document.getElementById('tiles');
+    el.innerHTML = Object.entries(PAGES).filter(([k]) => canOpen(k)).map(([k, p]) =>
+        `<a class="tile" href="${p.href}" data-key="${k}"><span class="em">${p.em}</span><span class="lbl">${esc(p.label)}</span><span class="sub">${esc(p.sub)}</span></a>`
+    ).join('');
+}
+function renderExamples() {
+    const list = isMgr() ? EXAMPLES.mgr : EXAMPLES.tech;
+    document.getElementById('examples').innerHTML = list.map(t =>
+        `<button type="button" class="chip" onclick="useExample(this)">${esc(t)}</button>`).join('');
+}
+function useExample(btn) {
+    const i = document.getElementById('askInput'); i.value = btn.textContent; i.focus();
+    ask('text');
+}
+
+// ── RESULT LINE ──
+function showResult(html, kind) {
+    const r = document.getElementById('result');
+    r.className = 'result show' + (kind ? ' ' + kind : '');
+    r.innerHTML = html;
+}
+function cancelNav() {
+    if (_navTimer) { clearTimeout(_navTimer); _navTimer = null; }
+    _pendingUrl = '';
+    showResult('Okay - staying here. Ask something else, or pick a page below.', 'warn');
+}
+
+// ── ASK ──
+async function ask(via) {
+    const input = document.getElementById('askInput');
+    const text = (input.value || '').trim();
+    if (_busy) return;
+    if (text.length < 2) { showResult('Tell me where you want to go or what you want to do - for example <i>"show my active ROs by priority"</i> or <i>"clock in"</i>.', 'warn'); input.focus(); return; }
+    if (!getSB() || !supabaseSession) { showResult('Not signed in.', 'err'); return; }
+    _busy = true; document.getElementById('goBtn').disabled = true;
+    showResult('🤔 Working on it…');
+    try {
+        const resp = await fetch(`${SUPABASE_URL}/functions/v1/assistant-router`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${supabaseSession.access_token}`, 'apikey': SUPABASE_ANON, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: text, via: via === 'voice' ? 'voice' : 'text', today: todayISO() }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.route) throw new Error(data.error || ('HTTP ' + resp.status));
+        handleRoute(data.route);
+        loadHistory();
+    } catch (e) {
+        console.warn('[Assistant]', e);
+        showResult(`⚠️ ${esc(e.message || String(e))}`, 'err');
+    } finally {
+        _busy = false; document.getElementById('goBtn').disabled = false;
+    }
+}
+
+function handleRoute(route) {
+    const miss = (route.unmapped || []).filter(x => typeof x === 'string' && x.trim()).slice(0, 4);
+    const missHtml = miss.length ? `<span class="miss">⚠️ I couldn't do this part: ${miss.map(esc).join('; ')}</span>` : '';
+    if (route.understood === false || !route.destination || route.destination === 'none') {
+        showResult(`🤔 ${esc(route.summary || "I couldn't work out where to send you.")}${missHtml}<span class="going">I can open any page below, find one RO ("the Shepard RO"), list ROs by parts / dates / priority, or start a new RO.</span>`, 'warn');
+        return;
+    }
+    if (!canOpen(route.destination)) {   // client re-check of the server's allow-list
+        showResult(`${esc(PAGES[route.destination]?.label || 'That page')} is not available to your account.`, 'warn');
+        return;
+    }
+    const url = buildUrl(route);
+    if (!url) { showResult(`🤔 ${esc(route.summary || 'Nothing to open.')}`, 'warn'); return; }
+    const label = PAGES[route.destination].label;
+    _pendingUrl = url;   // kept in JS, never inlined into markup (a customer name can hold a quote)
+    showResult(`${esc(route.summary || ('Opening ' + label + '…'))}${missHtml}<span class="going">Opening ${esc(label)}…</span>`
+        + `<span class="acts"><button type="button" class="btn primary" onclick="go()">Go now</button><button type="button" class="btn" onclick="cancelNav()">Stay here</button></span>`, 'ok');
+    _navTimer = setTimeout(go, miss.length ? 2600 : 1200);
+}
+
+function go() {
+    if (_navTimer) { clearTimeout(_navTimer); _navTimer = null; }
+    if (_pendingUrl) location.href = _pendingUrl;
+}
+
+/** Build the same-tab hand-off URL for a sanitized route. Returns '' when there is nothing to open. */
+function buildUrl(route) {
+    const d = route.destination, p = PAGES[d];
+    if (!p) return '';
+    const q = obj => Object.entries(obj).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    if (d === 'board') {
+        const ro = route.ro && typeof route.ro.ref === 'string' ? route.ro : null;
+        if (ro && ro.ref.trim()) {
+            const ref = ro.ref.trim().slice(0, 80);
+            const action = RO_ACTIONS.includes(ro.action) ? ro.action : 'view';
+            const isId = /^PRVS-[A-Z0-9]{4}-[A-Z0-9]{4}(-\d+)?$/i.test(ref);
+            return 'index.html?' + q(isId ? { ro: ref.toUpperCase(), open: action } : { find: ref, open: action });
+        }
+        const s = route.board && typeof route.board.search === 'string' ? route.board.search.trim().slice(0, 60) : '';
+        return s ? 'index.html?' + q({ q: s }) : 'index.html';
+    }
+    if (d === 'planner') {
+        const pv = route.planner_view && typeof route.planner_view === 'object' ? route.planner_view : {};
+        try {
+            sessionStorage.setItem('prvs_ai_view', JSON.stringify({
+                filters: pv.filters || {}, sort: pv.sort || null, add_columns: pv.add_columns || [], bucket_tab: pv.bucket_tab || 'all',
+                name: pv.name || '', summary: route.summary || '', unmapped: route.unmapped || [], ts: Date.now(),
+            }));
+        } catch (_) { /* private mode - the planner just opens with defaults */ }
+        return 'index.html?planner=ai';
+    }
+    if (d === 'new_ro') {
+        const n = route.new_ro && typeof route.new_ro === 'object' ? route.new_ro : {};
+        return 'index.html?' + q({ newro: '1', name: n.name || '', phone: n.phone || '', email: n.email || '', rv: n.rv || '',
+            service_type: Array.isArray(n.service_type) ? n.service_type.join(',') : '' });
+    }
+    return p.href;
+}
+
+// ── HISTORY (own rows via RLS) ──
+async function loadHistory() {
+    const el = document.getElementById('hist');
+    try {
+        const { data, error } = await getSB().from('assistant_log')
+            .select('created_at, prompt, destination, understood, via')
+            .order('created_at', { ascending: false }).limit(15);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<li class="empty">Nothing yet - your requests will show up here so you can run them again.</li>'; return; }
+        el.innerHTML = data.map(r => {
+            const when = new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            const dest = r.understood === false ? 'not understood' : (PAGES[r.destination]?.label || r.destination || '');
+            return `<li onclick="rerun(this)" data-prompt="${esc(r.prompt)}" title="Run again"><span class="when">${esc(when)}</span><span class="txt">${r.via === 'voice' ? '🎤 ' : ''}${esc(r.prompt)}</span><span class="dest">${esc(dest)}</span></li>`;
+        }).join('');
+    } catch (e) {
+        console.warn('[Assistant] history', e);
+        el.innerHTML = '<li class="empty">History is unavailable right now.</li>';
+    }
+}
+function rerun(li) {
+    const i = document.getElementById('askInput'); i.value = li.dataset.prompt || ''; i.focus();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    ask('text');
+}
+
+// ── VOICE (same shape as the planner's 🎤 Speak) ──
+function mic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { showResult('Voice input needs Chrome, Edge or Safari - just type instead.', 'warn'); return; }
+    const btn = document.getElementById('micBtn');
+    if (_listening && _rec) { try { _rec.stop(); } catch (_) {} return; }
+    const rec = new SR(); _rec = rec;
+    rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    let finalText = '';
+    rec.onresult = ev => {
+        let t = ''; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+        finalText = t.trim();
+        document.getElementById('askInput').value = finalText;
+    };
+    rec.onerror = ev => {
+        _listening = false; btn.classList.remove('listening');
+        showResult(ev.error === 'not-allowed' ? '🎤 The microphone is blocked for this site - click the 🔒 in the address bar and allow it, or just type.' : ('🎤 ' + esc(ev.error || 'voice error')), 'warn');
+    };
+    rec.onend = () => { _listening = false; _rec = null; btn.classList.remove('listening'); if (finalText.length >= 2) ask('voice'); };
+    _listening = true; btn.classList.add('listening');
+    showResult('🎤 Listening… say where you want to go or what you want to do.');
+    try { rec.start(); } catch (e) { _listening = false; btn.classList.remove('listening'); }
+}
+</script>
+</body>
+</html>
