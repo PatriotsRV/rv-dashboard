@@ -273,13 +273,22 @@
             if (!fn) return;
             // [v1.510 S191] re-find the card by RO id at FIRE time - a board reload in the 650 ms
             // between highlight and open would shift array indexes (the v1.496 Kain/Ivins class).
-            setTimeout(() => {
+            // [v1.511 S191] and wait (up to 8 s) for the boot's staff roster: the 🔔 Schedule
+            // Notification and Work Order modals read _staffCache at open time, and on a cold load the
+            // card is highlighted before loadStaff() has returned - the modal opened with
+            // "No staff loaded" and no recipients (live on v1.510).
+            const started = Date.now();
+            const fire = () => {
+                let staffReady = true;
+                try { staffReady = !(Array.isArray(_staffCache) && _staffCache.length === 0); } catch (_) { staffReady = true; }
+                if (!staffReady && Date.now() - started < 8000) { setTimeout(fire, 250); return; }
                 try {
                     const idx = currentFilteredData.findIndex(ro => _deepLinkRoIdOf(ro) === target);
                     if (idx === -1) { showToast('The RO moved before it could be opened - click it on the board.', 'warning'); return; }
                     fn(idx);
                 } catch (e) { console.warn('[deep link] open=' + action, e); }
-            }, 650);
+            };
+            setTimeout(fire, 650);
         }
 
         export function handleDeepLink() {

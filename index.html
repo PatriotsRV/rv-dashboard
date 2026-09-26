@@ -1,7 +1,11 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.510
+    PRVS Dashboard v1.511
+    v1.511: [S191] HOTFIX 3 - ?open=<action> waits for the boot's staff roster (up to 8 s) before
+    opening the card action. The assistant's "reminder for the Shepard RO" hand-off found the RO and
+    opened the 🔔 Schedule Notification modal on a cold load BEFORE loadStaff() had returned, so the
+    modal showed "No staff loaded" with no recipients (live on v1.510). js/qr.js only. No other change.
     v1.510: [S191] HOTFIX 2 - an OPEN Work Planner now repaints when the board replaces currentData.
     The v1.509 gate was necessary but not sufficient: on a cold boot the board can swap its data
     array again AFTER the planner opened from ?planner=ai (auth-status flip -> placeholders -> real
@@ -1098,7 +1102,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.510';</script>
+    <script>window.APP_VERSION = '1.511';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
