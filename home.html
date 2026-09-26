@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Assistant  home-v1.0
+    PRVS Assistant  home-v1.1
     Released: 2026-09-26 (Session 191)
     Spec: docs/specs/AI_HOME_SPEC.md
+    v1.1: Mobile ask bar (Roland, iPhone, S191): the text field was squeezed to a sliver beside
+        the Speak + Ask buttons. Field now takes its own full-width 50 px line, the two buttons
+        split the second line, bigger type on chips/result. CSS only.
     v1.0: Gen-1 AI-driven entry page for the RO Dashboard (Roland directive S191).
         "Hello <name>, how can I assist you today?" + one prompt bar (type or
         speak) + permission-filtered shortcut tiles to every page + the user's
@@ -64,8 +67,8 @@
         #app { display: none; }
         .top-bar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--bg-surface); border-bottom: 1px solid var(--border-color); }
         .top-bar img { width: 34px; height: 34px; object-fit: contain; }
-        .top-bar .brand { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.3px; }
-        .top-bar .ver { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); }
+        .top-bar .brand { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+        .top-bar .ver { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
         .top-bar .spacer { flex: 1; }
         .top-bar .who { color: var(--text-secondary); font-size: 0.95rem; }
         .top-bar .link { background: none; border: 1px solid var(--border-color); border-radius: 8px; padding: 5px 10px; color: var(--text-secondary); cursor: pointer; font-size: 0.85rem; }
@@ -124,10 +127,16 @@
         .hist .empty:hover { background: transparent; }
 
         @media (max-width: 640px) {
-            main { padding: 26px 14px 40px; }
-            .askbar { border-radius: 18px; flex-wrap: wrap; padding: 10px; }
-            .askbar input { width: 100%; font-size: 1.1rem; padding: 4px 6px; }
-            .askbar button { flex: 1; }
+            main { padding: 22px 14px 40px; }
+            h1.greet { margin-bottom: 16px; }
+            /* home-v1.1: the input gets its OWN full-width line (flex-basis 100% - a bare
+               `flex:1` has basis 0, so `width:100%` never forced the wrap and the field was
+               squeezed to a sliver beside the two buttons on an iPhone); buttons share line 2. */
+            .askbar { border-radius: 18px; flex-wrap: wrap; padding: 10px; gap: 10px; }
+            .askbar input { flex: 1 1 100%; width: 100%; min-height: 50px; font-size: 1.3rem; padding: 6px 8px; }
+            .askbar button { flex: 1 1 0; height: 52px; font-size: 1.2rem; padding: 0 12px; }
+            .chip { font-size: 1rem; padding: 8px 14px; }
+            .result { font-size: 1.15rem; }
             .top-bar .who { display: none; }
             .hist .dest { display: none; }
         }
@@ -184,7 +193,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-const HOME_VERSION = 'home-v1.0';
+const HOME_VERSION = 'home-v1.1';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
