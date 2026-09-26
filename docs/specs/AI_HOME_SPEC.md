@@ -1,6 +1,6 @@
 # PRVS Assistant — AI-driven entry page (`home.html`) — Gen 1 spec
 
-**Session:** 191 (2026-09-26) · **Owner:** Roland · **Status:** BUILDING S191
+**Session:** 191 (2026-09-26) · **Owner:** Roland · **Status:** ✅ SHIPPED S191 — v1.508 (+ hotfixes v1.509 / v1.510 / v1.511, home-v1.1), GitHub Release `v1.511`. Live: https://patriotsrv.github.io/rv-dashboard/home.html
 **Files:** `home.html` (NEW) · `supabase/functions/assistant-router/` (NEW) · `supabase/migrations/assistant_log_s191.sql` (NEW) · `index.html` v1.508 + `js/qr.js` + `js/planner.js` · `messages.html` · `tasks.html`
 
 ---
