@@ -449,7 +449,8 @@ export function _initPlannerBtn() {
             let tries = 0;
             const t = setInterval(() => {
                 tries++;
-                if (window.supabaseSession && Array.isArray(currentData) && currentData.length) { clearInterval(t); _openPlannerFromUrl(id); }
+                // [v1.509 S191] wait for REAL rows (placeholders have no _supabaseId) - S147 boot placeholders made the planner open on 0 ROs
+                if (window.supabaseSession && Array.isArray(currentData) && currentData.some(r => r && r._supabaseId)) { clearInterval(t); _openPlannerFromUrl(id); }
                 else if (tries > 120) clearInterval(t);
             }, 500);
         }

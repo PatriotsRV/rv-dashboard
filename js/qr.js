@@ -211,6 +211,14 @@
         // here. The AI never resolves names: the match happens HERE, against the user's
         // own loaded data.
         let _deepLinkOpened = false;
+        // [v1.509 S191] Boot paints the 9 sampleData placeholder rows BEFORE the Supabase load
+        // (S147 gotcha), and placeholders have no _supabaseId. Every "is the data loaded yet?"
+        // decision below must use THIS, not currentData.length - the S178 recovery branch used
+        // length and fired "Linked RO ... is not on the board" against the placeholders on every
+        // cold load, killing the ?ro= deep link (reproduced live on v1.508, S191).
+        function _deepLinkHasRealData() {
+            return Array.isArray(currentData) && currentData.some(ro => ro && ro._supabaseId);
+        }
         const DEEP_LINK_ACTIONS = {
             view:          null,
             edit:          idx => window.openEditRO(idx),
@@ -270,7 +278,7 @@
             if (!_deepLinkRoId) return;
             // [v1.508 S191] ?find= / ?q= from the PRVS Assistant: resolve, then continue as ?ro=.
             if (_deepLinkRoId === '~intent~') {
-                if (!currentData.length) return;          // data still loading - wait for the next render
+                if (!_deepLinkHasRealData()) return;      // placeholders or still loading - wait for the next render
                 _deepLinkRoId = null;                     // consume BEFORE any re-render (renderBoard re-enters here)
                 const found = _resolveUrlIntent();
                 if (!found) return;
@@ -290,7 +298,7 @@
                 // loaded and the RO exists but is filtered out, clear the filters once
                 // and re-render — renderBoard's tail call re-enters here and scrolls.
                 // If the data is loaded and the RO isn't in it, say so and stop.
-                if (!currentData.length) return;   // data still loading — genuinely wait
+                if (!_deepLinkHasRealData()) return;   // [v1.509 S191] placeholders or still loading — genuinely wait (was currentData.length: placeholders passed it)
                 const exists = currentData.some(ro => {
                     const id = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
                     return id === target;

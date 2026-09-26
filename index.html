@@ -1,7 +1,13 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.508
+    PRVS Dashboard v1.509
+    v1.509: [S191] HOTFIX - deep links vs the boot placeholders. Boot paints the 9 sampleData rows
+    before the Supabase load (S147), and both the ?ro= recovery branch (S178, ER d4d0eeba) and the
+    ?planner= deep link treated "currentData.length > 0" as "data loaded": on every COLD load a ?ro=
+    link toasted "Linked RO ... is not on the board" against the placeholders and died (reproduced
+    live on v1.508 with a real RO), and ?planner=ai opened the planner on 0 ROs. Both now wait for a
+    row with _supabaseId (js/qr.js _deepLinkHasRealData, js/planner.js deep-link interval). No other change.
     v1.508: [S191] 🤖 PRVS ASSISTANT - a new AI-driven ENTRY PAGE (home.html, NEW) with a 🤖 Assistant
     header button on the board. Anyone types or speaks where they want to go or what they want to do;
     the NEW assistant-router edge fn (Claude, forced tool call) turns it into a ROUTE from a fixed
@@ -1083,7 +1089,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.508';</script>
+    <script>window.APP_VERSION = '1.509';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
