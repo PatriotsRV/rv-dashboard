@@ -1,5 +1,16 @@
 name: Daily Supabase Backup
 
+# [S194 2026-10-03] REWRITTEN. The previous version exported a hard-coded list of 19 tables (of 63) and
+# silently truncated any table over 1,000 rows (PostgREST max-rows). This version:
+#   1. pg_dump of the WHOLE database (schema + every table + functions/triggers/RLS) -> workflow artifact,
+#      30-day retention. Needs the SUPABASE_DB_URL secret (Supabase -> Connect -> Session pooler URI).
+#      Until that secret exists the step skips itself and says so loudly.
+#   2. JSON export of EVERY table (list fetched live from the REST OpenAPI root), paged 1,000 rows at a
+#      time, gzipped, pushed to the private backups repo (30-day retention there).
+#   3. Row-count VERIFY: each table's exported count must equal the DB's count (Content-Range total) or
+#      the job FAILS - a backup that is incomplete must never report success.
+# Restore procedure: docs/specs/BACKUP_RESTORE.md
+
 on:
   schedule:
     - cron: '0 8 * * *'
@@ -10,71 +21,130 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Export all Supabase tables
+      - name: Install pg_dump 17 (server is PostgreSQL 17.x; the runner default is older)
+        run: |
+          set -e
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: pg_dump full database (skips if SUPABASE_DB_URL secret is not set)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -e
+          DATE=$(date +%Y-%m-%d)
+          mkdir -p dump
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL secret is NOT set - pg_dump SKIPPED. Only the JSON export ran. Add the secret (Supabase -> Connect -> Session pooler URI) to get a restorable full backup."
+            echo "PGDUMP_DONE=no" >> $GITHUB_ENV
+            exit 0
+          fi
+          # public schema = the business. Must succeed.
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
+            --format=custom --no-owner --no-privileges \
+            --schema=public \
+            --file="dump/prvs-public-$DATE.dump"
+          # auth (sign-in identities) + storage metadata (photo/doc object index; the files themselves
+          # live in the rv-media bucket - see BACKUP_RESTORE.md). Best-effort: Supabase owns parts of
+          # these schemas and pg_dump may lack rights on some objects.
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
+            --format=custom --no-owner --no-privileges --data-only \
+            --schema=auth --schema=storage \
+            --file="dump/prvs-auth-storage-$DATE.dump" \
+            || echo "::warning::auth/storage data dump failed (non-fatal); public dump is the one that matters"
+          ls -la dump/
+          # A dump under 1 MB would mean something is badly wrong (DB is ~100 MB)
+          SIZE=$(stat -c %s "dump/prvs-public-$DATE.dump")
+          if [ "$SIZE" -lt 1000000 ]; then echo "::error::pg_dump output is only $SIZE bytes - refusing to call this a backup"; exit 1; fi
+          echo "PGDUMP_DONE=yes" >> $GITHUB_ENV
+
+      - name: Upload pg_dump as artifact (30-day retention)
+        if: env.PGDUMP_DONE == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prvs-pgdump-${{ github.run_id }}
+          path: dump/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Export EVERY table as JSON (paged past the 1,000-row cap) + VERIFY counts
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
+          set -e
           DATE=$(date +%Y-%m-%d)
-          mkdir -p backups/$DATE
+          OUT="backups/$DATE"
+          mkdir -p "$OUT"
+          AUTH=(-H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY")
 
-          TABLES="repair_orders notes parts time_logs cashiered users user_roles roles audit_log config insurance_scans staff service_work_orders service_tasks enhancement_requests wo_task_templates wo_template_tasks manager_work_lists solar_project_store solar_settings"
+          # 1. Enumerate every exposed table/view from the REST OpenAPI root - no hard-coded list.
+          curl -sf "${AUTH[@]}" -H "Accept: application/openapi+json" "$SUPABASE_URL/rest/v1/" > openapi.json
+          TABLES=$(jq -r '.definitions | keys[]' openapi.json)
+          COUNT_TABLES=$(echo "$TABLES" | wc -l)
+          echo "Found $COUNT_TABLES tables/views"
+          if [ "$COUNT_TABLES" -lt 40 ]; then echo "::error::Only $COUNT_TABLES tables enumerated - expected 60+. OpenAPI root may have changed."; exit 1; fi
 
-          for TABLE in $TABLES; do
-            echo "Backing up $TABLE..."
-            HTTP_STATUS=$(curl -s -o "backups/$DATE/$TABLE.json" -w "%{http_code}" \
-              -H "apikey: $SUPABASE_SERVICE_KEY" \
-              -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-              -H "Accept: application/json" \
-              "$SUPABASE_URL/rest/v1/$TABLE?select=*")
-            if [ "$HTTP_STATUS" = "200" ]; then
-              ROW_COUNT=$(jq 'length' backups/$DATE/$TABLE.json 2>/dev/null || echo 0)
-              echo "  OK: $TABLE - $ROW_COUNT rows"
+          PAGE=1000
+          FAILED=0
+          MANIFEST='{}'
+          for T in $TABLES; do
+            : > "$OUT/$T.ndjson"
+            # exact total from Content-Range: items 0-999/2798
+            TOTAL=$(curl -s "${AUTH[@]}" -H "Prefer: count=exact" -H "Range-Unit: items" -H "Range: 0-0" -D - -o /dev/null \
+                      "$SUPABASE_URL/rest/v1/$T?select=*" | grep -i '^content-range' | sed -E 's#.*/##' | tr -d '\r ')
+            if [ -z "$TOTAL" ] || [ "$TOTAL" = "*" ]; then echo "  WARN: $T - could not read count (view without count?)"; TOTAL=-1; fi
+            START=0; GOT=0
+            while :; do
+              END=$((START + PAGE - 1))
+              HTTP=$(curl -s "${AUTH[@]}" -H "Range-Unit: items" -H "Range: $START-$END" -o page.json -w "%{http_code}" \
+                       "$SUPABASE_URL/rest/v1/$T?select=*")
+              if [ "$HTTP" != "200" ] && [ "$HTTP" != "206" ]; then echo "  ERROR: $T - HTTP $HTTP at range $START-$END"; FAILED=1; break; fi
+              N=$(jq 'length' page.json)
+              [ "$N" -gt 0 ] && jq -c '.[]' page.json >> "$OUT/$T.ndjson"
+              GOT=$((GOT + N))
+              if [ "$N" -lt "$PAGE" ]; then break; fi
+              START=$((START + PAGE))
+            done
+            if [ "$TOTAL" -ge 0 ] && [ "$GOT" -ne "$TOTAL" ]; then
+              echo "  ERROR: $T - exported $GOT rows but DB reports $TOTAL"; FAILED=1
             else
-              echo "  WARN: $TABLE - HTTP $HTTP_STATUS"
+              echo "  OK: $T - $GOT rows"
             fi
+            gzip -f "$OUT/$T.ndjson"
+            MANIFEST=$(echo "$MANIFEST" | jq --arg t "$T" --argjson g "$GOT" --argjson d "$TOTAL" '.[$t] = {exported:$g, db_total:$d}')
           done
 
-          # Build manifest using jq
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          MANIFEST="{\"backup_date\":\"$DATE\",\"backup_time_utc\":\"$TIMESTAMP\",\"tables\":{}}"
+          jq -n --arg d "$DATE" --arg ts "$TIMESTAMP" --arg pg "${PGDUMP_DONE:-no}" --argjson t "$MANIFEST" \
+            '{backup_date:$d, backup_time_utc:$ts, pg_dump_artifact:$pg, tables:$t}' > "$OUT/manifest.json"
+          cat "$OUT/manifest.json"
 
-          for TABLE in $TABLES; do
-            if [ -f "backups/$DATE/$TABLE.json" ]; then
-              COUNT=$(jq 'if type=="array" then length else 0 end' backups/$DATE/$TABLE.json 2>/dev/null || echo 0)
-              MANIFEST=$(echo "$MANIFEST" | jq --arg t "$TABLE" --argjson c "$COUNT" '.tables[$t] = $c')
-            fi
-          done
+          if [ "$FAILED" -ne 0 ]; then echo "::error::One or more tables did not export completely - see log. NOT pushing a partial backup."; exit 1; fi
 
-          echo "$MANIFEST" | jq '.' > backups/$DATE/manifest.json
-          echo "Manifest written:"
-          cat backups/$DATE/manifest.json
-
-      - name: Push backups to private backup repo
+      - name: Push JSON backups to private backup repo
         env:
           GH_BACKUP_PAT: ${{ secrets.GH_BACKUP_PAT }}
         run: |
+          set -e
           DATE=$(date +%Y-%m-%d)
-
-          git clone https://prvshepard:$GH_BACKUP_PAT@github.com/prvshepard/rv-dashboard-backups.git backup-repo
-
-          cp -r backups/$DATE backup-repo/
-
+          git clone -q https://prvshepard:$GH_BACKUP_PAT@github.com/prvshepard/rv-dashboard-backups.git backup-repo
+          rm -rf "backup-repo/$DATE"
+          cp -r "backups/$DATE" backup-repo/
           cd backup-repo
-
-          echo "Cleaning up backups older than 30 days..."
-          find . -maxdepth 1 -type d -name "20*" | sort | head -n -30 | while read dir; do
-            echo "  Removing $dir"
-            rm -rf "$dir"
-          done
-
+          echo "Pruning backups older than 30 days..."
+          find . -maxdepth 1 -type d -name "20*" | sort | head -n -30 | while read dir; do echo "  Removing $dir"; rm -rf "$dir"; done
           git config user.name "PRVS Backup Bot"
           git config user.email "backup@patriotsrvservices.com"
-          git add .
+          git add -A
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Daily backup $DATE"
-            git push
+            git commit -q -m "Daily backup $DATE (all tables, paged, verified)"
+            git push -q
             echo "Backup pushed successfully"
           fi
