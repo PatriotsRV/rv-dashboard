@@ -21,7 +21,8 @@
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ['https://patriotsrv.github.io'];
+// [S194 SEC Phase 1 step 6] dashboard.prvstools.com added for the Cloudflare cutover
+const ALLOWED_ORIGINS = ['https://patriotsrv.github.io', 'https://dashboard.prvstools.com'];
 const MODEL = Deno.env.get('PLANNER_AI_MODEL') || 'claude-haiku-4-5';
 const RATE_LIMIT_PER_HOUR = 40;
 

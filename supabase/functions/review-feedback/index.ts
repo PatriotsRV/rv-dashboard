@@ -20,7 +20,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // Same origin allow-list pattern as textly-send (localhost for dev tests).
-const ALLOWED_ORIGINS = ["https://patriotsrv.github.io", "http://localhost:8765"];
+// [S194 SEC Phase 1 step 6] dashboard.prvstools.com added for the Cloudflare cutover
+const ALLOWED_ORIGINS = ["https://patriotsrv.github.io", "https://dashboard.prvstools.com", "http://localhost:8765"];
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get("Origin") || "";
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : "";

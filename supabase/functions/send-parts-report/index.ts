@@ -40,11 +40,12 @@ import nodemailer from "npm:nodemailer@6";
 //        send-unreplied-reminder already did .eq("active", true); this function was the lone outlier.
 // Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}
 
-const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
+// [S194 SEC Phase 1 step 6] dashboard.prvstools.com added for the Cloudflare cutover; github.io stays until GitHub Pages is retired
+const ALLOWED_ORIGINS = ['https://patriotsrv.github.io', 'https://dashboard.prvstools.com'];
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || '';
   return {
-    'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '',
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',

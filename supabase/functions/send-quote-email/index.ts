@@ -5,11 +5,12 @@ import nodemailer from "npm:nodemailer@6";
 // "we no longer receive the authorization form"). Import it explicitly.
 import { Buffer } from "node:buffer";
 
-const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
+// [S194 SEC Phase 1 step 6] dashboard.prvstools.com added for the Cloudflare cutover; github.io stays until GitHub Pages is retired
+const ALLOWED_ORIGINS = ['https://patriotsrv.github.io', 'https://dashboard.prvstools.com'];
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || '';
   return {
-    'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '',
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-prvs-secret',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',

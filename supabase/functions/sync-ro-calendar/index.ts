@@ -56,7 +56,7 @@ function configKeyFor(serviceType: string): string {
 
 function corsHeaders(req: Request) {
   const origin = req.headers.get("Origin") || "";
-  const allowed = origin === "https://patriotsrv.github.io" ? origin : "";
+  const allowed = ["https://patriotsrv.github.io", "https://dashboard.prvstools.com"].includes(origin) ? origin : ""; // [S194 SEC Phase 1 step 6]
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-prvs-secret",

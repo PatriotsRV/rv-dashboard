@@ -3,12 +3,13 @@
  * Proxies Claude Vision API calls so the Anthropic key never leaves the server.
  * Auth: origin-only (same pattern as slack-notify v1.2, send-quote-email v1.1)
  */
-const ALLOWED_ORIGIN = 'https://patriotsrv.github.io';
+// [S194 SEC Phase 1 step 6] dashboard.prvstools.com added for the Cloudflare cutover; github.io stays until GitHub Pages is retired
+const ALLOWED_ORIGINS = ['https://patriotsrv.github.io', 'https://dashboard.prvstools.com'];
 
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get('Origin') || '';
   return {
-    'Access-Control-Allow-Origin': origin === ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '',
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
@@ -22,7 +23,7 @@ Deno.serve(async (req: Request) => {
 
   // Origin-only auth — Anthropic key never leaves the server
   const origin = req.headers.get('Origin') || '';
-  if (origin !== ALLOWED_ORIGIN) {
+  if (!ALLOWED_ORIGINS.includes(origin)) {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } }
