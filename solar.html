@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- [S194 SEC Phase 1 step 1b] Login gate: solar.html now requires the same Google/Supabase sign-in as every other page; React app mounts only after a session exists (closes the S133 finding) -->
     <!-- [ER d432863a v1.498 S178] Patriots-logo favicon (also fixes the S139 favicon-404 console noise) -->
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="apple-touch-icon" href="logo.png">
@@ -24,9 +25,16 @@
     #loading .pp-name span{color:#c8102e;}
     #loading .pp-sub{font-size:11px;color:#6a85b0;font-family:'Roboto Mono',monospace;letter-spacing:.08em;text-transform:uppercase;}
     #loading .pp-bar{width:200px;height:3px;background:#182848;border-radius:2px;overflow:hidden;}
+    #loginGate{position:fixed;inset:0;background:#0a0f1a;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:9999;}
+    #loginGate .login-box{background:#111a2e;border:1px solid #243457;border-radius:12px;padding:34px 40px;text-align:center;}
+    #loginGate .login-box h2{margin:0 0 6px;color:#fff;font-size:22px;}
+    #loginGate .login-box h2 span{color:#c8102e;}
+    #loginGate .login-box p{color:#6a85b0;margin:0 0 18px;font-size:12px;font-family:'Roboto Mono',monospace;letter-spacing:.08em;text-transform:uppercase;}
+    #loginGate .login-error{color:#f87171;margin-top:12px;font-size:0.85rem;}
     #loading .pp-fill{height:100%;width:0;background:linear-gradient(90deg,#4a90d9,#c8102e);border-radius:2px;animation:ppload 1.6s ease forwards;}
     @keyframes ppload{0%{width:0}60%{width:70%}100%{width:100%}}
   </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <div id="loading">
@@ -34,6 +42,15 @@
     <div class="pp-name">Patriots <span>Power</span></div>
     <div class="pp-sub">Preparing your quote...</div>
     <div class="pp-bar"><div class="pp-fill"></div></div>
+  </div>
+  <!-- S194 LOGIN GATE -->
+  <div id="loginGate">
+    <div class="login-box">
+      <h2>Patriots <span>Power</span></h2>
+      <p>Staff sign-in required</p>
+      <div id="googleSignInBtn"></div>
+      <div class="login-error" id="loginError"></div>
+    </div>
   </div>
   <div id="root"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -91,7 +108,7 @@ try {
     });
 } catch(e) {}
 
-// S3: Session-aware ER submit — solar.html has no login gate, but restores existing Supabase session for authenticated DB writes
+// S3 (updated S194): restores an existing Supabase session early; the S194 login gate below the App guarantees one exists before React mounts
 let supabaseSession = null;
 (async () => {
     if (!_sbSolar) return;
@@ -6322,9 +6339,49 @@ function App() {
 }
 
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
-document.getElementById('loading').style.display = 'none';
+// ── S194 LOGIN GATE ── same pattern as tasks.html / home.html: no session, no app.
+const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
+let _solarMounted = false;
+function mountSolarApp() {
+    if (!_sbSolar || !supabaseSession) return;   // auth guard - never accessToken alone
+    if (_solarMounted) return;
+    _solarMounted = true;
+    document.getElementById('loginGate').style.display = 'none';
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+    document.getElementById('loading').style.display = 'none';
+}
+function showSolarLoginGate() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('loginGate').style.display = 'flex';
+    const tryInit = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts) {
+            clearInterval(tryInit);
+            google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleSolarSignIn, auto_select: true });
+            google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), { theme: 'outline', size: 'large', width: 280 });
+            google.accounts.id.prompt();
+        }
+    }, 200);
+}
+async function handleSolarSignIn(response) {
+    try {
+        const { data, error } = await _sbSolar.auth.signInWithIdToken({ provider: 'google', token: response.credential });
+        if (error) throw error;
+        supabaseSession = data.session;
+        mountSolarApp();
+    } catch(e) {
+        document.getElementById('loginError').textContent = 'Sign-in failed: ' + (e.message || e);
+    }
+}
+(async () => {
+    console.log('Patriots Power [S194 login gate]');
+    if (!_sbSolar) { showSolarLoginGate(); return; }
+    try {
+        const { data: { session } } = await _sbSolar.auth.getSession();
+        if (session) { supabaseSession = session; mountSolarApp(); return; }
+    } catch(e) {}
+    showSolarLoginGate();
+})();
   </script>
 
 <!-- GH#19: Enhancement Request — Floating Genie Lamp + Modal -->
