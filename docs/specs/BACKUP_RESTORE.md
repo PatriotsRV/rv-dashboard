@@ -1,7 +1,7 @@
 # PRVS RO Dashboard — Backup & Restore Architecture
 
 > Written Session 194 (2026-10-03) in response to Roland's directive: *"ENSURE that all work and code will be safe, backed up, and capable of being restored if ANY glitch happens with Claude or Cloudflare or the development of v2.+"*
-> Status: **design + workflow rewrite committed on `pre-prod`; two Roland actions outstanding (Section 6).**
+> Status: **LIVE on `main` (promoted S195, tag `sec-phase1`). First verified run from `main` = #204 (2026-10-04). First restore drill PASSED S195 (Section 4f). Outstanding: media (R2) backup decision, PITR decision.**
 
 ## 0. What Session 194 found (the "before" picture)
 
@@ -67,6 +67,21 @@ Until the `SUPABASE_DB_URL` secret exists, step 2 skips with a `::warning::` and
 1. Supabase → new project (or the same one) → Connect → copy the **session pooler** URI.
 2. Download the newest `prvs-pgdump-*` artifact from Actions → Daily Supabase Backup → the run → Artifacts.
 3. `pg_restore --clean --if-exists --no-owner --no-privileges -d "<pooler URI>" prvs-public-<date>.dump`
+   - **The target MUST already have the Supabase platform schemas (S195 restore drill).** Every table's `id` defaults to `extensions.uuid_generate_v4()` and every RLS policy calls `auth.uid()`. A Supabase project has both. A plain Postgres (local drill, non-Supabase host) does NOT, and the restore then creates ZERO tables (136 errors, all "schema extensions does not exist"). Pre-create before restoring into bare Postgres:
+     ```sql
+     create schema extensions;
+     create extension if not exists "uuid-ossp" schema extensions;
+     create extension if not exists pgcrypto schema extensions;
+     create schema auth;
+     create function auth.uid()   returns uuid  language sql stable as 'select null::uuid';
+     create function auth.role()  returns text  language sql stable as 'select null::text';
+     create function auth.email() returns text  language sql stable as 'select null::text';
+     create function auth.jwt()   returns jsonb language sql stable as 'select null::jsonb';
+     create table auth.users(id uuid primary key, email text);
+     create schema storage; create schema graphql_public;
+     ```
+   - The one expected error afterwards is `schema "public" already exists` (benign). Anything else is real.
+   - **Do not run `drop database` + `create database` in one `psql -c`** - DROP DATABASE cannot run inside the implicit transaction; the drop silently fails and the second restore reports hundreds of "already exists" errors.
 4. Re-run the GRANTs that Supabase's 2026-10-30 Data API change requires (see `reference_supabase_public_grant_change`), then `supabase functions deploy` all functions, then re-enter secrets.
 5. If it is a *new* project: new anon/service keys → update `js/config.js`, every page's inline key, every edge fn secret, the GitHub Actions secrets, and the OAuth redirect URI.
 
@@ -84,13 +99,20 @@ Until the `SUPABASE_DB_URL` secret exists, step 2 skips with a `::warning::` and
 - Code: `git clone git@github.com:PatriotsRV/rv-dashboard.git` from any machine; `main` = production, `pre-prod` = integration, tags = every release (`v1.500` is the standing rollback anchor).
 - Cloudflare rebuild from scratch (~30 min): Pages project `prvs-dashboard` ← `PatriotsRV/rv-dashboard`, branch `main`, no build, output `/`; custom domain `dashboard.prvstools.com`; Zero Trust → Access app `dashboard` on that hostname, 1-week session, policies `PRVS staff only` (Allow, `Emails ending in @patriotsrvservices.com`, ID `06fef3ab…`) + `PRVS shop network` (Bypass, IP `98.97.83.247/32`); `functions/_middleware.js` in the repo closes `*.pages.dev`.
 
+## 4f. Restore drill log
+| Date | Session | Source | Target | Result |
+|---|---|---|---|---|
+| 2026-10-04 | S195 | run #204 artifact `prvs-pgdump-37210654604` (17.8 MB zip; public dump 16.6 MB) | Homebrew PostgreSQL 17.10 on Roland's Mac, 127.0.0.1:5499, scratch DB `prvs_drill` | **PASS** - 63 base tables + 1 view restored; 63/63 row counts identical to `manifest.json`; 138 RLS policies, 42 triggers, 39 functions present; first attempt FAILED (missing `extensions`/`auth` schemas - see 4a). Scratch server stopped + data dir deleted; `postgresql@17` left installed for the next drill. |
+
+**Cadence:** repeat the drill before any v2 migration that touches money tables, and at least quarterly. Keep it a one-command habit: `~/pgdrill` holds the last dump + logs.
+
 ## 5. Monitoring — how we know it keeps working
 - GitHub emails the repo owner on a failed scheduled workflow. **The rewritten job now fails on incomplete data**, so that email is meaningful for the first time.
 - Monthly spot-check (add to Start Session when the month changes): open the latest manifest in the backups repo and confirm `tables` count ≥ 60 and `pg_dump_artifact: "yes"`.
 - `GH_BACKUP_PAT` expires **2027-08-23** — the push step will fail that night; the failure email is the alarm.
 
 ## 6. Roland actions outstanding
-1. **Add the `SUPABASE_DB_URL` secret** (one time): Supabase dashboard → Connect → Session pooler → copy URI (contains the DB password) → GitHub `PatriotsRV/rv-dashboard` → Settings → Secrets and variables → Actions → New repository secret, name `SUPABASE_DB_URL`. Then Actions → Daily Supabase Backup → Run workflow → confirm the `prvs-pgdump-*` artifact appears.
+1. ✅ DONE S194 — ~~**Add the `SUPABASE_DB_URL` secret** (one time)~~: Supabase dashboard → Connect → Session pooler → copy URI (contains the DB password) → GitHub `PatriotsRV/rv-dashboard` → Settings → Secrets and variables → Actions → New repository secret, name `SUPABASE_DB_URL`. Then Actions → Daily Supabase Backup → Run workflow → confirm the `prvs-pgdump-*` artifact appears.
 2. **Decide on media backup** (R2 sync) — next session's build if yes.
 
 ## 7. Open decisions
