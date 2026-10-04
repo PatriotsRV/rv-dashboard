@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<!--
+    PRVS Staff Sign-In  login-v1.0  (Session 195, 2026-10-04)  -- NOT YET LIVE
+    Provose Phase 0: phone-OTP sign-in that replaces the per-page Google sign-in.
+    Flow: phone -> Supabase auth.signInWithOtp({phone}) -> code arrives over Textly
+          (auth-send-sms hook) -> auth.verifyOtp({phone, token, type:'sms'}) ->
+          session persisted under the SHARED storageKey 'prvs_supabase_auth' ->
+          redirect to ?next= (same-origin relative path only; default home.html).
+    Every page's "no session" branch will redirect here with ?next=<its path>
+    once the pages share that storageKey (today they each use their own - see
+    docs/specs/PHONE_OTP_SIGNIN.md). Palette mirrors home.html.
+    Requires: Phone provider ON + Send SMS hook -> auth-send-sms; migration
+    phone_identity_link_s195.sql run (phones attached to existing auth users).
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="apple-touch-icon" href="logo.png">
+    <title>Sign in - PRVS Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        :root { color-scheme: light; --bg-main:#F5FAFE; --bg-surface:#FFFFFF; --border:#BBD9F0; --text:#10243E;
+                --muted:#53718E; --navy:#10243E; --gold:#C9A544; --danger:#D64545; --ok:#2E9E52; }
+        * { box-sizing: border-box; }
+        body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+               background: var(--bg-main); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding:16px; }
+        .card { background: var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:28px 24px; width:100%; max-width:380px; box-shadow:0 10px 30px rgba(16,36,62,.08); }
+        .logo { display:block; width:72px; height:72px; margin:0 auto 10px; border-radius:14px; }
+        h1 { font-size:1.25rem; text-align:center; margin:0 0 4px; }
+        p.sub { text-align:center; color:var(--muted); margin:0 0 20px; font-size:.95rem; }
+        label { display:block; font-size:.85rem; color:var(--muted); margin:14px 0 6px; }
+        .phone-row { display:flex; gap:8px; }
+        .cc { width:64px; text-align:center; }
+        input { width:100%; font-size:1.25rem; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fff; color:var(--text); }
+        input:focus { outline:2px solid var(--gold); border-color:var(--gold); }
+        input.code { letter-spacing:.35em; text-align:center; font-weight:600; }
+        button { width:100%; margin-top:16px; padding:14px; font-size:1.05rem; font-weight:600; border:0; border-radius:10px; background:var(--navy); color:#fff; cursor:pointer; }
+        button:disabled { opacity:.55; cursor:default; }
+        button.link { background:none; color:var(--muted); font-weight:500; font-size:.9rem; margin-top:8px; padding:8px; }
+        .msg { min-height:1.3em; margin-top:12px; font-size:.95rem; text-align:center; }
+        .msg.err { color:var(--danger); } .msg.ok { color:var(--ok); }
+        .hidden { display:none; }
+        .foot { text-align:center; color:var(--muted); font-size:.8rem; margin-top:18px; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <img class="logo" src="logo.png" alt="Patriots RV Services">
+    <h1>PRVS Dashboard</h1>
+    <p class="sub">Staff sign-in</p>
+
+    <form id="phoneForm" autocomplete="off">
+        <label for="phone">Your cell number</label>
+        <div class="phone-row">
+            <input class="cc" value="+1" disabled aria-label="Country code">
+            <input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="214 555 0123" required>
+        </div>
+        <button id="sendBtn" type="submit">Text me a code</button>
+        <div id="phoneMsg" class="msg"></div>
+    </form>
+
+    <form id="codeForm" class="hidden" autocomplete="off">
+        <label for="code">Enter the 6-digit code we texted to <span id="sentTo"></span></label>
+        <input id="code" class="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+        <button id="verifyBtn" type="submit">Sign in</button>
+        <button id="resendBtn" type="button" class="link">Send a new code</button>
+        <button id="changeBtn" type="button" class="link">Use a different number</button>
+        <div id="codeMsg" class="msg"></div>
+    </form>
+
+    <div class="foot">Codes come from 940-488-5047 and expire in 5 minutes.<br>Problems? Ask Roland or Lynn.</div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+// SHARED key - the one index.html / js/config.js already use. Every other page
+// moves to this key in the pages-wiring step so one sign-in covers the whole app.
+const STORAGE_KEY = 'prvs_supabase_auth';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: { persistSession: true, autoRefreshToken: true, storageKey: STORAGE_KEY, detectSessionInUrl: false }
+});
+
+const $ = (id) => document.getElementById(id);
+let phoneE164 = '';
+
+// ?next= must be a same-origin relative path (no scheme, no protocol-relative //).
+function nextUrl() {
+    const raw = new URLSearchParams(location.search).get('next') || 'home.html';
+    if (/^[a-z]+:/i.test(raw) || raw.startsWith('//') || raw.includes('\\')) return 'home.html';
+    return raw.replace(/^\/+/, '') || 'home.html';
+}
+function toE164(input) {
+    const d = String(input).replace(/\D/g, '');
+    if (d.length === 10) return '+1' + d;
+    if (d.length === 11 && d.startsWith('1')) return '+' + d;
+    return '';
+}
+function pretty(e164) { const d = e164.slice(2); return '(' + d.slice(0,3) + ') ' + d.slice(3,6) + '-' + d.slice(6); }
+function say(id, text, cls) { const el = $(id); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+// Already signed in? Straight through.
+sb.auth.getSession().then(({ data }) => { if (data?.session) location.replace(nextUrl()); });
+
+$('phoneForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    phoneE164 = toE164($('phone').value);
+    if (!phoneE164) { say('phoneMsg', 'Enter a 10-digit US cell number.', 'err'); return; }
+    await sendCode('phoneMsg');
+});
+
+async function sendCode(msgId) {
+    $('sendBtn').disabled = true; $('resendBtn').disabled = true;
+    say(msgId, 'Sending...');
+    // shouldCreateUser:false - sign-in only. Unknown phones get a clear error instead of a new account.
+    const { error } = await sb.auth.signInWithOtp({ phone: phoneE164, options: { shouldCreateUser: false } });
+    $('sendBtn').disabled = false; $('resendBtn').disabled = false;
+    if (error) {
+        const m = /signups not allowed|user not found/i.test(error.message)
+            ? 'That number is not set up for PRVS sign-in. Ask Roland or Lynn to add it.'
+            : (error.message || 'Could not send the code.');
+        say(msgId, m, 'err'); return;
+    }
+    $('sentTo').textContent = pretty(phoneE164);
+    $('phoneForm').classList.add('hidden'); $('codeForm').classList.remove('hidden');
+    say('codeMsg', 'Code sent.', 'ok'); $('code').value = ''; $('code').focus();
+}
+
+$('codeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = $('code').value.replace(/\D/g, '');
+    if (token.length !== 6) { say('codeMsg', 'Enter the 6-digit code.', 'err'); return; }
+    $('verifyBtn').disabled = true; say('codeMsg', 'Checking...');
+    const { data, error } = await sb.auth.verifyOtp({ phone: phoneE164, token, type: 'sms' });
+    $('verifyBtn').disabled = false;
+    if (error || !data?.session) {
+        say('codeMsg', /expired/i.test(error?.message || '') ? 'That code expired. Send a new one.' : 'That code did not match. Try again.', 'err');
+        return;
+    }
+    say('codeMsg', 'Signed in.', 'ok');
+    location.replace(nextUrl());
+});
+
+$('resendBtn').addEventListener('click', () => sendCode('codeMsg'));
+$('changeBtn').addEventListener('click', () => {
+    $('codeForm').classList.add('hidden'); $('phoneForm').classList.remove('hidden'); say('phoneMsg', ''); $('phone').focus();
+});
+</script>
+</body>
+</html>

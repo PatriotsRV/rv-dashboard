@@ -1,6 +1,6 @@
-# PRVS RO Dashboard v2.0 — "PRVS Jarvis": AI-first shop management on a DMS spine
+# PRVS RO Dashboard v2.0 — **"Provose"** (PRVS OS, a play on Jarvis): AI-first shop management on a DMS spine
 
-> **Draft 1 — Session 194 (2026-10-03).** Roland's directive: take the best of every DMS (Lightspeed, IDS, Blackpurl, Tekmetric, Shopmonkey, Fullbay…), use their structures as the inputs, and build an AI front end on a DMS-shaped core that runs the whole lifecycle — ad → lead → AI response → RO → multi-service work → invoicing with full P&L audit → review follow-up → after-service upsell. v1 was the proof of concept; v2 is the product.
+> **Draft 2 — Session 195 (2026-10-04): name = Provose; all 7 Roland decisions answered (§10); Lightspeed is the live system of record for invoicing + sales tax, so Phase 1 exit = Lightspeed parity (§6, §10.4).** Draft 1 — Session 194 (2026-10-03). Roland's directive: take the best of every DMS (Lightspeed, IDS, Blackpurl, Tekmetric, Shopmonkey, Fullbay…), use their structures as the inputs, and build an AI front end on a DMS-shaped core that runs the whole lifecycle — ad → lead → AI response → RO → multi-service work → invoicing with full P&L audit → review follow-up → after-service upsell. v1 was the proof of concept; v2 is the product.
 > Research inputs: `docs/research/V2_RESEARCH_01..04_*.md` (Session 194). Security baseline: `docs/specs/SECURITY_AI_ROADMAP.md` (Phase 1 largely complete S194).
 > Status legend: 🔒 locked decision · 🟡 proposed, needs Roland · ❓ open question
 
@@ -87,20 +87,20 @@ Carry-forward tables that get *renamed into* the model rather than rebuilt: `rep
 
 | Phase | Deliverable | Depends on |
 |---|---|---|
-| **0 — Front door** | SECURITY_AI_ROADMAP Phase 1 complete: Cloudflare + private repo + GitHub Pages retired; shop-IP bypass; 🟡 phone-OTP sign-in replacing Google (prerequisite for dropping Workspace seats) | S194 state |
+| **0 — Front door** | SECURITY_AI_ROADMAP Phase 1: ✅ Cloudflare gate live + promoted (S195) · ✅ shop-IP bypass proven · ✅ **phone/SMS login at the gate (Descope OIDC + Textly, S195)** · 🔒 NEXT BUILD: phone-OTP sign-in INSIDE the app (Supabase Auth + Send-SMS hook over Textly) replacing Google, same `auth.uid` per person; then URL handout → deep-link repoint → repo private → GitHub Pages off | S195 state |
 | **1 — Money model** | `ro_job` / `ro_line` with cost + sale, payer splits, one-invoice-per-payer, deposits, AR aging by payer, gap-free numbering, period close, QBO outbox (one-way). Taxability as a per-item table. Migrates v1 ROs in place. | 0; ❓ tech cost-rate policy; ❓ CPA on Texas RV tax |
 | **2 — Jobs as the unit of work** | Approve/decline per job with text/e-sign link, holds + stalled-job aging, DVI photos per job, service kits, tech clock-on-job, parts request→PO→receive→allocate, AI estimate drafting (shadow) | 1 |
 | **3 — Lead engine (WooSender replacement)** | Meta/Google/web/SMS ingestion, lead pipeline, AI first reply + qualify + book (shadow → auto), handoff queue, reactivation sequences, lead→RO→invoice attribution | 0, 2 (appointments) |
 | **4 — Post-service loop** | Review requests from RO completion (no gating; complaint interception to a human), service-interval reminders, history-driven upsell campaigns with consent + caps | 1, 3 |
 | **5 — The AI workspace** | `board.html` hot-standby + reader-mode assistant on minimized payloads (SECURITY_AI_ROADMAP Phases 2–3), NL queries over the money model (RECT, GP by silo, declined-work value, effective labor rate) | 1–4 |
-| **6 — Lightspeed retirement** | Whatever CDK Lightspeed still does for PRVS (❓ inventory? parts price files? accounting?) moves or is deliberately dropped | 1, 2 |
+| **6 — Lightspeed retirement** | Lightspeed TODAY = final RO build (parts + labor), invoice, cash-out, monthly sales-tax reports, NTP parts price book (wholesale + retail), RV VIN lookup (S195, Roland). Retirement = Phase 1 parity + a parallel-run month reconciling Provose invoice/tax totals against Lightspeed, then cut over; NTP price feed + VIN decode are Phase 2 deliverables | 1, 2 |
 
 Rough sizing: each phase is several sessions, Phase 1 the longest. This is a quarter-plus of weekends, not a weekend. Phase 0 is this weekend.
 
 ## 7. KPIs v2 computes natively (from Research 04, definitions locked)
 RECT per silo · labor GP% · parts GP% · total GP% · effective labor rate · productivity (flag/clock) · efficiency (flag/actual on job) · ARO · WIP aging buckets · unbilled WIP · AR aging by payer type · declined-work value · department P&L · absorption rate. Definitions are shown in the UI; never mixed.
 
-## 8. Decisions needed from Roland (❓)
+## 8. Decisions needed from Roland — ✅ ALL ANSWERED S195, see §10 (original questions kept for the record)
 1. **Tech cost rates** — loaded hourly cost per tech (wage + taxes + benefits), flat-rate vs hourly per person. Without this, labor margin is fiction (Research 04 pitfall #1).
 2. **Texas sales tax on RV work** — is an RV a "motor vehicle" for repair-labor exemption; is roof/solar/cabinetry work tangible property or real-property improvement? CPA answer before Phase 1 hard-codes a tax table.
 3. **Identity** — phone-OTP sign-in (Supabase Auth, SMS) replacing Google, so Workspace seats can go. Confirms Principle 6.
@@ -111,3 +111,18 @@ RECT per silo · labor GP% · parts GP% · total GP% · effective labor rate · 
 
 ## 9. Non-goals for v2.0
 Building a general ledger; mobile native apps (web first, as v1); replacing Textly/SMS provider; multi-location.
+
+
+## 10. Decision log — Session 195 (2026-10-04), all seven answered
+
+| # | Decision | Answer (Roland) | What it fixes in the design |
+|---|---|---|---|
+| 1 | Tech cost rates | Mix of **employees and contractors; everyone is hourly** (no flat-rate, no commission). Employees cost more only via employer payroll taxes + unemployment insurance — no health insurance or other benefits. Contractors = straight hourly rate. `staff.hourly_rate` already holds base pay per person. | `staff.hourly_rate` = base pay (unchanged). NEW `staff.worker_type` (`employee`/`contractor`) + `staff.pay_type` (default `hourly`; `flat_rate` modelled, unused). ONE shop-wide config `employee_burden_pct` (default **10%**; employer FICA + FUTA + TX SUTA; refine from payroll/CPA) applied to employees only. `labor_cost = clock_hours × hourly_rate × (1 + burden if employee)`. No per-person burden entry. |
+| 2 | Texas sales tax | **Parts are taxed, labor never, on every job** as practised today. Unsure on upgrade/installation work and lump-sum cases → pass to CPA (or AI research of the Texas code as information, not advice). | `tax_code` on every `ro_line` + a taxability table (line_type × tax_code → taxable). Defaults: part=taxable, labor=exempt, sublet/fee=per CPA (provisional: follow the dominant line). **Monthly sales-tax report** is a Phase 1 deliverable (today it comes from Lightspeed). Roland action: 3 CPA questions (towable RVs as motor vehicles / upgrade vs repair / lump-sum). Nothing in Phase 1 is blocked. |
+| 3 | Identity | **Confirmed**: phone-OTP in the app replaces Google; Google hidden as fallback ~2 weeks then removed. | First V2 build (Phase 0 remainder): Supabase Auth phone + Send-SMS hook → Textly; attach phones to EXISTING auth users (same `auth.uid`, RLS/roles/history untouched); `login.html`; pages' no-session branch → `login.html`; Access session lengthened to ~1 month. Unblocks the S179 Workspace-seat sequence. |
+| 4 | What Lightspeed still does | **System of record for money**: final RO build (parts + labor), invoice, cash-out, monthly sales-tax reporting; NTP parts price book (wholesale + retail); RV VIN data lookup. PRVS RO DB is the operational tool, Lightspeed the official close-out. Kenect link gone with Kenect. Roland wants Lightspeed gone at v2.0 and wants its functions mirrored + bettered. | Phase 1 exit criteria = Lightspeed parity for RO→invoice→cash-out→tax report, proven by a **parallel-run month** (every RO closed in both; totals reconciled). **Lightspeed data access:** Lightspeed EVO exposes a dealer-enabled "3PA data services API" (credentials issued per integrator by Lightspeed, dealer enables once) — Roland action: ask the Lightspeed rep to enable 3PA data services for an in-house integration (expect a partner agreement and possibly a monthly fee). **Fallback that needs no permission:** Lightspeed's own report exports (ROs, parts, tax) — enough to profile current usage, tax rates and parts markup and to migrate history. Phase 2 adds NTP price-book access (NTP dealer feed/API — to research) and VIN decode (NHTSA vPIC free API covers RV/trailer VINs for year/make/model; paid RV spec data optional). |
+| 5 | PITR | **On when invoices/payments go live** (start of Phase 1). | Budget ~$125/mo from Phase 1; until then the verified daily dump + restore drill (S195) is the recovery story. |
+| 6 | Media backup (R2) | **Yes — next backup session.** | Second workflow: list `rv-media` via Storage API → sync new/changed objects to Cloudflare R2 (same account as Pages). |
+| 7 | board.html visual base | **Show both first** — mock the same screen on S121 tokens and on current CSS, Roland picks. | TODO: two static mocks of the RO board + one RO card (same data) before Phase 5 UI work. |
+
+**Name:** the v2.0 dashboard is **Provose** (PRVS OS, a play on Jarvis). Use it in UI copy, docs and repo naming from here on; `index.html`/v1 stays "RO Dashboard" until replaced.
