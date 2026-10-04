@@ -1,6 +1,6 @@
 # PRVS RO Dashboard v2.0 — **"Provose"** (PRVS OS, a play on Jarvis): AI-first shop management on a DMS spine
 
-> **Draft 2 — Session 195 (2026-10-04): name = Provose; all 7 Roland decisions answered (§10); Lightspeed is the live system of record for invoicing + sales tax, so Phase 1 exit = Lightspeed parity (§6, §10.4).** Draft 1 — Session 194 (2026-10-03). Roland's directive: take the best of every DMS (Lightspeed, IDS, Blackpurl, Tekmetric, Shopmonkey, Fullbay…), use their structures as the inputs, and build an AI front end on a DMS-shaped core that runs the whole lifecycle — ad → lead → AI response → RO → multi-service work → invoicing with full P&L audit → review follow-up → after-service upsell. v1 was the proof of concept; v2 is the product.
+> **Draft 2.1 — Session 196 (2026-10-04): §11 added — the Lightspeed baseline measured from real Aug+Sep 2026 exports (line categories, tax rule, shop-supply formula, fake labor cost, hidden sublet).** Draft 2 — Session 195 (2026-10-04): name = Provose; all 7 Roland decisions answered (§10); Lightspeed is the live system of record for invoicing + sales tax, so Phase 1 exit = Lightspeed parity (§6, §10.4).** Draft 1 — Session 194 (2026-10-03). Roland's directive: take the best of every DMS (Lightspeed, IDS, Blackpurl, Tekmetric, Shopmonkey, Fullbay…), use their structures as the inputs, and build an AI front end on a DMS-shaped core that runs the whole lifecycle — ad → lead → AI response → RO → multi-service work → invoicing with full P&L audit → review follow-up → after-service upsell. v1 was the proof of concept; v2 is the product.
 > Research inputs: `docs/research/V2_RESEARCH_01..04_*.md` (Session 194). Security baseline: `docs/specs/SECURITY_AI_ROADMAP.md` (Phase 1 largely complete S194).
 > Status legend: 🔒 locked decision · 🟡 proposed, needs Roland · ❓ open question
 
@@ -126,3 +126,48 @@ Building a general ledger; mobile native apps (web first, as v1); replacing Text
 | 7 | board.html visual base | **Show both first** — mock the same screen on S121 tokens and on current CSS, Roland picks. | TODO: two static mocks of the RO board + one RO card (same data) before Phase 5 UI work. |
 
 **Name:** the v2.0 dashboard is **Provose** (PRVS OS, a play on Jarvis). Use it in UI copy, docs and repo naming from here on; `index.html`/v1 stays "RO Dashboard" until replaced.
+
+## 11. Lightspeed baseline — what PRVS actually bills today (Session 196, 2026-10-04, measured from exports)
+
+> Source: Lightspeed EVO exports run by Roland on 2026-10-04 — *Management Activity → Tax Report (Category Only, grouped by Tax Category)* for Aug + Sep 2026 (line-level .xls) and *Sales By Category Detail Report* for Sep 1–30 2026 (4 weekly PDFs; EVO would not run a full month). Raw files + a parsed CSV live in `docs/lightspeed/` which is **gitignored** (customer names + dollars; repo is public). Everything below is aggregate and sanitized. The two sources reconcile to the penny (Sep taxable $95,344.93 / non-taxable $152,684.72 in both).
+
+### 11.1 The line model Lightspeed uses — this is the migration contract
+
+| LS category | Taxed | Sep 2026 sales | Sep cost | "Margin" | Provose `ro_line.type` | Notes |
+|---|---|---|---|---|---|---|
+| **SLB** (service labor) | No | $150,728 | $128,469 | 14.8% | `labor` — and `sublet` (see 11.4) | $195/hr, billed in 0.25-hr steps ($48.75). Also carries sublet vendor invoices. |
+| **PAM** (parts & materials) | Yes | $81,839 | $37,670 | 54.0% | `part` | Real cost on most lines; some $0-cost lines (shop-stock / unknown). Recurring flat $250 and $2,500 lines exist — unidentified, ask Lynn. |
+| **ACC** / Acce (accessories) | Yes | $9,296 | $6,986 | 24.8% | `part` (accessory subtype) | Margin is almost always ~25% → a fixed markup rule (cost ÷ 0.75). |
+| **SSS** (shop supplies) | Yes | $4,210 | $0 | 100% | `fee` (code `shop_supplies`) | **Formula, not typed:** 5% of labor, capped at $250 per job (verified on every Sep RO; a 3-job RO shows $450). |
+| **SM4** | No | $1,957 | $0 | 100% | `fee` (code TBD) | Flat untaxed fee in $15 / $30 / $150 / $300 sizes. Unknown purpose — ask Lynn/Brandon (disposal/environmental/diagnostic?). |
+| Month | | **$248,030** | $173,125 | 30.2% | | 37 ROs, 481 lines, 122 category×RO rows. Aug: 40 ROs, 184 tax-report lines. |
+
+Only ONE pay class appears ("Customer Pay / Customer - Taxable") — insurance and warranty jobs are not distinguished at the sales level. Payer type for the parallel-run reconciliation must come from the Cashier Reconciliation / Receivables side or from PRVS RO DB itself.
+
+### 11.2 Tax rule, as practised (feeds the taxability table in §10.2)
+
+- Exactly **two tax categories**: `No Tax` (0%) and `Sales Tax %` at **6.25%** — one rate, no other rates, $0.00 tax-exempt in both months. Tax = taxable × 6.25% on every line to the penny.
+- Taxable = PAM + ACC + SSS. Non-taxable = SLB + SM4. So: parts taxed, labor exempt, **shop-supply fee taxed, SM4 fee not** — the fee/sublet defaults in §10.2 should follow this, not "the dominant line".
+- Most ROs mix both (Aug: 36 of 40 ROs; Sep: 31 of 37) and the taxable share per RO runs 0–100% → tax MUST be per line, never an RO-level percentage. Confirms `tax_code` on `ro_line`.
+- ❓ **6.25% is the Texas STATE rate only.** Krum, TX (Denton County) normally carries local tax up to 8.25% combined. Either PRVS is correctly collecting state-only (motor-vehicle-repair treatment?) or Lightspeed is configured state-only. Added to the CPA question list — this is the one that bites at audit.
+- Credits/returns appear as negative non-taxable lines (6 in two months); the engine needs signed lines, not a separate credit table.
+- Monthly totals for the parallel-run month baseline: **Aug 2026** taxable $72,165.62 / non-taxable $151,039.49 / tax $4,510.45. **Sep 2026** taxable $95,344.93 / non-taxable $152,684.72 / tax $5,959.14.
+
+### 11.3 Lightspeed's labor cost is a config constant — do not migrate it
+
+SLB cost ÷ sale is **0.8974 = $175 ÷ $195** on the clean labor lines: Lightspeed costs every labor hour at a flat $175 regardless of who did the work. The 14.8% labor "margin" and the 30.2% month margin are therefore fiction. Provose computes `labor_cost = clock_hours × staff.hourly_rate × (1 + burden)` (§10.1) — the first true gross margin PRVS will have seen. ⚠️ Expect the new numbers to look very different from Lightspeed's; say so before anyone compares them.
+
+### 11.4 Sublet is hidden inside labor
+
+There is no sublet category. Sublet vendor invoices are coded SLB with cost and little/no sale (one Sep vendor line: $0 sale, $4,375 cost; another RO's SLB cost exceeds its SLB sale). The §3 explicit `sublet` line type is a correctness fix, not tidiness: labor GP% and effective labor rate (§7) are wrong in Lightspeed because of this.
+
+### 11.5 Markup rules observable in the data (seed for the §3 markup matrix)
+
+- Accessories (ACC): ~25% margin almost everywhere → price = cost ÷ 0.75.
+- Parts (PAM): wide spread (12%–100% margin); $0-cost lines pull the average up. Needs the NTP price-book export (TODO #4) to separate rule from noise.
+- Labor: $195/hr standard rate (the recurring 10.26% SLB margin is just the $175/$195 config constant from 11.3, not a markup rule). Sublet markup: unknown — it cannot be read while sublet is blended into SLB; ask Lynn what PRVS adds on vendor invoices.
+- Shop supplies: 5% of labor, $250 cap per job (11.1).
+
+### 11.6 Still to collect (TODO rows)
+
+(3) 3–4 closed invoice PDFs (customer-facing layout + tax per line type); (4) NTP price-book / parts export with cost + list/retail; (5) customer + unit/VIN exports at migration time; a Cashier Reconciliation or Receivables export to learn pay types; the 12-month sales history only when the migration needs it (one month was enough to fix the line engine).

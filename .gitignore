@@ -39,3 +39,6 @@ prvs_ro_dashboard_mockup.html
 .claude/settings.local.json
 _to_delete/
 PRVS-ROOF-SOLAR-ATTACK-PLAN.md
+
+# S196: Lightspeed exports contain customer names + dollar amounts - local only, repo is public
+docs/lightspeed/
