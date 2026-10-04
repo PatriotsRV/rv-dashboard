@@ -1,7 +1,18 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.511
+    PRVS Dashboard v1.512
+    v1.512: [S196] PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). Staff sign in
+    with a 6-digit code texted from the shop line (Supabase Auth phone provider + auth-send-sms hook
+    over Textly) on the NEW login.html; the session lives under the shared storageKey
+    'prvs_supabase_auth' so index/home/messages/tasks/checkin share ONE sign-in. js/auth.js: no
+    session -> login.html?next=<this page> (js/session-gate.js) instead of Google One Tap; One Tap,
+    the Connect button and forceReauth's self-heal only run with ?google=1 (fallback for ~2 weeks,
+    then removed). Disconnect = sign out everywhere. PRVS_MODULES gains 'session-gate' (S195 added
+    the file without listing it - check_version_sync was failing on pre-prod). Migration
+    phone_identity_link_s195.sql run live S196 (19 staff: phone + phone identity on the EXISTING
+    auth.users row, auth.uid unchanged). Known gap: customer-checkin.html kiosk + the other 8 pages
+    are wired in Session B.
     v1.511: [S191] HOTFIX 3 - ?open=<action> waits for the boot's staff roster (up to 8 s) before
     opening the card action. The assistant's "reminder for the Shepard RO" hand-off found the RO and
     opened the 🔔 Schedule Notification modal on a cold load BEFORE loadStaff() had returned, so the
@@ -1102,7 +1113,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.511';</script>
+    <script>window.APP_VERSION = '1.512';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
@@ -1111,7 +1122,7 @@
          scripts/check_version_sync.py enforces that (BLOCKING in CI). The version still lives in
          exactly two places (the declaration above + version.json). -->
     <script>
-      window.PRVS_MODULES = ['app','auth','config','duplicates','enhancement','i18n','insurance','layout','messaging','parts','photos','planner','qr','render','ro-crud','scheduling','shop-tasks','state','time-tracking','utils','work-list','work-orders'];
+      window.PRVS_MODULES = ['app','auth','config','duplicates','enhancement','i18n','insurance','layout','messaging','parts','photos','planner','qr','render','ro-crud','scheduling','session-gate','shop-tasks','state','time-tracking','utils','work-list','work-orders'];
       (function () {
         var v = encodeURIComponent(window.APP_VERSION), imports = {};
         window.PRVS_MODULES.forEach(function (n) { imports['./js/' + n + '.js'] = './js/' + n + '.js?v=' + v; });
@@ -8263,6 +8274,9 @@ function toggleWOTasks(tasksId, chevId) {
          #sbShell slots when html.layout-sidebar is set; no-op in classic mode.
          Plain script (not a module): defines the window.sb* inline handlers. -->
     <script>document.write('<script src="' + prvsAsset('js/layout.js') + '"><\/script>');</script>
+    <!-- v1.512 (S196): session gate - classic script, defines window.PRVS.requireSession / signOutEverywhere
+         used by js/auth.js when there is no session (phone-OTP login.html replaces Google One Tap). -->
+    <script>document.write('<script src="' + prvsAsset('js/session-gate.js') + '"><\/script>');</script>
 
     <!-- Phase 4.5-E (v1.429): `defer` added to both Google CDN tags so the
          module's window bridge (js/app.js, loaded above as type="module" — also

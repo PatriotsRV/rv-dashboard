@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.39
+    PRVS Tech Check-In v1.40
+    v1.40: [S196] PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). Supabase
+           client now uses the SHARED storageKey 'prvs_supabase_auth'; Step 3 (no session, online)
+           -> login.html?next=checkin.html via js/session-gate.js instead of the Google card; Google
+           only via ?google=1 for the fallback fortnight. Sign out clears the shared key. The
+           offline cached-identity fallback (Step 2) is unchanged.
     v1.39: [S175] STATUS APPROVAL BREAKOUT support. 'Awaiting Approval' retired in
            favor of 6 source-specific statuses (Awaiting/Approved x Insurance/
            Customer/Extended Warranty, dashboard v1.495 + migration
@@ -162,6 +167,7 @@
     <title>Tech Check-In - PRVS</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="js/session-gate.js?v=1.0"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -368,7 +374,7 @@
         </div>
         <div id="app" class="loading">Loading...</div>
     </div>
-    <div class="version">v1.39</div>
+    <div class="version">v1.40</div>
 
 <script>
 // ── Configuration ─────────────────────────────────────────────
@@ -513,6 +519,7 @@ function getSB() {
             auth: {
                 persistSession: true,
                 autoRefreshToken: true,
+                storageKey: 'prvs_supabase_auth',   // v1.40 shared key (login.html / index / home / messages / tasks)
             }
         });
     }
@@ -751,8 +758,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // ── Step 3: No session, online — show sign-in ────────────
-    showSignIn();
+    // ── Step 3: No session, online — phone-OTP login page ───
+    // v1.40: Google card only via ?google=1 during the fallback fortnight.
+    if (new URLSearchParams(location.search).get('google') === '1') { showSignIn(); return; }
+    await PRVS.requireSession(getSB());
 });
 
 // ── Google Sign-In ────────────────────────────────────────────
@@ -1663,8 +1672,7 @@ async function signOut() {
     activeSession = null;
     supabaseSession = null;
     if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
-    try { await getSB().auth.signOut(); } catch(e) { /* ignore */ }
-    showSignIn();
+    await PRVS.signOutEverywhere(getSB());   // v1.40: clears the shared key, lands on login.html
 }
 
 // ── Helpers ───────────────────────────────────────────────────

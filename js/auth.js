@@ -226,6 +226,27 @@ export async function initializeGapiClient() {
  * dummy stub if the SDK script tag hasn't loaded yet — caller can retry
  * later. Subsequent calls return the cached instance.
  */
+// ── v1.512 (S196) PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md) ──
+// login.html signs people in with a texted code and persists the session under
+// the SAME storageKey this module uses ('prvs_supabase_auth'). So Step 1 of
+// loadSavedToken() already restores a phone session with no change. What changes:
+// when there is NO session, the page no longer prompts Google One Tap - it sends
+// the person to login.html (js/session-gate.js, loaded as a classic script before
+// the module). Google stays reachable ONLY via ?google=1 for the fallback
+// fortnight, then the Google paths go (PHONE_OTP_SIGNIN.md §4.7).
+export function googleFallbackRequested() {
+    try { return new URLSearchParams(location.search).get('google') === '1'; } catch (e) { return false; }
+}
+export async function redirectToLogin(why) {
+    console.log('🔐 No session -> login.html (' + (why || 'boot') + ')');
+    if (window.PRVS && typeof window.PRVS.requireSession === 'function') {
+        return window.PRVS.requireSession(getSB());
+    }
+    const next = encodeURIComponent((location.pathname.split('/').pop() || 'index.html') + location.search + location.hash);
+    location.replace('login.html?next=' + next);
+    return null;
+}
+
 export function getSB() {
     if (!window._sb) {
         if (typeof supabase !== 'undefined' && supabase.createClient) {
@@ -469,6 +490,9 @@ export async function forceReauth(why) {
     window.initialLoadDone        = false;
     updateAuthStatus(false);
 
+    // v1.512 (S196): the self-heal is now login.html, not One Tap.
+    if (!googleFallbackRequested()) { await redirectToLogin('force-reauth: ' + why); return; }
+
     // SELF-HEAL: re-fire One Tap immediately. gisLoaded()'s prompt already ran
     // at GSI load — before the probe had a verdict — and at that moment
     // window.supabaseSession was still set from the stale blob, so it was
@@ -613,8 +637,10 @@ export function updateAuthStatus(connected, verified = true) {
             : 'Signing in to PRVS Database… (data may be incomplete)';
         authButton.textContent = 'Disconnect';
         authButton.onclick = async () => {
-            await getSB().auth.signOut(); // end Supabase session
             (window.clearToken || clearToken)();
+            // v1.512 (S196): one sign-out for every page - clears the shared key, lands on login.html
+            if (window.PRVS && typeof window.PRVS.signOutEverywhere === 'function') { await window.PRVS.signOutEverywhere(getSB()); return; }
+            await getSB().auth.signOut(); // end Supabase session
             updateAuthStatus(false);
             // currentData + sampleData are inline `let`/`const` — not window-
             // attached in Phase 4B-C. Only reset if window has them (future
@@ -932,6 +958,11 @@ export async function loadSavedToken() {
     } else {
         console.log('❌ No saved token found');
     }
+    // v1.512 (S196): nothing restored. Phone-OTP is the sign-in now; only
+    // ?google=1 keeps the old One Tap / Connect path alive during the fallback fortnight.
+    if (!window.supabaseSession && !googleFallbackRequested()) {
+        await redirectToLogin('no saved session');
+    }
     return false;
 }
 
@@ -1066,10 +1097,11 @@ export async function gisLoaded() {
     // check was a misleading proxy — Step 2 set the flag true even when the cache
     // only contained a stale Google token, suppressing the One Tap prompt that would
     // have re-authed Supabase. This is the root-cause edit for Lynn's flakiness.
-    if (!window.supabaseSession) {
+    if (!window.supabaseSession && googleFallbackRequested()) {
         promptOneTapWithReason('boot');   // v1.486: was a bare prompt() — now logs suppression reason + shows button fallback
     } else {
-        console.log('✅ Supabase session live — skipping One Tap prompt');
+        console.log(window.supabaseSession ? '✅ Supabase session live — skipping One Tap prompt'
+                                           : '🔐 v1.512: One Tap suppressed — phone-OTP login.html is the sign-in (add ?google=1 for the Google fallback)');
     }
 
     window.tokenClient = google.accounts.oauth2.initTokenClient({

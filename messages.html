@@ -2,6 +2,10 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.31 (Session 196, 2026-10-04): PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md).
+      storageKey 'prvs_messages_auth' -> the SHARED 'prvs_supabase_auth' so one sign-in on
+      login.html covers index/home/messages/tasks/checkin. No session -> login.html?next=messages.html
+      (js/session-gate.js); Google only via ?google=1 for the fallback fortnight.
     v1.30 (Session 191, 2026-09-26): 🤖 Assistant header link -> home.html, the new
       AI-driven entry page (docs/specs/AI_HOME_SPEC.md). Link only; no logic change.
     v1.29 (Session 189, 2026-09-15): ANDREW'S TWO — drag-and-drop + quick replies.
@@ -437,6 +441,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="js/session-gate.js?v=1.0"></script>
     <style>
         /* ═══ v1.9 (S151c): ARGENTINA CELESTE THEME ═══════════════════
            Roland directive: the messages board should exude "happy and calm"
@@ -1077,7 +1082,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, STATUS_PROGRESS_
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.30';
+const PAGE_VERSION = 'messages v1.31';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S189)');
 // v1.25 (S189): terminal = the SHARED progress map says 100% (Delivered/Cashed Out,
 // Closed - No Charge, Delivered - No Review). Not a private copy of the list — the
@@ -1110,7 +1115,7 @@ let _detailsSig = '';          // v1.27: signature of the conversation row the d
 function getSB() {
     if (!_sb) {
         _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_messages_auth' }
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_supabase_auth' }   // v1.31 shared key
         });
     }
     return _sb;
@@ -1219,7 +1224,9 @@ async function initAuth() {
         showApp();
         return;
     }
-    initGoogleSignIn();
+    // v1.31: no session -> phone-OTP login page (Google only via ?google=1 during the fallback fortnight)
+    if (new URLSearchParams(location.search).get('google') === '1') { initGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());
 }
 function initGoogleSignIn() {
     if (typeof google === 'undefined' || !google.accounts) {

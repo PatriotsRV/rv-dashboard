@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <!--
-    PRVS Task Manager  tasks-v1.4
-    Released: 2026-08-27 (Session 186)
+    PRVS Task Manager  tasks-v1.5
+    Released: 2026-10-04 (Session 196)
     Spec: docs/specs/TASK_MANAGER_SPEC.md
+    v1.5: PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). Supabase client now
+        uses the SHARED storageKey 'prvs_supabase_auth'; no session -> login.html?next=tasks.html
+        (js/session-gate.js); Google only via ?google=1 for the fallback fortnight.
     v1.4: 🤖 Assistant header link -> home.html, the new AI-driven entry page
         (Session 191, docs/specs/AI_HOME_SPEC.md). Link only; no logic change.
     v1.3: EDIT open tasks (Roland field test S186 — set the wrong due time and
@@ -184,8 +187,9 @@
 </div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/session-gate.js?v=1.0"></script>
 <script>
-const TASKS_VERSION = 'tasks-v1.4';
+const TASKS_VERSION = 'tasks-v1.5';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
@@ -210,7 +214,7 @@ let activeTab = 'my', activeFilter = 'open';
 
 function getSB() {
     if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'prvs_supabase_auth' }  // v1.5 shared key
     });
     return _sb;
 }
@@ -238,7 +242,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         showApp();
         return;
     }
-    initGoogleSignIn();
+    // v1.5: no session -> phone-OTP login page (Google only via ?google=1 during the fallback fortnight)
+    if (new URLSearchParams(location.search).get('google') === '1') { initGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());
 });
 
 function initGoogleSignIn() {

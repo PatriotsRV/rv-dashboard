@@ -1,8 +1,13 @@
 <!DOCTYPE html>
 <!--
-    PRVS Assistant  home-v1.1
-    Released: 2026-09-26 (Session 191)
+    PRVS Assistant  home-v1.2
+    Released: 2026-10-04 (Session 196)
     Spec: docs/specs/AI_HOME_SPEC.md
+    v1.2: Phone-OTP sign-in (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). The Supabase
+        client now uses the SHARED storageKey 'prvs_supabase_auth' (same as login.html and
+        index.html) so one sign-in covers every page. No session -> js/session-gate.js sends
+        the person to login.html?next=home.html. Google sign-in is kept ONLY behind ?google=1
+        as the fallback for ~2 weeks, then removed. Sign out clears the shared key.
     v1.1: Mobile ask bar (Roland, iPhone, S191): the text field was squeezed to a sliver beside
         the Speak + Ask buttons. Field now takes its own full-width 50 px line, the two buttons
         split the second line, bigger type on chips/result. CSS only.
@@ -192,8 +197,9 @@
 </div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/session-gate.js?v=1.0"></script>
 <script>
-const HOME_VERSION = 'home-v1.1';
+const HOME_VERSION = 'home-v1.2';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
@@ -227,7 +233,7 @@ let _busy = false, _rec = null, _listening = false, _navTimer = null, _pendingUr
 
 function getSB() {
     if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'prvs_supabase_auth' }  // v1.2 shared key
     });
     return _sb;
 }
@@ -276,7 +282,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         showApp();
         return;
     }
-    initGoogleSignIn();
+    // v1.2: no session -> phone-OTP login page (Google only via ?google=1 during the fallback fortnight)
+    if (new URLSearchParams(location.search).get('google') === '1') { initGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());   // redirects to login.html?next=home.html
 });
 
 function initGoogleSignIn() {
@@ -304,8 +312,7 @@ async function handleSignIn(response) {
 }
 
 async function signOut() {
-    try { await getSB().auth.signOut(); } catch (_) {}
-    location.reload();
+    await PRVS.signOutEverywhere(getSB());   // v1.2: clears the shared key, lands on login.html
 }
 
 // ── APP BOOT ──
