@@ -1,10 +1,14 @@
 // ============================================================
 // send-checkin-reminder (Roland directive, Session 162, 2026-07-29)
 // ============================================================
+// v1.1 (S197, 2026-10-06): + "1030" SECOND REMINDER — EVERY tech (early +
+//      main rosters), fired at 10:30 with Roland's firmer wording for anyone
+//      who STILL has no clock-in. Cron job in send_checkin_reminder_1030_s197.sql.
 // v1.0: MORNING TECH CHECK-IN REMINDER (SMS).
 // Fired by pg_cron weekdays (see send_checkin_reminder_s162.sql):
 //   8:15 AM CT — early cohort (Mauricio, Ignacio — in around 7:30)
-//   9:30 AM CT — main cohort (8 techs — shop start ~9:00)
+//   9:30 AM CT — main cohort (10 techs — shop start ~9:00; +JT S197)
+//  10:30 AM CT — ALL techs (both cohorts), SECOND REMINDER (S197)
 // For each worker in the fired cohort who has NO time_logs clock-in yet
 // TODAY (America/Chicago day; cashiered_time_logs mirror unioned per the
 // S102 rule), send an individual SMS to staff.phone_number direct via the
@@ -15,7 +19,8 @@
 // clocked in earlier and is between jobs at reminder time is NOT nagged.
 //
 // Request body:
-//   { "cohort": "815" | "930",   REQUIRED — which roster + message time
+//   { "cohort": "815" | "930" | "1030",  REQUIRED — roster + message time
+//                                ("1030" = early + main rosters, second-reminder wording)
 //     "dry_run": true,           optional — report who WOULD be texted, send nothing
 //     "force": true,             optional — bypass the weekday guard (testing)
 //     "time_label": "1:40",      optional — override the "It's X" time in the
@@ -40,31 +45,39 @@ const DEFAULT_API_BASE = "https://vestednetworks-txb.textable.app";
 const DEFAULT_FROM_E164 = "+19404885047";
 
 // ── Rosters (S162, Roland) ───────────────────────────────────────────
-const COHORTS: Record<string, { timeLabel: string; workers: { name: string; email: string }[] }> = {
-  "815": {
-    timeLabel: "8:15",
-    workers: [
-      { name: "Mauricio Tellez", email: "mauricio@patriotsrvservices.com" },
-      { name: "Ignacio Ochoa", email: "ignacio@patriotsrvservices.com" },
-    ],
-  },
-  "930": {
-    timeLabel: "9:30",
-    workers: [
-      { name: "Cooper Cihak", email: "cooper@patriotsrvservices.com" },
-      { name: "Jason Rubin", email: "jason@patriotsrvservices.com" },
-      { name: "Riley Scott", email: "solar@patriotsrvservices.com" },
-      { name: "Rod Wombles", email: "rod@patriotsrvservices.com" },
-      { name: "Rudy Juarez", email: "rudy@patriotsrvservices.com" },
-      { name: "Tipton Scott", email: "tipton@patriotsrvservices.com" },
-      { name: "Tommy Belew", email: "tommy@patriotsrvservices.com" },
-      { name: "Travis Wombles", email: "travis@patriotsrvservices.com" },
-      { name: "Zak Wombles", email: "zak@patriotsrvservices.com" },
-    ],
-  },
+type Worker = { name: string; email: string };
+type Cohort = { timeLabel: string; second?: boolean; workers: Worker[] };
+
+// Rosters are defined ONCE and composed below so the 10:30 second reminder
+// can never drift from the 8:15 + 9:30 first reminders (S197).
+const EARLY_ROSTER: Worker[] = [
+  { name: "Mauricio Tellez", email: "mauricio@patriotsrvservices.com" },
+  { name: "Ignacio Ochoa", email: "ignacio@patriotsrvservices.com" },
+];
+const MAIN_ROSTER: Worker[] = [
+  { name: "Cooper Cihak", email: "cooper@patriotsrvservices.com" },
+  { name: "Jason Rubin", email: "jason@patriotsrvservices.com" },
+  { name: "John Tijerina (JT)", email: "littlejrvservice@gmail.com" }, // S197: phone-only identity, personal email as DB key
+  { name: "Riley Scott", email: "solar@patriotsrvservices.com" },
+  { name: "Rod Wombles", email: "rod@patriotsrvservices.com" },
+  { name: "Rudy Juarez", email: "rudy@patriotsrvservices.com" },
+  { name: "Tipton Scott", email: "tipton@patriotsrvservices.com" },
+  { name: "Tommy Belew", email: "tommy@patriotsrvservices.com" },
+  { name: "Travis Wombles", email: "travis@patriotsrvservices.com" },
+  { name: "Zak Wombles", email: "zak@patriotsrvservices.com" },
+];
+
+const COHORTS: Record<string, Cohort> = {
+  "815": { timeLabel: "8:15", workers: EARLY_ROSTER },
+  "930": { timeLabel: "9:30", workers: MAIN_ROSTER },
+  "1030": { timeLabel: "10:30", second: true, workers: [...EARLY_ROSTER, ...MAIN_ROSTER] },
 };
 
-function reminderBody(timeLabel: string): string {
+function reminderBody(timeLabel: string, second = false): string {
+  if (second) {
+    // Second-reminder wording set by Roland, S197 (2026-10-06).
+    return `⏰ SECOND REMINDER. Please Tech Check-In to your RO - It's ${timeLabel} and you still have not checked into any RO work yet. This is a friendly reminder. Thank you!`;
+  }
   // Wording set by Roland mid-S162 (reworded from the original v1.0 text).
   return `⏰ Please Tech Check-In to your RO - It's ${timeLabel} and you have not checked into any RO yet. This is a friendly reminder. Thank you!`;
 }
@@ -110,7 +123,7 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { /* empty body */ }
 
   const cohort = COHORTS[String(body.cohort || "")];
-  if (!cohort) return json({ ok: false, error: 'cohort must be "815" or "930"' }, 400);
+  if (!cohort) return json({ ok: false, error: 'cohort must be "815", "930" or "1030"' }, 400);
 
   // ── Weekday guard (Mon-Fri, America/Chicago) ───────────────────────
   const now = new Date();
@@ -169,7 +182,7 @@ Deno.serve(async (req: Request) => {
   );
 
   // ── Send ───────────────────────────────────────────────────────────
-  const msg = reminderBody((body.time_label || "").trim() || cohort.timeLabel);
+  const msg = reminderBody((body.time_label || "").trim() || cohort.timeLabel, !!cohort.second);
   const reminded: string[] = [], skipped: string[] = [], noPhone: string[] = [], failed: string[] = [];
 
   // manual_to: explicit recipient list, clock-in check bypassed. Staff
@@ -203,6 +216,7 @@ Deno.serve(async (req: Request) => {
   return json({
     ok: true,
     cohort: cohort.timeLabel,
+    second_reminder: !!cohort.second,
     dry_run: !!body.dry_run,
     day: today,
     reminded, skipped_clocked_in: skipped, no_phone: noPhone, sms_failed: failed,
