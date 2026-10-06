@@ -97,7 +97,7 @@ Until the `SUPABASE_DB_URL` secret exists, step 2 skips with a `::warning::` and
 
 ### 4e. Code and Cloudflare front door
 - Code: `git clone git@github.com:PatriotsRV/rv-dashboard.git` from any machine; `main` = production, `pre-prod` = integration, tags = every release (`v1.500` is the standing rollback anchor).
-- Cloudflare rebuild from scratch (~30 min): Pages project `prvs-dashboard` ← `PatriotsRV/rv-dashboard`, branch `main`, no build, output `/`; custom domain `dashboard.prvstools.com`; Zero Trust → Access app `dashboard` on that hostname, 1-week session, policies `PRVS staff only` (Allow, `Emails ending in @patriotsrvservices.com`, ID `06fef3ab…`) + `PRVS shop network` (Bypass, IP `98.97.83.247/32`); `functions/_middleware.js` in the repo closes `*.pages.dev`.
+- Cloudflare rebuild from scratch (~30 min): Pages project `prvs-dashboard` ← `PatriotsRV/rv-dashboard`, branch `main`, no build, output `/`; custom domain `dashboard.prvstools.com`; Zero Trust → Access app `dashboard` on that hostname, 1-week session, policies `PRVS staff only` (Allow, `Emails ending in @patriotsrvservices.com`, ID `06fef3ab…`) + `PRVS shop network` (Bypass, IP = the CURRENT shop WAN `/32` — read it off WatchGuard Cloud → `prvs-watchguard` → IP Address; it is a dynamic carrier address and moved `98.97.83.247` → `98.97.85.24` S197 without a reboot); `functions/_middleware.js` in the repo closes `*.pages.dev`.
 
 ## 4f. Restore drill log
 | Date | Session | Source | Target | Result |
