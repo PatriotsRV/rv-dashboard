@@ -723,6 +723,7 @@
                         },
                         body: JSON.stringify({
                             type:         'parts_request',
+                            estimateOnly: isEstimateOnly,   // S197: email says PRICE, DON'T ORDER for estimate-only
                             to:           'parts@patriotsrvservices.com',
                             techName:     userName,
                             techEmail:    userEmail,

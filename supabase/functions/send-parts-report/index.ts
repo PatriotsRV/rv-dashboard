@@ -23,6 +23,12 @@ import nodemailer from "npm:nodemailer@6";
 //        (migration stamp_date_received_on_parts.sql) that stamps date_received=today the moment a part becomes
 //        Received on any path, since the quick Received button never set it. Also fixed the stale box instruction
 //        ("Mark it Received..." -> "Text the tech their part is in..."). Fixes Roland's Todd Lintzen report 2026-07-08.
+// v1.13: (S197, 2026-10-06) Roland: estimate-only requests ARE parts-desk work (Bobby prices them for the
+//        service writer's estimate), so they get their own box, "FOR ESTIMATE - PRICE THESE, DON'T ORDER",
+//        and count toward the verdict. v1.8 had excluded parts_status='estimate' entirely, so a request
+//        submitted with the "For Estimate Only" toggle vanished after the instant email (Marrion Booth
+//        PRVS-1485-0A45 ladder, Lynn's report). Estimate requests have NO parts row by design, so the
+//        description comes from the newest "PARTS ESTIMATE" ro_status note on the RO.
 // v1.12: (S174) Katrina Kirkendall seam-tape report — an ALREADY-Received part kept demanding to be received.
 //        Three fixes, none of which touched the data (the row was correct the whole time):
 //        (a) BOX TITLE was still the imperative "CAME IN - RECEIVE THEM" while listing parts whose status is
@@ -70,6 +76,12 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // S197: optional { "preview_to": "someone@..." } sends ONLY to that address with a [PREVIEW] subject,
+    // so a new section can be eyeballed without emailing every manager. Cron sends no body -> normal send.
+    let reqBody: { preview_to?: string } = {};
+    try { reqBody = await req.json(); } catch { /* cron / empty body */ }
+    const previewTo = (reqBody?.preview_to || "").trim();
+
     // Service-role client — bypasses RLS
     const sb = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
@@ -113,6 +125,35 @@ Deno.serve(async (req: Request) => {
         openROPartsMap[p.ro_id].push(
           p.part_name + (p.status ? " (" + p.status + ")" : "")
         );
+      }
+    }
+
+    // ── 1b. Estimate-only requests (v1.13) — has_open_parts_request=true, parts_status='estimate' ──
+    // No parts rows exist for these (submitPartsRequest skips the insert when For Estimate Only is on),
+    // so the "what to price" text is the newest PARTS ESTIMATE note on each RO.
+    const { data: estimateROs, error: e1b } = await sb
+      .from("repair_orders")
+      .select("id, ro_id, customer_name, rv, requested_by_email, updated_at")
+      .eq("has_open_parts_request", true)
+      .eq("parts_status", "estimate")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false });
+    if (e1b) console.error("Error fetching estimate ROs:", e1b);
+    const estimateROIds = (estimateROs || []).map((ro: any) => ro.id).filter(Boolean);
+    const estimateTextMap: Record<string, string> = {};
+    if (estimateROIds.length > 0) {
+      const { data: estNotes } = await sb
+        .from("notes")
+        .select("ro_id, body, created_at")
+        .in("ro_id", estimateROIds)
+        .eq("type", "ro_status")
+        .ilike("body", "%PARTS ESTIMATE%")
+        .order("created_at", { ascending: false });
+      for (const n of (estNotes || [])) {
+        if (estimateTextMap[n.ro_id]) continue; // newest wins
+        // body shape: "[10/05/26, 12:00 PM - Ryan Dillon] 📋 PARTS ESTIMATE (for estimate only): LADDER REPLACEMENT"
+        const m = String(n.body || "").match(/PARTS ESTIMATE[^:]*:\s*([\s\S]*)$/);
+        estimateTextMap[n.ro_id] = (m ? m[1] : String(n.body || "")).trim();
       }
     }
 
@@ -237,8 +278,9 @@ Deno.serve(async (req: Request) => {
     const freshNoEtaCount = waitingParts.filter((p: any) => !p.eta).length;
 
     const callCount = (overdueParts?.length || 0) + staleNoEta.length;
-    // total things-to-do = order + call-supplier + came-in
-    const toDoCount = needsOrderingROs.length + callCount + (receivedParts?.length || 0);
+    const estimateCount = estimateROs?.length || 0;
+    // total things-to-do = order + price-for-estimate + call-supplier + came-in
+    const toDoCount = needsOrderingROs.length + estimateCount + callCount + (receivedParts?.length || 0);
 
     // ── item line builder (plain bullets, not technical tables) ──
     const li = (html: string) => `<div style="font-size:15px;color:#1f2937;line-height:1.5;margin:0 0 5px">&bull; ${html}</div>`;
@@ -250,6 +292,9 @@ Deno.serve(async (req: Request) => {
       const parts = (openROPartsMap[ro.id] || []).map((s: string) => s.replace(/ \([^)]*\)$/, "")).join(", ");
       return li(`<strong>${ro.customer_name || ("RO " + (ro.ro_id || ""))}</strong>${ro.rv ? " &mdash; " + ro.rv : ""}${parts ? " &mdash; " + parts : ""}${byTag("requested by", reqName(ro.requested_by_email))}`);
     }).join("");
+    const estimateItems = (estimateROs || []).map((ro: any) =>
+      li(`<strong>${ro.customer_name || ("RO " + (ro.ro_id || ""))}</strong>${ro.rv ? " &mdash; " + ro.rv : ""}${estimateTextMap[ro.id] ? " &mdash; " + esc(estimateTextMap[ro.id]) : ""}${byTag("requested by", reqName(ro.requested_by_email))}`)
+    ).join("");
     const fmtShort = (s: string) => { try { return new Date(s + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Chicago" }); } catch (e) { return s; } };
     const lateItems = (overdueParts || []).map((p: any) =>
       li(`<strong>${p.part_name || "Part"}</strong> &mdash; ${p.repair_orders?.customer_name || "—"} &mdash; <span style="color:#b91c1c;font-weight:700">was due ${p.eta ? fmtShort(p.eta) : "—"}</span>${byTag("ordered by", p.ordered_by || "")}`)
@@ -279,6 +324,8 @@ Deno.serve(async (req: Request) => {
     };
 
     const orderBox  = box("&#128722;", "ORDER THESE PARTS", needsOrderingROs.length, orderItems, `Call the supplier, place the order, then tap "Parts Ordered" on the screen.`, "Nothing to order right now.", "#b45309", "#fffbeb");
+    // v1.13: blue, mirrors the 📋 Parts Estimate chip color on the board. The ask is a PRICE, not an order.
+    const estimateBox = box("&#128203;", "FOR ESTIMATE &mdash; PRICE THESE, DON'T ORDER", estimateCount, estimateItems, `Get a price for the parts and give it to the service writer for the estimate. Do NOT order. When the price is in, tap "Clear Status" under Parts Status on the screen.`, "No estimates waiting on a price.", "#1d4ed8", "#eff6ff");
     const callBox   = box("&#128222;", "CALL THE SUPPLIER", callCount, callItems, "Call the supplier, get a delivery date, and put it on the screen.", "Nobody to chase right now.", "#b91c1c", "#fef2f2");
     // v1.12: title was "CAME IN — RECEIVE THEM" while every row in it is already status='Received'.
     // v1.11 corrected the footer instruction but not the heading, so the box still commanded an action
@@ -296,7 +343,7 @@ Deno.serve(async (req: Request) => {
       : "";
 
     // ── Assemble full HTML email ─────────────────────────────────────────
-    const hasSomething = (openROs?.length || 0) + (orderedParts?.length || 0) +
+    const hasSomething = (openROs?.length || 0) + estimateCount + (orderedParts?.length || 0) +
                          (overdueParts?.length || 0) + (receivedParts?.length || 0) > 0;
 
     // Shared minified styles for section headers and badges
@@ -310,7 +357,7 @@ Deno.serve(async (req: Request) => {
     const GUIDE_PARTS_URL = "https://patriotsrv.github.io/rv-dashboard/guide.html#parts-managers";
     const guideBanner = `<a href="${GUIDE_PARTS_URL}" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:13px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:16px;font-weight:800">&#128218; New here? Click here for full instructions on how to use this report</a>`;
 
-    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:12px;margin-bottom:16px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV &mdash; Parts</h1><p style="margin:4px 0 0;color:#555;font-size:13px">${timeLabel} check &middot; ${dateStr}</p></div>${guideBanner}${verdict}${orderBox}${callBox}${cameInBox}${waitingNote}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Open the dashboard: <a href="https://patriotsrv.github.io/rv-dashboard/" style="color:#c8102e">patriotsrv.github.io/rv-dashboard</a> &middot; <a href="https://patriotsrv.github.io/rv-dashboard/guide.html#parts-managers" style="color:#c8102e">&#128218; Parts guide</a><br>Patriots RV Services &middot; Denton, TX &middot; (940) 488-5047 &middot; Automated ${timeLabel.toLowerCase()} report, Mon-Fri 8 AM &amp; 3 PM CDT</p></div></body></html>`;
+    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:12px;margin-bottom:16px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV &mdash; Parts</h1><p style="margin:4px 0 0;color:#555;font-size:13px">${timeLabel} check &middot; ${dateStr}</p></div>${guideBanner}${verdict}${orderBox}${estimateBox}${callBox}${cameInBox}${waitingNote}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Open the dashboard: <a href="https://patriotsrv.github.io/rv-dashboard/" style="color:#c8102e">patriotsrv.github.io/rv-dashboard</a> &middot; <a href="https://patriotsrv.github.io/rv-dashboard/guide.html#parts-managers" style="color:#c8102e">&#128218; Parts guide</a><br>Patriots RV Services &middot; Denton, TX &middot; (940) 488-5047 &middot; Automated ${timeLabel.toLowerCase()} report, Mon-Fri 8 AM &amp; 3 PM CDT</p></div></body></html>`;
 
     // ── Send email ──────────────────────────────────────────────────────
     const transporter = nodemailer.createTransport({
@@ -334,6 +381,8 @@ Deno.serve(async (req: Request) => {
       ``,
       `[ ] ORDER THESE PARTS: ${needsOrderingROs.length}`,
       ...needsOrderingROs.map((ro: any) => `      - ${ro.customer_name || ro.ro_id || "RO"}${(openROPartsMap[ro.id] || []).length ? " (" + (openROPartsMap[ro.id] || []).map((s: string) => s.replace(/ \([^)]*\)$/, "")).join(", ") + ")" : ""}${byText("requested by", reqName(ro.requested_by_email))}`),
+      `[ ] FOR ESTIMATE - PRICE THESE, DON'T ORDER: ${estimateCount}`,
+      ...(estimateROs || []).map((ro: any) => `      - ${ro.customer_name || ro.ro_id || "RO"}${estimateTextMap[ro.id] ? " (" + estimateTextMap[ro.id] + ")" : ""}${byText("requested by", reqName(ro.requested_by_email))}`),
       `[ ] CALL THE SUPPLIER: ${callCount}`,
       ...(overdueParts || []).map((p: any) => `      - ${p.part_name} (${p.repair_orders?.customer_name || "-"}) was due ${p.eta}${byText("ordered by", p.ordered_by || "")}`),
       ...staleNoEta.map((p: any) => `      - ${p.part_name} (${p.repair_orders?.customer_name || "-"}) no date yet${byText("ordered by", p.ordered_by || "")}`),
@@ -354,16 +403,18 @@ Deno.serve(async (req: Request) => {
     await transporter.sendMail({
       from:    `"Patriots RV Services" <${gmailUser}>`,
       replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
-      to:      recipients.join(", "),
-      subject,
+      to:      previewTo || recipients.join(", "),
+      subject: previewTo ? `[PREVIEW] ${subject}` : subject,
       text:    plainText,
       html:    htmlBody,
     });
 
     const summary = {
       success:        true,
-      version:        "v1.10",
+      version:        "v1.13",
+      preview:        !!previewTo,
       timeLabel,
+      estimatesToPrice: estimateCount,
       recipients:     recipients.length,
       toDo:           toDoCount,
       needsOrdering:  needsOrderingROs.length,

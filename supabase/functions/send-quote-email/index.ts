@@ -5,6 +5,11 @@ import nodemailer from "npm:nodemailer@6";
 // "we no longer receive the authorization form"). Import it explicitly.
 import { Buffer } from "node:buffer";
 
+// [S197 2026-10-06] parts_request: estimate-only awareness. A request submitted with the "For Estimate
+//   Only" toggle used to get the same "please ORDER these parts" email as a real request, while the daily
+//   report (v1.8-v1.12) hid it - so it read as a dropped request (Marrion Booth ladder, Lynn's report).
+//   The email now says FOR ESTIMATE - PRICE THESE, DON'T ORDER. Signal: body.estimateOnly (client, from the
+//   next release) or, when absent, the RO's live parts_status (client writes it BEFORE calling us).
 // [S194 SEC Phase 1 step 6] dashboard.prvstools.com added for the Cloudflare cutover; github.io stays until GitHub Pages is retired
 const ALLOWED_ORIGINS = ['https://patriotsrv.github.io', 'https://dashboard.prvstools.com'];
 function getCorsHeaders(req: Request) {
@@ -68,6 +73,20 @@ Deno.serve(async (req: Request) => {
       const { to, techName, techEmail, customerName, roId, rv, vin, timestamp, description, photoUrls } = body;
       const photos: string[] = Array.isArray(photoUrls) ? photoUrls : [];
 
+      // S197: is this an estimate-only request? Prefer the explicit flag; fall back to the RO's parts_status.
+      let estimateOnly: boolean = body.estimateOnly === true;
+      if (body.estimateOnly === undefined && roId) {
+        try {
+          const sbUrl = Deno.env.get("SUPABASE_URL");
+          const sbKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+          if (sbUrl && sbKey) {
+            const r = await fetch(`${sbUrl}/rest/v1/repair_orders?select=parts_status&ro_id=eq.${encodeURIComponent(String(roId))}&deleted_at=is.null&limit=1`,
+              { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+            if (r.ok) { const rows = await r.json(); estimateOnly = rows?.[0]?.parts_status === "estimate"; }
+          }
+        } catch (e) { console.warn("estimateOnly lookup failed (treating as normal request):", e); }
+      }
+
       if (!to) {
         return new Response(JSON.stringify({ error: "Missing 'to' address" }), {
           status: 400,
@@ -75,7 +94,18 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const subject = `🔩 Parts Request — ${customerName || "Customer"} (${roId || "RO"})`;
+      const subject = estimateOnly
+        ? `📋 FOR ESTIMATE — Price These, Don't Order — ${customerName || "Customer"} (${roId || "RO"})`
+        : `🔩 Parts Request — ${customerName || "Customer"} (${roId || "RO"})`;
+      // S197: accent + wording flip for estimate-only
+      const accent  = estimateOnly ? "#1d4ed8" : "#FF1493";
+      const accentBg = estimateOnly ? "#eff6ff" : "#fff3f8";
+      const kicker  = estimateOnly ? "Parts Estimate — Price Needed (Do Not Order)" : "Parts Request — Action Required";
+      const heading = estimateOnly ? "📋 FOR ESTIMATE — Price These, Don't Order" : "🔩 New Parts Request";
+      const needLbl = estimateOnly ? "Parts to Price:" : "Parts Needed:";
+      const action  = estimateOnly
+        ? `<strong>Do NOT order these parts.</strong> Get a price and give it to the service writer for the customer's estimate. When the price is in, open the RO in the PRVS Dashboard and tap <strong>Clear Status</strong> under Parts Status. This request also appears in the daily Parts Report under "FOR ESTIMATE" until then.`
+        : `Please order the required parts and mark the request as <strong>Ordered</strong> in the PRVS Dashboard to clear the alert on this RO.`;
 
       const htmlBody = `
 <!DOCTYPE html>
@@ -84,11 +114,11 @@ Deno.serve(async (req: Request) => {
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="border-bottom: 3px solid #c8102e; padding-bottom: 16px; margin-bottom: 20px;">
     <h1 style="color: #c8102e; margin: 0; font-size: 22px;">Patriots RV Services</h1>
-    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">Parts Request — Action Required</p>
+    <p style="margin: 4px 0 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;">${kicker}</p>
   </div>
 
-  <div style="background: #fff3f8; border: 2px solid #FF1493; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-    <h2 style="color: #FF1493; margin: 0 0 12px; font-size: 18px;">🔩 New Parts Request</h2>
+  <div style="background: ${accentBg}; border: 2px solid ${accent}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: ${accent}; margin: 0 0 12px; font-size: 18px;">${heading}</h2>
     <table style="width:100%; border-collapse:collapse; font-size:14px;">
       <tr><td style="padding:4px 0; color:#666; width:120px;">Submitted by:</td><td style="padding:4px 0; font-weight:700;">${techName || "Unknown Tech"}${techEmail ? ` &lt;${techEmail}&gt;` : ""}</td></tr>
       <tr><td style="padding:4px 0; color:#666;">Date/Time:</td><td style="padding:4px 0;">${timestamp || new Date().toLocaleString()}</td></tr>
@@ -99,8 +129,8 @@ Deno.serve(async (req: Request) => {
     </table>
   </div>
 
-  <div style="background: #f9f9f9; border-radius: 8px; padding: 16px; margin-bottom: 20px; border-left: 4px solid #FF1493;">
-    <h3 style="margin: 0 0 10px; color: #333; font-size: 15px;">Parts Needed:</h3>
+  <div style="background: #f9f9f9; border-radius: 8px; padding: 16px; margin-bottom: 20px; border-left: 4px solid ${accent};">
+    <h3 style="margin: 0 0 10px; color: #333; font-size: 15px;">${needLbl}</h3>
     <p style="margin: 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${description || "No description provided."}</p>
   </div>
 
@@ -118,7 +148,7 @@ Deno.serve(async (req: Request) => {
     </div>
   </div>` : ""}
 
-  <p style="font-size: 14px; color: #555;">Please order the required parts and mark the request as <strong>Ordered</strong> in the PRVS Dashboard to clear the alert on this RO.</p>
+  <p style="font-size: 14px; color: #555;">${action}</p>
 
   <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">
     <p style="margin: 0; color: #888; font-size: 11px;">
@@ -136,7 +166,7 @@ Deno.serve(async (req: Request) => {
         replyTo: "Patriots RV Services <info@patriotsrvservices.com>",
         to,
         subject,
-        text:    `Parts Request\n\nSubmitted by: ${techName}\nDate/Time: ${timestamp}\nCustomer: ${customerName}\nRO: ${roId}\nVehicle: ${rv}\n\nParts Needed:\n${description}${photos.length > 0 ? `\n\nPhotos (${photos.length}):\n${photos.map((u, i) => `  ${i + 1}. ${u}`).join("\n")}` : ""}`,
+        text:    `${estimateOnly ? "FOR ESTIMATE - PRICE THESE, DON'T ORDER" : "Parts Request"}\n\nSubmitted by: ${techName}\nDate/Time: ${timestamp}\nCustomer: ${customerName}\nRO: ${roId}\nVehicle: ${rv}\n\nParts Needed:\n${description}${photos.length > 0 ? `\n\nPhotos (${photos.length}):\n${photos.map((u, i) => `  ${i + 1}. ${u}`).join("\n")}` : ""}`,
         html:    htmlBody,
       });
 
