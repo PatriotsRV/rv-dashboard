@@ -123,9 +123,18 @@ Then read the **Class K** section of the report.
 nobody having to remember. A rule retired without a `RETIRED_RULES` row will grow twins again.
 
 **Canonical order:** `CLAUDE_CONTEXT.md` § SESSION PROTOCOL wins over any skill. If a skill needs
-changing, edit `docs/SKILL_prvs-*_FULL.md` and have Roland **select-all-paste the whole file** —
-never partial blobs. S143 proved partial blobs get half-applied. Note the skill **description**
-field is separate frontmatter and does NOT get replaced by a body paste — check it too.
+changing, edit `docs/SKILL_prvs-*_FULL.md` first — the repo doc is the source — then push it to
+the live skill **in the same step** (next paragraph). Never partial blobs: S143 proved partial
+blobs get half-applied. The skill **description** field is separate frontmatter — keep it intact.
+
+**🔁 SKILL PARITY — one move, not two (S198, closes S184):** if ANY `docs/SKILL_prvs-*_FULL.md`
+changed this session, BEFORE the Sync Gate commits it, Claude proposes the complete updated skill
+via the skill-save card (`propose_skills`, kind=improvement, target = the skill name, body = the
+FULL doc verbatim, description unchanged unless the trigger changed) and Roland taps **Save**.
+Then re-run Class K and confirm the pair reports in sync. A session may NOT end with the repo doc
+changed and the live skill not — that is the exact drift Class K exists to catch, and the paste
+step that S181/S184 relied on is RETIRED. If the card cannot be shown, say so and leave the FULL
+doc edit UNCOMMITTED (revert it) rather than committing a twin that disagrees with the live skill.
 
 ---
 
@@ -241,6 +250,7 @@ Tell Roland:
 - [ ] `CLAUDE_CONTEXT.md` — TODO, File Inventory, Session Log, Known Issues updated + saved locally
 - [ ] `CLAUDE_CONTEXT_HISTORY.md` — Completed Work, Version History updated + saved locally
 - [ ] **Class K twin check run** (`python3 scripts/audit_codebase.py`) — zero BLOCKING Class K findings
+- [ ] **Skill parity** — every `docs/SKILL_prvs-*_FULL.md` edited this session was pushed to its live skill (card saved by Roland) BEFORE the doc commit
 - [ ] Doc commit made on `pre-prod` and pushed
 - [ ] (If release shipped) fast-forwarded to `main` + release tag pushed
 - [ ] 🔒 Sync Gate hash assertion PASSED with pasted output (Case A: 2 hashes match + `pre-prod..main` empty; Case B: 4 hashes match)

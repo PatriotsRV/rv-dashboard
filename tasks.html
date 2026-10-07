@@ -36,6 +36,14 @@
 -->
 <html lang="en">
 <head>
+    <!-- [S198 Session B step 0] github.io -> dashboard.prvstools.com redirect shim. GitHub Pages
+         cannot redirect server-side, so this runs FIRST in head, before any stylesheet or script,
+         and the old host never renders. Path (minus the /rv-dashboard prefix), query and hash all
+         carry over, so old bookmarks and the deep links in report emails / SMS land on the same
+         page on the new host. NOT on v.html / review.html: those are customer-facing and the new
+         host sits behind the Access gate (needs a path-scoped Bypass first). Delete this block
+         when GitHub Pages is switched off. -->
+    <script>if(location.hostname==='patriotsrv.github.io'){location.replace('https://dashboard.prvstools.com'+location.pathname.replace(/^\/rv-dashboard/,'')+location.search+location.hash);}</script>
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="apple-touch-icon" href="logo.png">
     <meta charset="UTF-8">
