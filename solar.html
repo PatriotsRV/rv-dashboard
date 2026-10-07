@@ -9,6 +9,7 @@
          host sits behind the Access gate (needs a path-scoped Bypass first). Delete this block
          when GitHub Pages is switched off. -->
     <script>if(location.hostname==='patriotsrv.github.io'){location.replace('https://dashboard.prvstools.com'+location.pathname.replace(/^\/rv-dashboard/,'')+location.search+location.hash);}</script>
+    <!-- [S198 Session B] phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere. -->
     <!-- [S194 SEC Phase 1 step 1b] Login gate: solar.html now requires the same Google/Supabase sign-in as every other page; React app mounts only after a session exists (closes the S133 finding) -->
     <!-- [ER d432863a v1.498 S178] Patriots-logo favicon (also fixes the S139 favicon-404 console noise) -->
     <link rel="icon" type="image/png" href="logo.png">
@@ -43,6 +44,7 @@
     @keyframes ppload{0%{width:0}60%{width:70%}100%{width:100%}}
   </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="js/session-gate.js?v=1.0"></script>
 </head>
 <body>
   <div id="loading">
@@ -111,7 +113,7 @@ try {
         auth: {
             persistSession: true,
             autoRefreshToken: true,
-            storageKey: 'prvs_solar_auth'
+            storageKey: 'prvs_supabase_auth'
         }
     });
 } catch(e) {}
@@ -6388,7 +6390,9 @@ async function handleSolarSignIn(response) {
         const { data: { session } } = await _sbSolar.auth.getSession();
         if (session) { supabaseSession = session; mountSolarApp(); return; }
     } catch(e) {}
-    showSolarLoginGate();
+    // S198 Session B: no session -> login.html; Google card only via ?google=1.
+    if (new URLSearchParams(location.search).get('google') === '1') { showSolarLoginGate(); return; }
+    await PRVS.requireSession(_sbSolar);
 })();
   </script>
 

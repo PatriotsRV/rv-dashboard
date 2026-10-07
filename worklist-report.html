@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.18
+    PRVS Active Work List Report v1.19
+    v1.19 (Session 198, 2026-10-07): phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere.
+           A signed-in NON-admin still sees the Google card exactly as before (unchanged).
     v1.18: CALENDAR DATA-PARITY FIXES x2 (Session 102, 2026-06-11). Both bring
            the calendar in line with what the weekly_pnl RPC actually counts.
            (1) CASHIERED MIRROR UNION — pcalFetch now also reads the
@@ -262,6 +264,7 @@
     <title>PRVS — Active Work List Report</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="js/session-gate.js?v=1.0"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1324,7 +1327,7 @@
 // release. It drives the visible header badge — the checkin.html lesson
 // (Session 100) was a visible badge that got missed on two bumps because
 // it was a separate hardcoded site; here the badge reads this ONE constant.
-const WLR_VERSION = 'v1.18';
+const WLR_VERSION = 'v1.19';
 document.getElementById('wlrVersionBadge').textContent = WLR_VERSION;
 
 // ── Configuration ────────────────────────────────────────
@@ -1502,7 +1505,7 @@ async function loadUserRoles() {
 function getSB() {
     if (!_sb) {
         _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_report_auth' }
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_supabase_auth' }
         });
     }
     return _sb;
@@ -1550,8 +1553,10 @@ async function initAuth() {
         } catch(e) {}
     }
 
-    // Show Google sign-in
-    showGoogleSignIn();
+    // v1.19 Session B: no session -> login.html. Google card only via ?google=1, or when a
+    // session exists but is not Admin (unchanged pre-v1.19 behaviour for non-admins).
+    if (supabaseSession || new URLSearchParams(location.search).get('google') === '1') { showGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());
 }
 
 function isAdmin() {

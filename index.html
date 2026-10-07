@@ -1,7 +1,14 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.512
+    PRVS Dashboard v1.513
+    v1.513: [S198] PHONE-OTP SESSION B. (0) github.io -> dashboard.prvstools.com REDIRECT SHIM as the
+    first child of head on 14 pages (not v.html / review.html - customer-facing, gated on the new host
+    until a path-scoped Access Bypass exists). (1) The remaining pages now share the one sign-in:
+    closed-ros v1.4, time-off v1.6, leads v1.3, worklist-report v1.19, analytics v1.1, guide v1.4 and
+    solar all use storageKey 'prvs_supabase_auth' + js/session-gate.js (no session -> login.html?next=,
+    Google card only via ?google=1, sign-out clears the shared key). customer-checkin.html keeps
+    Google permanently for the kiosk account (Roland S198). No js/ module changed.
     v1.512: [S196] PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). Staff sign in
     with a 6-digit code texted from the shop line (Supabase Auth phone provider + auth-send-sms hook
     over Textly) on the NEW login.html; the session lives under the shared storageKey
@@ -1121,7 +1128,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.512';</script>
+    <script>window.APP_VERSION = '1.513';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while

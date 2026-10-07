@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <!--
-    PRVS Closed RO Archive v1.3b
-    Released: 2026-08-08
+    PRVS Closed RO Archive v1.4
+    Released: 2026-10-07
+    v1.4 (Session 198): phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere.
+    v1.3b: Released 2026-08-08
     v1.3b (Session 171 hotfix, same session): pre-migration cashiered rows
         carry NULLs in the 7 new columns; v1.3 passed those nulls explicitly
         and keep_plugged_in (NOT NULL DEFAULT false) rejected the insert —
@@ -79,6 +81,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="js/session-gate.js?v=1.0"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -439,7 +442,7 @@ let _allStaff = [];
 function getSB() {
     if (!_sb) {
         _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_closed_auth' }
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_supabase_auth' }
         });
     }
     return _sb;
@@ -504,9 +507,10 @@ async function initAuth() {
         return;
     }
 
-    // No stored Supabase session — require Google sign-in
-    // (localStorage identity alone is not enough — DB writes need an authenticated session)
-    initGoogleSignIn();
+    // No stored Supabase session -> phone-OTP login page (v1.4 Session B).
+    // Google card only via ?google=1 during the fallback fortnight.
+    if (new URLSearchParams(location.search).get('google') === '1') { initGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());
 }
 
 function initGoogleSignIn() {

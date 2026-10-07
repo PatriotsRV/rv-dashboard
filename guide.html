@@ -1,7 +1,10 @@
 <!DOCTYPE html>
 <!--
-    PRVS Employee Guide v1.3
-    Released: 2026-06-27 (Session 127)
+    PRVS Employee Guide v1.4
+    Released: 2026-10-07 (Session 198)
+
+    v1.4 (Session 198): phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere.
+    v1.3: Released 2026-06-27 (Session 127)
 
     v1.3 (Session 127): added the "What's new — June 2026" section (anchor
         #whats-new) summarizing the week's dashboard updates for staff:
@@ -67,6 +70,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="js/session-gate.js?v=1.0"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -265,7 +269,7 @@
             </div>
         </div>
         <div class="header-right">
-            <span class="version-pill" id="versionPill">v1.3</span>
+            <span class="version-pill" id="versionPill">v1.4</span>
             <span id="userBadge" class="badge-role badge-user"></span>
             <a href="index.html" class="back-link">&larr; Dashboard</a>
         </div>
@@ -682,7 +686,7 @@ let _allStaff = [];
 function getSB() {
     if (!_sb) {
         _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_guide_auth' }
+            auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_supabase_auth' }
         });
     }
     return _sb;
@@ -733,7 +737,9 @@ async function initAuth() {
         showApp();
         return;
     }
-    initGoogleSignIn();
+    // v1.4 Session B: no session -> login.html; Google card only via ?google=1.
+    if (new URLSearchParams(location.search).get('google') === '1') { initGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());
 }
 
 function initGoogleSignIn() {

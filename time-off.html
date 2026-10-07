@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <!--
-    PRVS Time Off v1.5
-    Released: 2026-06-27
+    PRVS Time Off v1.6
+    Released: 2026-10-07
+    v1.6 (Session 198): phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere.
+    v1.5: Released 2026-06-27
     v1.5: [ER 88395acc S127] Partial-day time off is now captured as an EXACT absence window
         (Lynn) — clock-out time -> return time, or a Morning/Afternoon half-day preset — instead
         of a total of hours. New time_off_requests columns absence_start_time / absence_end_time
@@ -427,6 +429,7 @@
 <div id="toastContainer"></div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/session-gate.js?v=1.0"></script>
 <script>
 const DEBUG = false;
 function log(...a) { if (DEBUG) console.log(...a); }
@@ -450,7 +453,7 @@ let filterYear = new Date().getFullYear(), filterEmployee = '', filterType = '';
 // ── SUPABASE ──
 function getSB() {
     if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-        auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_timeoff_auth' }
+        auth: { persistSession: true, autoRefreshToken: true, storageKey: 'prvs_supabase_auth' }
     });
     return _sb;
 }
@@ -473,7 +476,7 @@ async function loadUserRoles() {
 
 // ── AUTH ──
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('PRVS Time Off v1.5 [ER 88395acc S127 — exact partial-day absence window]');
+    console.log('PRVS Time Off v1.6 [S198 Session B: shared session + phone-OTP gate]');
     const { data: { session } } = await getSB().auth.getSession();
     if (session) {
         supabaseSession = session;
@@ -482,7 +485,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         showApp();
         return;
     }
-    initGoogleSignIn();
+    // v1.6 Session B: no session -> login.html; Google card only via ?google=1.
+    if (new URLSearchParams(location.search).get('google') === '1') { initGoogleSignIn(); return; }
+    await PRVS.requireSession(getSB());
 });
 
 function initGoogleSignIn() {
@@ -512,8 +517,7 @@ async function handleSignIn(response) {
 }
 
 async function signOut() {
-    await getSB().auth.signOut();
-    location.reload();
+    await PRVS.signOutEverywhere(getSB());   // v1.6: clears the shared key, lands on login.html
 }
 
 async function showApp() {
