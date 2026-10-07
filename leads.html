@@ -665,7 +665,7 @@ async function sendLeadStaffNotification(ro, payload) {
     } catch (e) { /* staff record may not exist — fall back to email */ }
   }
 
-  const dashboardLink = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(ro.ro_id)}`;
+  const dashboardLink = `https://dashboard.prvstools.com/?ro=${encodeURIComponent(ro.ro_id)}`;
   const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
 
   const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {

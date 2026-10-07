@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
@@ -42,7 +43,7 @@ function buildEmailHtml(row: any, roMeta: any | null) {
 
   const roLink = row.ro_id && roMeta?.ro_id
     ? `<p style="margin:14px 0 0 0;font-size:13px;">
-         <a href="https://patriotsrv.github.io/rv-dashboard/?ro=${escapeHtml(roMeta.ro_id)}"
+         <a href="https://dashboard.prvstools.com/?ro=${escapeHtml(roMeta.ro_id)}"
             style="display:inline-block;padding:8px 14px;background:#1e40af;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">
            Open RO in Dashboard →
          </a>

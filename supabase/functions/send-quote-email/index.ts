@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 import nodemailer from "npm:nodemailer@6";
 // [CHECKIN NOTIFY FIX v1.10 S97] raf_copy attaches the signature via Buffer.from().
 // Deno (the Edge runtime) does NOT expose Buffer as a global, so the bare
@@ -884,7 +885,7 @@ Automated internal notification from the PRVS Dashboard.`;
         <tr><td style="padding:7px 0;color:#64748b;vertical-align:top;">Submitted by:</td><td style="padding:7px 0;color:#475569;">${submittedByName}</td></tr>
       </table>
       <hr style="border:0;border-top:1px solid #e2e8f0;margin:18px 0 12px;">
-      <p style="font-size:11px;color:#94a3b8;margin:0;">Patriots RV Services — Staff Time Off Notification · <a href="https://patriotsrv.github.io/rv-dashboard/time-off.html" style="color:#60a5fa;">View Time Off Page</a></p>
+      <p style="font-size:11px;color:#94a3b8;margin:0;">Patriots RV Services — Staff Time Off Notification · <a href="https://dashboard.prvstools.com/time-off.html" style="color:#60a5fa;">View Time Off Page</a></p>
     </div>
   </div>
 </body></html>`;
@@ -899,7 +900,7 @@ Automated internal notification from the PRVS Dashboard.`;
         notes ? `Notes: ${notes}` : null,
         `Submitted by: ${submittedByName}`,
         ``,
-        `View: https://patriotsrv.github.io/rv-dashboard/time-off.html`,
+        `View: https://dashboard.prvstools.com/time-off.html`,
       ].filter(l => l !== null).join("\n");
 
       await transporter.sendMail({

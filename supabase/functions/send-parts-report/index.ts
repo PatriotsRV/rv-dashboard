@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
@@ -354,10 +355,10 @@ Deno.serve(async (req: Request) => {
     const actSpan = (color: string, text: string) => `<span style="font-size:15px;font-weight:600;color:${color}">→ ${text}</span>`;
 
     // ── Top "how to use this report" banner — first thing they see ──
-    const GUIDE_PARTS_URL = "https://patriotsrv.github.io/rv-dashboard/guide.html#parts-managers";
+    const GUIDE_PARTS_URL = "https://dashboard.prvstools.com/guide.html#parts-managers";
     const guideBanner = `<a href="${GUIDE_PARTS_URL}" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:13px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:16px;font-weight:800">&#128218; New here? Click here for full instructions on how to use this report</a>`;
 
-    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:12px;margin-bottom:16px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV &mdash; Parts</h1><p style="margin:4px 0 0;color:#555;font-size:13px">${timeLabel} check &middot; ${dateStr}</p></div>${guideBanner}${verdict}${orderBox}${estimateBox}${callBox}${cameInBox}${waitingNote}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Open the dashboard: <a href="https://patriotsrv.github.io/rv-dashboard/" style="color:#c8102e">patriotsrv.github.io/rv-dashboard</a> &middot; <a href="https://patriotsrv.github.io/rv-dashboard/guide.html#parts-managers" style="color:#c8102e">&#128218; Parts guide</a><br>Patriots RV Services &middot; Denton, TX &middot; (940) 488-5047 &middot; Automated ${timeLabel.toLowerCase()} report, Mon-Fri 8 AM &amp; 3 PM CDT</p></div></body></html>`;
+    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:12px;margin-bottom:16px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV &mdash; Parts</h1><p style="margin:4px 0 0;color:#555;font-size:13px">${timeLabel} check &middot; ${dateStr}</p></div>${guideBanner}${verdict}${orderBox}${estimateBox}${callBox}${cameInBox}${waitingNote}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Open the dashboard: <a href="https://dashboard.prvstools.com/" style="color:#c8102e">patriotsrv.github.io/rv-dashboard</a> &middot; <a href="https://dashboard.prvstools.com/guide.html#parts-managers" style="color:#c8102e">&#128218; Parts guide</a><br>Patriots RV Services &middot; Denton, TX &middot; (940) 488-5047 &middot; Automated ${timeLabel.toLowerCase()} report, Mon-Fri 8 AM &amp; 3 PM CDT</p></div></body></html>`;
 
     // ── Send email ──────────────────────────────────────────────────────
     const transporter = nodemailer.createTransport({
@@ -375,7 +376,7 @@ Deno.serve(async (req: Request) => {
     const plainText = [
       `PRVS PARTS - ${timeLabel} - ${dateStr}`,
       ``,
-      `Full instructions: https://patriotsrv.github.io/rv-dashboard/guide.html#parts-managers`,
+      `Full instructions: https://dashboard.prvstools.com/guide.html#parts-managers`,
       ``,
       toDoCount === 0 ? `ALL GOOD. Nothing to do right now.` : `YOU HAVE ${toDoCount} THING(S) TO DO:`,
       ``,
@@ -396,7 +397,7 @@ Deno.serve(async (req: Request) => {
       ``,
       `${waitingParts.length} more on order, not due yet - nothing to do.`,
       ``,
-      `Open dashboard: https://patriotsrv.github.io/rv-dashboard/`,
+      `Open dashboard: https://dashboard.prvstools.com/`,
       `Patriots RV Services - (940) 488-5047`,
     ].join("\n");
 

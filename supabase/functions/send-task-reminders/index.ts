@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 // ============================================================
 // send-task-reminders (Task Manager Phase 1, Session 186, 2026-08-27)
 // ============================================================
@@ -48,7 +49,7 @@ const DEFAULT_API_BASE = "https://vestednetworks-txb.textable.app";
 const DEFAULT_FROM_E164 = "+19404885047";
 const ESCALATE_AFTER = 3; // reminders past due before the assigner is pulled in
 const SYSTEM_EMAIL = "system@patriotsrvservices.com";
-const BOARD_URL = "https://patriotsrv.github.io/rv-dashboard/tasks.html";
+const BOARD_URL = "https://dashboard.prvstools.com/tasks.html";
 
 function chicagoWeekday(d: Date): string {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "short" }).format(d);

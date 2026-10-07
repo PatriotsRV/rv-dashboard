@@ -25,7 +25,7 @@
             if (!ro) return;
             
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(roId)}`;
+            const checkInURL = `https://dashboard.prvstools.com/?ro=${encodeURIComponent(roId)}`;
             
             // Create modal overlay
             const modalHTML = `
@@ -96,7 +96,7 @@
             if (!ro) return;
 
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-            const checkInURL = 'https://patriotsrv.github.io/rv-dashboard/?ro=' + encodeURIComponent(roId);
+            const checkInURL = 'https://dashboard.prvstools.com/?ro=' + encodeURIComponent(roId);
             const customerName = (ro.customerName || 'Unknown').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const rvMake = (ro.rv || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const spotText = (ro.parkingSpot || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');

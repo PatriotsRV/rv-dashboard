@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
@@ -328,7 +329,7 @@ Deno.serve(async (req: Request) => {
     <h1 style="color:#1e3a5f;margin:0;font-size:20px;">📊 Daily Ops Health — Admin</h1>
     <p style="margin:4px 0 0;color:#555;font-size:13px;">Patriots RV Services · ${dateStr} · Week of ${weekISO}</p>
   </div>
-  <a href="https://patriotsrv.github.io/rv-dashboard/guide.html#report-glossary" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:13px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:16px;font-weight:800">&#128218; New here? Click here for full instructions on how to use this report</a>
+  <a href="https://dashboard.prvstools.com/guide.html#report-glossary" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:13px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:16px;font-weight:800">&#128218; New here? Click here for full instructions on how to use this report</a>
   ${flagsHtml}
   ${lastWeekHtml}
   ${scorecard}

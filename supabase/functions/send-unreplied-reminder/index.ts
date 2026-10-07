@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 // ============================================================
 // send-unreplied-reminder (ER 93b00023, Session 158, 2026-07-25)
 // ============================================================
@@ -33,7 +34,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DEFAULT_API_BASE = "https://vestednetworks-txb.textable.app";
 const DEFAULT_FROM_E164 = "+19404885047";
-const MESSAGES_URL = "https://patriotsrv.github.io/rv-dashboard/messages.html";
+const MESSAGES_URL = "https://dashboard.prvstools.com/messages.html";
 
 function chicagoDayISO(d: Date): string {
   // YYYY-MM-DD in America/Chicago — the per-day idempotence key.

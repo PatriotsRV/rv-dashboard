@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
@@ -66,7 +67,7 @@ function buildEmailHtml(er: any) {
       ${what}
       ${how}
       <p style="margin:16px 0 0 0;font-size:13px;">
-        <a href="https://patriotsrv.github.io/rv-dashboard/" style="display:inline-block;padding:9px 16px;background:#1e40af;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the Dashboard →</a>
+        <a href="https://dashboard.prvstools.com/" style="display:inline-block;padding:9px 16px;background:#1e40af;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the Dashboard →</a>
       </p>
       <hr style="margin:22px 0 12px 0;border:0;border-top:1px solid #e2e8f0;">
       <p style="font-size:11px;color:#94a3b8;margin:0;">
@@ -91,7 +92,7 @@ function buildText(er: any) {
   if (er.test_steps && String(er.test_steps).trim()) {
     lines.push(``, `HOW TO SEE IT / TEST IT:`, er.test_steps);
   }
-  lines.push(``, `Open the dashboard: https://patriotsrv.github.io/rv-dashboard/`);
+  lines.push(``, `Open the dashboard: https://dashboard.prvstools.com/`);
   return lines.join("\n");
 }
 

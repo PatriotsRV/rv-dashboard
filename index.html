@@ -1,7 +1,13 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.513
+    PRVS Dashboard v1.514
+    v1.514: [S198] SESSION B STEP 3 - STAFF DEEP LINKS MINT THE NEW HOST. The three ?ro= / checkin.html?ro=
+    link builders here, js/qr.js (2), leads.html, customer-checkin.html, time-off.html, messages.html and
+    9 edge fns now write https://dashboard.prvstools.com/ instead of patriotsrv.github.io/rv-dashboard/.
+    HELD on github.io until the v.html/review.html Access Bypass exists: js/messaging.js SHORT_LINK_BASE,
+    process-review-requests (review page + short link + MMS logo), prod-smoke (Actions cannot pass Access).
+    Old links keep working through the v1.513 shim. No js/ module logic changed.
     v1.513: [S198] PHONE-OTP SESSION B. (0) github.io -> dashboard.prvstools.com REDIRECT SHIM as the
     first child of head on 14 pages (not v.html / review.html - customer-facing, gated on the new host
     until a path-scoped Access Bypass exists). (1) The remaining pages now share the one sign-in:
@@ -1128,7 +1134,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.513';</script>
+    <script>window.APP_VERSION = '1.514';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
@@ -1946,7 +1952,7 @@
             
             // Use PRVS ID for checkin URL
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
-            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/checkin.html?ro=${encodeURIComponent(roId)}`;
+            const checkInURL = `https://dashboard.prvstools.com/checkin.html?ro=${encodeURIComponent(roId)}`;
             window.open(checkInURL, '_blank');
         }
 
@@ -4696,7 +4702,7 @@
             const roId = ro.roId || generateROId(ro.customerName, ro.rv || '', ro.dateReceived);
             
             // Shorter URL — scans open the RO tile in the main dashboard
-            const checkInURL = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(roId)}`;
+            const checkInURL = `https://dashboard.prvstools.com/?ro=${encodeURIComponent(roId)}`;
             
             log('=== QR Code Debug ===');
             log('RO ID:', roId);
@@ -6727,7 +6733,7 @@
                 } catch (e) { /* staff record may not exist — fall back to email */ }
             }
 
-            const dashboardLink = `https://patriotsrv.github.io/rv-dashboard/?ro=${encodeURIComponent(ro.ro_id)}`;
+            const dashboardLink = `https://dashboard.prvstools.com/?ro=${encodeURIComponent(ro.ro_id)}`;
             const authToken = supabaseSession?.access_token || SUPABASE_ANON_KEY;
 
             const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-quote-email`, {

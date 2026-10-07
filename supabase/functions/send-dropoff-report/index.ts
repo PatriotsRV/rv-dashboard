@@ -1,3 +1,4 @@
+// [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
@@ -257,10 +258,10 @@ Deno.serve(async (req: Request) => {
     const secTitle = (txt: string) =>
       `<div style="font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#334155;margin:18px 0 8px;padding-bottom:5px;border-bottom:2px solid #e5e7eb">${txt}</div>`;
 
-    const GUIDE_URL = "https://patriotsrv.github.io/rv-dashboard/guide.html#rb-active";
+    const GUIDE_URL = "https://dashboard.prvstools.com/guide.html#rb-active";
     const guideBanner = `<a href="${GUIDE_URL}" style="display:block;text-decoration:none;background:#eff6ff;border:2px solid #3b82f6;border-radius:10px;padding:12px 16px;margin-bottom:16px;text-align:center;color:#1d4ed8;font-size:15px;font-weight:800">📖 What is this? Click here for how the Work List works</a>`;
 
-    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:12px;margin-bottom:16px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV — Monday Drop-Off Check</h1><p style="margin:4px 0 0;color:#555;font-size:13px">Week of ${thisLabel} &middot; ${dateStr}</p></div>${guideBanner}${secTitle("📥 Coming in this week")}${headThis}${sectionBlock(thisSec, "planned", "Nothing on the schedule to drop off this week yet.")}<div style="height:22px"></div>${secTitle("✅ Received last week — confirm on a work list")}${headLast}${sectionBlock(lastSec, "received", "Nothing was received last week.")}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Open the dashboard: <a href="https://patriotsrv.github.io/rv-dashboard/" style="color:#c8102e">patriotsrv.github.io/rv-dashboard</a><br>Patriots RV Services &middot; Denton, TX &middot; (940) 488-5047 &middot; Automated Monday drop-off heads-up</p></div></body></html>`;
+    const htmlBody = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:16px;color:#1a1a1a;background:#fff"><div style="border-bottom:3px solid #c8102e;padding-bottom:12px;margin-bottom:16px"><h1 style="color:#c8102e;margin:0;font-size:20px">Patriots RV — Monday Drop-Off Check</h1><p style="margin:4px 0 0;color:#555;font-size:13px">Week of ${thisLabel} &middot; ${dateStr}</p></div>${guideBanner}${secTitle("📥 Coming in this week")}${headThis}${sectionBlock(thisSec, "planned", "Nothing on the schedule to drop off this week yet.")}<div style="height:22px"></div>${secTitle("✅ Received last week — confirm on a work list")}${headLast}${sectionBlock(lastSec, "received", "Nothing was received last week.")}<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb"><p style="margin:0;color:#888;font-size:11px">Open the dashboard: <a href="https://dashboard.prvstools.com/" style="color:#c8102e">patriotsrv.github.io/rv-dashboard</a><br>Patriots RV Services &middot; Denton, TX &middot; (940) 488-5047 &middot; Automated Monday drop-off heads-up</p></div></body></html>`;
 
     // ── Plain text ──────────────────────────────────────────────────────
     const plainSection = (sec: ReturnType<typeof buildSections>, dateMode: "planned" | "received", emptyMsg: string) => {
@@ -286,7 +287,7 @@ Deno.serve(async (req: Request) => {
       `RECEIVED LAST WEEK (${lastWeek.length}; ${lastSec.uncovered} not yet on a list):`,
       ...plainSection(lastSec, "received", "None received last week."),
       ``,
-      `Open dashboard: https://patriotsrv.github.io/rv-dashboard/`,
+      `Open dashboard: https://dashboard.prvstools.com/`,
     ].join("\n");
 
     // ── Recipients ──────────────────────────────────────────────────────
