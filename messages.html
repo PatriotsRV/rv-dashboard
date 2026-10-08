@@ -2,6 +2,7 @@
 <!--
     PRVS Messages — Inbox + Conversation Assignment v1.10
 
+    v1.32 (Session 199, 2026-10-08): shared Home pill (js/home-link.js) -> home.html on every page (Roland).
     v1.31 (Session 196, 2026-10-04): PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md).
       storageKey 'prvs_messages_auth' -> the SHARED 'prvs_supabase_auth' so one sign-in on
       login.html covers index/home/messages/tasks/checkin. No session -> login.html?next=messages.html
@@ -450,6 +451,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="js/session-gate.js?v=1.0"></script>
+    <script src="js/home-link.js?v=1.0"></script>  <!-- [S199] shared Home pill -> home.html -->
     <style>
         /* ═══ v1.9 (S151c): ARGENTINA CELESTE THEME ═══════════════════
            Roland directive: the messages board should exude "happy and calm"
@@ -1090,7 +1092,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, STATUS_PROGRESS_
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
 const DEBUG = false;
 function log(...args) { if (DEBUG) console.log(...args); }
-const PAGE_VERSION = 'messages v1.31';
+const PAGE_VERSION = 'messages v1.32';
 console.log('PRVS Messages ' + PAGE_VERSION + ' (S189)');
 // v1.25 (S189): terminal = the SHARED progress map says 100% (Delivered/Cashed Out,
 // Closed - No Charge, Delivered - No Review). Not a private copy of the list — the

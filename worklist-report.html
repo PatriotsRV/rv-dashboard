@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Active Work List Report v1.19
+    PRVS Active Work List Report v1.20
+    v1.20 (Session 199): shared Home pill (js/home-link.js) -> home.html; nothing else changed.
     v1.19 (Session 198, 2026-10-07): phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere.
            A signed-in NON-admin still sees the Google card exactly as before (unchanged).
     v1.18: CALENDAR DATA-PARITY FIXES x2 (Session 102, 2026-06-11). Both bring
@@ -265,6 +266,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="js/session-gate.js?v=1.0"></script>
+    <script src="js/home-link.js?v=1.0"></script>  <!-- [S199] shared Home pill -> home.html -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Closed RO Archive v1.4
+    PRVS Closed RO Archive v1.5
+    v1.5 (Session 199): shared Home pill (js/home-link.js) -> home.html; nothing else changed.
     Released: 2026-10-07
     v1.4 (Session 198): phone-OTP sign-in (Provose Phase 0, Session B): Supabase client now uses the SHARED storageKey 'prvs_supabase_auth' so one login.html sign-in covers every page; no session -> login.html?next=<this page> via js/session-gate.js instead of the Google card; Google only via ?google=1 during the fallback fortnight; sign-out clears the shared key everywhere.
     v1.3b: Released 2026-08-08
@@ -82,6 +83,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="js/session-gate.js?v=1.0"></script>
+    <script src="js/home-link.js?v=1.0"></script>  <!-- [S199] shared Home pill -> home.html -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {

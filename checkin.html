@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Tech Check-In v1.40
+    PRVS Tech Check-In v1.41
+    v1.41: [S199] shared Home pill (js/home-link.js) -> home.html; nothing else changed.
     v1.40: [S196] PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). Supabase
            client now uses the SHARED storageKey 'prvs_supabase_auth'; Step 3 (no session, online)
            -> login.html?next=checkin.html via js/session-gate.js instead of the Google card; Google
@@ -176,6 +177,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="js/session-gate.js?v=1.0"></script>
+    <script src="js/home-link.js?v=1.0"></script>  <!-- [S199] shared Home pill -> home.html -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 

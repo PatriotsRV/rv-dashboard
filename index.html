@@ -1,7 +1,12 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.515
+    PRVS Dashboard v1.516
+    v1.516: [S199] HOME PILL ON THE STANDALONE PAGES. New js/home-link.js (classic script, v1.0) drops a
+    fixed '🏠 Home' pill -> home.html on EVERY page: analytics, checkin, closed-ros, guide, leads, solar,
+    time-off, worklist-report, messages (v1.32), tasks (v1.6) and this Dashboard (top-center on desktop,
+    bottom-center under 640px - Roland: top-left hit the titles, top-center crowded phones). Here it loads
+    through prvsAsset() like session-gate; PRVS_MODULES gains 'home-link' (check_version_sync lists js/).
     v1.515: [S199] NEXT ITEM 4 - CUSTOMER-LINK CUTOVER. js/messaging.js SHORT_LINK_BASE now mints
     https://dashboard.prvstools.com/v.html?c= (Access app `dashboard-public` bypasses /v.html, /v,
     /review.html, /review for Everyone - Cloudflare Pages serves x.html as /x, so both spellings are
@@ -1140,7 +1145,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.515';</script>
+    <script>window.APP_VERSION = '1.516';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while
@@ -1149,7 +1154,7 @@
          scripts/check_version_sync.py enforces that (BLOCKING in CI). The version still lives in
          exactly two places (the declaration above + version.json). -->
     <script>
-      window.PRVS_MODULES = ['app','auth','config','duplicates','enhancement','i18n','insurance','layout','messaging','parts','photos','planner','qr','render','ro-crud','scheduling','session-gate','shop-tasks','state','time-tracking','utils','work-list','work-orders'];
+      window.PRVS_MODULES = ['app','auth','config','duplicates','enhancement','home-link','i18n','insurance','layout','messaging','parts','photos','planner','qr','render','ro-crud','scheduling','session-gate','shop-tasks','state','time-tracking','utils','work-list','work-orders'];
       (function () {
         var v = encodeURIComponent(window.APP_VERSION), imports = {};
         window.PRVS_MODULES.forEach(function (n) { imports['./js/' + n + '.js'] = './js/' + n + '.js?v=' + v; });
@@ -8304,6 +8309,8 @@ function toggleWOTasks(tasksId, chevId) {
     <!-- v1.512 (S196): session gate - classic script, defines window.PRVS.requireSession / signOutEverywhere
          used by js/auth.js when there is no session (phone-OTP login.html replaces Google One Tap). -->
     <script>document.write('<script src="' + prvsAsset('js/session-gate.js') + '"><\/script>');</script>
+    <!-- [S199] shared Home pill -> home.html (Roland: every page, including the Dashboard) -->
+    <script>document.write('<script src="' + prvsAsset('js/home-link.js') + '"><\/script>');</script>
 
     <!-- Phase 4.5-E (v1.429): `defer` added to both Google CDN tags so the
          module's window bridge (js/app.js, loaded above as type="module" — also

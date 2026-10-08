@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-    PRVS Task Manager  tasks-v1.5
+    PRVS Task Manager  tasks-v1.6
+    v1.6 (Session 199): shared Home pill (js/home-link.js) -> home.html; nothing else changed.
     Released: 2026-10-04 (Session 196)
     Spec: docs/specs/TASK_MANAGER_SPEC.md
     v1.5: PHONE-OTP SIGN-IN (Provose Phase 0, docs/specs/PHONE_OTP_SIGNIN.md). Supabase client now
@@ -196,8 +197,9 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="js/session-gate.js?v=1.0"></script>
+<script src="js/home-link.js?v=1.0"></script>  <!-- [S199] shared Home pill -> home.html -->
 <script>
-const TASKS_VERSION = 'tasks-v1.5';
+const TASKS_VERSION = 'tasks-v1.6';
 const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
 const GOOGLE_CLIENT_ID = '971946834908-fqhmdrie6ntt0mmmbh4rkpaop8edvgr8.apps.googleusercontent.com';
