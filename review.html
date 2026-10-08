@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <!--
-    PRVS Review Request Landing Page v1.0 (Session 154, 2026-07-22) — GH#40
+    PRVS Review Request Landing Page v1.1 (Session 199, 2026-10-08) · v1.0 (Session 154, 2026-07-22) — GH#40
+    v1.1: github.io -> dashboard.prvstools.com shim (path-scoped Access Bypass live for /review.html + /review);
+          process-review-requests now mints review links on the new host.
     "Would you recommend Patriots RV Services?" — the Kenect Reviews
     replacement, styled on the messages.html celeste theme.
 
@@ -15,6 +17,11 @@
 -->
 <html lang="en">
 <head>
+    <!-- [S199 NEXT item 4] github.io -> dashboard.prvstools.com redirect shim (customer pages). Added once the
+         path-scoped Access Bypass (app `dashboard-public`: /v.html, /v, /review.html, /review -> Everyone)
+         went live 2026-10-08 - until then these two pages HAD to stay on github.io. Runs first in head so the
+         old host never renders; query (?c= / ?t=) carries over. Delete when GitHub Pages is switched off. -->
+    <script>if(location.hostname==='patriotsrv.github.io'){location.replace('https://dashboard.prvstools.com'+location.pathname.replace(/^\/rv-dashboard/,'')+location.search+location.hash);}</script>
     <!-- [ER d432863a v1.498 S178] Patriots-logo favicon (also fixes the S139 favicon-404 console noise) -->
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="apple-touch-icon" href="logo.png">

@@ -1,4 +1,4 @@
-// process-review-requests — GH#40 review-request sender v1.1 (Session 169)
+// process-review-requests — GH#40 review-request sender v1.2 (Session 199: links on dashboard.prvstools.com) · v1.1 (Session 169)
 //
 // Fired by pg_cron every 15 min (invoke_process_review_requests, pg_net,
 // no auth header — deploy with --no-verify-jwt, same pattern as
@@ -26,8 +26,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const REVIEW_PAGE_BASE = "https://patriotsrv.github.io/rv-dashboard/review.html";
-const SHORT_LINK_BASE = "https://patriotsrv.github.io/rv-dashboard/v.html?c=";
+// [S199 2026-10-08] customer pages moved to the new host: Access app `dashboard-public` bypasses
+//   /v.html, /v, /review.html, /review for Everyone. logo-sms.png stays on github.io until a Bypass
+//   covers it (or Pages is retired and the MMS logo moves to Supabase Storage) - MMS fetches it
+//   server-side at Textly, which would hit the Access wall on the new host.
+const REVIEW_PAGE_BASE = "https://dashboard.prvstools.com/review.html";
+const SHORT_LINK_BASE = "https://dashboard.prvstools.com/v.html?c=";
 const LOGO_URL = "https://patriotsrv.github.io/rv-dashboard/logo-sms.png";
 const BATCH_LIMIT = 25; // per 15-min tick; backlog drains across ticks
 

@@ -1,7 +1,13 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.514
+    PRVS Dashboard v1.515
+    v1.515: [S199] NEXT ITEM 4 - CUSTOMER-LINK CUTOVER. js/messaging.js SHORT_LINK_BASE now mints
+    https://dashboard.prvstools.com/v.html?c= (Access app `dashboard-public` bypasses /v.html, /v,
+    /review.html, /review for Everyone - Cloudflare Pages serves x.html as /x, so both spellings are
+    needed). v.html v1.1 + review.html v1.1 gained the github.io redirect shim; process-review-requests
+    v1.2 mints review + short links on the new host (MMS logo stays on github.io - see the fn header).
+    The bump exists only to cache-bust js/messaging.js; no module logic changed.
     v1.514: [S198] SESSION B STEP 3 - STAFF DEEP LINKS MINT THE NEW HOST. The three ?ro= / checkin.html?ro=
     link builders here, js/qr.js (2), leads.html, customer-checkin.html, time-off.html, messages.html and
     9 edge fns now write https://dashboard.prvstools.com/ instead of patriotsrv.github.io/rv-dashboard/.
@@ -1134,7 +1140,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.514';</script>
+    <script>window.APP_VERSION = '1.515';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while

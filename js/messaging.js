@@ -310,11 +310,12 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, PRVS_FUNCTION_SECRET, PB_LINE_E164, KE
         // the raw storage URL leaks project ref + bucket + path (Roland, first
         // live send). Self-hosted, not TinyURL/Bitly: public shortener domains
         // get spam-flagged by SMS carriers, and our own v.html keeps the link
-        // branded (patriotsrv.github.io). Code row goes to public.short_links
+        // branded (dashboard.prvstools.com since S199; github.io before). Code row goes to public.short_links
         // (migration short_links_s166.sql — anon SELECT by design, customers
         // resolve unauthenticated). On ANY failure (table missing, RLS, 3
         // collisions) the send falls back to the full URL — never blocks.
-        const SHORT_LINK_BASE = 'https://patriotsrv.github.io/rv-dashboard/v.html?c=';
+        // [S199] minted on the new host now that /v.html + /v carry an Access Bypass (app dashboard-public).
+        const SHORT_LINK_BASE = 'https://dashboard.prvstools.com/v.html?c=';
         const _SHORT_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/l/i
         async function _shortenUrl(url) {
             try {

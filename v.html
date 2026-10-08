@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <!--
-    PRVS short-link redirect — v1.0 (Session 166, 2026-08-03)
+    PRVS short-link redirect — v1.1 (Session 199, 2026-10-08) · v1.0 (Session 166, 2026-08-03)
+    v1.1: github.io -> dashboard.prvstools.com shim (the new host now has a path-scoped Access Bypass for
+          this page); new links are minted on the new host by messaging.js + process-review-requests.
+          Note: Cloudflare Pages serves /v.html as /v (308) - both paths are in the Bypass.
 
     Customer-facing target of the messages v1.22 branded video links:
     https://patriotsrv.github.io/rv-dashboard/v.html?c=<code>
@@ -20,6 +23,11 @@
 -->
 <html lang="en">
 <head>
+    <!-- [S199 NEXT item 4] github.io -> dashboard.prvstools.com redirect shim (customer pages). Added once the
+         path-scoped Access Bypass (app `dashboard-public`: /v.html, /v, /review.html, /review -> Everyone)
+         went live 2026-10-08 - until then these two pages HAD to stay on github.io. Runs first in head so the
+         old host never renders; query (?c= / ?t=) carries over. Delete when GitHub Pages is switched off. -->
+    <script>if(location.hostname==='patriotsrv.github.io'){location.replace('https://dashboard.prvstools.com'+location.pathname.replace(/^\/rv-dashboard/,'')+location.search+location.hash);}</script>
     <!-- [ER d432863a v1.498 S178] Patriots-logo favicon (also fixes the S139 favicon-404 console noise) -->
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="apple-touch-icon" href="logo.png">
