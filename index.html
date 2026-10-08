@@ -1,7 +1,11 @@
 
 <!DOCTYPE html>
 <!--
-    PRVS Dashboard v1.516
+    PRVS Dashboard v1.517
+    v1.517: [S199] BACK-TO-TOP ARROW STACKED ABOVE THE 🪔 LAMP (css/dashboard.css only). Both were pinned
+    to bottom:24px left:24px since S178, so the lamp covered the arrow whenever it appeared - Roland saw
+    it on the phone test of v1.516. Arrow now bottom:92px (86px on phones), centred on the lamp.
+    Bump = cache-bust for css/dashboard.css; no markup or js change.
     v1.516: [S199] HOME PILL ON THE STANDALONE PAGES. New js/home-link.js (classic script, v1.0) drops a
     fixed '🏠 Home' pill -> home.html on EVERY page: analytics, checkin, closed-ros, guide, leads, solar,
     time-off, worklist-report, messages (v1.32), tasks (v1.6) and this Dashboard (top-center on desktop,
@@ -1145,7 +1149,7 @@
     <!--                                                                -->
     <!-- scripts/check_version_sync.py enforces this and BLOCKS CI.     -->
     <!-- ============================================================== -->
-    <script>window.APP_VERSION = '1.516';</script>
+    <script>window.APP_VERSION = '1.517';</script>
     <!-- [v1.507 S190] CACHE-BUSTING. Every js/ module, both stylesheets and js/layout.js are
          fetched as <file>?v=<APP_VERSION>, so a release refreshes ALL code at once instead of
          leaving browsers on cached modules for up to 10 min (GitHub Pages max-age=600) while

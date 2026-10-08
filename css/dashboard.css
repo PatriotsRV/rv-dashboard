@@ -3475,11 +3475,13 @@
 }
 
         /* [ER 29654af7 v1.498 S178, Lynn] Back-to-top: appears after scrolling down;
-           bottom-LEFT so it never covers the #toast-container (bottom-right, z 13000). */
+           bottom-LEFT so it never covers the #toast-container (bottom-right, z 13000).
+           [S199 v1.517] Stacked ABOVE the 🪔 Make-a-Wish lamp (#erFloatingBtn, bottom:24px left:24px,
+           z 9998) - both sat on the same spot and the lamp hid the arrow (Roland, phone test). */
         #backToTopBtn {
             position: fixed;
-            bottom: 24px;
-            left: 24px;
+            bottom: 92px;
+            left: 29px;   /* centred on the 56px lamp below it */
             z-index: 900;
             width: 46px;
             height: 46px;
@@ -3498,7 +3500,7 @@
         #backToTopBtn:hover { opacity: 1; transform: translateY(-2px); }
         #backToTopBtn.show { display: flex; }
         @media (max-width: 768px) {
-            #backToTopBtn { bottom: 18px; left: 14px; width: 42px; height: 42px; }
+            #backToTopBtn { bottom: 86px; left: 31px; width: 42px; height: 42px; }
         }
 
         /* ═══════════════════════════════════════════════════════════════
