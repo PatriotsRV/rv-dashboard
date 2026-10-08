@@ -1,7 +1,15 @@
 <!DOCTYPE html>
 <!--
-    PRVS Staff Sign-In  login-v1.0  (Session 195, 2026-10-04)  -- NOT YET LIVE
-    Provose Phase 0: phone-OTP sign-in that replaces the per-page Google sign-in.
+    PRVS Staff Sign-In  login-v1.1  (Session 199, 2026-10-08)
+    v1.1: EMAIL is a second way in (Roland S199: Brandon sometimes has no phone; any staffer
+          whose phone is broken). One form, two modes - "Use my work email instead" /
+          "Use my cell number instead". Email mode = auth.signInWithOtp({email}) ->
+          6-digit code by email (Supabase Magic Link template MUST contain {{ .Token }}) ->
+          auth.verifyOtp({email, token, type:'email'}). Same shouldCreateUser:false gate:
+          only an address already on an auth user (every staffer who ever signed in with
+          Google) can get a code. The "not set up" message now says to re-check the
+          number/address first (S199: a swapped-digit typo looked like a missing account).
+    v1.0 (Session 195, 2026-10-04): Provose Phase 0: phone-OTP sign-in that replaces the per-page Google sign-in.
     Flow: phone -> Supabase auth.signInWithOtp({phone}) -> code arrives over Textly
           (auth-send-sms hook) -> auth.verifyOtp({phone, token, type:'sms'}) ->
           session persisted under the SHARED storageKey 'prvs_supabase_auth' ->
@@ -60,25 +68,32 @@
     <p class="sub">Staff sign-in</p>
 
     <form id="phoneForm" autocomplete="off">
-        <label for="phone">Your cell number</label>
-        <div class="phone-row">
-            <input class="cc" value="+1" disabled aria-label="Country code">
-            <input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="214 555 0123" required>
+        <div id="phoneFields">
+            <label for="phone">Your cell number</label>
+            <div class="phone-row">
+                <input class="cc" value="+1" disabled aria-label="Country code">
+                <input id="phone" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="214 555 0123">
+            </div>
+        </div>
+        <div id="emailFields" class="hidden">
+            <label for="email">Your work email</label>
+            <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@patriotsrvservices.com">
         </div>
         <button id="sendBtn" type="submit">Text me a code</button>
+        <button id="modeBtn" type="button" class="link">Use my work email instead</button>
         <div id="phoneMsg" class="msg"></div>
     </form>
 
     <form id="codeForm" class="hidden" autocomplete="off">
-        <label for="code">Enter the 6-digit code we texted to <span id="sentTo"></span></label>
-        <input id="code" class="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+        <label for="code">Enter the code we <span id="sentVia">texted</span> to <span id="sentTo"></span></label>
+        <input id="code" class="code" type="text" inputmode="numeric" pattern="[0-9]{6,8}" maxlength="8" autocomplete="one-time-code" required>
         <button id="verifyBtn" type="submit">Sign in</button>
         <button id="resendBtn" type="button" class="link">Send a new code</button>
-        <button id="changeBtn" type="button" class="link">Use a different number</button>
+        <button id="changeBtn" type="button" class="link">Start over</button>
         <div id="codeMsg" class="msg"></div>
     </form>
 
-    <div class="foot">Codes come from 940-488-5047 and expire in 5 minutes.<br>Problems? Ask Roland or Lynn.</div>
+    <div class="foot">Texted codes come from 940-488-5047; emailed codes from Supabase Auth. Codes expire in 5 minutes.<br>Problems? Ask Roland or Lynn.</div>
 </div>
 
 <script>
@@ -94,6 +109,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
 
 const $ = (id) => document.getElementById(id);
 let phoneE164 = '';
+let emailAddr = '';
+let mode = 'phone';   // 'phone' | 'email'
 
 // ?next= must be a same-origin relative path (no scheme, no protocol-relative //).
 function nextUrl() {
@@ -113,36 +130,64 @@ function say(id, text, cls) { const el = $(id); el.textContent = text || ''; el.
 // Already signed in? Straight through.
 sb.auth.getSession().then(({ data }) => { if (data?.session) location.replace(nextUrl()); });
 
+function setMode(m) {
+    mode = m;
+    const phone = m === 'phone';
+    $('phoneFields').classList.toggle('hidden', !phone);
+    $('emailFields').classList.toggle('hidden', phone);
+    $('phone').required = phone; $('email').required = !phone;
+    $('sendBtn').textContent = phone ? 'Text me a code' : 'Email me a code';
+    $('modeBtn').textContent = phone ? 'Use my work email instead' : 'Use my cell number instead';
+    say('phoneMsg', '');
+    (phone ? $('phone') : $('email')).focus();
+}
+$('modeBtn').addEventListener('click', () => setMode(mode === 'phone' ? 'email' : 'phone'));
+
 $('phoneForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    phoneE164 = toE164($('phone').value);
-    if (!phoneE164) { say('phoneMsg', 'Enter a 10-digit US cell number.', 'err'); return; }
+    if (mode === 'phone') {
+        phoneE164 = toE164($('phone').value); emailAddr = '';
+        if (!phoneE164) { say('phoneMsg', 'Enter a 10-digit US cell number.', 'err'); return; }
+    } else {
+        emailAddr = $('email').value.trim().toLowerCase(); phoneE164 = '';
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddr)) { say('phoneMsg', 'Enter your work email address.', 'err'); return; }
+    }
     await sendCode('phoneMsg');
 });
 
 async function sendCode(msgId) {
     $('sendBtn').disabled = true; $('resendBtn').disabled = true;
     say(msgId, 'Sending...');
-    // shouldCreateUser:false - sign-in only. Unknown phones get a clear error instead of a new account.
-    const { error } = await sb.auth.signInWithOtp({ phone: phoneE164, options: { shouldCreateUser: false } });
+    // shouldCreateUser:false - sign-in only. Unknown phones/emails get a clear error instead of a new account.
+    const { error } = mode === 'phone'
+        ? await sb.auth.signInWithOtp({ phone: phoneE164, options: { shouldCreateUser: false } })
+        : await sb.auth.signInWithOtp({ email: emailAddr, options: { shouldCreateUser: false } });
     $('sendBtn').disabled = false; $('resendBtn').disabled = false;
     if (error) {
+        const what = mode === 'phone' ? 'number' : 'address';
         const m = /signups not allowed|user not found/i.test(error.message)
-            ? 'That number is not set up for PRVS sign-in. Ask Roland or Lynn to add it.'
-            : (error.message || 'Could not send the code.');
+            ? 'That ' + what + ' is not set up for PRVS sign-in. Double-check it; if it is right, ask Roland or Lynn to add it.'
+            : /rate limit|too many/i.test(error.message)
+                ? 'Too many codes requested. Wait a few minutes and try again.'
+                : (error.message || 'Could not send the code.');
         say(msgId, m, 'err'); return;
     }
-    $('sentTo').textContent = pretty(phoneE164);
+    $('sentVia').textContent = mode === 'phone' ? 'texted' : 'emailed';
+    $('sentTo').textContent = mode === 'phone' ? pretty(phoneE164) : emailAddr;
     $('phoneForm').classList.add('hidden'); $('codeForm').classList.remove('hidden');
-    say('codeMsg', 'Code sent.', 'ok'); $('code').value = ''; $('code').focus();
+    say('codeMsg', mode === 'phone' ? 'Code sent.' : 'Code sent - check your inbox (and spam).', 'ok');
+    $('code').value = ''; $('code').focus();
 }
 
 $('codeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const token = $('code').value.replace(/\D/g, '');
-    if (token.length !== 6) { say('codeMsg', 'Enter the 6-digit code.', 'err'); return; }
+    // SMS codes are 6 digits; Supabase email OTP length is a project setting (6-8) - accept both.
+    if (token.length < 6 || token.length > 8) { say('codeMsg', 'Enter the code from the text or email.', 'err'); return; }
     $('verifyBtn').disabled = true; say('codeMsg', 'Checking...');
-    const { data, error } = await sb.auth.verifyOtp({ phone: phoneE164, token, type: 'sms' });
+    const { data, error } = mode === 'phone'
+        ? await sb.auth.verifyOtp({ phone: phoneE164, token, type: 'sms' })
+        : await sb.auth.verifyOtp({ email: emailAddr, token, type: 'email' });
     $('verifyBtn').disabled = false;
     if (error || !data?.session) {
         say('codeMsg', /expired/i.test(error?.message || '') ? 'That code expired. Send a new one.' : 'That code did not match. Try again.', 'err');
@@ -154,7 +199,7 @@ $('codeForm').addEventListener('submit', async (e) => {
 
 $('resendBtn').addEventListener('click', () => sendCode('codeMsg'));
 $('changeBtn').addEventListener('click', () => {
-    $('codeForm').classList.add('hidden'); $('phoneForm').classList.remove('hidden'); say('phoneMsg', ''); $('phone').focus();
+    $('codeForm').classList.add('hidden'); $('phoneForm').classList.remove('hidden'); setMode(mode);
 });
 </script>
 </body>
