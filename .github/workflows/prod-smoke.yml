@@ -17,6 +17,15 @@
 # Schedule note: every 15 min during shop hours (11:00-01:00 UTC ~= 6am-8pm CT),
 # hourly otherwise. GitHub may delay scheduled runs under load; that is fine for
 # a watchdog.
+#
+# Session 199 (2026-10-08): second job `notifications` — the NOTIFICATION WATCHDOG.
+# Two silent outages (S116: Daily Ops Health dead 4 months; S194: staff
+# notifications dead 4 days) were invisible because cron.job_run_details says
+# "succeeded" when net.http_post merely returns a request id. This job calls
+# public.notification_watchdog() (migration notification_watchdog_s199.sql) over
+# SUPABASE_DB_URL and FAILS when due `pending` rows are >2h old or any 401 hit a
+# cron-called edge fn in the last 6h. Same GitHub failure email as the page check.
+# Deliberately independent of every PRVS edge fn, Gmail and the queue itself.
 
 name: Production Smoke Test
 
@@ -68,3 +77,33 @@ jobs:
           echo ""
           echo "Reproduce locally:  python3 scripts/check_html_structure.py"
           exit 1
+
+  notifications:
+    name: Are notifications flowing?
+    if: github.event_name != 'push'      # schedule + manual only; a promote proves nothing here
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install psql
+        run: sudo apt-get install -y -qq postgresql-client >/dev/null
+
+      - name: Ask the database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL secret is NOT set - notification watchdog SKIPPED."
+            exit 0
+          fi
+          OUT=$(psql "$SUPABASE_DB_URL" -tAX -v ON_ERROR_STOP=1 -c "select public.notification_watchdog()")
+          echo "$OUT" | python3 -m json.tool
+          PROBLEMS=$(echo "$OUT" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['problems']))")
+          if [ "$PROBLEMS" != "0" ]; then
+            echo "$OUT" | python3 -c "import sys,json; [print('::error::' + p) for p in json.load(sys.stdin)['problems']]"
+            echo ""
+            echo "NOTIFICATIONS ARE NOT FLOWING. Triage (read-only, Supabase SQL editor):"
+            echo "  select * from net._http_response where status_code=401 and created > now()-interval '6 hours';"
+            echo "  select id, source, subject, scheduled_at, error_message from scheduled_notifications where status='pending' and scheduled_at < now()-interval '2 hours' order by scheduled_at;"
+            echo "If 401s: a cron-called fn lost --no-verify-jwt -> bash scripts/deploy_fn.sh <fn>."
+            echo "If DEFERRED rows: Gmail throttled; v1.1 retries every 15 min - check error_message."
+            exit 1
+          fi

@@ -3,8 +3,21 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 
 // GH#ER1 + GH#ER2 — Unified Scheduled Notifications
-// Session 56 (2026-04-25)
-// v1.0
+// Session 56 (2026-04-25) v1.0 · Session 199 (2026-10-08) v1.1
+//
+// deploy: --no-verify-jwt   (pg_cron calls this with NO Authorization header; the
+//   cron row would silently 401 otherwise — S198 outage. Deploy ONLY via
+//   `bash scripts/deploy_fn.sh process-scheduled-notifications`.)
+//
+// v1.1 (S199): the S198 backlog of 128 rows fired through ONE run and Gmail
+//   answered `454-4.7.0 Too many login attempts` from row ~66 on — nodemailer
+//   opens a new SMTP login per sendMail() unless pooled, and Gmail caps logins,
+//   not messages. Now: pooled transport (ONE connection per run), a short gap
+//   between sends, recipients de-duplicated, and a TRANSIENT Gmail failure
+//   (4xx: 421/454/4.7.x) leaves the row `pending` for the next 15-min tick and
+//   ends the run instead of marking the rest of the batch `failed`. Permanent
+//   failures (5xx, bad address) still flip to `failed` as before. A row that
+//   stays pending past 2h is what the S199 notification watchdog alerts on.
 //
 // Invoked every 15 minutes by pg_cron (`process-scheduled-notifications`).
 // Fetches all `scheduled_notifications` rows where:
@@ -134,18 +147,32 @@ Deno.serve(async (req: Request) => {
       for (const r of (roMeta || [])) roMetaById[r.id] = r;
     }
 
-    // ── Gmail transport ───────────────────────────────────────────────────
+    // ── Gmail transport — POOLED: one SMTP login for the whole run (v1.1) ──
     const transport = nodemailer.createTransport({
       service: "gmail",
+      pool: true,
+      maxConnections: 1,
+      maxMessages: 200,
       auth: { user: gmailUser, pass: gmailPass },
     });
+    const SEND_GAP_MS = 350;   // breathing room between messages on the shared connection
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    // Gmail 4xx = "try again later", never a bad message. 421 = service unavailable,
+    // 454 = too many logins, 4.7.x = rate/policy throttles.
+    const isTransient = (err: any) => {
+      const code = Number(err?.responseCode || 0);
+      const msg = String(err?.message || err || "");
+      return (code >= 400 && code < 500) || /\b4\d\d[- ]4\.\d\.\d/.test(msg) || /ETIMEDOUT|ECONNRESET|ECONNREFUSED/.test(msg);
+    };
 
     let sent = 0;
     let failed = 0;
+    let deferred = 0;
     const results: any[] = [];
 
     for (const row of rows) {
-      const recipients: string[] = Array.isArray(row.recipient_emails) ? row.recipient_emails : [];
+      const rawRecipients: string[] = Array.isArray(row.recipient_emails) ? row.recipient_emails : [];
+      const recipients = [...new Set(rawRecipients.map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
       if (recipients.length === 0) {
         // Should never happen (CHECK constraint), but defensive
         await sb.from("scheduled_notifications").update({
@@ -176,6 +203,7 @@ Deno.serve(async (req: Request) => {
         }).eq("id", row.id);
         sent++;
         results.push({ id: row.id, status: "sent", recipients: recipients.length });
+        await sleep(SEND_GAP_MS);
 
         // Audit trail to RO Status notes (execution log)
         if (row.ro_id) {
@@ -197,6 +225,17 @@ Deno.serve(async (req: Request) => {
         }
       } catch (err: any) {
         const msg = err?.message || String(err);
+        if (isTransient(err)) {
+          // Leave the row pending: the next cron tick retries it. Stop the run —
+          // every further send on this connection would fail the same way.
+          console.warn(`Transient SMTP failure on row ${row.id}, deferring the rest of the batch:`, msg);
+          await sb.from("scheduled_notifications").update({
+            error_message: ("DEFERRED (transient, will retry): " + msg).slice(0, 500),
+          }).eq("id", row.id);
+          deferred = rows.length - sent - failed;
+          results.push({ id: row.id, status: "deferred", reason: msg });
+          break;
+        }
         console.error(`Send failed for row ${row.id}:`, msg);
         await sb.from("scheduled_notifications").update({
           status: "failed",
@@ -224,11 +263,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    try { transport.close(); } catch (_) { /* pool already closed */ }
+
     return new Response(JSON.stringify({
       ok: true,
+      version: "v1.1",
       processed: rows.length,
       sent,
       failed,
+      deferred,
       results,
     }), {
       status: 200,

@@ -1,4 +1,7 @@
 // [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
+// deploy: --no-verify-jwt   (pg_cron POSTs with NO Authorization header - a plain `supabase functions deploy`
+//   reset the flag in S116 and S194 and silently killed this email for months; deploy ONLY via
+//   `bash scripts/deploy_fn.sh send-admin-pnl-report`. Added S199.)
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6";
 

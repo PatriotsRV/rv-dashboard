@@ -1,4 +1,6 @@
 // [S198 Session B step 3] Staff deep links now mint https://dashboard.prvstools.com/ (Cloudflare Pages + Access) instead of patriotsrv.github.io; old links still redirect via the v1.513 shim. CORS ALLOWED_ORIGINS unchanged.
+// deploy: --no-verify-jwt   (kiosk / customer check-in callers have no staff JWT; per the S197 record.
+//   Deploy ONLY via `bash scripts/deploy_fn.sh send-quote-email`. Added S199.)
 import nodemailer from "npm:nodemailer@6";
 // [CHECKIN NOTIFY FIX v1.10 S97] raf_copy attaches the signature via Buffer.from().
 // Deno (the Edge runtime) does NOT expose Buffer as a global, so the bare
