@@ -789,6 +789,53 @@ def scan_retired_rules(label: str, text: str) -> list[Finding]:
     return findings
 
 
+def scan_session_log_parity(repo_root: Path) -> list[Finding]:
+    """[K2] Every session the *Last updated* marker stack knows about must also have a row in
+    BOTH Session Log tables (CLAUDE_CONTEXT.md `## 📝 Session Log` and
+    CLAUDE_CONTEXT_HISTORY.md `## 📅 Session Log`). Added S200 (2026-10-10) after S199's End
+    Session wrote the File Inventory blockquote + History + marker but never the CONTEXT table
+    row -- Start Session caught it as a staleness nit. Memory failure, so: a machine check,
+    BLOCKING, run by End Session Step 3.5 after the docs are written."""
+    findings: list[Finding] = []
+    ctx_path = repo_root / "CLAUDE_CONTEXT.md"
+    hist_path = repo_root / "CLAUDE_CONTEXT_HISTORY.md"
+    try:
+        ctx = ctx_path.read_text(encoding="utf-8")
+        hist = hist_path.read_text(encoding="utf-8")
+    except Exception as e:
+        return [Finding("LOW", "K", "CLAUDE_CONTEXT.md", 0, f"[K2] could not read context files: {e}")]
+    markers = [int(m) for m in re.findall(r"^\*Last updated: \d{4}-\d{2}-\d{2} [—-]+ \*\*Session (\d+) End\*\*", ctx, re.M)]
+    if not markers:
+        return [Finding("LOW", "K", "CLAUDE_CONTEXT.md", 0, "[K2] no *Last updated ... Session N End* marker found; parity check skipped")]
+    latest = max(markers)
+
+    def table_sessions(text: str, heading_re: str) -> tuple[set[int], int]:
+        m = re.search(heading_re, text, re.M)
+        if not m:
+            return set(), 0
+        body = text[m.end():]
+        nxt = re.search(r"^## ", body, re.M)
+        if nxt:
+            body = body[: nxt.start()]
+        return {int(x) for x in re.findall(r"^\| \d{4}-\d{2}-\d{2} \| \*\*Session (\d+)\*\*", body, re.M)}, text[: m.start()].count("\n") + 1
+
+    for label, text, heading in (
+        ("CLAUDE_CONTEXT.md", ctx, r"^## 📝 Session Log\s*$"),
+        ("CLAUDE_CONTEXT_HISTORY.md", hist, r"^## 📅 Session Log\s*$"),
+    ):
+        rows, line = table_sessions(text, heading)
+        if not rows:
+            findings.append(Finding("HIGH", "K", label, line,
+                f"[K2] Session Log table heading not found or has no rows - cannot verify Session {latest}"))
+            continue
+        if latest not in rows:
+            findings.append(Finding("BLOCKING", "K", label, line,
+                f"[K2] Session {latest} is the newest *Last updated* marker but the Session Log TABLE has no "
+                f"Session {latest} row (newest row: Session {max(rows)}). End Session Step 2 writes the TABLE row, "
+                f"not only the File Inventory blockquote (S199 miss)."))
+    return findings
+
+
 def run_audit(repo_root: Path) -> list[Finding]:
     findings: list[Finding] = []
     for path in collect_files(repo_root):
@@ -828,6 +875,9 @@ def run_audit(repo_root: Path) -> list[Finding]:
         except Exception:
             continue
         findings.extend(scan_retired_rules(f"SKILL:{path.parent.name}", text))
+
+    # --- Class K [K2]: Session Log table parity (S200) ---
+    findings.extend(scan_session_log_parity(repo_root))
 
     return findings
 

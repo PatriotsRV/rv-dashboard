@@ -61,8 +61,13 @@ In `CLAUDE_CONTEXT.md` at the repo root, update ALL of the following:
   - Add newly discovered items with correct priority
   - Remove obsolete items (confirm with Roland first)
 - [ ] **File Inventory** — update version numbers for every file changed this session; add/remove rows for files created or deleted
-- [ ] **Session Log** — add a new row:
+- [ ] **Session Log** — add a new row to the **`## 📝 Session Log` TABLE** (near the bottom of the file,
+  just above the `*Last updated*` marker stack — NOT the per-session blockquote under File Inventory;
+  that blockquote is the inventory record and gets written too, but it is not the log):
   `| [YYYY-MM-DD] | [session #] | [full summary of everything done this session] |`
+  S199 wrote the blockquote, History and the marker and skipped this table; S200 Start caught it.
+  **Class K `[K2]` now BLOCKS Step 3.5 when the newest `*Last updated*` session has no table row**
+  (in CLAUDE_CONTEXT.md and in CLAUDE_CONTEXT_HISTORY.md § 📅 Session Log).
 - [ ] **Known Issues & Gotchas** — add new bugs, design decisions, or gotchas Claude must know next session
 - [ ] **Last updated marker** — update the date/session stamp at the bottom of the file
 
