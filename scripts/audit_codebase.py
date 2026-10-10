@@ -625,7 +625,8 @@ SQL_SCANNERS = [
 RETIRED_RULES = [
     dict(
         id="K1", severity="HIGH",
-        pattern=re.compile(r"/mnt/rv-dashboard"),
+        # S200: `$HOME/mnt/rv-dashboard` is the REAL device_bash mount in cloud-sandbox sessions -- not the dead path.
+        pattern=re.compile(r"(?<!\$HOME)(?<!sessions/\*)/mnt/rv-dashboard"),
         message=("Dead path `/mnt/rv-dashboard` (retired S143). It does not exist -- the real path is "
                  "/sessions/<session-name>/mnt/rv-dashboard and <session-name> is regenerated every "
                  "session. Resolve $RV dynamically."),

@@ -24,6 +24,10 @@ mounts a stale read-only knowledge snapshot. Neither is proof. **Check, then mou
     RV=$(ls -d /sessions/*/mnt/rv-dashboard 2>/dev/null | head -1)
     echo "RV=${RV:-NOT MOUNTED}"
 
+> **Cloud-sandbox sessions (S200+):** the repo is mounted on Roland's Mac and reached through `device_bash`
+> at `$HOME/mnt/rv-dashboard`. There, `cd "$HOME/mnt/rv-dashboard" || echo NOT MOUNTED` is the check, and the
+> connected-folder list in the session reminder is the mount. Same gate, different path.
+
 **2. If it prints `NOT MOUNTED`, mount it — do not stop, do not ask:**
 
 Call `request_cowork_directory` with path `~/rv-dashboard`. This resolves in one call and needs no
@@ -60,6 +64,7 @@ his call — say plainly which source you used and flag the staleness risk.
 |---|---|
 | `Read` / `Write` / `Edit` / `Grep` / `Glob` (host) | `/Users/rolandshepard/rv-dashboard/` |
 | `bash` (sandbox) | `$RV` from Step 0 — resolve it, don't assume it |
+| `device_bash` (cloud sandbox, S200+) | `$HOME/mnt/rv-dashboard` |
 
 Read these two files before doing anything else:
 
@@ -76,8 +81,25 @@ Read these two files before doing anything else:
 >
 > Report honestly which portions you read and which you did not.
 
-**Staleness check:** confirm the newest Session Log entry, the `index.html` version in the File
-Inventory, and the HEAD commit subject all agree. If they disagree, warn Roland before starting.
+**Staleness check:** confirm the newest Session Log **table row**, the header blockquote under the
+File Inventory, the `index.html` version in the File Inventory, and the HEAD commit subject all agree.
+If they disagree, warn Roland before starting. (S200 caught a missing S199 table row this way — the
+table is the one that gets forgotten.)
+
+---
+
+## STEP 1a — Name the Session: `Provose <n>` (Roland directive, S200, 2026-10-10)
+
+Every session is named **`Provose <n>`**, never "New session". `<n>` is the next number after the
+newest Session Log row (S199 → Provose 200; numbering continues unbroken).
+
+- Claude **cannot** rename the Cowork chat. Roland does it in the desktop app (session title / `…` menu
+  → Rename). So, once the files are read, say: *"This is Provose <n> — please rename the chat."*
+- Claude then uses `Provose <n>` as the label in everything it writes this session: the Session Log row,
+  the `*Last updated*` marker, commit subjects (`Provose <n> End — …`, `Provose <n> checkpoint: …`), and
+  `claude/SESSION_<n>_SUMMARY.md` in the project.
+- Sessions ≤ 199 keep their historical "Session <n>" wording. `S<n>` stays as the short form inside TODO
+  rows and Known Issues.
 
 ---
 
@@ -114,18 +136,10 @@ disagree, **§ SESSION PROTOCOL wins** — and this skill is the thing to fix.
 
 ---
 
-## STEP 3 — Ask for iPhone Updates
+## STEP 3 — iPhone Updates: PERMANENTLY SKIPPED
 
-Ask Roland:
-
-> "Any updates from your iPhone since last session? Paste them here and I'll merge them into CLAUDE_CONTEXT.md before we start."
-
-If Roland provides updates:
-
-- Mark completed items ✅ in the Active TODO List
-- Add new items with correct priority
-- Save the updated `CLAUDE_CONTEXT.md` to the local workspace immediately
-- Confirm exactly what changed before proceeding
+The iPhone project / mobile sync was disabled S74 and is permanently off. **Do not ask Roland for iPhone
+updates** and do not mention the step. Go straight to STEP 4.
 
 ---
 
@@ -171,6 +185,8 @@ Start with the highest-priority open TODO item unless Roland redirects.
 | Supabase ref | `axfejhudchdejoiwaetq` |
 | Repo (host tools) | `/Users/rolandshepard/rv-dashboard/` |
 | Repo (bash) | `$RV` — resolve per STEP 0, never hardcode |
+| Repo (device_bash) | `$HOME/mnt/rv-dashboard` |
+| Session name | `Provose <n>` — Roland renames the chat; Claude labels everything it writes |
 | Context / history / iPhone-sync files | `CLAUDE_CONTEXT.md` · `CLAUDE_CONTEXT_HISTORY.md` · `PRVS_PROJECT_CONTEXT.md` (repo root) |
 | ⛔ Never read context from | GitHub (write-backup only) · `.projects/<id>/docs/` (stale snapshot) |
 | Backup script | `bash scripts/backup.sh` |
