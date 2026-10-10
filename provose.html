@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<!--
+    Provose — RO Builder   provose-v0.1
+    Session: Provose 200 (2026-10-10)   Spec: docs/specs/V2_DMS_DESIGN.md  Build log: docs/specs/PROVOSE_BUILD_LOG.md
+    The first Provose screen: Phase 1 money model on a page, so a manager can run a PARALLEL-RUN RO
+    (jobs + lines + shop supplies + invoice + payments) against the same tables Lightspeed parity was proven on.
+    Requires migrations provose_p1_01 .. p1_05.
+    v0.1: RO list (Provose jobs grouped by RO key) · new RO by external ref OR linked to a v1 repair_orders row ·
+          jobs (approval / hold / payer / labor rate type) · lines (type, subtype, qty, unit, cost, price, discount) ·
+          Apply shop supplies (formula or override) · totals (ro_totals) · true labor cost (ro_job_margin) ·
+          Build draft invoice per payer -> Finalize (gap-free number) -> Payments -> balance (invoice_balances).
+          Writes go straight to the tables under RLS (manager+); invoices only via the RPCs. The AI is not on this page.
+    Lives at the repo ROOT (not provose/) because js/session-gate.js + js/home-link.js redirect with root-relative paths.
+    Visual base: neutral light (home.html palette) pending Roland's S195 "show me both" decision for board.html.
+-->
+<html lang="en">
+<head>
+    <script>if(location.hostname==='patriotsrv.github.io'){location.replace('https://dashboard.prvstools.com'+location.pathname.replace(/^\/rv-dashboard/,'')+location.search+location.hash);}</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Provose — RO Builder</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        :root { color-scheme: light; --navy:#10243E; --gold:#C9A544; --ink:#1b2430; --muted:#5b6778; --line:#dfe4ea; --bg:#f4f6f9; --pane:#fff;
+                --ok:#1e7f4f; --warn:#b26a00; --bad:#b3261e; --mono:'JetBrains Mono',monospace; --head:'Barlow Condensed',sans-serif; }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:Inter,system-ui,sans-serif; font-size:14px; color:var(--ink); background:var(--bg); }
+        header { background:var(--navy); color:#fff; padding:10px 18px; display:flex; align-items:center; gap:14px; }
+        header h1 { font-family:var(--head); font-size:22px; margin:0; letter-spacing:.5px; }
+        header h1 span { color:var(--gold); }
+        header .ver { font-family:var(--mono); font-size:11px; opacity:.7; }
+        header .who { margin-left:auto; font-size:12px; opacity:.85; }
+        .wrap { display:grid; grid-template-columns:300px 1fr; gap:14px; padding:14px; max-width:1500px; margin:0 auto; }
+        @media (max-width:860px) { .wrap { grid-template-columns:1fr; } }
+        .pane { background:var(--pane); border:1px solid var(--line); border-radius:10px; padding:12px; }
+        .pane h2 { font-family:var(--head); font-size:18px; margin:0 0 8px; color:var(--navy); display:flex; align-items:center; gap:8px; }
+        .pane h2 .sp { flex:1; }
+        input, select, button, textarea { font:inherit; }
+        input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:6px 8px; background:#fff; min-width:0; }
+        input:focus, select:focus { outline:2px solid #cfd9ea; border-color:var(--navy); }
+        button { border:1px solid var(--navy); background:var(--navy); color:#fff; border-radius:6px; padding:6px 10px; cursor:pointer; font-weight:500; }
+        button.sec { background:#fff; color:var(--navy); }
+        button.gold { background:var(--gold); border-color:var(--gold); color:var(--navy); }
+        button.danger { background:#fff; color:var(--bad); border-color:var(--bad); }
+        button.sm { padding:3px 7px; font-size:12px; }
+        button:disabled { opacity:.45; cursor:not-allowed; }
+        .ro-list { max-height:70vh; overflow:auto; }
+        .ro-item { padding:8px; border-radius:7px; cursor:pointer; border:1px solid transparent; }
+        .ro-item:hover { background:#f0f3f8; }
+        .ro-item.active { border-color:var(--gold); background:#fbf6e8; }
+        .ro-item .k { font-family:var(--mono); font-size:12px; font-weight:600; }
+        .ro-item .s { font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+        .job { border:1px solid var(--line); border-radius:9px; margin-bottom:12px; }
+        .job-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 10px; background:#f7f9fc; border-bottom:1px solid var(--line); border-radius:9px 9px 0 0; }
+        .job-head .title { font-family:var(--head); font-size:18px; font-weight:600; color:var(--navy); }
+        .job-head select { font-size:12px; padding:3px 6px; }
+        .tag { font-size:11px; padding:2px 7px; border-radius:999px; background:#e9edf3; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.3px; }
+        .tag.approved { background:#dff3e8; color:var(--ok); } .tag.declined { background:#f9e0de; color:var(--bad); } .tag.hold { background:#fdebd0; color:var(--warn); }
+        table { width:100%; border-collapse:collapse; }
+        th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); padding:6px 6px; border-bottom:1px solid var(--line); }
+        td { padding:4px 6px; border-bottom:1px solid #eef1f5; vertical-align:middle; }
+        td.num, th.num { text-align:right; font-family:var(--mono); font-size:12.5px; white-space:nowrap; }
+        tr.add td { background:#fbfcfe; }
+        tr.add input, tr.add select { width:100%; padding:4px 6px; font-size:13px; }
+        tr.frozen td { color:var(--muted); }
+        tr.frozen td:first-child::before { content:'🔒 '; }
+        .totals { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin:10px 0; }
+        .tile { background:#f7f9fc; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+        .tile .l { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+        .tile .v { font-family:var(--mono); font-size:16px; font-weight:600; margin-top:2px; }
+        .tile .v.good { color:var(--ok); } .tile .v.bad { color:var(--bad); }
+        .inv { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 10px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; }
+        .inv .n { font-family:var(--mono); font-weight:600; }
+        .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+        .muted { color:var(--muted); font-size:12px; }
+        .toast { position:fixed; bottom:18px; right:18px; background:var(--navy); color:#fff; padding:10px 14px; border-radius:8px; font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,.25); opacity:0; transition:opacity .2s; z-index:9999; max-width:420px; }
+        .toast.show { opacity:1; } .toast.bad { background:var(--bad); }
+        #gateMsg { padding:40px; text-align:center; color:var(--muted); }
+        .hidden { display:none !important; }
+        .ro-head { display:flex; flex-wrap:wrap; gap:10px; align-items:baseline; margin-bottom:6px; }
+        .ro-head .k { font-family:var(--mono); font-size:18px; font-weight:600; color:var(--navy); }
+        .ro-head .c { color:var(--muted); }
+    </style>
+</head>
+<body>
+<header>
+    <h1>PRO<span>VOSE</span> · RO Builder</h1>
+    <span class="ver" id="verTag"></span>
+    <span class="who" id="who"></span>
+</header>
+
+<div id="gateMsg">Checking your sign-in…</div>
+
+<div class="wrap hidden" id="app">
+    <div class="pane">
+        <h2>Repair Orders <span class="sp"></span><button class="sm gold" id="btnNewRo">+ New</button></h2>
+        <input id="roSearch" placeholder="Search RO key / customer" style="width:100%; margin-bottom:8px;">
+        <div id="newRoForm" class="hidden" style="border:1px dashed var(--line); border-radius:8px; padding:8px; margin-bottom:8px;">
+            <div class="muted" style="margin-bottom:6px;">Link to a live v1 RO (type RO number or customer), or give an external reference (e.g. a Lightspeed doc #).</div>
+            <input id="v1Search" placeholder="v1 RO number or customer…" style="width:100%; margin-bottom:6px;">
+            <select id="v1Pick" size="4" style="width:100%; margin-bottom:6px;"></select>
+            <input id="extRef" placeholder="…or external ref (PR-2026-0001)" style="width:100%; margin-bottom:6px;">
+            <input id="firstJob" placeholder="First job title (required)" style="width:100%; margin-bottom:6px;">
+            <div class="row"><button class="sm" id="btnCreateRo">Create</button><button class="sm sec" id="btnCancelRo">Cancel</button></div>
+        </div>
+        <div class="ro-list" id="roList"></div>
+    </div>
+
+    <div>
+        <div class="pane" id="roPane">
+            <div class="muted" id="roEmpty">Pick an RO on the left, or create one.</div>
+            <div id="roDetail" class="hidden">
+                <div class="ro-head"><span class="k" id="roKey"></span><span class="c" id="roCust"></span><span class="sp" style="flex:1"></span>
+                    <button class="sm sec" id="btnAddJob">+ Job</button></div>
+                <div class="totals" id="roTotals"></div>
+                <div id="jobs"></div>
+            </div>
+        </div>
+        <div class="pane hidden" id="invPane" style="margin-top:14px;">
+            <h2>Invoices &amp; Payments <span class="sp"></span>
+                <select id="invPayer" style="font-size:12px;"></select>
+                <button class="sm" id="btnBuildInv">Build draft</button></h2>
+            <div id="invList"></div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/session-gate.js?v=1.0"></script>
+<script src="js/home-link.js?v=1.0" data-pos="top-right"></script>
+<script>
+const PROVOSE_VERSION = 'provose-v0.1';
+const SUPABASE_URL  = 'https://axfejhudchdejoiwaetq.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZmVqaHVkY2hkZWpvaXdhZXRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3OTE2NzEsImV4cCI6MjA4OTM2NzY3MX0.CF7XxtXOHg6Zpsb31m55YsMVd2QHSE5L3t7_FtMFfxY';
+const WRITE_ROLES = ['Admin', 'Sr Manager', 'Manager'];
+const LINE_TYPES = ['part','labor','sublet','fee','discount'];
+const SUBTYPES = { part:['','accessory'], labor:[''], sublet:[''], fee:['shop_supplies','shipping_handling','admin',''], discount:[''] };
+const UNITS = ['each','hour','ft'];
+const HOLDS = ['none','parts','adjuster','customer','sublet'];
+const APPROVALS = ['pending','approved','declined'];
+const RATE_TYPES = ['retail','insurance','flat'];
+const METHODS = ['cash','check','card','ach','financing','other'];
+
+let _sb = null, session = null, roles = [], canWrite = false;
+let payers = [], staff = [], config = null;
+let roRows = [], current = null;   // current = { ro_id, external_ref, key, customer }
+let jobs = [], lines = {}, totals = null, margins = {}, invoices = [], balances = {}, payments = {};
+
+function getSB() {
+    if (!_sb) _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'prvs_supabase_auth' }
+    });
+    return _sb;
+}
+const $ = id => document.getElementById(id);
+const money = n => (n == null ? '—' : Number(n).toLocaleString('en-US', { style:'currency', currency:'USD' }));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let toastT; function toast(msg, bad) { const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (bad ? ' bad' : ''); clearTimeout(toastT); toastT = setTimeout(() => t.className = 'toast', bad ? 6000 : 2500); }
+function fail(e, what) { console.error(what, e); toast((what ? what + ': ' : '') + (e?.message || e), true); }
+
+// ── boot ──
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log(`Provose RO Builder ${PROVOSE_VERSION}`);
+    $('verTag').textContent = PROVOSE_VERSION;
+    session = await PRVS.requireSession(getSB());
+    if (!session) return;
+    $('who').textContent = session.user.email || session.user.phone || '';
+    await loadRoles();
+    canWrite = roles.some(r => WRITE_ROLES.includes(r));
+    if (!canWrite) toast('Read-only: manager or above can edit', true);
+    $('gateMsg').classList.add('hidden'); $('app').classList.remove('hidden');
+    await Promise.all([loadRefData(), loadRoList()]);
+    const want = new URLSearchParams(location.search).get('ro');
+    if (want) { const r = roRows.find(x => x.key === want); if (r) selectRo(r); }
+});
+
+async function loadRoles() {
+    roles = [];
+    const email = (session.user.email || '').toLowerCase();
+    if (!email) return;
+    const { data: u } = await getSB().from('users').select('id').eq('email', email).maybeSingle();
+    if (u?.id) { const { data } = await getSB().from('user_roles').select('roles(name)').eq('user_id', u.id); roles = (data || []).map(r => r.roles?.name).filter(Boolean); }
+}
+
+async function loadRefData() {
+    const sb = getSB();
+    const [p, s, c] = await Promise.all([
+        sb.from('payer').select('id,payer_type,name').eq('active', true).order('payer_type').order('name'),
+        sb.from('staff').select('id,name').eq('active', true).order('name'),
+        sb.from('provose_config').select('*').eq('id', 1).maybeSingle(),
+    ]);
+    payers = p.data || []; staff = s.data || []; config = c.data;
+    $('invPayer').innerHTML = payers.map(x => `<option value="${x.id}">${esc(x.payer_type)} · ${esc(x.name)}</option>`).join('');
+}
+
+// ── RO list (grouped from ro_totals) ──
+async function loadRoList() {
+    const { data, error } = await getSB().from('ro_totals').select('ro_key,ro_id,external_ref,jobs,sale_total,tax_total,grand_total').order('ro_key');
+    if (error) return fail(error, 'load ROs');
+    roRows = (data || []).map(r => ({ ...r, key: r.ro_id || r.external_ref }));
+    // decorate v1-linked rows with the v1 RO number + customer
+    const ids = roRows.filter(r => r.ro_id).map(r => r.ro_id);
+    if (ids.length) {
+        const { data: v1 } = await getSB().from('repair_orders').select('id,ro_id,customer_name').in('id', ids);
+        (v1 || []).forEach(v => { const r = roRows.find(x => x.ro_id === v.id); if (r) { r.key = v.ro_id; r.customer = v.customer_name; } });
+    }
+    renderRoList();
+}
+function renderRoList() {
+    const q = ($('roSearch').value || '').toLowerCase();
+    const rows = roRows.filter(r => !q || (r.key || '').toLowerCase().includes(q) || (r.customer || '').toLowerCase().includes(q));
+    $('roList').innerHTML = rows.map(r => `
+        <div class="ro-item ${current && current.ro_key === r.ro_key ? 'active' : ''}" data-k="${esc(r.ro_key)}">
+            <div class="k">${esc(r.key)}</div>
+            <div class="s"><span>${esc(r.customer || (r.external_ref ? 'external' : ''))} · ${r.jobs} job${r.jobs == 1 ? '' : 's'}</span><span>${money(r.grand_total)}</span></div>
+        </div>`).join('') || '<div class="muted">No Provose ROs yet.</div>';
+    $('roList').querySelectorAll('.ro-item').forEach(el => el.onclick = () => selectRo(roRows.find(r => r.ro_key === el.dataset.k)));
+}
+$('roSearch').oninput = renderRoList;
+
+// ── new RO ──
+$('btnNewRo').onclick = () => { $('newRoForm').classList.toggle('hidden'); };
+$('btnCancelRo').onclick = () => $('newRoForm').classList.add('hidden');
+let v1T; $('v1Search').oninput = () => { clearTimeout(v1T); v1T = setTimeout(searchV1, 250); };
+async function searchV1() {
+    const q = $('v1Search').value.trim(); if (q.length < 2) { $('v1Pick').innerHTML = ''; return; }
+    const { data } = await getSB().from('repair_orders').select('id,ro_id,customer_name,status').or(`ro_id.ilike.%${q}%,customer_name.ilike.%${q}%`).order('created_at', { ascending:false }).limit(12);
+    $('v1Pick').innerHTML = (data || []).map(r => `<option value="${r.id}">${esc(r.ro_id)} · ${esc(r.customer_name)} · ${esc(r.status)}</option>`).join('');
+}
+$('btnCreateRo').onclick = async () => {
+    const title = $('firstJob').value.trim(); if (!title) return toast('First job title is required', true);
+    const v1 = $('v1Pick').value || null; const ext = $('extRef').value.trim() || null;
+    if (!v1 && !ext) return toast('Pick a v1 RO or give an external ref', true);
+    const row = { title, job_no: 1, created_by: session.user.email };
+    if (v1) row.ro_id = v1; else row.external_ref = ext;
+    const { data, error } = await getSB().from('ro_job').insert(row).select('id,ro_id,external_ref').single();
+    if (error) return fail(error, 'create RO');
+    $('newRoForm').classList.add('hidden'); $('firstJob').value = ''; $('extRef').value = ''; $('v1Pick').innerHTML = ''; $('v1Search').value = '';
+    await loadRoList();
+    selectRo(roRows.find(r => r.ro_key === (data.ro_id || 'ext:' + data.external_ref)));
+    toast('RO created');
+};
+
+// ── RO detail ──
+async function selectRo(r) {
+    if (!r) return;
+    current = r; renderRoList();
+    $('roEmpty').classList.add('hidden'); $('roDetail').classList.remove('hidden'); $('invPane').classList.remove('hidden');
+    $('roKey').textContent = r.key; $('roCust').textContent = r.customer || (r.external_ref ? 'external ref' : '');
+    history.replaceState(null, '', '?ro=' + encodeURIComponent(r.key));
+    await refreshRo();
+}
+function jobFilter(q) { return current.ro_id ? q.eq('ro_id', current.ro_id) : q.eq('external_ref', current.external_ref); }
+async function refreshRo() {
+    const sb = getSB();
+    const [j, t] = await Promise.all([
+        jobFilter(sb.from('ro_job').select('*')).order('job_no').order('created_at'),
+        jobFilter(sb.from('ro_totals').select('*')).maybeSingle(),
+    ]);
+    if (j.error) return fail(j.error, 'load jobs');
+    jobs = j.data || []; totals = t.data;
+    const jobIds = jobs.map(x => x.id);
+    lines = {}; margins = {};
+    if (jobIds.length) {
+        const [l, m] = await Promise.all([
+            sb.from('ro_line').select('*').in('job_id', jobIds).order('sort_order').order('created_at'),
+            sb.from('ro_job_margin').select('*').in('job_id', jobIds),
+        ]);
+        (l.data || []).forEach(x => (lines[x.job_id] = lines[x.job_id] || []).push(x));
+        (m.data || []).forEach(x => margins[x.job_id] = x);
+    }
+    await loadInvoices();
+    renderTotals(); renderJobs(); renderInvoices();
+    loadRoList();   // keep the left-hand totals in step with the detail (v0.1 test: list sat at $0.00 after lines were added)
+}
+
+function renderTotals() {
+    const t = totals || {}; const tl = Object.values(margins).reduce((a, m) => a + Number(m.true_labor_cost || 0), 0);
+    const ch = Object.values(margins).reduce((a, m) => a + Number(m.clock_hours || 0), 0);
+    const trueGp = Number(t.sale_total || 0) - Number(t.parts_cost || 0) - Number(t.sublet_cost || 0) - tl;
+    $('roTotals').innerHTML = [
+        ['Parts', money(t.parts_sale)], ['Labor', money(t.labor_sale)], ['Fees / disc.', money(Number(t.fees || 0) + Number(t.discounts || 0))],
+        ['Taxable', money(t.taxable_sale)], ['Tax', money(t.tax_total)], ['Total', money(t.grand_total)],
+        ['Clocked', ch.toFixed(2) + ' h'], ['True labor cost', money(tl)], ['True GP', money(trueGp), trueGp >= 0 ? 'good' : 'bad'],
+    ].map(([l, v, c]) => `<div class="tile"><div class="l">${l}</div><div class="v ${c || ''}">${v}</div></div>`).join('');
+}
+
+function sel(name, opts, val, extra) { return `<select name="${name}" ${extra || ''}>${opts.map(o => `<option value="${esc(o)}" ${o == val ? 'selected' : ''}>${esc(o || '—')}</option>`).join('')}</select>`; }
+
+function renderJobs() {
+    const frozenIds = new Set(invoices.filter(i => i.status === 'final').flatMap(i => (i.lines || []).map(l => l.ro_line_id)));
+    $('jobs').innerHTML = jobs.map(j => {
+        const m = margins[j.id] || {}; const ls = lines[j.id] || [];
+        const payerOpts = payers.map(p => `<option value="${p.id}" ${p.id === j.payer_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+        const dis = canWrite ? '' : 'disabled';
+        return `<div class="job" data-job="${j.id}">
+            <div class="job-head">
+                <span class="title" contenteditable="${canWrite}" data-f="title">${esc(j.title)}</span>
+                <span class="tag ${j.approval_status}">${j.approval_status}</span>${j.hold_reason !== 'none' ? `<span class="tag hold">hold: ${j.hold_reason}</span>` : ''}
+                <span class="sp" style="flex:1"></span>
+                <label class="muted">Approval ${sel('approval_status', APPROVALS, j.approval_status, dis)}</label>
+                <label class="muted">Hold ${sel('hold_reason', HOLDS, j.hold_reason, dis)}</label>
+                <label class="muted">Payer <select name="payer_id" ${dis}>${payerOpts}</select></label>
+                <label class="muted">Rate ${sel('labor_rate_type', RATE_TYPES, j.labor_rate_type, dis)}</label>
+                <label class="muted">Silo <input name="silo" value="${esc(j.silo || '')}" style="width:90px" ${dis}></label>
+                <button class="sm sec" data-act="supplies" ${dis} title="Shop supplies: ${config ? (config.shop_supplies_pct * 100) + '% of labor, cap ' + money(config.shop_supplies_cap) : ''} (override on the job wins)">Shop supplies</button>
+                <button class="sm danger" data-act="deljob" ${dis}>✕</button>
+            </div>
+            <table>
+                <thead><tr><th>Type</th><th>Sub</th><th style="width:28%">Description</th><th>Tech</th><th class="num">Qty</th><th>Unit</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Disc</th><th class="num">Sale</th><th class="num">Tax</th><th></th></tr></thead>
+                <tbody>
+                ${ls.map(l => { const fz = frozenIds.has(l.id); return `<tr class="${fz ? 'frozen' : ''}" data-line="${l.id}">
+                    <td>${l.line_type}</td><td>${esc(l.subtype || '')}</td>
+                    <td ${canWrite && !fz ? 'contenteditable data-f="description"' : ''}>${esc(l.description)}</td>
+                    <td>${l.line_type === 'labor' ? (canWrite && !fz ? `<select name="tech_staff_id" style="font-size:12px;padding:2px"><option value="">—</option>${staff.map(s => `<option value="${s.id}" ${s.id === l.tech_staff_id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : esc((staff.find(s => s.id === l.tech_staff_id) || {}).name || '')) : ''}</td>
+                    <td class="num" ${canWrite && !fz ? 'contenteditable data-f="qty"' : ''}>${l.qty}</td><td>${l.unit}</td>
+                    <td class="num" ${canWrite && !fz ? 'contenteditable data-f="unit_cost"' : ''}>${l.unit_cost}</td>
+                    <td class="num" ${canWrite && !fz ? 'contenteditable data-f="unit_price"' : ''}>${l.unit_price}</td>
+                    <td class="num" ${canWrite && !fz ? 'contenteditable data-f="discount_amount"' : ''}>${l.discount_amount}</td>
+                    <td class="num">${money(l.sale_amount)}</td><td class="num">${l.taxable ? money(l.tax_amount) : '<span class="muted">—</span>'}</td>
+                    <td>${canWrite && !fz ? '<button class="sm danger" data-act="delline">✕</button>' : ''}</td></tr>`; }).join('')}
+                ${canWrite ? `<tr class="add">
+                    <td>${sel('line_type', LINE_TYPES, 'part')}</td><td>${sel('subtype', SUBTYPES.part, '')}</td>
+                    <td><input name="description" placeholder="Description"></td>
+                    <td><select name="tech_staff_id"><option value="">—</option>${staff.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></td>
+                    <td><input name="qty" value="1" class="num" style="width:60px"></td><td>${sel('unit', UNITS, 'each')}</td>
+                    <td><input name="unit_cost" value="0" style="width:80px"></td><td><input name="unit_price" value="0" style="width:90px"></td>
+                    <td><input name="discount_amount" value="0" style="width:70px"></td><td></td><td></td>
+                    <td><button class="sm gold" data-act="addline">Add</button></td></tr>` : ''}
+                </tbody>
+            </table>
+            <div class="row muted" style="padding:6px 10px;">
+                Job: sale ${money(m.sale_total)} · tax ${money(m.tax_total)} · parts GP ${money(m.parts_gp)} · clocked ${Number(m.clock_hours || 0).toFixed(2)} h / ${money(m.true_labor_cost)} · labor GP ${m.labor_gp_pct != null ? m.labor_gp_pct + '%' : '—'} · eff. rate ${m.effective_labor_rate != null ? money(m.effective_labor_rate) + '/h' : '—'}
+            </div>
+        </div>`;
+    }).join('');
+    wireJobs();
+}
+
+function wireJobs() {
+    $('jobs').querySelectorAll('.job').forEach(jobEl => {
+        const jobId = jobEl.dataset.job;
+        jobEl.querySelector('.job-head').querySelectorAll('select, input').forEach(el => el.onchange = () => updateJob(jobId, { [el.name]: el.value || null }));
+        const titleEl = jobEl.querySelector('.title'); if (titleEl) titleEl.onblur = () => updateJob(jobId, { title: titleEl.textContent.trim() || 'Untitled' });
+        jobEl.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act, jobId, b.closest('tr')));
+        const addRow = jobEl.querySelector('tr.add');
+        if (addRow) { const lt = addRow.querySelector('[name=line_type]'); lt.onchange = () => { addRow.querySelector('[name=subtype]').outerHTML = sel('subtype', SUBTYPES[lt.value], SUBTYPES[lt.value][0]); addRow.querySelector('[name=unit]').value = lt.value === 'labor' ? 'hour' : 'each'; }; }
+        jobEl.querySelectorAll('tr[data-line]').forEach(tr => {
+            tr.querySelectorAll('[contenteditable][data-f]').forEach(td => { td.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); td.blur(); } }; td.onblur = () => updateLine(tr.dataset.line, td.dataset.f, td.textContent.trim()); });
+            const tech = tr.querySelector('[name=tech_staff_id]'); if (tech) tech.onchange = () => updateLine(tr.dataset.line, 'tech_staff_id', tech.value || null);
+        });
+    });
+}
+
+async function updateJob(id, patch) {
+    const { error } = await getSB().from('ro_job').update(patch).eq('id', id);
+    if (error) return fail(error, 'update job');
+    await refreshRo();
+}
+async function updateLine(id, field, value) {
+    const patch = {}; patch[field] = ['qty','unit_cost','unit_price','discount_amount'].includes(field) ? Number(value) : value;
+    if (field === 'qty' && !patch.qty) return toast('Qty cannot be 0', true);
+    const { error } = await getSB().from('ro_line').update(patch).eq('id', id);
+    if (error) return fail(error, 'update line');
+    await refreshRo();
+}
+async function act(a, jobId, tr) {
+    const sb = getSB();
+    if (a === 'addline') {
+        const v = n => tr.querySelector(`[name=${n}]`).value;
+        const row = { job_id: jobId, line_type: v('line_type'), subtype: v('subtype') || null, description: v('description').trim(), tech_staff_id: v('tech_staff_id') || null,
+                      qty: Number(v('qty')), unit: v('unit'), unit_cost: Number(v('unit_cost')), unit_price: Number(v('unit_price')), discount_amount: Number(v('discount_amount')) };
+        if (!row.description) return toast('Description required', true);
+        if (!row.qty) return toast('Qty cannot be 0', true);
+        const { error } = await sb.from('ro_line').insert(row); if (error) return fail(error, 'add line');
+    } else if (a === 'delline') {
+        const { error } = await sb.from('ro_line').delete().eq('id', tr.dataset.line); if (error) return fail(error, 'delete line');
+    } else if (a === 'supplies') {
+        const { data, error } = await sb.rpc('provose_apply_shop_supplies', { p_job_id: jobId }); if (error) return fail(error, 'shop supplies');
+        toast(data ? 'Shop supplies line applied' : 'No labor on this job - nothing to apply');
+    } else if (a === 'deljob') {
+        if (!confirm('Delete this job and all its lines?')) return;
+        const { error } = await sb.from('ro_job').delete().eq('id', jobId); if (error) return fail(error, 'delete job');
+        if (jobs.length === 1) { current = null; $('roDetail').classList.add('hidden'); $('invPane').classList.add('hidden'); $('roEmpty').classList.remove('hidden'); await loadRoList(); return; }
+    }
+    await refreshRo();
+}
+$('btnAddJob').onclick = async () => {
+    const title = prompt('Job title'); if (!title) return;
+    const row = { title, job_no: jobs.length + 1, created_by: session.user.email };
+    if (current.ro_id) row.ro_id = current.ro_id; else row.external_ref = current.external_ref;
+    const { error } = await getSB().from('ro_job').insert(row); if (error) return fail(error, 'add job');
+    await refreshRo();
+};
+
+// ── invoices + payments ──
+async function loadInvoices() {
+    const sb = getSB();
+    const q = current.ro_id ? sb.from('invoice').select('*').eq('ro_id', current.ro_id) : sb.from('invoice').select('*').eq('external_ref', current.external_ref);
+    const { data, error } = await q.order('created_at'); if (error) return fail(error, 'load invoices');
+    invoices = data || []; balances = {}; payments = {};
+    const ids = invoices.map(i => i.id);
+    if (ids.length) {
+        const [b, p, l] = await Promise.all([
+            sb.from('invoice_balances').select('*').in('invoice_id', ids),
+            sb.from('payment').select('*').in('invoice_id', ids).order('received_on'),
+            sb.from('invoice_line').select('invoice_id,ro_line_id').in('invoice_id', ids),
+        ]);
+        (b.data || []).forEach(x => balances[x.invoice_id] = x);
+        (p.data || []).forEach(x => (payments[x.invoice_id] = payments[x.invoice_id] || []).push(x));
+        (l.data || []).forEach(x => { const inv = invoices.find(i => i.id === x.invoice_id); if (inv) (inv.lines = inv.lines || []).push(x); });
+    }
+}
+function renderInvoices() {
+    const dis = canWrite ? '' : 'disabled';
+    $('btnBuildInv').disabled = !canWrite;
+    $('invList').innerHTML = invoices.map(i => { const b = balances[i.id] || {}; const pm = payments[i.id] || [];
+        return `<div class="inv" data-inv="${i.id}">
+            <span class="n">${i.invoice_number ? '#' + i.invoice_number : 'DRAFT'}</span>
+            <span class="tag ${i.status === 'final' ? 'approved' : i.status === 'void' ? 'declined' : ''}">${i.status}</span>
+            <span class="muted">${esc((payers.find(p => p.id === i.payer_id) || {}).name || '')}</span>
+            <span class="muted">${i.lines ? i.lines.length : 0} lines</span>
+            <span class="num">total ${money(i.total)}</span>
+            ${i.status === 'final' ? `<span class="num">paid ${money(b.paid)} · <b>due ${money(b.balance)}</b> · ${b.days_open} d</span>` : ''}
+            <span class="sp" style="flex:1"></span>
+            ${i.status === 'draft' ? `<button class="sm gold" data-act="finalize" ${dis}>Finalize</button><button class="sm danger" data-act="deldraft" ${dis}>Discard</button>` : ''}
+            ${i.status === 'final' ? `<button class="sm sec" data-act="pay" ${dis}>+ Payment</button><button class="sm danger" data-act="void" ${dis}>Void</button>` : ''}
+            ${i.void_reason ? `<span class="muted">void: ${esc(i.void_reason)}</span>` : ''}
+            ${pm.length ? `<div class="muted" style="width:100%">${pm.map(p => `${p.received_on} · ${p.method}${p.reference ? ' ' + esc(p.reference) : ''} · ${money(p.amount)}${p.is_deposit ? ' (deposit)' : ''}`).join(' &nbsp;|&nbsp; ')}</div>` : ''}
+        </div>`; }).join('') || '<div class="muted">No invoices yet. Approve a job, then Build draft for its payer.</div>';
+    $('invList').querySelectorAll('[data-act]').forEach(b => b.onclick = () => invAct(b.dataset.act, b.closest('.inv').dataset.inv));
+}
+$('btnBuildInv').onclick = async () => {
+    const { data, error } = await getSB().rpc('provose_build_invoice', { p_ro_id: current.ro_id || null, p_external_ref: current.external_ref || null, p_payer_id: $('invPayer').value });
+    if (error) return fail(error, 'build invoice');
+    toast('Draft invoice built'); await refreshRo();
+};
+async function invAct(a, id) {
+    const sb = getSB(); const inv = invoices.find(i => i.id === id);
+    if (a === 'finalize') {
+        if (!confirm('Finalize this invoice? It gets the next number and can never be edited (only voided).')) return;
+        const { data, error } = await sb.rpc('provose_finalize_invoice', { p_invoice_id: id }); if (error) return fail(error, 'finalize');
+        toast('Invoice #' + data + ' finalized');
+    } else if (a === 'deldraft') {
+        const { error } = await sb.from('invoice').delete().eq('id', id); if (error) return fail(error, 'discard draft');
+    } else if (a === 'void') {
+        const reason = prompt('Void reason (required)'); if (!reason) return;
+        const { error } = await sb.rpc('provose_void_invoice', { p_invoice_id: id, p_reason: reason }); if (error) return fail(error, 'void');
+    } else if (a === 'pay') {
+        const amount = Number(prompt('Amount (negative = refund)', String(balances[id]?.balance ?? inv.total))); if (!amount) return;
+        const method = (prompt('Method: ' + METHODS.join(' / '), 'card') || '').toLowerCase(); if (!METHODS.includes(method)) return toast('Unknown method', true);
+        const reference = prompt('Reference (check #, last 4) - optional') || null;
+        const { error } = await sb.from('payment').insert({ invoice_id: id, ro_id: inv.ro_id, external_ref: inv.external_ref, payer_id: inv.payer_id, method, reference, amount, created_by: session.user.email });
+        if (error) return fail(error, 'payment');
+        toast('Payment recorded');
+    }
+    await refreshRo();
+}
+</script>
+</body>
+</html>
